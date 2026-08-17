@@ -123,7 +123,7 @@ The screen supports:
 - callback-based relative-order mutation
 - hidden/favorite status display and custom-group filtering
 
-The latest drag/drop commit is `b7d237025b4218fde93abbf2da172624f40755f7`.
+The deterministic drag-target resolver commit `b3a35191328fdd898ab9c5c972ce56b9728be7d0` passed Android CI run `32017524004` (#56). The latest drag/drop UI commit is `b7d237025b4218fde93abbf2da172624f40755f7` and remains outside a completed CI run because the Actions quota was exhausted immediately afterward.
 
 Application-level runtime composition is still intentionally separate: `MainActivity` remains the simple project shell, while Live browse and personalization are stateless/repository boundaries ready for later app-navigation and orchestration wiring.
 
