@@ -56,29 +56,42 @@ internal object XtreamCredentialsCodec {
     fun encode(credentials: XtreamCredentials): ByteArray {
         val username = credentials.username.toByteArray(StandardCharsets.UTF_8)
         val password = credentials.password.toByteArray(StandardCharsets.UTF_8)
-        require(username.size <= MAX_FIELD_BYTES) { "Credential username is too large" }
-        require(password.size <= MAX_FIELD_BYTES) { "Credential password is too large" }
+        try {
+            require(username.size <= MAX_FIELD_BYTES) { "Credential username is too large" }
+            require(password.size <= MAX_FIELD_BYTES) { "Credential password is too large" }
 
-        return ByteArrayOutputStream().use { bytes ->
-            DataOutputStream(bytes).use { output ->
-                output.writeInt(username.size)
-                output.write(username)
-                output.writeInt(password.size)
-                output.write(password)
+            return ByteArrayOutputStream().use { bytes ->
+                DataOutputStream(bytes).use { output ->
+                    output.writeInt(username.size)
+                    output.write(username)
+                    output.writeInt(password.size)
+                    output.write(password)
+                }
+                bytes.toByteArray()
             }
-            bytes.toByteArray()
+        } finally {
+            username.fill(0)
+            password.fill(0)
         }
     }
 
     fun decode(payload: ByteArray): XtreamCredentials =
         DataInputStream(ByteArrayInputStream(payload)).use { input ->
             val username = input.readBoundedBytes()
-            val password = input.readBoundedBytes()
-            require(input.available() == 0) { "Credential payload has trailing data" }
-            XtreamCredentials(
-                username = String(username, StandardCharsets.UTF_8),
-                password = String(password, StandardCharsets.UTF_8),
-            )
+            try {
+                val password = input.readBoundedBytes()
+                try {
+                    require(input.available() == 0) { "Credential payload has trailing data" }
+                    XtreamCredentials(
+                        username = String(username, StandardCharsets.UTF_8),
+                        password = String(password, StandardCharsets.UTF_8),
+                    )
+                } finally {
+                    password.fill(0)
+                }
+            } finally {
+                username.fill(0)
+            }
         }
 
     private fun DataInputStream.readBoundedBytes(): ByteArray {
