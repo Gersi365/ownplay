@@ -24,6 +24,7 @@ data class LiveChannelItem(
     val isHidden: Boolean,
     val availability: String,
     val recentAtEpochMillis: Long?,
+    val customGroupIds: Set<String> = emptySet(),
 )
 
 enum class LiveBrowseOrder {
@@ -39,7 +40,9 @@ enum class LiveBrowseOrder {
 data class LiveBrowseQuery(
     val searchTerm: String = "",
     val categoryKey: String? = null,
+    val customGroupId: String? = null,
     val favoritesOnly: Boolean = false,
+    val hiddenOnly: Boolean = false,
     val includeHidden: Boolean = false,
     val includeRemoved: Boolean = false,
     val order: LiveBrowseOrder = LiveBrowseOrder.PROVIDER,
@@ -49,14 +52,23 @@ object LiveBrowseProjector {
     fun project(
         records: List<LiveChannelRecord>,
         query: LiveBrowseQuery,
+        customGroupIdsByChannelId: Map<String, Set<String>> = emptyMap(),
     ): List<LiveChannelItem> {
         val normalizedSearch = query.searchTerm.trim().lowercase(Locale.ROOT)
 
         val filtered = records.asSequence()
-            .map(::toItem)
-            .filter { item -> query.includeHidden || !item.isHidden }
+            .map { record ->
+                toItem(
+                    record = record,
+                    customGroupIds = customGroupIdsByChannelId[record.channelId].orEmpty(),
+                )
+            }
+            .filter { item ->
+                if (query.hiddenOnly) item.isHidden else query.includeHidden || !item.isHidden
+            }
             .filter { item -> query.includeRemoved || item.availability != ChannelAvailability.REMOVED }
             .filter { item -> query.categoryKey == null || item.categoryKey == query.categoryKey }
+            .filter { item -> query.customGroupId == null || query.customGroupId in item.customGroupIds }
             .filter { item -> !query.favoritesOnly || item.isFavorite }
             .filter { item ->
                 normalizedSearch.isEmpty() ||
@@ -97,7 +109,10 @@ object LiveBrowseProjector {
         }
     }
 
-    private fun toItem(record: LiveChannelRecord): LiveChannelItem = LiveChannelItem(
+    private fun toItem(
+        record: LiveChannelRecord,
+        customGroupIds: Set<String>,
+    ): LiveChannelItem = LiveChannelItem(
         channelId = record.channelId,
         sourceId = record.sourceId,
         categoryKey = record.providerCategoryKey,
@@ -113,5 +128,6 @@ object LiveBrowseProjector {
         isHidden = record.hiddenAtEpochMillis != null,
         availability = record.availability,
         recentAtEpochMillis = record.recentAtEpochMillis,
+        customGroupIds = customGroupIds,
     )
 }
