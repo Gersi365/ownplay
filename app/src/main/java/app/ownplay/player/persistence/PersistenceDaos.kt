@@ -88,6 +88,21 @@ interface PersonalizationDao {
     @Upsert
     suspend fun upsertFavorite(entry: FavoriteEntryEntity)
 
+    @Upsert
+    suspend fun upsertFavorites(entries: List<FavoriteEntryEntity>)
+
+    @Query(
+        """
+        SELECT favorite.*
+        FROM favorite_entries AS favorite
+        INNER JOIN provider_channels AS channel
+            ON channel.channelId = favorite.channelId
+        WHERE channel.sourceId = :sourceId
+        ORDER BY favorite.favoriteOrder ASC, favorite.addedAtEpochMillis ASC, favorite.channelId ASC
+        """,
+    )
+    suspend fun favoriteEntriesForSource(sourceId: String): List<FavoriteEntryEntity>
+
     @Query("DELETE FROM favorite_entries WHERE channelId = :channelId")
     suspend fun removeFavorite(channelId: String)
 
