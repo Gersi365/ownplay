@@ -32,9 +32,9 @@ API 37 / Android 17 is intentionally not targeted in this baseline because it is
 
 Development namespace/application ID:
 
-`com.gersi365.ownplay`
+`app.ownplay.player`
 
-This identifier is provisional for build-phase implementation and must be reviewed before any public store publication.
+This identifier is intentionally product-neutral and contains no personal username or account identifier. It remains provisional for build-phase implementation and must be reviewed before any public store publication.
 
 ## UI baseline
 
