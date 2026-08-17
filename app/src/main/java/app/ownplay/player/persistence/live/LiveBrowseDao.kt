@@ -20,6 +20,7 @@ data class LiveChannelRecord(
     val manualOrder: Long?,
     val favoriteOrder: Long?,
     val hiddenAtEpochMillis: Long?,
+    val recentAtEpochMillis: Long?,
 )
 
 @Dao
@@ -40,7 +41,8 @@ interface LiveBrowseDao {
             customization.logoOverrideRef,
             customization.manualOrder,
             favorite.favoriteOrder,
-            hidden.hiddenAtEpochMillis
+            hidden.hiddenAtEpochMillis,
+            recent.watchedAtEpochMillis AS recentAtEpochMillis
         FROM provider_channels AS channel
         LEFT JOIN provider_categories AS category
             ON category.sourceId = channel.sourceId
@@ -51,6 +53,8 @@ interface LiveBrowseDao {
             ON favorite.channelId = channel.channelId
         LEFT JOIN hidden_entries AS hidden
             ON hidden.channelId = channel.channelId
+        LEFT JOIN recent_channels AS recent
+            ON recent.channelId = channel.channelId
         WHERE channel.sourceId = :sourceId
         ORDER BY channel.providerOrder ASC
         """,

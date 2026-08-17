@@ -23,12 +23,14 @@ data class LiveChannelItem(
     val isFavorite: Boolean,
     val isHidden: Boolean,
     val availability: String,
+    val recentAtEpochMillis: Long?,
 )
 
 enum class LiveBrowseOrder {
     PROVIDER,
     MY_ORDER,
     FAVORITE_ORDER,
+    RECENTLY_WATCHED,
     A_TO_Z,
     Z_TO_A,
     CATEGORY,
@@ -75,6 +77,11 @@ object LiveBrowseProjector {
                     .thenBy { it.favoriteOrder ?: Long.MAX_VALUE }
                     .thenBy(LiveChannelItem::providerOrder),
             )
+            LiveBrowseOrder.RECENTLY_WATCHED -> filtered.sortedWith(
+                compareBy<LiveChannelItem> { it.recentAtEpochMillis == null }
+                    .thenByDescending { it.recentAtEpochMillis ?: Long.MIN_VALUE }
+                    .thenBy(LiveChannelItem::providerOrder),
+            )
             LiveBrowseOrder.A_TO_Z -> filtered.sortedWith(
                 compareBy<LiveChannelItem> { it.displayName.lowercase(Locale.ROOT) }
                     .thenBy(LiveChannelItem::providerOrder),
@@ -105,5 +112,6 @@ object LiveBrowseProjector {
         isFavorite = record.favoriteOrder != null,
         isHidden = record.hiddenAtEpochMillis != null,
         availability = record.availability,
+        recentAtEpochMillis = record.recentAtEpochMillis,
     )
 }

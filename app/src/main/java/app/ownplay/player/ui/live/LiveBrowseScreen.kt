@@ -313,6 +313,7 @@ private fun orderLabel(order: LiveBrowseOrder): String = when (order) {
     LiveBrowseOrder.PROVIDER -> "Provider order"
     LiveBrowseOrder.MY_ORDER -> "My Order"
     LiveBrowseOrder.FAVORITE_ORDER -> "Favorite order"
+    LiveBrowseOrder.RECENTLY_WATCHED -> "Recently watched"
     LiveBrowseOrder.A_TO_Z -> "A–Z"
     LiveBrowseOrder.Z_TO_A -> "Z–A"
     LiveBrowseOrder.CATEGORY -> "Category"

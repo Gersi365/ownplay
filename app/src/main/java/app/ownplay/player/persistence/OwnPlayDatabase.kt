@@ -5,6 +5,8 @@ import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
 import app.ownplay.player.persistence.live.LiveBrowseDao
+import app.ownplay.player.persistence.recent.RecentChannelDao
+import app.ownplay.player.persistence.recent.RecentChannelEntity
 
 @Database(
     entities = [
@@ -17,8 +19,9 @@ import app.ownplay.player.persistence.live.LiveBrowseDao
         CustomGroupEntity::class,
         CustomGroupMembershipEntity::class,
         PlaylistRefreshStateEntity::class,
+        RecentChannelEntity::class,
     ],
-    version = 1,
+    version = 2,
     exportSchema = true,
 )
 abstract class OwnPlayDatabase : RoomDatabase() {
@@ -27,6 +30,7 @@ abstract class OwnPlayDatabase : RoomDatabase() {
     abstract fun personalizationDao(): PersonalizationDao
     abstract fun refreshStateDao(): RefreshStateDao
     abstract fun liveBrowseDao(): LiveBrowseDao
+    abstract fun recentChannelDao(): RecentChannelDao
 
     companion object {
         const val DATABASE_NAME = "ownplay.db"
@@ -36,6 +40,8 @@ abstract class OwnPlayDatabase : RoomDatabase() {
                 context.applicationContext,
                 OwnPlayDatabase::class.java,
                 DATABASE_NAME,
-            ).build()
+            )
+                .addMigrations(MIGRATION_1_2)
+                .build()
     }
 }

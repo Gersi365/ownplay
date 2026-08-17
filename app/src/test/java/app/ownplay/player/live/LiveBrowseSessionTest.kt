@@ -110,5 +110,6 @@ class LiveBrowseSessionTest {
         manualOrder = manualOrder,
         favoriteOrder = favoriteOrder,
         hiddenAtEpochMillis = hiddenAt,
+        recentAtEpochMillis = null,
     )
 }

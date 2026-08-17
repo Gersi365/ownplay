@@ -17,6 +17,7 @@ class LiveBrowseProjectorTest {
             categoryName = "News",
             providerOrder = 2,
             manualOrder = 1,
+            recentAtEpochMillis = 100,
         ),
         record(
             id = "two",
@@ -25,6 +26,7 @@ class LiveBrowseProjectorTest {
             categoryName = "Sports",
             providerOrder = 1,
             favoriteOrder = 0,
+            recentAtEpochMillis = 200,
         ),
         record(
             id = "hidden",
@@ -93,6 +95,21 @@ class LiveBrowseProjectorTest {
     }
 
     @Test
+    fun recentlyWatchedOrdersMostRecentFirstAndKeepsNeverWatchedLast() {
+        val neverWatched = records.first().copy(
+            channelId = "never",
+            providerOrder = 0,
+            recentAtEpochMillis = null,
+        )
+        val result = LiveBrowseProjector.project(
+            records = listOf(neverWatched, records[0], records[1]),
+            query = LiveBrowseQuery(order = LiveBrowseOrder.RECENTLY_WATCHED),
+        )
+
+        assertEquals(listOf("two", "one", "never"), result.map { it.channelId })
+    }
+
+    @Test
     fun myOrderKeepsUnorderedNewChannelsAfterEstablishedManualOrder() {
         val result = LiveBrowseProjector.project(
             records = records.take(2),
@@ -113,6 +130,7 @@ class LiveBrowseProjectorTest {
         favoriteOrder: Long? = null,
         hiddenAtEpochMillis: Long? = null,
         availability: String = ChannelAvailability.AVAILABLE,
+        recentAtEpochMillis: Long? = null,
     ) = LiveChannelRecord(
         channelId = id,
         sourceId = "source",
@@ -128,5 +146,6 @@ class LiveBrowseProjectorTest {
         manualOrder = manualOrder,
         favoriteOrder = favoriteOrder,
         hiddenAtEpochMillis = hiddenAtEpochMillis,
+        recentAtEpochMillis = recentAtEpochMillis,
     )
 }
