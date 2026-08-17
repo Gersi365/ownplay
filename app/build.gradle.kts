@@ -4,11 +4,11 @@ plugins {
 }
 
 android {
-    namespace = "com.gersi365.ownplay"
+    namespace = "app.ownplay.player"
     compileSdk = 36
 
     defaultConfig {
-        applicationId = "com.gersi365.ownplay"
+        applicationId = "app.ownplay.player"
         minSdk = 26
         targetSdk = 36
         versionCode = 1
