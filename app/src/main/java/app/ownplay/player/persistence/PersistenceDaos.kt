@@ -137,8 +137,23 @@ interface PersonalizationDao {
     @Upsert
     suspend fun upsertGroup(group: CustomGroupEntity)
 
+    @Query("SELECT * FROM custom_groups ORDER BY groupOrder ASC, createdAtEpochMillis ASC, groupId ASC")
+    suspend fun customGroupsForMutation(): List<CustomGroupEntity>
+
+    @Query("SELECT * FROM custom_groups WHERE groupId = :groupId LIMIT 1")
+    suspend fun customGroupById(groupId: String): CustomGroupEntity?
+
     @Upsert
     suspend fun upsertGroupMembership(membership: CustomGroupMembershipEntity)
+
+    @Upsert
+    suspend fun upsertGroupMemberships(memberships: List<CustomGroupMembershipEntity>)
+
+    @Query(
+        "SELECT * FROM custom_group_memberships " +
+            "WHERE groupId = :groupId ORDER BY groupOrder ASC, channelId ASC",
+    )
+    suspend fun groupMemberships(groupId: String): List<CustomGroupMembershipEntity>
 
     @Query("DELETE FROM custom_group_memberships WHERE groupId = :groupId AND channelId = :channelId")
     suspend fun removeGroupMembership(
