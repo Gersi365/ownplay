@@ -2,7 +2,9 @@
 
 ## Status
 
-Implementation started on `agent/phase-003-local-persistence` after validated Phase 001 and Phase 002 were merged into `main`.
+Implementation complete on `agent/phase-003-local-persistence`.
+
+Phase 001 and Phase 002 are already merged into `main`. Phase 003 remains in Draft PR #3 and is not merged.
 
 ## Authoritative scope
 
@@ -14,15 +16,13 @@ Implementation started on `agent/phase-003-local-persistence` after validated Ph
 - reconciliation model
 - migration/versioning policy
 
-This phase must preserve the source-of-truth rule that provider/source data and local personalization are separate. It must not expand into Live UI, drag-and-drop UI, Media3 playback, EPG ingestion, backup/restore, release signing, deployment, or store publication.
+The implementation remains within that scope. Live UI, playback, EPG ingestion, backup/restore, release signing, deployment, and store publication are outside Phase 003.
 
 ## Dependency decision
 
-OwnPlay uses Room 2.8.4 for the initial Android database baseline.
+OwnPlay uses Room `2.8.4` with KSP2 for the initial persistence baseline.
 
-Room 3.0 is stable, but it is a new major API line. The current implementation has no concrete Room 3-only requirement, while the Android migration guidance recommends modernizing on Room 2.8 before moving to Room 3.0. Using Room 2.8.4 minimizes API churn while keeping a supported modern baseline.
-
-KSP2 is used for Room code generation because the project uses AGP 9 and Kotlin 2.3. KSP1 is not compatible with those toolchain generations.
+Room 3 is intentionally deferred because the current application has no Room 3-only requirement. The Android migration guidance recommends modernizing on Room 2.8 before a later Room 3 transition. KSP2 is used with the AGP 9 / Kotlin 2.3 toolchain.
 
 ## Schema v1 boundaries
 
@@ -33,8 +33,6 @@ KSP2 is used for Room code generation because the project uses AGP 9 and Kotlin 
 - `provider_channels`
 - `playlist_refresh_state`
 
-Provider rows hold source-derived identity and metadata. Provider refresh logic must update these rows without using destructive table replacement as the default strategy.
-
 ### User-owned personalization
 
 - `channel_customizations`
@@ -43,103 +41,125 @@ Provider rows hold source-derived identity and metadata. Provider refresh logic 
 - `custom_groups`
 - `custom_group_memberships`
 
-Personalization is stored independently so provider refresh cannot silently reset local order, hidden state, favorites, rename, logo override, or custom-group membership.
+Provider data and personalization are separate by design. Provider refresh must not reset local ordering, hidden state, favorites, local rename/logo override, or custom-group membership.
 
 ## Sensitive-value persistence policy
 
-Raw source URLs and stream locators may contain credentials or query tokens. They must not be stored as ordinary plaintext Room metadata.
+Raw remote source URLs and stream locators may contain credentials or query tokens and are not stored as ordinary Room metadata.
 
-Schema v1 therefore stores opaque references such as `locatorRef`, `streamLocatorRef`, `logoRef`, and optional credential references. A secure locator/value vault will be implemented before any import path persists raw remote URLs or stream locators.
+Room rows store opaque references such as `locatorRef`, `streamLocatorRef`, and `logoRef`. Their encrypted backing store uses Android Keystore AES-256/GCM with a key/AAD domain separate from Xtream credentials.
 
-The Room schema must not become a backdoor around the Phase 002 redaction and credential-handling policy.
+The persistence layer therefore does not bypass the Phase 002 credential/redaction policy.
 
-## Stable identity policy
+## Stable identity and reconciliation
 
-`channelId` is OwnPlay-local identity and survives provider refresh where stable matching succeeds.
+`channelId` is OwnPlay-local identity and is preserved when a provider key matches across refreshes.
 
-`providerKey` is a source-specific stable key used for reconciliation. It must not contain raw credentials or token-bearing URLs. Examples may include:
+Stable provider identity uses:
 
-- Xtream stream ID scoped by source
-- a deterministic non-sensitive fingerprint for M3U entries
+- Xtream live stream ID for Xtream channels
+- `tvg-id` where available for M3U entries
+- normalized metadata fallback where needed
+- a query-free locator signature that is hashed before it can become part of a provider identity fallback
 
-The exact M3U fingerprint algorithm is deferred to the reconciliation slice and must be covered by deterministic tests before it is relied upon for migration or refresh behavior.
+The reconciliation primitive produces explicit `matched`, `new`, and `missing` sets. Duplicate existing or incoming provider keys fail explicitly rather than being silently collapsed.
+
+Missing channels are identified but are not automatically promoted to `removed`; that lifecycle threshold remains deferred until refresh behavior has stronger evidence.
 
 ## Ordering policy
 
-Provider order and local custom order are separate fields/tables:
+Provider and user order are deliberately separate:
 
-- `providerOrder` belongs to provider data
-- `manualOrder` belongs to user customization
-- `favoriteOrder` belongs to favorites
-- `groupOrder` belongs to custom groups/memberships
+- `providerOrder` — provider data
+- `manualOrder` — user customization
+- `favoriteOrder` — favorites
+- `groupOrder` — custom groups/memberships
 
-A temporary sort must never overwrite these persistent user-owned order values.
-
-## Availability policy
-
-Provider channels are not deleted merely because they disappear from one refresh.
-
-The schema supports lifecycle values equivalent to:
-
-- available
-- temporarily unavailable
-- removed
-
-The reconciliation algorithm and transition rules will be implemented and tested in a later Phase 003 slice before Phase 009 expands refresh orchestration.
+Temporary sorting must not overwrite persistent user-owned ordering.
 
 ## Migration/versioning policy
 
 - database starts at schema version 1
-- Room schema export is enabled
-- schema history must be preserved in source control once generated
-- migrations must be explicit and tested before version bumps
-- no `fallbackToDestructiveMigration()` in production database creation
-- destructive migration requires explicit user authorization because it may delete personalization
+- `exportSchema = true` remains enabled
+- Room schema output is configured through the Room Gradle plugin
+- generated schema JSON is stored under `app/schemas` in source control
+- schema JSON is generated by Room tooling, not hand-authored
+- every database version bump requires an explicit migration or auto-migration path
+- migration validation uses `MigrationTestHelper`
+- CI compiles the Android migration harness
+- CI fails if Room generates a schema change that is not reflected in committed schema history
+- production database creation does not use `fallbackToDestructiveMigration()`
+- destructive migration remains an explicit user-approval boundary because it may delete personalization
 
-## Slice plan
+## Implemented slices
 
 ### Slice A — Database baseline
 
 - Room/KSP configuration
-- schema v1 entities
+- schema v1 provider/source entities
+- schema v1 personalization entities
 - DAO boundaries
-- database factory without destructive fallback
-- tests for persistence contracts and redaction assumptions
-- CI build/lint/test validation
+- non-destructive database factory
+- persistence-contract tests
+
+Validation: GitHub Actions run `32002833831` — success.
 
 ### Slice B — Secure locator persistence
 
-- encrypted storage for remote source locators and stream locator values
-- opaque references from Room rows
-- deletion/update lifecycle
-- tamper/error handling
-- no sensitive values in logs or model rendering
+- Android Keystore AES-256/GCM sensitive-value store
+- opaque references from Room metadata
+- independent key/AAD domain from Xtream credentials
+- tamper/error crypto tests
+
+Validation: GitHub Actions run `32003314873` — success.
 
 ### Slice C — Stable matching and reconciliation primitives
 
-- deterministic source-specific provider keys
-- generation-based refresh staging
-- preserve personalization when provider metadata changes
-- new/temporarily unavailable/removed semantics
-- unit tests for refresh scenarios
+- deterministic Xtream/M3U provider identities
+- matched/new/missing reconciliation planning
+- local `channelId` preservation for stable matches
+- explicit duplicate-key failure
+- no automatic removed-state threshold
 
-### Slice D — Migration and database integration evidence
+Validation: GitHub Actions run `32003713864` — success.
 
-- capture Room schema JSON
-- migration test harness
-- Android/emulator integration checks where practical
-- final Phase 003 evidence report
+### Slice D — Schema and migration evidence
 
-## Current deferrals
+- Room Gradle plugin schema directory configuration
+- generated Room schema v1 captured from CI
+- committed schema path: `app/schemas/app.ownplay.player.persistence.OwnPlayDatabase/1.json`
+- schema identity hash: `33177e338419b09929b1dddfc817fefa`
+- committed schema Git blob: `18404097b52ef092e1242ca15ba0d0af93082723`
+- migration harness using `MigrationTestHelper`
+- androidTest source is compiled in CI
+- CI schema-drift guard
+- Room schema artifact upload for audit
 
-The following are intentionally not part of Slice A:
+The pre-finalization schema/harness configuration passed GitHub Actions run `32004296165`, including unit tests, lint, debug APK assembly, Android test compilation, Room schema artifact upload, and debug APK artifact upload.
+
+The final Phase 003 head must pass the same gate after the schema-drift guard and evidence finalization commit. The PR body is the authoritative record for that final run so this document does not need a self-referential follow-up commit.
+
+## Evidence limits
+
+The migration harness is compiled by CI, but the current GitHub Actions gate does not boot an Android emulator. Real `MigrationTestHelper` execution against Android SQLite / document-provider behavior is therefore not claimed here.
+
+On-device/emulator persistence and migration execution remains required during the later integration/device validation gates, including Phase 012.
+
+The current database version is 1, so there is no 1→2 production migration to execute yet. The harness and committed schema history are established now so the first version bump has a non-destructive test path from the start.
+
+## Deferred
+
+The following remain outside Phase 003:
 
 - VOD/series persistence tables
 - EPG tables
 - recent-channel history
 - playback progress
 - backup format
-- UI repositories/view models
-- data import from real user sources
+- Live browsing UI
+- player implementation
+- real user-source import orchestration
+- production signing
+- deployment/store publication
 
-Those tables will be added when their consuming phases establish concrete requirements, rather than locking speculative schema now.
+Those are added only when their consuming phases establish concrete requirements.
