@@ -29,11 +29,11 @@ jobs:
         with:
           gradle-version: "9.5.0"
 
-      - name: Install Android SDK 36
+      - name: Verify Android SDK 36
         shell: bash
         run: |
-          yes | sdkmanager --licenses >/dev/null
-          sdkmanager "platforms;android-36" "build-tools;36.0.0"
+          test -d "${ANDROID_HOME}/platforms/android-36"
+          test -d "${ANDROID_HOME}/build-tools/36.0.0"
 
       - name: Validate
         run: gradle :app:testDebugUnitTest :app:lintDebug :app:assembleDebug --stacktrace

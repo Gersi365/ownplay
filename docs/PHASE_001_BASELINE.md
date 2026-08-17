@@ -54,7 +54,7 @@ The authoritative CI validation command is:
 gradle :app:testDebugUnitTest :app:lintDebug :app:assembleDebug --stacktrace
 ```
 
-The workflow pins Gradle 9.5.0 and JDK 17 and installs Android SDK 36.
+The workflow pins Gradle 9.5.0 and JDK 17 and verifies the GitHub-hosted runner's preinstalled Android SDK 36 / build-tools 36.0.0 before building.
 
 A successful Phase 001 validation requires:
 
