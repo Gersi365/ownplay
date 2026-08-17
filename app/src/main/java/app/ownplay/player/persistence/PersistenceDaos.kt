@@ -76,6 +76,34 @@ interface PersonalizationDao {
     )
     suspend fun customizationsForSource(sourceId: String): List<ChannelCustomizationEntity>
 
+    @Query(
+        """
+        SELECT customization.*
+        FROM channel_customizations AS customization
+        INNER JOIN provider_channels AS channel
+            ON channel.channelId = customization.channelId
+        WHERE channel.sourceId = :sourceId AND channel.channelId = :channelId
+        LIMIT 1
+        """,
+    )
+    suspend fun customizationForChannel(
+        sourceId: String,
+        channelId: String,
+    ): ChannelCustomizationEntity?
+
+    @Query(
+        """
+        SELECT EXISTS(
+            SELECT 1 FROM provider_channels
+            WHERE sourceId = :sourceId AND channelId = :channelId
+        )
+        """,
+    )
+    suspend fun channelExistsInSource(
+        sourceId: String,
+        channelId: String,
+    ): Boolean
+
     @Upsert
     suspend fun upsertHidden(entry: HiddenEntryEntity)
 
