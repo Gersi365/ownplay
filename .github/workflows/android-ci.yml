@@ -55,12 +55,50 @@ jobs:
         if: success()
         shell: bash
         run: |
-          schema_status="$(git status --porcelain --untracked-files=all app/schemas)"
-          if [ -n "${schema_status}" ]; then
-            printf '%s\n' "${schema_status}"
-            echo "Room schema changed without a matching committed schema history update."
-            exit 1
-          fi
+          python3 - <<'PY'
+          import json
+          import pathlib
+          import subprocess
+          import sys
+
+          root = pathlib.Path("app/schemas")
+          problems = []
+
+          generated = sorted(root.rglob("*.json"))
+          for path in generated:
+              relative = path.as_posix()
+              try:
+                  committed_text = subprocess.check_output(
+                      ["git", "show", f"HEAD:{relative}"],
+                      text=True,
+                      stderr=subprocess.DEVNULL,
+                  )
+              except subprocess.CalledProcessError:
+                  problems.append(f"Uncommitted Room schema: {relative}")
+                  continue
+
+              try:
+                  generated_json = json.loads(path.read_text(encoding="utf-8"))
+                  committed_json = json.loads(committed_text)
+              except json.JSONDecodeError as error:
+                  problems.append(f"Invalid Room schema JSON in {relative}: {error}")
+                  continue
+
+              if generated_json != committed_json:
+                  problems.append(f"Room schema drift: {relative}")
+
+          committed_paths = subprocess.check_output(
+              ["git", "ls-tree", "-r", "--name-only", "HEAD", "app/schemas"],
+              text=True,
+          ).splitlines()
+          for relative in committed_paths:
+              if relative.endswith(".json") and not pathlib.Path(relative).is_file():
+                  problems.append(f"Committed Room schema missing from build output: {relative}")
+
+          if problems:
+              print("\n".join(problems))
+              sys.exit(1)
+          PY
 
       - name: Upload debug APK
         if: success()
