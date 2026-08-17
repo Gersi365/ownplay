@@ -31,6 +31,20 @@ class ManualChannelOrderMutator(
         )
     }
 
+    suspend fun moveRelative(
+        sourceId: String,
+        channelId: String,
+        anchorChannelId: String,
+        placement: ManualOrderPlacement,
+    ): ManualOrderMutationResult = mutate(sourceId) { currentOrder ->
+        ManualChannelOrderPlanner.moveRelative(
+            currentOrder = currentOrder,
+            channelId = channelId,
+            anchorChannelId = anchorChannelId,
+            placement = placement,
+        )
+    }
+
     suspend fun moveSelectedToTop(
         sourceId: String,
         selectedChannelIds: Set<String>,

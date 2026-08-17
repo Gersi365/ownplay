@@ -31,6 +31,63 @@ class ManualChannelOrderPlannerTest {
     }
 
     @Test
+    fun moveRelativeAfterUsesAnchorIdentityAcrossIndexShift() {
+        val result = ManualChannelOrderPlanner.moveRelative(
+            currentOrder = listOf("one", "two", "three", "four"),
+            channelId = "one",
+            anchorChannelId = "three",
+            placement = ManualOrderPlacement.AFTER,
+        )
+
+        val success = result as ManualOrderPlanResult.Success
+        assertEquals(listOf("two", "three", "one", "four"), success.plan.channelIds)
+    }
+
+    @Test
+    fun moveRelativeBeforeUsesAnchorIdentityAcrossIndexShift() {
+        val result = ManualChannelOrderPlanner.moveRelative(
+            currentOrder = listOf("one", "two", "three", "four"),
+            channelId = "four",
+            anchorChannelId = "two",
+            placement = ManualOrderPlacement.BEFORE,
+        )
+
+        val success = result as ManualOrderPlanResult.Success
+        assertEquals(listOf("one", "four", "two", "three"), success.plan.channelIds)
+    }
+
+    @Test
+    fun moveRelativeToSelfIsNoOp() {
+        val result = ManualChannelOrderPlanner.moveRelative(
+            currentOrder = listOf("one", "two", "three"),
+            channelId = "two",
+            anchorChannelId = "two",
+            placement = ManualOrderPlacement.AFTER,
+        )
+
+        val success = result as ManualOrderPlanResult.Success
+        assertEquals(listOf("one", "two", "three"), success.plan.channelIds)
+    }
+
+    @Test
+    fun moveRelativeMissingAnchorFailsExplicitly() {
+        val result = ManualChannelOrderPlanner.moveRelative(
+            currentOrder = listOf("one", "two", "three"),
+            channelId = "one",
+            anchorChannelId = "missing",
+            placement = ManualOrderPlacement.BEFORE,
+        )
+
+        assertEquals(
+            ManualOrderPlanResult.Failure(
+                reason = ManualOrderFailureReason.CHANNEL_NOT_FOUND,
+                channelId = "missing",
+            ),
+            result,
+        )
+    }
+
+    @Test
     fun moveSelectedToTopPreservesRelativeOrderFromCurrentList() {
         val result = ManualChannelOrderPlanner.moveSelectedToTop(
             currentOrder = listOf("one", "two", "three", "four", "five"),

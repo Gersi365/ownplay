@@ -12,6 +12,11 @@ data class ManualOrderPlan(
         get() = assignments.map(ManualOrderAssignment::channelId)
 }
 
+enum class ManualOrderPlacement {
+    BEFORE,
+    AFTER,
+}
+
 enum class ManualOrderFailureReason {
     EMPTY_CHANNEL_ID,
     DUPLICATE_CHANNEL_ID,
@@ -60,6 +65,54 @@ object ManualChannelOrderPlanner {
         reordered.removeAt(currentIndex)
         reordered.add(targetIndex, channelId)
         return success(reordered)
+    }
+
+    fun moveRelative(
+        currentOrder: List<String>,
+        channelId: String,
+        anchorChannelId: String,
+        placement: ManualOrderPlacement,
+    ): ManualOrderPlanResult {
+        validateCurrentOrder(currentOrder)?.let { return it }
+        if (channelId.isBlank() || anchorChannelId.isBlank()) {
+            return ManualOrderPlanResult.Failure(
+                reason = ManualOrderFailureReason.EMPTY_CHANNEL_ID,
+            )
+        }
+        val currentIndex = currentOrder.indexOf(channelId)
+        if (currentIndex == -1) {
+            return ManualOrderPlanResult.Failure(
+                reason = ManualOrderFailureReason.CHANNEL_NOT_FOUND,
+                channelId = channelId,
+            )
+        }
+        val anchorIndex = currentOrder.indexOf(anchorChannelId)
+        if (anchorIndex == -1) {
+            return ManualOrderPlanResult.Failure(
+                reason = ManualOrderFailureReason.CHANNEL_NOT_FOUND,
+                channelId = anchorChannelId,
+            )
+        }
+        if (channelId == anchorChannelId) return success(currentOrder)
+
+        val targetIndex = when (placement) {
+            ManualOrderPlacement.BEFORE -> if (currentIndex < anchorIndex) {
+                anchorIndex - 1
+            } else {
+                anchorIndex
+            }
+
+            ManualOrderPlacement.AFTER -> if (currentIndex < anchorIndex) {
+                anchorIndex
+            } else {
+                anchorIndex + 1
+            }
+        }
+        return move(
+            currentOrder = currentOrder,
+            channelId = channelId,
+            targetIndex = targetIndex,
+        )
     }
 
     fun moveSelectedToTop(
