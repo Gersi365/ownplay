@@ -8,7 +8,11 @@ sealed interface SourceError {
     data object EmbeddedCredentialsNotAllowed : SourceError
     data object UnexpectedUrlComponent : SourceError
     data object UnsupportedLocalUri : SourceError
+    data object InvalidCredentials : SourceError
+    data object CredentialUnavailable : SourceError
     data object AuthenticationFailed : SourceError
+    data object CleartextTransportRequiresOptIn : SourceError
+    data object SecureConnectionFailed : SourceError
     data object NetworkUnavailable : SourceError
     data object Timeout : SourceError
     data class HttpFailure(val statusCode: Int) : SourceError
