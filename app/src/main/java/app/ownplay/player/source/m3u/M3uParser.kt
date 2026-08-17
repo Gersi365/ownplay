@@ -15,7 +15,7 @@ object M3uParser {
         var pending: PendingEntry? = null
 
         lines.forEach { rawLine ->
-            val line = rawLine.trim()
+            val line = rawLine.trim().removePrefix("\uFEFF")
             if (line.isEmpty()) return@forEach
 
             when {

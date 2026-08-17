@@ -81,4 +81,15 @@ class M3uParserTest {
             playlist.epgUrls,
         )
     }
+
+    @Test
+    fun utf8BomBeforeHeader_doesNotCreateBogusEntry() {
+        val playlist = M3uParser.parse(
+            "\uFEFF#EXTM3U\n#EXTINF:-1 tvg-name=\"BOM Channel\",BOM Channel\nhttps://stream.example/bom",
+        )
+
+        assertEquals(1, playlist.entries.size)
+        assertEquals("BOM Channel", playlist.entries.single().displayName)
+        assertEquals("https://stream.example/bom", playlist.entries.single().streamUrl)
+    }
 }

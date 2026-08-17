@@ -15,6 +15,7 @@ sealed interface SourceError {
     data object SecureConnectionFailed : SourceError
     data object NetworkUnavailable : SourceError
     data object Timeout : SourceError
+    data object SourceReadFailed : SourceError
     data class HttpFailure(val statusCode: Int) : SourceError
     data object MalformedResponse : SourceError
     data object MalformedPlaylist : SourceError
