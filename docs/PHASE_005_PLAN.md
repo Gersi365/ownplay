@@ -123,7 +123,12 @@ The screen supports:
 - callback-based relative-order mutation
 - hidden/favorite status display and custom-group filtering
 
-The deterministic drag-target resolver commit `b3a35191328fdd898ab9c5c972ce56b9728be7d0` passed Android CI run `32017524004` (#56). The latest drag/drop UI commit is `b7d237025b4218fde93abbf2da172624f40755f7` and remains outside a completed CI run because the Actions quota was exhausted immediately afterward.
+The deterministic drag-target resolver commit `b3a35191328fdd898ab9c5c972ce56b9728be7d0` passed Android CI run `32017524004` (#56). The run completed the SDK verification, JVM unit tests, Android lint, debug assembly, androidTest compilation, Room schema generation/drift verification, and artifact uploads. Evidence artifacts were:
+
+- debug APK: `sha256:36fbc8b31cfa962bd3d1b49540b113bf3c89c6dc9e476cbced6655e1475fe2cb`
+- Room schema: `sha256:97525291d4bb35321a66f90ee035ab1f7715b43aa97a3772834c76f602070a3a`
+
+The latest drag/drop UI commit is `b7d237025b4218fde93abbf2da172624f40755f7` and remains outside a completed CI run because the Actions quota was exhausted immediately afterward.
 
 Application-level runtime composition is still intentionally separate: `MainActivity` remains the simple project shell, while Live browse and personalization are stateless/repository boundaries ready for later app-navigation and orchestration wiring.
 
