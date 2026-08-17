@@ -79,6 +79,9 @@ interface PersonalizationDao {
     @Upsert
     suspend fun upsertHidden(entry: HiddenEntryEntity)
 
+    @Upsert
+    suspend fun upsertHidden(entries: List<HiddenEntryEntity>)
+
     @Query("DELETE FROM hidden_entries WHERE channelId = :channelId")
     suspend fun unhide(channelId: String)
 
