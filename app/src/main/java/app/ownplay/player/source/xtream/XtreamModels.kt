@@ -28,4 +28,11 @@ data class XtreamLiveStream(
     val epgChannelId: String?,
     val archiveDurationDays: Int?,
     val directSource: String?,
-)
+) {
+    override fun toString(): String =
+        "XtreamLiveStream(streamId=$streamId, name=$name, categoryId=$categoryId, " +
+            "iconUrl=${redacted(iconUrl)}, epgChannelId=$epgChannelId, " +
+            "archiveDurationDays=$archiveDurationDays, directSource=${redacted(directSource)})"
+}
+
+private fun redacted(value: String?): String = if (value == null) "null" else "<redacted>"

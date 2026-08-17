@@ -14,17 +14,28 @@ sealed interface PlaylistSource {
         override val name: String,
         val serverUrl: String,
         val credentialRef: CredentialRef,
-    ) : PlaylistSource
+    ) : PlaylistSource {
+        override fun toString(): String =
+            "PlaylistSource.Xtream(name=$name, serverUrl=<redacted>, credentialRef=<opaque>)"
+    }
 
     data class RemoteM3u(
         override val name: String,
         val playlistUrl: String,
         val epgUrl: String? = null,
-    ) : PlaylistSource
+    ) : PlaylistSource {
+        override fun toString(): String =
+            "PlaylistSource.RemoteM3u(name=$name, playlistUrl=<redacted>, epgUrl=${redacted(epgUrl)})"
+    }
 
     data class LocalM3u(
         override val name: String,
         val documentUri: String,
         val epgUrl: String? = null,
-    ) : PlaylistSource
+    ) : PlaylistSource {
+        override fun toString(): String =
+            "PlaylistSource.LocalM3u(name=$name, documentUri=<redacted>, epgUrl=${redacted(epgUrl)})"
+    }
 }
+
+private fun redacted(value: String?): String = if (value == null) "null" else "<redacted>"

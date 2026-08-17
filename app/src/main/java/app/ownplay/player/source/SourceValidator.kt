@@ -7,7 +7,10 @@ sealed interface UrlValidationResult {
     data class Valid(
         val normalizedUrl: String,
         val usesCleartext: Boolean,
-    ) : UrlValidationResult
+    ) : UrlValidationResult {
+        override fun toString(): String =
+            "UrlValidationResult.Valid(normalizedUrl=<redacted>, usesCleartext=$usesCleartext)"
+    }
 
     data class Invalid(val error: SourceError) : UrlValidationResult
 }

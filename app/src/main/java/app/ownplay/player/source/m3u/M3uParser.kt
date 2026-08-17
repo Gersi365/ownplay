@@ -35,6 +35,10 @@ object M3uParser {
 
                 line.startsWith('#') -> Unit
 
+                !isPlausibleStreamLocation(line) -> {
+                    pending = null
+                }
+
                 else -> {
                     val metadata = pending
                     entries += M3uEntry(
@@ -94,6 +98,11 @@ object M3uParser {
             }
         }
         return -1
+    }
+
+    private fun isPlausibleStreamLocation(value: String): Boolean {
+        val uri = runCatching { URI(value) }.getOrNull() ?: return false
+        return !uri.scheme.isNullOrBlank()
     }
 
     private fun deriveDisplayName(streamUrl: String): String {

@@ -92,4 +92,18 @@ class M3uParserTest {
         assertEquals("BOM Channel", playlist.entries.single().displayName)
         assertEquals("https://stream.example/bom", playlist.entries.single().streamUrl)
     }
+
+    @Test
+    fun htmlLikeGarbage_doesNotBecomeStreamEntries() {
+        val playlist = M3uParser.parse(
+            """
+            <!doctype html>
+            <html>
+            <body>Not a playlist</body>
+            </html>
+            """.trimIndent(),
+        )
+
+        assertEquals(0, playlist.entries.size)
+    }
 }

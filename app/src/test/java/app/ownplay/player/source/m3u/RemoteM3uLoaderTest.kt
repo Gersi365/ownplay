@@ -72,6 +72,20 @@ class RemoteM3uLoaderTest {
     }
 
     @Test
+    fun load_htmlSuccessfulBody_isMalformedPlaylist() = runBlocking {
+        server.enqueue(
+            MockResponse.Builder()
+                .body("<html><body>Provider error page</body></html>")
+                .build(),
+        )
+        val loader = RemoteM3uLoader(allowCleartext = true)
+
+        val result = loader.load(server.url("/html-error.m3u").toString())
+
+        assertEquals(SourceResult.Failure(SourceError.MalformedPlaylist), result)
+    }
+
+    @Test
     fun load_mapsHttpFailureWithoutEmbeddingUrl() = runBlocking {
         server.enqueue(MockResponse.Builder().code(404).body("not found").build())
         val loader = RemoteM3uLoader(allowCleartext = true)
