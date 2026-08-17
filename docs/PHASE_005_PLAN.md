@@ -2,7 +2,7 @@
 
 ## Status
 
-Implementation started on `agent/phase-005-channel-personalization`, stacked on the final validated Phase 004 branch.
+Implementation in progress on `agent/phase-005-channel-personalization`, stacked on the final validated Phase 004 branch.
 
 This phase remains draft work. It must not be merged ahead of Phase 003 and Phase 004, and no merge is authorized without explicit user approval.
 
@@ -22,9 +22,9 @@ Playback remains Phase 006. Provider refresh lifecycle remains Phase 009.
 
 ## Slice A — Deterministic manual-order planning
 
-The first slice is pure Kotlin and intentionally does not touch Room schema or UI.
+Implemented and CI-validated as pure Kotlin without Room/schema changes.
 
-It provides deterministic plans for:
+The planner supports:
 
 - moving one channel to a final target index
 - moving a selected set to the top
@@ -35,15 +35,26 @@ It provides deterministic plans for:
 
 The planner consumes the full resolved channel order. Search/filter state must never silently become the persistent ordering input; later UI wiring must invoke ordering only from an explicit edit/My Order context.
 
-## Persistence safety for Slice B
+Slice A validation: Android CI run `32010251122` (#44) completed successfully with unit tests, lint, debug build, androidTest compilation, schema artifact/gate, and APK upload.
 
-The existing `ChannelCustomizationEntity` also stores local display name and logo override. Persistence work must therefore update `manualOrder` without nulling or overwriting those independent customization fields.
+## Slice B — Transactional manual-order persistence
 
-Slice B will introduce the narrow persistence adapter and tests for restart-safe manual ordering without adding a schema migration unless implementation evidence proves one is necessary.
+Slice B adds a narrow Room-backed mutation boundary without changing schema v2.
+
+Design constraints:
+
+- load resolved source order inside the same Room transaction as the write
+- plan the mutation against that transaction snapshot
+- preserve `localDisplayName` and `logoOverrideRef` while updating `manualOrder`
+- create customization rows only when a channel has no existing local customization row
+- return explicit planner rejection separately from persistence failure
+- rethrow coroutine cancellation rather than converting it into a persistence error
+- deterministic fallback ordering uses provider order and channel ID when manual positions are absent/tied
+
+Unit tests cover the customization merge so manual-order persistence cannot silently null independent rename/logo values.
 
 ## Planned later slices
 
-- Slice B: manual-order persistence adapter
 - Slice C: hide/unhide operations and hidden-channel management contract
 - Slice D: favorite mutation and favorite manual order
 - Slice E: local rename and logo-override mutation

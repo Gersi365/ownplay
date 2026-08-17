@@ -47,6 +47,36 @@ interface PersonalizationDao {
     suspend fun upsertCustomization(customization: ChannelCustomizationEntity)
 
     @Upsert
+    suspend fun upsertCustomizations(customizations: List<ChannelCustomizationEntity>)
+
+    @Query(
+        """
+        SELECT channel.channelId
+        FROM provider_channels AS channel
+        LEFT JOIN channel_customizations AS customization
+            ON customization.channelId = channel.channelId
+        WHERE channel.sourceId = :sourceId
+        ORDER BY
+            customization.manualOrder IS NULL ASC,
+            customization.manualOrder ASC,
+            channel.providerOrder ASC,
+            channel.channelId ASC
+        """,
+    )
+    suspend fun resolvedChannelOrder(sourceId: String): List<String>
+
+    @Query(
+        """
+        SELECT customization.*
+        FROM channel_customizations AS customization
+        INNER JOIN provider_channels AS channel
+            ON channel.channelId = customization.channelId
+        WHERE channel.sourceId = :sourceId
+        """,
+    )
+    suspend fun customizationsForSource(sourceId: String): List<ChannelCustomizationEntity>
+
+    @Upsert
     suspend fun upsertHidden(entry: HiddenEntryEntity)
 
     @Query("DELETE FROM hidden_entries WHERE channelId = :channelId")
