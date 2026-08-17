@@ -105,6 +105,7 @@ class LiveBrowseProjectorTest {
     private fun record(
         id: String,
         providerName: String,
+        tvgName: String? = null,
         categoryKey: String? = null,
         categoryName: String? = null,
         providerOrder: Long,
@@ -118,7 +119,7 @@ class LiveBrowseProjectorTest {
         providerCategoryKey = categoryKey,
         categoryName = categoryName,
         providerName = providerName,
-        tvgName = null,
+        tvgName = tvgName,
         logoRef = null,
         providerOrder = providerOrder,
         availability = availability,
