@@ -2,7 +2,7 @@
 
 ## Status
 
-Build-phase implementation baseline.
+Implementation complete and CI-validated on the Phase 001 branch. Merge to `main` remains intentionally pending explicit user authorization.
 
 ## Scope
 
@@ -61,6 +61,23 @@ A successful Phase 001 validation requires:
 - unit tests pass
 - Android lint passes
 - debug APK assembles successfully
+
+## Validation evidence
+
+Final authoritative validation after adopting the product-neutral application ID:
+
+- GitHub Actions workflow: `Android CI`
+- Workflow run: `31998698572`
+- Branch: `agent/phase-001-android-baseline`
+- Validated head before evidence-only documentation update: `1adcbb837ac0a7b33b985037aea1e07ef60da27d`
+- Result: `success`
+- SDK verification: `success`
+- Unit tests / lint / debug APK assembly: `success`
+- APK artifact upload: `success`
+- Artifact: `ownplay-debug-apk`
+- Artifact SHA-256 digest: `b36ada00a257b71c59d98f401fa6e11454f41c1c0e608c8ed2aa0c75d449b5c4`
+
+The evidence-only documentation update that records this result does not change application source, build configuration, dependencies, or validation behavior.
 
 ## Deferred
 
