@@ -143,6 +143,9 @@ interface PersonalizationDao {
     @Query("SELECT * FROM custom_groups WHERE groupId = :groupId LIMIT 1")
     suspend fun customGroupById(groupId: String): CustomGroupEntity?
 
+    @Query("DELETE FROM custom_groups WHERE groupId = :groupId")
+    suspend fun deleteCustomGroup(groupId: String): Int
+
     @Upsert
     suspend fun upsertGroupMembership(membership: CustomGroupMembershipEntity)
 

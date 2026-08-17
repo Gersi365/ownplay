@@ -120,6 +120,31 @@ class CustomGroupMutator(
         }
     }
 
+    suspend fun deleteGroup(groupId: String): CustomGroupMutationResult {
+        if (groupId.isBlank()) {
+            return CustomGroupMutationResult.Failure(CustomGroupFailureReason.INVALID_GROUP_ID)
+        }
+        return try {
+            database.withTransaction {
+                val deleted = database.personalizationDao().deleteCustomGroup(groupId)
+                if (deleted == 0) {
+                    CustomGroupMutationResult.Failure(
+                        reason = CustomGroupFailureReason.GROUP_NOT_FOUND,
+                        groupId = groupId,
+                    )
+                } else {
+                    CustomGroupMutationResult.Success(groupId = groupId)
+                }
+            }
+        } catch (error: Exception) {
+            if (error is CancellationException) throw error
+            CustomGroupMutationResult.Failure(
+                reason = CustomGroupFailureReason.PERSISTENCE_FAILURE,
+                groupId = groupId,
+            )
+        }
+    }
+
     suspend fun addChannels(
         sourceId: String,
         groupId: String,
