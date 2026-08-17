@@ -2,6 +2,7 @@ package app.ownplay.player.ui.live
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -16,6 +17,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.DropdownMenu
@@ -35,6 +37,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -44,7 +47,11 @@ import app.ownplay.player.live.LiveCategory
 import app.ownplay.player.live.LiveChannelItem
 import app.ownplay.player.live.LiveCustomGroup
 import app.ownplay.player.personalization.ChannelBulkAction
+import app.ownplay.player.personalization.ChannelDragTarget
+import app.ownplay.player.personalization.ChannelDragTargetResolver
 import app.ownplay.player.personalization.ChannelEditState
+import app.ownplay.player.personalization.ManualOrderPlacement
+import app.ownplay.player.personalization.VisibleChannelBounds
 
 @Composable
 fun LiveBrowseScreen(
@@ -62,8 +69,21 @@ fun LiveBrowseScreen(
     onSelectVisible: () -> Unit = {},
     onClearSelection: () -> Unit = {},
     onBulkAction: (ChannelBulkAction) -> Unit = {},
+    onManualMoveRelative: (String, String, ManualOrderPlacement) -> Unit = { _, _, _ -> },
     modifier: Modifier = Modifier,
 ) {
+    val listState = rememberLazyListState()
+    var draggedChannelId by remember { mutableStateOf<String?>(null) }
+    var draggedPointerY by remember { mutableStateOf<Float?>(null) }
+    var dragTarget by remember { mutableStateOf<ChannelDragTarget?>(null) }
+    val dragEnabled = editState.isEditing && state.query.order == LiveBrowseOrder.MY_ORDER
+
+    fun clearDragState() {
+        draggedChannelId = null
+        draggedPointerY = null
+        dragTarget = null
+    }
+
     Surface(
         modifier = modifier.fillMaxSize(),
         color = MaterialTheme.colorScheme.background,
@@ -78,7 +98,13 @@ fun LiveBrowseScreen(
                 onFavoritesOnlyChanged = onFavoritesOnlyChanged,
                 onHiddenOnlyChanged = onHiddenOnlyChanged,
                 onOrderChanged = onOrderChanged,
-                onEditModeChanged = onEditModeChanged,
+                onEditModeChanged = { editing ->
+                    if (editing && state.query.order != LiveBrowseOrder.MY_ORDER) {
+                        onOrderChanged(LiveBrowseOrder.MY_ORDER)
+                    }
+                    if (!editing) clearDragState()
+                    onEditModeChanged(editing)
+                },
             )
             CategoryStrip(
                 categories = state.categories,
@@ -96,6 +122,7 @@ fun LiveBrowseScreen(
                 BulkEditBar(
                     selectedCount = editState.selectedChannelIds.size,
                     groups = state.customGroups,
+                    dragEnabled = dragEnabled,
                     onSelectVisible = onSelectVisible,
                     onClearSelection = onClearSelection,
                     onBulkAction = onBulkAction,
@@ -112,18 +139,72 @@ fun LiveBrowseScreen(
                 )
             } else {
                 LazyColumn(
+                    state = listState,
                     modifier = Modifier.fillMaxSize(),
                 ) {
                     itemsIndexed(
                         items = state.channels,
                         key = { _, channel -> channel.channelId },
                     ) { index, channel ->
+                        val isDropAnchor = dragTarget?.anchorChannelId == channel.channelId
+                        val rowModifier = if (dragEnabled) {
+                            Modifier.pointerInput(channel.channelId, state.channels) {
+                                detectDragGesturesAfterLongPress(
+                                    onDragStart = { startOffset ->
+                                        val itemInfo = listState.layoutInfo.visibleItemsInfo
+                                            .firstOrNull { info -> info.key == channel.channelId }
+                                        draggedChannelId = channel.channelId
+                                        draggedPointerY = itemInfo?.let { info ->
+                                            info.offset.toFloat() + startOffset.y
+                                        }
+                                        dragTarget = draggedPointerY?.let { pointerY ->
+                                            resolveDragTarget(
+                                                pointerY = pointerY,
+                                                draggedChannelId = channel.channelId,
+                                                visibleItems = listState.layoutInfo.visibleItemsInfo,
+                                            )
+                                        }
+                                    },
+                                    onDrag = { change, dragAmount ->
+                                        change.consume()
+                                        val draggedId = draggedChannelId ?: return@detectDragGesturesAfterLongPress
+                                        val pointerY = (draggedPointerY ?: return@detectDragGesturesAfterLongPress) +
+                                            dragAmount.y
+                                        draggedPointerY = pointerY
+                                        dragTarget = resolveDragTarget(
+                                            pointerY = pointerY,
+                                            draggedChannelId = draggedId,
+                                            visibleItems = listState.layoutInfo.visibleItemsInfo,
+                                        )
+                                    },
+                                    onDragEnd = {
+                                        val draggedId = draggedChannelId
+                                        val target = dragTarget
+                                        if (draggedId != null && target != null) {
+                                            onManualMoveRelative(
+                                                draggedId,
+                                                target.anchorChannelId,
+                                                target.placement,
+                                            )
+                                        }
+                                        clearDragState()
+                                    },
+                                    onDragCancel = ::clearDragState,
+                                )
+                            }
+                        } else {
+                            Modifier
+                        }
+
                         LiveChannelRow(
                             channel = channel,
                             isEditing = editState.isEditing,
                             isSelected = channel.channelId in editState.selectedChannelIds,
+                            isDragging = draggedChannelId == channel.channelId,
+                            dropPlacement = if (isDropAnchor) dragTarget?.placement else null,
                             onClick = { onChannelSelected(channel.channelId) },
                             onSelectionToggle = { onChannelSelectionToggle(channel.channelId) },
+                            modifier = rowModifier,
                         )
                         if (index != state.channels.lastIndex) {
                             HorizontalDivider(
@@ -136,6 +217,23 @@ fun LiveBrowseScreen(
         }
     }
 }
+
+private fun resolveDragTarget(
+    pointerY: Float,
+    draggedChannelId: String,
+    visibleItems: List<androidx.compose.foundation.lazy.LazyListItemInfo>,
+): ChannelDragTarget? = ChannelDragTargetResolver.resolve(
+    pointerY = pointerY,
+    draggedChannelId = draggedChannelId,
+    visibleItems = visibleItems.mapNotNull { item ->
+        val channelId = item.key as? String ?: return@mapNotNull null
+        VisibleChannelBounds(
+            channelId = channelId,
+            top = item.offset.toFloat(),
+            bottom = (item.offset + item.size).toFloat(),
+        )
+    },
+)
 
 @Composable
 private fun LiveBrowseHeader(
@@ -299,6 +397,7 @@ private fun CustomGroupStrip(
 private fun BulkEditBar(
     selectedCount: Int,
     groups: List<LiveCustomGroup>,
+    dragEnabled: Boolean,
     onSelectVisible: () -> Unit,
     onClearSelection: () -> Unit,
     onBulkAction: (ChannelBulkAction) -> Unit,
@@ -329,6 +428,13 @@ private fun BulkEditBar(
             ) {
                 Text("Clear")
             }
+        }
+        if (dragEnabled) {
+            Text(
+                text = "Long-press and drag a channel to reorder My Order.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
 
         LazyRow(
@@ -445,12 +551,21 @@ private fun LiveChannelRow(
     channel: LiveChannelItem,
     isEditing: Boolean,
     isSelected: Boolean,
+    isDragging: Boolean,
+    dropPlacement: ManualOrderPlacement?,
     onClick: () -> Unit,
     onSelectionToggle: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
+    val highlight = when {
+        isDragging -> MaterialTheme.colorScheme.surfaceVariant
+        dropPlacement != null -> MaterialTheme.colorScheme.primaryContainer
+        else -> MaterialTheme.colorScheme.background
+    }
     Row(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
+            .background(highlight)
             .clickable {
                 if (isEditing) onSelectionToggle() else onClick()
             }
@@ -497,6 +612,17 @@ private fun LiveChannelRow(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
+                )
+            }
+            if (dropPlacement != null) {
+                Text(
+                    text = if (dropPlacement == ManualOrderPlacement.BEFORE) {
+                        "Drop before"
+                    } else {
+                        "Drop after"
+                    },
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.primary,
                 )
             }
         }
