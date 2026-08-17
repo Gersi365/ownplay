@@ -86,6 +86,7 @@ class ChannelCustomizationMutator(
         val newRef = try {
             sensitiveValueStore.put(logoValue)
         } catch (error: Exception) {
+            if (error is CancellationException) throw error
             return ChannelCustomizationMutationResult.Failure(
                 reason = ChannelCustomizationFailureReason.SECURE_STORAGE_FAILURE,
                 channelId = channelId,
