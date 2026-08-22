@@ -10,13 +10,20 @@ import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.HttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.ui.PlayerView
+
+interface PlaybackVideoOutput {
+    fun bind(view: PlayerView)
+    fun unbind(view: PlayerView)
+}
 
 class Media3PlaybackEngine(
     context: Context,
-) : PlaybackEngine {
+) : PlaybackEngine, PlaybackVideoOutput {
     private val player = ExoPlayer.Builder(context.applicationContext).build()
     private val playerHandler = Handler(player.applicationLooper)
     private var listener: PlaybackEngine.Listener? = null
+    private var boundVideoView: PlayerView? = null
 
     init {
         player.addListener(
@@ -78,8 +85,29 @@ class Media3PlaybackEngine(
         }
     }
 
+    override fun bind(view: PlayerView) {
+        runOnPlayerThread {
+            if (boundVideoView === view) return@runOnPlayerThread
+            boundVideoView?.player = null
+            view.useController = false
+            view.player = player
+            boundVideoView = view
+        }
+    }
+
+    override fun unbind(view: PlayerView) {
+        runOnPlayerThread {
+            if (boundVideoView === view) {
+                view.player = null
+                boundVideoView = null
+            }
+        }
+    }
+
     override fun release() {
         runOnPlayerThread {
+            boundVideoView?.player = null
+            boundVideoView = null
             player.stop()
             player.clearMediaItems()
             listener = null
@@ -155,12 +183,23 @@ internal object Media3PlaybackFailureMapper {
     }
 }
 
+data class Media3PlaybackComponents(
+    val controller: PlaybackController,
+    val videoOutput: PlaybackVideoOutput,
+)
+
 object Media3PlaybackControllerFactory {
     fun create(
         context: Context,
         resolver: LivePlaybackResolver,
-    ): PlaybackController = PlaybackController(
-        resolveLocator = resolver::resolve,
-        engine = Media3PlaybackEngine(context),
-    )
+    ): Media3PlaybackComponents {
+        val engine = Media3PlaybackEngine(context)
+        return Media3PlaybackComponents(
+            controller = PlaybackController(
+                resolveLocator = resolver::resolve,
+                engine = engine,
+            ),
+            videoOutput = engine,
+        )
+    }
 }

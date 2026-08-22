@@ -19,7 +19,7 @@ class OwnPlayAppRuntime(
     private val database = OwnPlayDatabase.create(applicationContext)
     private val liveCatalogRepository = LiveCatalogRepository(database.liveBrowseDao())
 
-    val playbackController: PlaybackController = Media3PlaybackControllerFactory.create(
+    private val playbackComponents = Media3PlaybackControllerFactory.create(
         context = applicationContext,
         resolver = LivePlaybackResolver(
             lookup = RoomPlaybackResolutionLookup(
@@ -30,6 +30,9 @@ class OwnPlayAppRuntime(
             credentialStore = AndroidKeystoreCredentialStore(applicationContext),
         ),
     )
+
+    val playbackController: PlaybackController = playbackComponents.controller
+    val playbackVideoOutput = playbackComponents.videoOutput
 
     fun observeSources(): Flow<List<PlaylistSourceEntity>> =
         database.playlistSourceDao().observeAll()
