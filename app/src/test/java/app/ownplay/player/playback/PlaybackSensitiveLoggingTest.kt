@@ -1,5 +1,6 @@
 package app.ownplay.player.playback
 
+import java.nio.charset.StandardCharsets
 import java.nio.file.Files
 import java.nio.file.Path
 import org.junit.Assert.assertTrue
@@ -28,7 +29,7 @@ class PlaybackSensitiveLoggingTest {
             paths.filter { path ->
                 Files.isRegularFile(path) && path.fileName.toString().endsWith(".kt")
             }.forEach { path ->
-                val text = Files.readString(path)
+                val text = String(Files.readAllBytes(path), StandardCharsets.UTF_8)
                 forbidden.forEach { token ->
                     if (token in text) {
                         violations += "${path.toString().replace('\\', '/')}: $token"
