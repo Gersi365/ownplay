@@ -70,6 +70,13 @@ class PlaybackWindowController(
         }
         layoutListener = listener
         view.addOnLayoutChangeListener(listener)
+        ViewCompat.setOnApplyWindowInsetsListener(view) { _, insets ->
+            fullscreen = !_isInPictureInPictureMode.value &&
+                !insets.isVisible(WindowInsetsCompat.Type.systemBars())
+            applyOrientationPolicy()
+            insets
+        }
+        ViewCompat.requestApplyInsets(view)
         refreshWindowState()
     }
 
@@ -157,8 +164,11 @@ class PlaybackWindowController(
     private fun detachWindowRoot() {
         val view = windowRoot
         val listener = layoutListener
-        if (view != null && listener != null) {
-            view.removeOnLayoutChangeListener(listener)
+        if (view != null) {
+            if (listener != null) {
+                view.removeOnLayoutChangeListener(listener)
+            }
+            ViewCompat.setOnApplyWindowInsetsListener(view, null)
         }
         windowRoot = null
         layoutListener = null
