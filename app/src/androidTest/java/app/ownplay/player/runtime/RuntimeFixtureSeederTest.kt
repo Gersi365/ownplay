@@ -40,6 +40,13 @@ class RuntimeFixtureSeederTest {
         }
 
         val context = instrumentation.targetContext
+        check(context.packageName == TARGET_PACKAGE) {
+            "Runtime fixture seeder target package mismatch"
+        }
+        check(android.os.Process.myUid() == context.applicationInfo.uid) {
+            "Runtime fixture seeder must execute under target application UID"
+        }
+
         val database = OwnPlayDatabase.create(context)
         val sensitiveValueStore = AndroidKeystoreSensitiveValueStore(context)
 
@@ -111,6 +118,7 @@ class RuntimeFixtureSeederTest {
         const val ENABLED_ARGUMENT = "ownplay.runtime.seed.enabled"
         const val FIXTURE_ARGUMENT_PREFIX = "ownplay.runtime.fixture."
         const val REQUIRED_BASELINE_ALIAS = "GOOD_HLS"
+        const val TARGET_PACKAGE = "app.ownplay.player"
         const val SOURCE_ID = "ownplay-runtime-fixtures-v1"
         const val SOURCE_NAME = "Runtime Fixtures"
         const val SOURCE_LOCATOR_SENTINEL = "ownplay-runtime-fixture-source-v1"
