@@ -34,12 +34,12 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.viewinterop.AndroidView
-import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
@@ -54,10 +54,12 @@ import app.ownplay.player.personalization.ChannelEditReducer
 import app.ownplay.player.personalization.ChannelEditState
 import app.ownplay.player.playback.LiveChannelSelectionAction
 import app.ownplay.player.playback.LiveChannelSelectionRouter
+import app.ownplay.player.playback.LivePlaybackBrowseContext
 import app.ownplay.player.playback.LivePlaybackSelection
 import app.ownplay.player.playback.PlaybackAudioSelection
 import app.ownplay.player.playback.PlaybackControlAvailability
 import app.ownplay.player.playback.PlaybackFailureCategory
+import app.ownplay.player.playback.PlaybackNavigationDirection
 import app.ownplay.player.playback.PlaybackPresentationPolicy
 import app.ownplay.player.playback.PlaybackResizeMode
 import app.ownplay.player.playback.PlaybackState
@@ -134,6 +136,13 @@ fun OwnPlayApp(
             onRetry = runtime.playbackController::retry,
             onAudioSelection = runtime.playbackTrackController::selectAudio,
             onSubtitleSelection = runtime.playbackTrackController::selectSubtitle,
+            onNavigate = { direction ->
+                current.selection.navigate(direction)?.let { targetSelection ->
+                    activeSelection = targetSelection
+                    runtime.playbackController.start(targetSelection.request)
+                    route = OwnPlayRoute.Playback(targetSelection)
+                }
+            },
             onReturnToChannels = {
                 route = OwnPlayRoute.Live(current.selection.request.sourceId)
             },
@@ -339,10 +348,19 @@ private fun LiveRoute(
             onChannelSelected = { channelId ->
                 val channel = browseState.channels.firstOrNull { item -> item.channelId == channelId }
                     ?: return@LiveBrowseScreen
+                val browseContext = if (editState.isEditing) {
+                    null
+                } else {
+                    LivePlaybackBrowseContext.capture(
+                        sourceId = sourceId,
+                        visibleChannels = browseState.channels,
+                    )
+                }
                 when (
                     val action = LiveChannelSelectionRouter.route(
                         channel = channel,
                         isEditing = editState.isEditing,
+                        browseContext = browseContext,
                     )
                 ) {
                     is LiveChannelSelectionAction.ToggleEditSelection -> {
@@ -373,6 +391,7 @@ private fun PlaybackScreen(
     onRetry: () -> Unit,
     onAudioSelection: (PlaybackAudioSelection) -> Unit,
     onSubtitleSelection: (PlaybackSubtitleSelection) -> Unit,
+    onNavigate: (PlaybackNavigationDirection) -> Unit,
     onReturnToChannels: () -> Unit,
 ) {
     var isFullscreen by remember { mutableStateOf(false) }
@@ -456,6 +475,11 @@ private fun PlaybackScreen(
                     onPause = {
                         controlsVisible = true
                         onPause()
+                    },
+                    onNavigate = { direction ->
+                        showTracks = false
+                        controlsVisible = true
+                        onNavigate(direction)
                     },
                     onResizeModeChanged = {
                         resizeMode = resizeMode.next()
@@ -558,6 +582,7 @@ private fun PlaybackControlsOverlay(
     isFullscreen: Boolean,
     onPlay: () -> Unit,
     onPause: () -> Unit,
+    onNavigate: (PlaybackNavigationDirection) -> Unit,
     onResizeModeChanged: () -> Unit,
     onFullscreenChanged: () -> Unit,
     onTracksRequested: () -> Unit,
@@ -588,6 +613,12 @@ private fun PlaybackControlsOverlay(
             TextButton(onClick = onReturnToChannels) {
                 Text("Channels")
             }
+            TextButton(
+                onClick = { onNavigate(PlaybackNavigationDirection.PREVIOUS) },
+                enabled = selection.request.navigationTarget(PlaybackNavigationDirection.PREVIOUS) != null,
+            ) {
+                Text("Previous")
+            }
             if (controls.canPlay) {
                 TextButton(onClick = onPlay) {
                     Text("Play")
@@ -598,6 +629,17 @@ private fun PlaybackControlsOverlay(
                     Text("Pause")
                 }
             }
+            TextButton(
+                onClick = { onNavigate(PlaybackNavigationDirection.NEXT) },
+                enabled = selection.request.navigationTarget(PlaybackNavigationDirection.NEXT) != null,
+            ) {
+                Text("Next")
+            }
+        }
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
             Spacer(modifier = Modifier.weight(1f))
             TextButton(
                 onClick = onTracksRequested,
