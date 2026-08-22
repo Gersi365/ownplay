@@ -1,11 +1,12 @@
 package app.ownplay.player.playback
 
+import androidx.annotation.OptIn
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.util.UnstableApi
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
-@UnstableApi
+@OptIn(UnstableApi::class)
 class Media3PlaybackFailureMapperTest {
     @Test
     fun networkAndTimeoutCodesMapDeterministically() {

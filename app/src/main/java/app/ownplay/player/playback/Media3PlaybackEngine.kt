@@ -3,6 +3,7 @@ package app.ownplay.player.playback
 import android.content.Context
 import android.os.Handler
 import android.os.Looper
+import androidx.annotation.OptIn
 import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
@@ -95,7 +96,7 @@ class Media3PlaybackEngine(
     }
 }
 
-@UnstableApi
+@OptIn(UnstableApi::class)
 internal object Media3PlaybackFailureMapper {
     fun map(error: PlaybackException): PlaybackFailure =
         map(
