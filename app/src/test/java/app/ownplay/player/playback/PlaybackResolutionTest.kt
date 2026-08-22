@@ -202,11 +202,13 @@ class PlaybackResolutionTest {
     }
 
     @Test(expected = CancellationException::class)
-    fun secureStoreCancellationPropagates() = runBlocking {
-        val stores = FixtureStores(cancelSensitiveRef = "stream-ref")
-        resolver(source(), channel(), stores).resolve(
-            PlaybackRequest(sourceId = "source", channelId = "channel"),
-        )
+    fun secureStoreCancellationPropagates() {
+        runBlocking {
+            val stores = FixtureStores(cancelSensitiveRef = "stream-ref")
+            resolver(source(), channel(), stores).resolve(
+                PlaybackRequest(sourceId = "source", channelId = "channel"),
+            )
+        }
     }
 
     @Test
