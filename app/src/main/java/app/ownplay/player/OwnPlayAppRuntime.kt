@@ -5,8 +5,9 @@ import app.ownplay.player.live.LiveCatalogRepository
 import app.ownplay.player.persistence.OwnPlayDatabase
 import app.ownplay.player.persistence.PlaylistSourceEntity
 import app.ownplay.player.persistence.secure.AndroidKeystoreSensitiveValueStore
+import app.ownplay.player.playback.AndroidPlaybackConnectivityMonitor
 import app.ownplay.player.playback.LivePlaybackResolver
-import app.ownplay.player.playback.Media3PlaybackControllerFactory
+import app.ownplay.player.playback.Media3PlaybackEngine
 import app.ownplay.player.playback.PlaybackController
 import app.ownplay.player.playback.PlaybackTrackController
 import app.ownplay.player.playback.RoomPlaybackResolutionLookup
@@ -19,22 +20,26 @@ class OwnPlayAppRuntime(
     private val applicationContext = context.applicationContext
     private val database = OwnPlayDatabase.create(applicationContext)
     private val liveCatalogRepository = LiveCatalogRepository(database.liveBrowseDao())
+    private val playbackConnectivityMonitor =
+        AndroidPlaybackConnectivityMonitor(applicationContext)
 
-    private val playbackComponents = Media3PlaybackControllerFactory.create(
-        context = applicationContext,
-        resolver = LivePlaybackResolver(
-            lookup = RoomPlaybackResolutionLookup(
-                sourceDao = database.playlistSourceDao(),
-                catalogDao = database.providerCatalogDao(),
-            ),
-            sensitiveValueStore = AndroidKeystoreSensitiveValueStore(applicationContext),
-            credentialStore = AndroidKeystoreCredentialStore(applicationContext),
+    private val playbackResolver = LivePlaybackResolver(
+        lookup = RoomPlaybackResolutionLookup(
+            sourceDao = database.playlistSourceDao(),
+            catalogDao = database.providerCatalogDao(),
         ),
+        sensitiveValueStore = AndroidKeystoreSensitiveValueStore(applicationContext),
+        credentialStore = AndroidKeystoreCredentialStore(applicationContext),
     )
+    private val playbackEngine = Media3PlaybackEngine(applicationContext)
 
-    val playbackController: PlaybackController = playbackComponents.controller
-    val playbackVideoOutput = playbackComponents.videoOutput
-    val playbackTrackController: PlaybackTrackController = playbackComponents.trackController
+    val playbackController = PlaybackController(
+        resolveLocator = playbackResolver::resolve,
+        engine = playbackEngine,
+        networkState = playbackConnectivityMonitor.state,
+    )
+    val playbackVideoOutput = playbackEngine
+    val playbackTrackController: PlaybackTrackController = playbackEngine
 
     fun observeSources(): Flow<List<PlaylistSourceEntity>> =
         database.playlistSourceDao().observeAll()
@@ -44,6 +49,7 @@ class OwnPlayAppRuntime(
 
     override fun close() {
         playbackController.close()
+        playbackConnectivityMonitor.close()
         database.close()
     }
 }
