@@ -4,26 +4,40 @@ import android.content.Context
 import android.os.Handler
 import android.os.Looper
 import androidx.annotation.OptIn
+import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
+import androidx.media3.common.TrackGroup
+import androidx.media3.common.TrackSelectionOverride
+import androidx.media3.common.Tracks
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.HttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 
 interface PlaybackVideoOutput {
     fun bind(view: PlayerView)
     fun unbind(view: PlayerView)
 }
 
+@OptIn(UnstableApi::class)
 class Media3PlaybackEngine(
     context: Context,
-) : PlaybackEngine, PlaybackVideoOutput {
+) : PlaybackEngine, PlaybackVideoOutput, PlaybackTrackController {
     private val player = ExoPlayer.Builder(context.applicationContext).build()
     private val playerHandler = Handler(player.applicationLooper)
+    private val mutableTrackState = MutableStateFlow(PlaybackTrackState())
     private var listener: PlaybackEngine.Listener? = null
     private var boundVideoView: PlayerView? = null
+    private var nextTrackId: Long = 1L
+    private val trackIdsByKey = mutableMapOf<Media3TrackKey, String>()
+    private val trackHandlesById = mutableMapOf<String, Media3TrackHandle>()
+
+    override val state: StateFlow<PlaybackTrackState> = mutableTrackState.asStateFlow()
 
     init {
         player.addListener(
@@ -46,6 +60,10 @@ class Media3PlaybackEngine(
                     }
                 }
 
+                override fun onTracksChanged(tracks: Tracks) {
+                    publishTracks(tracks)
+                }
+
                 override fun onPlayerError(error: PlaybackException) {
                     listener?.onFailure(Media3PlaybackFailureMapper.map(error))
                 }
@@ -61,6 +79,8 @@ class Media3PlaybackEngine(
 
     override fun prepare(locator: ResolvedPlaybackLocator) {
         runOnPlayerThread {
+            resetTrackSelectionForNewMedia()
+            clearTrackSession()
             player.setMediaItem(MediaItem.fromUri(locator.value))
             player.prepare()
         }
@@ -82,6 +102,95 @@ class Media3PlaybackEngine(
         runOnPlayerThread {
             player.stop()
             player.clearMediaItems()
+            clearTrackSession()
+        }
+    }
+
+    override fun selectAudio(selection: PlaybackAudioSelection) {
+        runOnPlayerThread {
+            when (selection) {
+                PlaybackAudioSelection.Default -> {
+                    player.trackSelectionParameters = player.trackSelectionParameters
+                        .buildUpon()
+                        .clearOverridesOfType(C.TRACK_TYPE_AUDIO)
+                        .setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, false)
+                        .build()
+                    mutableTrackState.value = PlaybackTrackSelectionPolicy.selectAudio(
+                        mutableTrackState.value,
+                        selection,
+                    )
+                }
+
+                is PlaybackAudioSelection.Specific -> {
+                    val handle = trackHandlesById[selection.trackId]
+                        ?.takeIf { it.kind == PlaybackTrackKind.AUDIO && it.supported }
+                        ?: return@runOnPlayerThread
+                    player.trackSelectionParameters = player.trackSelectionParameters
+                        .buildUpon()
+                        .setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, false)
+                        .setOverrideForType(
+                            TrackSelectionOverride(
+                                handle.trackGroup,
+                                handle.trackIndex,
+                            ),
+                        )
+                        .build()
+                    mutableTrackState.value = PlaybackTrackSelectionPolicy.selectAudio(
+                        mutableTrackState.value,
+                        selection,
+                    )
+                }
+            }
+        }
+    }
+
+    override fun selectSubtitle(selection: PlaybackSubtitleSelection) {
+        runOnPlayerThread {
+            when (selection) {
+                PlaybackSubtitleSelection.Default -> {
+                    player.trackSelectionParameters = player.trackSelectionParameters
+                        .buildUpon()
+                        .clearOverridesOfType(C.TRACK_TYPE_TEXT)
+                        .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
+                        .build()
+                    mutableTrackState.value = PlaybackTrackSelectionPolicy.selectSubtitle(
+                        mutableTrackState.value,
+                        selection,
+                    )
+                }
+
+                PlaybackSubtitleSelection.Off -> {
+                    player.trackSelectionParameters = player.trackSelectionParameters
+                        .buildUpon()
+                        .clearOverridesOfType(C.TRACK_TYPE_TEXT)
+                        .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true)
+                        .build()
+                    mutableTrackState.value = PlaybackTrackSelectionPolicy.selectSubtitle(
+                        mutableTrackState.value,
+                        selection,
+                    )
+                }
+
+                is PlaybackSubtitleSelection.Specific -> {
+                    val handle = trackHandlesById[selection.trackId]
+                        ?.takeIf { it.kind == PlaybackTrackKind.SUBTITLE && it.supported }
+                        ?: return@runOnPlayerThread
+                    player.trackSelectionParameters = player.trackSelectionParameters
+                        .buildUpon()
+                        .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
+                        .setOverrideForType(
+                            TrackSelectionOverride(
+                                handle.trackGroup,
+                                handle.trackIndex,
+                            ),
+                        )
+                        .build()
+                    mutableTrackState.value = PlaybackTrackSelectionPolicy.selectSubtitle(
+                        mutableTrackState.value,
+                        selection,
+                    )
+                }
+            }
         }
     }
 
@@ -110,9 +219,94 @@ class Media3PlaybackEngine(
             boundVideoView = null
             player.stop()
             player.clearMediaItems()
+            clearTrackSession()
             listener = null
             player.release()
         }
+    }
+
+    private fun publishTracks(tracks: Tracks) {
+        val audioTracks = mutableListOf<PlaybackTrackOption>()
+        val subtitleTracks = mutableListOf<PlaybackTrackOption>()
+        val liveHandlesById = mutableMapOf<String, Media3TrackHandle>()
+        val liveKeys = mutableSetOf<Media3TrackKey>()
+        var audioOrdinal = 0
+        var subtitleOrdinal = 0
+
+        for (group in tracks.groups) {
+            val kind = when (group.type) {
+                C.TRACK_TYPE_AUDIO -> PlaybackTrackKind.AUDIO
+                C.TRACK_TYPE_TEXT -> PlaybackTrackKind.SUBTITLE
+                else -> continue
+            }
+
+            for (trackIndex in 0 until group.length) {
+                val ordinal = when (kind) {
+                    PlaybackTrackKind.AUDIO -> ++audioOrdinal
+                    PlaybackTrackKind.SUBTITLE -> ++subtitleOrdinal
+                }
+                val key = Media3TrackKey(group.mediaTrackGroup, trackIndex)
+                liveKeys += key
+                val id = trackIdsByKey.getOrPut(key) {
+                    val prefix = when (kind) {
+                        PlaybackTrackKind.AUDIO -> "audio"
+                        PlaybackTrackKind.SUBTITLE -> "subtitle"
+                    }
+                    "$prefix-${nextTrackId++}"
+                }
+                val format = group.getTrackFormat(trackIndex)
+                val supported = group.isTrackSupported(trackIndex)
+                val option = PlaybackTrackOption(
+                    id = id,
+                    kind = kind,
+                    label = PlaybackTrackLabelFormatter.format(
+                        kind = kind,
+                        rawLabel = format.label,
+                        rawLanguage = format.language,
+                        ordinal = ordinal,
+                    ),
+                    language = PlaybackTrackLabelFormatter.language(format.language),
+                    selectedByPlayer = group.isTrackSelected(trackIndex),
+                    supported = supported,
+                )
+                liveHandlesById[id] = Media3TrackHandle(
+                    kind = kind,
+                    trackGroup = group.mediaTrackGroup,
+                    trackIndex = trackIndex,
+                    supported = supported,
+                )
+                when (kind) {
+                    PlaybackTrackKind.AUDIO -> audioTracks += option
+                    PlaybackTrackKind.SUBTITLE -> subtitleTracks += option
+                }
+            }
+        }
+
+        trackIdsByKey.keys.retainAll(liveKeys)
+        trackHandlesById.clear()
+        trackHandlesById.putAll(liveHandlesById)
+        mutableTrackState.value = PlaybackTrackSelectionPolicy.withTracks(
+            state = mutableTrackState.value,
+            audioTracks = audioTracks,
+            subtitleTracks = subtitleTracks,
+        )
+    }
+
+    private fun resetTrackSelectionForNewMedia() {
+        player.trackSelectionParameters = player.trackSelectionParameters
+            .buildUpon()
+            .clearOverridesOfType(C.TRACK_TYPE_AUDIO)
+            .clearOverridesOfType(C.TRACK_TYPE_TEXT)
+            .setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, false)
+            .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
+            .build()
+    }
+
+    private fun clearTrackSession() {
+        nextTrackId = 1L
+        trackIdsByKey.clear()
+        trackHandlesById.clear()
+        mutableTrackState.value = PlaybackTrackSelectionPolicy.resetForNewMedia()
     }
 
     private fun runOnPlayerThread(action: () -> Unit) {
@@ -123,6 +317,18 @@ class Media3PlaybackEngine(
         }
     }
 }
+
+private data class Media3TrackKey(
+    val trackGroup: TrackGroup,
+    val trackIndex: Int,
+)
+
+private data class Media3TrackHandle(
+    val kind: PlaybackTrackKind,
+    val trackGroup: TrackGroup,
+    val trackIndex: Int,
+    val supported: Boolean,
+)
 
 @OptIn(UnstableApi::class)
 internal object Media3PlaybackFailureMapper {
@@ -186,6 +392,7 @@ internal object Media3PlaybackFailureMapper {
 data class Media3PlaybackComponents(
     val controller: PlaybackController,
     val videoOutput: PlaybackVideoOutput,
+    val trackController: PlaybackTrackController,
 )
 
 object Media3PlaybackControllerFactory {
@@ -200,6 +407,7 @@ object Media3PlaybackControllerFactory {
                 engine = engine,
             ),
             videoOutput = engine,
+            trackController = engine,
         )
     }
 }

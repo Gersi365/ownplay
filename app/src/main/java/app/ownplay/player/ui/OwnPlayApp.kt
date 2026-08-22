@@ -55,11 +55,15 @@ import app.ownplay.player.personalization.ChannelEditState
 import app.ownplay.player.playback.LiveChannelSelectionAction
 import app.ownplay.player.playback.LiveChannelSelectionRouter
 import app.ownplay.player.playback.LivePlaybackSelection
+import app.ownplay.player.playback.PlaybackAudioSelection
 import app.ownplay.player.playback.PlaybackControlAvailability
 import app.ownplay.player.playback.PlaybackFailureCategory
 import app.ownplay.player.playback.PlaybackPresentationPolicy
 import app.ownplay.player.playback.PlaybackResizeMode
 import app.ownplay.player.playback.PlaybackState
+import app.ownplay.player.playback.PlaybackSubtitleSelection
+import app.ownplay.player.playback.PlaybackTrackOption
+import app.ownplay.player.playback.PlaybackTrackState
 import app.ownplay.player.playback.PlaybackVideoOutput
 import app.ownplay.player.ui.live.LiveBrowseScreen
 import kotlinx.coroutines.delay
@@ -82,6 +86,7 @@ fun OwnPlayApp(
 ) {
     val sources by runtime.observeSources().collectAsState(initial = emptyList())
     val playbackState by runtime.playbackController.state.collectAsState()
+    val playbackTrackState by runtime.playbackTrackController.state.collectAsState()
     var route by remember { mutableStateOf<OwnPlayRoute>(OwnPlayRoute.Sources) }
     var activeSelection by remember { mutableStateOf<LivePlaybackSelection?>(null) }
 
@@ -122,10 +127,13 @@ fun OwnPlayApp(
         is OwnPlayRoute.Playback -> PlaybackScreen(
             selection = current.selection,
             state = playbackState,
+            trackState = playbackTrackState,
             videoOutput = runtime.playbackVideoOutput,
             onPlay = runtime.playbackController::play,
             onPause = runtime.playbackController::pause,
             onRetry = runtime.playbackController::retry,
+            onAudioSelection = runtime.playbackTrackController::selectAudio,
+            onSubtitleSelection = runtime.playbackTrackController::selectSubtitle,
             onReturnToChannels = {
                 route = OwnPlayRoute.Live(current.selection.request.sourceId)
             },
@@ -358,32 +366,38 @@ private fun LiveRoute(
 private fun PlaybackScreen(
     selection: LivePlaybackSelection,
     state: PlaybackState,
+    trackState: PlaybackTrackState,
     videoOutput: PlaybackVideoOutput,
     onPlay: () -> Unit,
     onPause: () -> Unit,
     onRetry: () -> Unit,
+    onAudioSelection: (PlaybackAudioSelection) -> Unit,
+    onSubtitleSelection: (PlaybackSubtitleSelection) -> Unit,
     onReturnToChannels: () -> Unit,
 ) {
     var isFullscreen by remember { mutableStateOf(false) }
     var resizeMode by remember { mutableStateOf(PlaybackResizeMode.FIT) }
     var controlsVisible by remember { mutableStateOf(true) }
+    var showTracks by remember { mutableStateOf(false) }
     val controls = PlaybackPresentationPolicy.controlsFor(state)
 
     FullscreenSystemBarsEffect(enabled = isFullscreen)
 
-    LaunchedEffect(state, controlsVisible) {
-        if (state is PlaybackState.Playing && controlsVisible) {
+    LaunchedEffect(state, controlsVisible, showTracks) {
+        if (state is PlaybackState.Playing && controlsVisible && !showTracks) {
             delay(3_000L)
             controlsVisible = false
         }
     }
 
     BackHandler {
-        if (isFullscreen) {
-            isFullscreen = false
-            controlsVisible = true
-        } else {
-            onReturnToChannels()
+        when {
+            showTracks -> showTracks = false
+            isFullscreen -> {
+                isFullscreen = false
+                controlsVisible = true
+            }
+            else -> onReturnToChannels()
         }
     }
 
@@ -401,7 +415,13 @@ private fun PlaybackScreen(
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .clickable { controlsVisible = !controlsVisible },
+                    .clickable {
+                        if (showTracks) {
+                            showTracks = false
+                        } else {
+                            controlsVisible = !controlsVisible
+                        }
+                    },
             ) {}
 
             if (controls.showLoading) {
@@ -445,10 +465,27 @@ private fun PlaybackScreen(
                         isFullscreen = !isFullscreen
                         controlsVisible = true
                     },
+                    onTracksRequested = {
+                        showTracks = true
+                        controlsVisible = true
+                    },
                     onReturnToChannels = onReturnToChannels,
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
                         .fillMaxWidth(),
+                )
+            }
+
+            if (showTracks) {
+                PlaybackTracksPanel(
+                    state = trackState,
+                    onAudioSelection = onAudioSelection,
+                    onSubtitleSelection = onSubtitleSelection,
+                    onClose = { showTracks = false },
+                    modifier = Modifier
+                        .align(Alignment.Center)
+                        .fillMaxWidth()
+                        .padding(24.dp),
                 )
             }
         }
@@ -523,6 +560,7 @@ private fun PlaybackControlsOverlay(
     onPause: () -> Unit,
     onResizeModeChanged: () -> Unit,
     onFullscreenChanged: () -> Unit,
+    onTracksRequested: () -> Unit,
     onReturnToChannels: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -561,6 +599,12 @@ private fun PlaybackControlsOverlay(
                 }
             }
             Spacer(modifier = Modifier.weight(1f))
+            TextButton(
+                onClick = onTracksRequested,
+                enabled = state is PlaybackState.Playing || state is PlaybackState.Paused,
+            ) {
+                Text("Tracks")
+            }
             TextButton(onClick = onResizeModeChanged) {
                 Text(resizeModeLabel(resizeMode))
             }
@@ -569,6 +613,143 @@ private fun PlaybackControlsOverlay(
             }
         }
     }
+}
+
+@Composable
+private fun PlaybackTracksPanel(
+    state: PlaybackTrackState,
+    onAudioSelection: (PlaybackAudioSelection) -> Unit,
+    onSubtitleSelection: (PlaybackSubtitleSelection) -> Unit,
+    onClose: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Surface(
+        modifier = modifier,
+        tonalElevation = 8.dp,
+        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.97f),
+    ) {
+        Column(
+            modifier = Modifier.padding(20.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = "Tracks",
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                Spacer(modifier = Modifier.weight(1f))
+                TextButton(onClick = onClose) {
+                    Text("Close")
+                }
+            }
+
+            Text(
+                text = "Audio",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Medium,
+            )
+            TrackChoiceButton(
+                label = "Default",
+                selected = state.audioSelection == PlaybackAudioSelection.Default,
+                onClick = { onAudioSelection(PlaybackAudioSelection.Default) },
+            )
+            if (state.audioTracks.isEmpty()) {
+                TrackEmptyLabel("No alternate audio tracks")
+            } else {
+                state.audioTracks.forEach { option ->
+                    val selected = (state.audioSelection as? PlaybackAudioSelection.Specific)
+                        ?.trackId == option.id
+                    TrackOptionButton(
+                        option = option,
+                        selected = selected,
+                        onClick = {
+                            onAudioSelection(PlaybackAudioSelection.Specific(option.id))
+                        },
+                    )
+                }
+            }
+
+            HorizontalDivider()
+            Text(
+                text = "Subtitles",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Medium,
+            )
+            TrackChoiceButton(
+                label = "Default",
+                selected = state.subtitleSelection == PlaybackSubtitleSelection.Default,
+                onClick = { onSubtitleSelection(PlaybackSubtitleSelection.Default) },
+            )
+            TrackChoiceButton(
+                label = "Off",
+                selected = state.subtitleSelection == PlaybackSubtitleSelection.Off,
+                onClick = { onSubtitleSelection(PlaybackSubtitleSelection.Off) },
+            )
+            if (state.subtitleTracks.isEmpty()) {
+                TrackEmptyLabel("No subtitles")
+            } else {
+                state.subtitleTracks.forEach { option ->
+                    val selected = (state.subtitleSelection as? PlaybackSubtitleSelection.Specific)
+                        ?.trackId == option.id
+                    TrackOptionButton(
+                        option = option,
+                        selected = selected,
+                        onClick = {
+                            onSubtitleSelection(PlaybackSubtitleSelection.Specific(option.id))
+                        },
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun TrackOptionButton(
+    option: PlaybackTrackOption,
+    selected: Boolean,
+    onClick: () -> Unit,
+) {
+    val activeSuffix = if (option.selectedByPlayer) " · active" else ""
+    TrackChoiceButton(
+        label = option.label + activeSuffix,
+        selected = selected,
+        enabled = option.supported,
+        onClick = onClick,
+    )
+}
+
+@Composable
+private fun TrackChoiceButton(
+    label: String,
+    selected: Boolean,
+    onClick: () -> Unit,
+    enabled: Boolean = true,
+) {
+    TextButton(
+        onClick = onClick,
+        enabled = enabled,
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Text(
+            text = if (selected) "✓ $label" else label,
+            modifier = Modifier.fillMaxWidth(),
+        )
+    }
+}
+
+@Composable
+private fun TrackEmptyLabel(text: String) {
+    Text(
+        text = text,
+        style = MaterialTheme.typography.bodyMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+    )
 }
 
 @Composable

@@ -8,6 +8,7 @@ import app.ownplay.player.persistence.secure.AndroidKeystoreSensitiveValueStore
 import app.ownplay.player.playback.LivePlaybackResolver
 import app.ownplay.player.playback.Media3PlaybackControllerFactory
 import app.ownplay.player.playback.PlaybackController
+import app.ownplay.player.playback.PlaybackTrackController
 import app.ownplay.player.playback.RoomPlaybackResolutionLookup
 import app.ownplay.player.source.credential.AndroidKeystoreCredentialStore
 import kotlinx.coroutines.flow.Flow
@@ -33,6 +34,7 @@ class OwnPlayAppRuntime(
 
     val playbackController: PlaybackController = playbackComponents.controller
     val playbackVideoOutput = playbackComponents.videoOutput
+    val playbackTrackController: PlaybackTrackController = playbackComponents.trackController
 
     fun observeSources(): Flow<List<PlaylistSourceEntity>> =
         database.playlistSourceDao().observeAll()
