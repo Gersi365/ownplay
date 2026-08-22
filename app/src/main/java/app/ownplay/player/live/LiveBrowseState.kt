@@ -7,6 +7,7 @@ import kotlinx.coroutines.flow.update
 
 data class LiveBrowseState(
     val categories: List<LiveCategory> = emptyList(),
+    val customGroups: List<LiveCustomGroup> = emptyList(),
     val channels: List<LiveChannelItem> = emptyList(),
     val query: LiveBrowseQuery = LiveBrowseQuery(),
 )
@@ -22,7 +23,12 @@ class LiveBrowseSession(
     ) { snapshot, currentQuery ->
         LiveBrowseState(
             categories = snapshot.categories.sortedBy(LiveCategory::providerOrder),
-            channels = LiveBrowseProjector.project(snapshot.channels, currentQuery),
+            customGroups = snapshot.customGroups.sortedBy(LiveCustomGroup::groupOrder),
+            channels = LiveBrowseProjector.project(
+                records = snapshot.channels,
+                query = currentQuery,
+                customGroupIdsByChannelId = snapshot.customGroupIdsByChannelId,
+            ),
             query = currentQuery,
         )
     }
@@ -35,8 +41,21 @@ class LiveBrowseSession(
         query.update { current -> current.copy(categoryKey = categoryKey) }
     }
 
+    fun selectCustomGroup(groupId: String?) {
+        query.update { current -> current.copy(customGroupId = groupId) }
+    }
+
     fun setFavoritesOnly(enabled: Boolean) {
         query.update { current -> current.copy(favoritesOnly = enabled) }
+    }
+
+    fun setHiddenOnly(enabled: Boolean) {
+        query.update { current ->
+            current.copy(
+                hiddenOnly = enabled,
+                includeHidden = enabled,
+            )
+        }
     }
 
     fun setOrder(order: LiveBrowseOrder) {
@@ -44,7 +63,12 @@ class LiveBrowseSession(
     }
 
     fun setIncludeHidden(enabled: Boolean) {
-        query.update { current -> current.copy(includeHidden = enabled) }
+        query.update { current ->
+            current.copy(
+                includeHidden = enabled,
+                hiddenOnly = if (enabled) current.hiddenOnly else false,
+            )
+        }
     }
 
     fun setIncludeRemoved(enabled: Boolean) {

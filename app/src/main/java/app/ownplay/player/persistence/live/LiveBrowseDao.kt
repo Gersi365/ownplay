@@ -23,6 +23,17 @@ data class LiveChannelRecord(
     val recentAtEpochMillis: Long?,
 )
 
+data class LiveCustomGroupRecord(
+    val groupId: String,
+    val name: String,
+    val groupOrder: Long,
+)
+
+data class LiveGroupMembershipRecord(
+    val channelId: String,
+    val groupId: String,
+)
+
 @Dao
 interface LiveBrowseDao {
     @Query(
@@ -66,4 +77,28 @@ interface LiveBrowseDao {
             "WHERE sourceId = :sourceId ORDER BY providerOrder ASC",
     )
     fun observeCategories(sourceId: String): Flow<List<ProviderCategoryEntity>>
+
+    @Query(
+        """
+        SELECT
+            customGroup.groupId,
+            customGroup.name,
+            customGroup.groupOrder
+        FROM custom_groups AS customGroup
+        ORDER BY customGroup.groupOrder ASC, customGroup.createdAtEpochMillis ASC, customGroup.groupId ASC
+        """,
+    )
+    fun observeCustomGroups(): Flow<List<LiveCustomGroupRecord>>
+
+    @Query(
+        """
+        SELECT membership.channelId, membership.groupId
+        FROM custom_group_memberships AS membership
+        INNER JOIN provider_channels AS channel
+            ON channel.channelId = membership.channelId
+        WHERE channel.sourceId = :sourceId
+        ORDER BY membership.channelId ASC, membership.groupOrder ASC, membership.groupId ASC
+        """,
+    )
+    fun observeGroupMemberships(sourceId: String): Flow<List<LiveGroupMembershipRecord>>
 }

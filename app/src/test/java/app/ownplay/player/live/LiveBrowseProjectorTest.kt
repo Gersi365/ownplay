@@ -57,10 +57,17 @@ class LiveBrowseProjectorTest {
 
     @Test
     fun localAndTvgNamesOverrideProviderName() {
-        val customized = records.first().copy(localDisplayName = "My News")
+        val customized = records.first().copy(
+            localDisplayName = "My News",
+            logoOverrideRef = "local-logo-ref",
+        )
         val result = LiveBrowseProjector.project(listOf(customized), LiveBrowseQuery())
 
         assertEquals("My News", result.single().displayName)
+        assertEquals("Provider One", result.single().providerName)
+        assertEquals("My News", result.single().localDisplayName)
+        assertTrue(result.single().hasLogoOverride)
+        assertEquals("local-logo-ref", result.single().logoRef)
     }
 
     @Test

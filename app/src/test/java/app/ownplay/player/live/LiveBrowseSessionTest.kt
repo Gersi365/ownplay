@@ -28,6 +28,24 @@ class LiveBrowseSessionTest {
     }
 
     @Test
+    fun leavingHiddenManagementRestoresNormalHiddenExclusion() = runBlocking {
+        val session = LiveBrowseSession()
+        session.setHiddenOnly(true)
+
+        val hiddenState = session.observe(flowOf(snapshot())).first()
+        assertTrue(hiddenState.query.hiddenOnly)
+        assertTrue(hiddenState.query.includeHidden)
+        assertEquals(listOf("hidden"), hiddenState.channels.map { it.channelId })
+
+        session.setHiddenOnly(false)
+        val normalState = session.observe(flowOf(snapshot())).first()
+
+        assertFalse(normalState.query.hiddenOnly)
+        assertFalse(normalState.query.includeHidden)
+        assertFalse(normalState.channels.any { it.channelId == "hidden" })
+    }
+
+    @Test
     fun favoritesAndVisibilityFlagsRemainExplicitTransientState() = runBlocking {
         val session = LiveBrowseSession()
         session.setFavoritesOnly(true)

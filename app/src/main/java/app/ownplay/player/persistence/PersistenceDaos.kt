@@ -47,7 +47,68 @@ interface PersonalizationDao {
     suspend fun upsertCustomization(customization: ChannelCustomizationEntity)
 
     @Upsert
+    suspend fun upsertCustomizations(customizations: List<ChannelCustomizationEntity>)
+
+    @Query(
+        """
+        SELECT channel.channelId
+        FROM provider_channels AS channel
+        LEFT JOIN channel_customizations AS customization
+            ON customization.channelId = channel.channelId
+        WHERE channel.sourceId = :sourceId
+        ORDER BY
+            customization.manualOrder IS NULL ASC,
+            customization.manualOrder ASC,
+            channel.providerOrder ASC,
+            channel.channelId ASC
+        """,
+    )
+    suspend fun resolvedChannelOrder(sourceId: String): List<String>
+
+    @Query(
+        """
+        SELECT customization.*
+        FROM channel_customizations AS customization
+        INNER JOIN provider_channels AS channel
+            ON channel.channelId = customization.channelId
+        WHERE channel.sourceId = :sourceId
+        """,
+    )
+    suspend fun customizationsForSource(sourceId: String): List<ChannelCustomizationEntity>
+
+    @Query(
+        """
+        SELECT customization.*
+        FROM channel_customizations AS customization
+        INNER JOIN provider_channels AS channel
+            ON channel.channelId = customization.channelId
+        WHERE channel.sourceId = :sourceId AND channel.channelId = :channelId
+        LIMIT 1
+        """,
+    )
+    suspend fun customizationForChannel(
+        sourceId: String,
+        channelId: String,
+    ): ChannelCustomizationEntity?
+
+    @Query(
+        """
+        SELECT EXISTS(
+            SELECT 1 FROM provider_channels
+            WHERE sourceId = :sourceId AND channelId = :channelId
+        )
+        """,
+    )
+    suspend fun channelExistsInSource(
+        sourceId: String,
+        channelId: String,
+    ): Boolean
+
+    @Upsert
     suspend fun upsertHidden(entry: HiddenEntryEntity)
+
+    @Upsert
+    suspend fun upsertHidden(entries: List<HiddenEntryEntity>)
 
     @Query("DELETE FROM hidden_entries WHERE channelId = :channelId")
     suspend fun unhide(channelId: String)
@@ -55,14 +116,47 @@ interface PersonalizationDao {
     @Upsert
     suspend fun upsertFavorite(entry: FavoriteEntryEntity)
 
+    @Upsert
+    suspend fun upsertFavorites(entries: List<FavoriteEntryEntity>)
+
+    @Query(
+        """
+        SELECT favorite.*
+        FROM favorite_entries AS favorite
+        INNER JOIN provider_channels AS channel
+            ON channel.channelId = favorite.channelId
+        WHERE channel.sourceId = :sourceId
+        ORDER BY favorite.favoriteOrder ASC, favorite.addedAtEpochMillis ASC, favorite.channelId ASC
+        """,
+    )
+    suspend fun favoriteEntriesForSource(sourceId: String): List<FavoriteEntryEntity>
+
     @Query("DELETE FROM favorite_entries WHERE channelId = :channelId")
     suspend fun removeFavorite(channelId: String)
 
     @Upsert
     suspend fun upsertGroup(group: CustomGroupEntity)
 
+    @Query("SELECT * FROM custom_groups ORDER BY groupOrder ASC, createdAtEpochMillis ASC, groupId ASC")
+    suspend fun customGroupsForMutation(): List<CustomGroupEntity>
+
+    @Query("SELECT * FROM custom_groups WHERE groupId = :groupId LIMIT 1")
+    suspend fun customGroupById(groupId: String): CustomGroupEntity?
+
+    @Query("DELETE FROM custom_groups WHERE groupId = :groupId")
+    suspend fun deleteCustomGroup(groupId: String): Int
+
     @Upsert
     suspend fun upsertGroupMembership(membership: CustomGroupMembershipEntity)
+
+    @Upsert
+    suspend fun upsertGroupMemberships(memberships: List<CustomGroupMembershipEntity>)
+
+    @Query(
+        "SELECT * FROM custom_group_memberships " +
+            "WHERE groupId = :groupId ORDER BY groupOrder ASC, channelId ASC",
+    )
+    suspend fun groupMemberships(groupId: String): List<CustomGroupMembershipEntity>
 
     @Query("DELETE FROM custom_group_memberships WHERE groupId = :groupId AND channelId = :channelId")
     suspend fun removeGroupMembership(
