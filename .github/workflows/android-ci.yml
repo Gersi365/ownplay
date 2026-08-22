@@ -40,7 +40,27 @@ jobs:
           test -d "${ANDROID_HOME}/build-tools/36.0.0"
 
       - name: Validate
-        run: gradle :app:testDebugUnitTest :app:lintDebug :app:assembleDebug --stacktrace
+        run: gradle :app:testDebugUnitTest :app:lintDebug :app:assembleDebug :app:compileDebugAndroidTestKotlin --stacktrace
+
+      - name: Verify Room schema is committed
+        if: success()
+        shell: bash
+        run: |
+          schema_status="$(git status --porcelain --untracked-files=all app/schemas)"
+          if [ -n "${schema_status}" ]; then
+            printf '%s\n' "${schema_status}"
+            echo "Room schema changed without a matching committed schema history update."
+            exit 1
+          fi
+
+      - name: Upload Room schema
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ownplay-room-schema
+          path: app/schemas
+          if-no-files-found: error
+          retention-days: 7
 
       - name: Upload debug APK
         if: success()
