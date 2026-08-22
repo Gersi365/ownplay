@@ -69,6 +69,20 @@ class FavoriteChannelMutator(
         )
     }
 
+    suspend fun moveFavoriteRelative(
+        sourceId: String,
+        channelId: String,
+        anchorChannelId: String,
+        placement: ManualOrderPlacement,
+    ): FavoriteMutationResult = mutateFavoriteOrder(sourceId) { favoriteIds ->
+        ManualChannelOrderPlanner.moveRelative(
+            currentOrder = favoriteIds,
+            channelId = channelId,
+            anchorChannelId = anchorChannelId,
+            placement = placement,
+        )
+    }
+
     suspend fun moveSelectedFavoritesToTop(
         sourceId: String,
         channelIds: Set<String>,

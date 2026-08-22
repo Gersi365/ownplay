@@ -12,6 +12,8 @@ sealed interface ChannelBulkAction {
     data object RemoveFavorite : ChannelBulkAction
     data object MoveToTop : ChannelBulkAction
     data object MoveToBottom : ChannelBulkAction
+    data object MoveFavoritesToTop : ChannelBulkAction
+    data object MoveFavoritesToBottom : ChannelBulkAction
 
     data class AddToGroup(val groupId: String) : ChannelBulkAction {
         init {

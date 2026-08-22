@@ -69,14 +69,26 @@ fun LiveBrowseScreen(
     onSelectVisible: () -> Unit = {},
     onClearSelection: () -> Unit = {},
     onBulkAction: (ChannelBulkAction) -> Unit = {},
+    onCreateGroup: (String) -> Unit = {},
+    onRenameGroup: (String, String) -> Unit = { _, _ -> },
+    onDeleteGroup: (String) -> Unit = {},
+    onSetLocalDisplayName: (String, String) -> Unit = { _, _ -> },
+    onClearLocalDisplayName: (String) -> Unit = {},
+    onSetLogoOverride: (String, String) -> Unit = { _, _ -> },
+    onClearLogoOverride: (String) -> Unit = {},
     onManualMoveRelative: (String, String, ManualOrderPlacement) -> Unit = { _, _, _ -> },
+    onFavoriteMoveRelative: (String, String, ManualOrderPlacement) -> Unit = { _, _, _ -> },
     modifier: Modifier = Modifier,
 ) {
     val listState = rememberLazyListState()
     var draggedChannelId by remember { mutableStateOf<String?>(null) }
     var draggedPointerY by remember { mutableStateOf<Float?>(null) }
     var dragTarget by remember { mutableStateOf<ChannelDragTarget?>(null) }
-    val dragEnabled = editState.isEditing && state.query.order == LiveBrowseOrder.MY_ORDER
+    val manualDragEnabled = editState.isEditing && state.query.order == LiveBrowseOrder.MY_ORDER
+    val favoriteDragEnabled = editState.isEditing &&
+        state.query.favoritesOnly &&
+        state.query.order == LiveBrowseOrder.FAVORITE_ORDER
+    val dragEnabled = manualDragEnabled || favoriteDragEnabled
 
     fun clearDragState() {
         draggedChannelId = null
@@ -99,8 +111,13 @@ fun LiveBrowseScreen(
                 onHiddenOnlyChanged = onHiddenOnlyChanged,
                 onOrderChanged = onOrderChanged,
                 onEditModeChanged = { editing ->
-                    if (editing && state.query.order != LiveBrowseOrder.MY_ORDER) {
-                        onOrderChanged(LiveBrowseOrder.MY_ORDER)
+                    val editOrder = if (state.query.favoritesOnly) {
+                        LiveBrowseOrder.FAVORITE_ORDER
+                    } else {
+                        LiveBrowseOrder.MY_ORDER
+                    }
+                    if (editing && state.query.order != editOrder) {
+                        onOrderChanged(editOrder)
                     }
                     if (!editing) clearDragState()
                     onEditModeChanged(editing)
@@ -119,13 +136,25 @@ fun LiveBrowseScreen(
                 )
             }
             if (editState.isEditing) {
+                val selectedVisibleChannel = state.channels.singleOrNull { channel ->
+                    channel.channelId in editState.selectedChannelIds
+                }
                 BulkEditBar(
                     selectedCount = editState.selectedChannelIds.size,
+                    selectedVisibleChannel = selectedVisibleChannel,
                     groups = state.customGroups,
                     dragEnabled = dragEnabled,
+                    favoriteDragEnabled = favoriteDragEnabled,
                     onSelectVisible = onSelectVisible,
                     onClearSelection = onClearSelection,
                     onBulkAction = onBulkAction,
+                    onCreateGroup = onCreateGroup,
+                    onRenameGroup = onRenameGroup,
+                    onDeleteGroup = onDeleteGroup,
+                    onSetLocalDisplayName = onSetLocalDisplayName,
+                    onClearLocalDisplayName = onClearLocalDisplayName,
+                    onSetLogoOverride = onSetLogoOverride,
+                    onClearLogoOverride = onClearLogoOverride,
                 )
             }
             HorizontalDivider()
@@ -148,7 +177,7 @@ fun LiveBrowseScreen(
                     ) { index, channel ->
                         val isDropAnchor = dragTarget?.anchorChannelId == channel.channelId
                         val rowModifier = if (dragEnabled) {
-                            Modifier.pointerInput(channel.channelId, state.channels) {
+                            Modifier.pointerInput(channel.channelId) {
                                 detectDragGesturesAfterLongPress(
                                     onDragStart = { startOffset ->
                                         val itemInfo = listState.layoutInfo.visibleItemsInfo
@@ -165,8 +194,7 @@ fun LiveBrowseScreen(
                                             )
                                         }
                                     },
-                                    onDrag = { change, dragAmount ->
-                                        change.consume()
+                                    onDrag = { _, dragAmount ->
                                         val draggedId = draggedChannelId ?: return@detectDragGesturesAfterLongPress
                                         val pointerY = (draggedPointerY ?: return@detectDragGesturesAfterLongPress) +
                                             dragAmount.y
@@ -181,11 +209,19 @@ fun LiveBrowseScreen(
                                         val draggedId = draggedChannelId
                                         val target = dragTarget
                                         if (draggedId != null && target != null) {
-                                            onManualMoveRelative(
-                                                draggedId,
-                                                target.anchorChannelId,
-                                                target.placement,
-                                            )
+                                            if (favoriteDragEnabled) {
+                                                onFavoriteMoveRelative(
+                                                    draggedId,
+                                                    target.anchorChannelId,
+                                                    target.placement,
+                                                )
+                                            } else {
+                                                onManualMoveRelative(
+                                                    draggedId,
+                                                    target.anchorChannelId,
+                                                    target.placement,
+                                                )
+                                            }
                                         }
                                         clearDragState()
                                     },
@@ -396,13 +432,24 @@ private fun CustomGroupStrip(
 @Composable
 private fun BulkEditBar(
     selectedCount: Int,
+    selectedVisibleChannel: LiveChannelItem?,
     groups: List<LiveCustomGroup>,
     dragEnabled: Boolean,
+    favoriteDragEnabled: Boolean,
     onSelectVisible: () -> Unit,
     onClearSelection: () -> Unit,
     onBulkAction: (ChannelBulkAction) -> Unit,
+    onCreateGroup: (String) -> Unit,
+    onRenameGroup: (String, String) -> Unit,
+    onDeleteGroup: (String) -> Unit,
+    onSetLocalDisplayName: (String, String) -> Unit,
+    onClearLocalDisplayName: (String) -> Unit,
+    onSetLogoOverride: (String, String) -> Unit,
+    onClearLogoOverride: (String) -> Unit,
 ) {
     val hasSelection = selectedCount > 0
+    var showGroupManager by remember { mutableStateOf(false) }
+    var customizeTarget by remember { mutableStateOf<LiveChannelItem?>(null) }
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -431,7 +478,11 @@ private fun BulkEditBar(
         }
         if (dragEnabled) {
             Text(
-                text = "Long-press and drag a channel to reorder My Order.",
+                text = if (favoriteDragEnabled) {
+                    "Long-press and drag a favorite to reorder Favorite order."
+                } else {
+                    "Long-press and drag a channel to reorder My Order."
+                },
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -474,18 +525,47 @@ private fun BulkEditBar(
             }
             item(key = "move-top") {
                 TextButton(
-                    onClick = { onBulkAction(ChannelBulkAction.MoveToTop) },
+                    onClick = {
+                        onBulkAction(
+                            if (favoriteDragEnabled) {
+                                ChannelBulkAction.MoveFavoritesToTop
+                            } else {
+                                ChannelBulkAction.MoveToTop
+                            },
+                        )
+                    },
                     enabled = hasSelection,
                 ) {
-                    Text("Move top")
+                    Text(if (favoriteDragEnabled) "Favorite top" else "Move top")
                 }
             }
             item(key = "move-bottom") {
                 TextButton(
-                    onClick = { onBulkAction(ChannelBulkAction.MoveToBottom) },
+                    onClick = {
+                        onBulkAction(
+                            if (favoriteDragEnabled) {
+                                ChannelBulkAction.MoveFavoritesToBottom
+                            } else {
+                                ChannelBulkAction.MoveToBottom
+                            },
+                        )
+                    },
                     enabled = hasSelection,
                 ) {
-                    Text("Move bottom")
+                    Text(if (favoriteDragEnabled) "Favorite bottom" else "Move bottom")
+                }
+            }
+            item(key = "customize-channel") {
+                TextButton(
+                    onClick = { customizeTarget = selectedVisibleChannel },
+                    enabled = selectedCount == 1 && selectedVisibleChannel != null,
+                ) {
+                    Text("Customize")
+                }
+            }
+            item(key = "manage-groups") {
+                TextButton(onClick = { showGroupManager = true }) {
+                    Text("Groups")
                 }
             }
             if (groups.isNotEmpty()) {
@@ -511,6 +591,27 @@ private fun BulkEditBar(
                 }
             }
         }
+    }
+
+    customizeTarget?.let { channel ->
+        ChannelCustomizationDialog(
+            channel = channel,
+            onSetLocalDisplayName = onSetLocalDisplayName,
+            onClearLocalDisplayName = onClearLocalDisplayName,
+            onSetLogoOverride = onSetLogoOverride,
+            onClearLogoOverride = onClearLogoOverride,
+            onDismiss = { customizeTarget = null },
+        )
+    }
+
+    if (showGroupManager) {
+        CustomGroupManagerDialog(
+            groups = groups,
+            onCreateGroup = onCreateGroup,
+            onRenameGroup = onRenameGroup,
+            onDeleteGroup = onDeleteGroup,
+            onDismiss = { showGroupManager = false },
+        )
     }
 }
 

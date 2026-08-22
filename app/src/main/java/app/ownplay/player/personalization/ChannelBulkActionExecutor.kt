@@ -66,6 +66,20 @@ class ChannelBulkActionExecutor(
             ),
         )
 
+        ChannelBulkAction.MoveFavoritesToTop -> ChannelBulkActionExecutionResult.Favorite(
+            favoriteMutator.moveSelectedFavoritesToTop(
+                sourceId = sourceId,
+                channelIds = selectedChannelIds,
+            ),
+        )
+
+        ChannelBulkAction.MoveFavoritesToBottom -> ChannelBulkActionExecutionResult.Favorite(
+            favoriteMutator.moveSelectedFavoritesToBottom(
+                sourceId = sourceId,
+                channelIds = selectedChannelIds,
+            ),
+        )
+
         is ChannelBulkAction.AddToGroup -> ChannelBulkActionExecutionResult.CustomGroup(
             customGroupMutator.addChannels(
                 sourceId = sourceId,

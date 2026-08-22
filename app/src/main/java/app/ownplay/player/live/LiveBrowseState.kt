@@ -53,7 +53,7 @@ class LiveBrowseSession(
         query.update { current ->
             current.copy(
                 hiddenOnly = enabled,
-                includeHidden = if (enabled) true else current.includeHidden,
+                includeHidden = enabled,
             )
         }
     }

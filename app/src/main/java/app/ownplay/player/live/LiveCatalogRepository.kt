@@ -23,7 +23,7 @@ class LiveCatalogRepository(
     fun observe(sourceId: String): Flow<LiveCatalogSnapshot> = combine(
         dao.observeCategories(sourceId),
         dao.observeChannels(sourceId),
-        dao.observeCustomGroups(sourceId),
+        dao.observeCustomGroups(),
         dao.observeGroupMemberships(sourceId),
     ) { categories, channels, customGroups, memberships ->
         LiveCatalogSnapshot(

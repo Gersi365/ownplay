@@ -80,20 +80,15 @@ interface LiveBrowseDao {
 
     @Query(
         """
-        SELECT DISTINCT
+        SELECT
             customGroup.groupId,
             customGroup.name,
             customGroup.groupOrder
         FROM custom_groups AS customGroup
-        INNER JOIN custom_group_memberships AS membership
-            ON membership.groupId = customGroup.groupId
-        INNER JOIN provider_channels AS channel
-            ON channel.channelId = membership.channelId
-        WHERE channel.sourceId = :sourceId
-        ORDER BY customGroup.groupOrder ASC, customGroup.groupId ASC
+        ORDER BY customGroup.groupOrder ASC, customGroup.createdAtEpochMillis ASC, customGroup.groupId ASC
         """,
     )
-    fun observeCustomGroups(sourceId: String): Flow<List<LiveCustomGroupRecord>>
+    fun observeCustomGroups(): Flow<List<LiveCustomGroupRecord>>
 
     @Query(
         """
