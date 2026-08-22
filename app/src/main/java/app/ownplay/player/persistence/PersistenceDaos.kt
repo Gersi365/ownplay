@@ -39,6 +39,9 @@ interface ProviderCatalogDao {
         sourceId: String,
         providerKey: String,
     ): ProviderChannelEntity?
+
+    @Query("SELECT * FROM provider_channels WHERE channelId = :channelId LIMIT 1")
+    suspend fun channelById(channelId: String): ProviderChannelEntity?
 }
 
 @Dao
