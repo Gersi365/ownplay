@@ -25,6 +25,32 @@ class LiveBrowseSessionTest {
         assertEquals(LiveBrowseOrder.MY_ORDER, state.query.order)
         assertEquals(listOf("news-two", "news-one"), state.channels.map { it.channelId })
         assertEquals(listOf("news", "sports"), state.categories.map { it.providerCategoryKey })
+        assertEquals(4, state.catalogChannelCount)
+    }
+
+    @Test
+    fun editVisibilityIncludesHiddenCategoriesAndTheirChannels() = runBlocking {
+        val hiddenCategorySnapshot = snapshot().copy(
+            categories = listOf(
+                LiveCategory("sports", "Sports", 2),
+                LiveCategory("news", "News", 1, isHidden = true),
+            ),
+            hiddenCategoryKeys = setOf("news"),
+        )
+        val session = LiveBrowseSession()
+
+        val normal = session.observe(flowOf(hiddenCategorySnapshot)).first()
+        assertEquals(listOf("sports"), normal.categories.map { it.providerCategoryKey })
+        assertEquals(listOf("sports"), normal.channels.map { it.channelId })
+
+        session.setIncludeHidden(true)
+        val editing = session.observe(flowOf(hiddenCategorySnapshot)).first()
+        assertEquals(listOf("news", "sports"), editing.categories.map { it.providerCategoryKey })
+        assertEquals(
+            listOf("sports", "news-one", "news-two", "hidden"),
+            editing.channels.map { it.channelId },
+        )
+        assertTrue(editing.channels.filter { it.categoryKey == "news" }.all { it.isHidden })
     }
 
     @Test
@@ -43,6 +69,31 @@ class LiveBrowseSessionTest {
         assertFalse(normalState.query.hiddenOnly)
         assertFalse(normalState.query.includeHidden)
         assertFalse(normalState.channels.any { it.channelId == "hidden" })
+    }
+
+    @Test
+    fun disablingHiddenOnlyDuringEditKeepsHiddenItemsVisible() = runBlocking {
+        val session = LiveBrowseSession()
+        session.setIncludeHidden(true)
+        session.setHiddenOnly(true, includeHiddenWhenDisabled = true)
+        session.setHiddenOnly(false, includeHiddenWhenDisabled = true)
+
+        val state = session.observe(flowOf(snapshot())).first()
+
+        assertFalse(state.query.hiddenOnly)
+        assertTrue(state.query.includeHidden)
+        assertTrue(state.channels.any { it.channelId == "hidden" })
+    }
+
+    @Test
+    fun filteredEmptyStateStillReportsLoadedCatalogCount() = runBlocking {
+        val session = LiveBrowseSession()
+        session.updateSearch("does-not-exist")
+
+        val state = session.observe(flowOf(snapshot())).first()
+
+        assertTrue(state.channels.isEmpty())
+        assertEquals(4, state.catalogChannelCount)
     }
 
     @Test
