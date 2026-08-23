@@ -27,7 +27,9 @@ import app.ownplay.player.playback.RoomPlaybackResolutionLookup
 import app.ownplay.player.source.credential.AndroidKeystoreCredentialStore
 import app.ownplay.player.source.onboarding.SourceOnboardingResult
 import app.ownplay.player.source.onboarding.SourceOnboardingService
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.withContext
 
 class OwnPlayAppRuntime(
     context: Context,
@@ -91,29 +93,35 @@ class OwnPlayAppRuntime(
         username: String,
         password: String,
         allowCleartext: Boolean = false,
-    ): SourceOnboardingResult = sourceOnboardingService.addXtream(
-        name = name,
-        serverUrl = serverUrl,
-        username = username,
-        password = password,
-        allowCleartext = allowCleartext,
-    )
+    ): SourceOnboardingResult = withContext(Dispatchers.IO) {
+        sourceOnboardingService.addXtream(
+            name = name,
+            serverUrl = serverUrl,
+            username = username,
+            password = password,
+            allowCleartext = allowCleartext,
+        )
+    }
 
     suspend fun addRemoteM3uSource(
         name: String,
         playlistUrl: String,
-    ): SourceOnboardingResult = sourceOnboardingService.addRemoteM3u(
-        name = name,
-        playlistUrl = playlistUrl,
-    )
+    ): SourceOnboardingResult = withContext(Dispatchers.IO) {
+        sourceOnboardingService.addRemoteM3u(
+            name = name,
+            playlistUrl = playlistUrl,
+        )
+    }
 
     suspend fun addLocalM3uSource(
         name: String,
         documentUri: String,
-    ): SourceOnboardingResult = sourceOnboardingService.addLocalM3u(
-        name = name,
-        documentUri = documentUri,
-    )
+    ): SourceOnboardingResult = withContext(Dispatchers.IO) {
+        sourceOnboardingService.addLocalM3u(
+            name = name,
+            documentUri = documentUri,
+        )
+    }
 
     suspend fun executeChannelBulkAction(
         sourceId: String,
