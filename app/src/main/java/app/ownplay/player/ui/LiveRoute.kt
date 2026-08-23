@@ -8,8 +8,11 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -33,6 +36,7 @@ import app.ownplay.player.playback.LiveChannelSelectionRouter
 import app.ownplay.player.playback.LivePlaybackBrowseContext
 import app.ownplay.player.playback.LivePlaybackSelection
 import app.ownplay.player.playback.PlaybackState
+import app.ownplay.player.source.onboarding.SourceOnboardingResult
 import app.ownplay.player.ui.live.LiveBrowseScreen
 import kotlinx.coroutines.launch
 
@@ -53,6 +57,24 @@ internal fun LiveRoute(
     val browseState by browseFlow.collectAsState(initial = LiveBrowseState())
     val mutationScope = rememberCoroutineScope()
     var editState by remember(sourceId) { mutableStateOf(ChannelEditState()) }
+    var catalogRefreshing by remember(sourceId) { mutableStateOf(false) }
+    var catalogRefreshFailed by remember(sourceId) { mutableStateOf(false) }
+
+    suspend fun runCatalogRefresh(force: Boolean) {
+        catalogRefreshing = true
+        catalogRefreshFailed = false
+        val result = if (force) {
+            runtime.refreshLiveCatalog(sourceId)
+        } else {
+            runtime.ensureLiveCatalog(sourceId)
+        }
+        catalogRefreshFailed = result is SourceOnboardingResult.Failure
+        catalogRefreshing = false
+    }
+
+    LaunchedEffect(sourceId) {
+        runCatalogRefresh(force = false)
+    }
 
     LaunchedEffect(browseState.channels, editState.isEditing) {
         editState = ChannelEditReducer.retainAvailable(
@@ -74,6 +96,16 @@ internal fun LiveRoute(
             TextButton(onClick = onBackToSources) {
                 Text("Sources")
             }
+            TextButton(
+                onClick = {
+                    if (!catalogRefreshing) {
+                        mutationScope.launch { runCatalogRefresh(force = true) }
+                    }
+                },
+                enabled = !catalogRefreshing,
+            ) {
+                Text("Refresh")
+            }
             Spacer(modifier = Modifier.weight(1f))
             val resumable = activeSelection?.takeIf { selection ->
                 selection.request.sourceId == sourceId && playbackState !is PlaybackState.Idle
@@ -85,6 +117,46 @@ internal fun LiveRoute(
             }
         }
         HorizontalDivider()
+
+        if (catalogRefreshing) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(18.dp),
+                    strokeWidth = 2.dp,
+                )
+                Text(
+                    text = "Refreshing channels…",
+                    modifier = Modifier.padding(start = 10.dp),
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+            }
+        } else if (catalogRefreshFailed && browseState.channels.isEmpty()) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = "Could not load channels from this source.",
+                    modifier = Modifier.weight(1f),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.error,
+                )
+                TextButton(
+                    onClick = {
+                        mutationScope.launch { runCatalogRefresh(force = true) }
+                    },
+                ) {
+                    Text("Retry")
+                }
+            }
+        }
 
         LiveBrowseScreen(
             state = browseState,

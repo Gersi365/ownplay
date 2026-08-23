@@ -2,9 +2,15 @@ package app.ownplay.player
 
 import android.content.Context
 import app.ownplay.player.live.LiveCatalogRepository
+import app.ownplay.player.live.ingest.InitialLiveCatalogFactory
+import app.ownplay.player.live.ingest.InitialLiveCatalogIngestResult
+import app.ownplay.player.live.ingest.InitialLiveCatalogIngestor
+import app.ownplay.player.live.ingest.RoomLiveCatalogPersistence
 import app.ownplay.player.persistence.OwnPlayDatabase
 import app.ownplay.player.persistence.PlaylistSourceEntity
+import app.ownplay.player.persistence.SourceKinds
 import app.ownplay.player.persistence.secure.AndroidKeystoreSensitiveValueStore
+import app.ownplay.player.persistence.secure.SensitiveValueRef
 import app.ownplay.player.personalization.ChannelBulkAction
 import app.ownplay.player.personalization.ChannelBulkActionExecutionResult
 import app.ownplay.player.personalization.ChannelBulkActionExecutor
@@ -24,9 +30,15 @@ import app.ownplay.player.playback.Media3PlaybackEngine
 import app.ownplay.player.playback.PlaybackController
 import app.ownplay.player.playback.PlaybackTrackController
 import app.ownplay.player.playback.RoomPlaybackResolutionLookup
+import app.ownplay.player.source.CredentialRef
+import app.ownplay.player.source.SourceError
+import app.ownplay.player.source.SourceResult
 import app.ownplay.player.source.credential.AndroidKeystoreCredentialStore
+import app.ownplay.player.source.onboarding.SourceOnboardingFailure
 import app.ownplay.player.source.onboarding.SourceOnboardingResult
 import app.ownplay.player.source.onboarding.SourceOnboardingService
+import app.ownplay.player.source.xtream.XtreamClient
+import app.ownplay.player.source.xtream.XtreamSourceLocatorCodec
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.withContext
@@ -46,6 +58,11 @@ class OwnPlayAppRuntime(
         sensitiveValueStore = sensitiveValueStore,
         credentialStore = credentialStore,
         contentResolver = applicationContext.contentResolver,
+    )
+    private val xtreamClient = XtreamClient()
+    private val liveCatalogIngestor = InitialLiveCatalogIngestor(
+        persistence = RoomLiveCatalogPersistence(database),
+        sensitiveValueStore = sensitiveValueStore,
     )
 
     private val channelVisibilityMutator = ChannelVisibilityMutator(database)
@@ -121,6 +138,126 @@ class OwnPlayAppRuntime(
             name = name,
             documentUri = documentUri,
         )
+    }
+
+    suspend fun ensureLiveCatalog(sourceId: String): SourceOnboardingResult =
+        withContext(Dispatchers.IO) {
+            val existingChannels = try {
+                database.providerCatalogDao().channelsForSource(sourceId)
+            } catch (_: Exception) {
+                return@withContext SourceOnboardingResult.Failure(
+                    SourceOnboardingFailure.PersistenceFailure,
+                )
+            }
+            if (existingChannels.isNotEmpty()) {
+                return@withContext SourceOnboardingResult.Success(
+                    sourceId = sourceId,
+                    channelCount = existingChannels.size,
+                )
+            }
+            refreshXtreamLiveCatalogInternal(sourceId)
+        }
+
+    suspend fun refreshLiveCatalog(sourceId: String): SourceOnboardingResult =
+        withContext(Dispatchers.IO) {
+            refreshXtreamLiveCatalogInternal(sourceId)
+        }
+
+    private suspend fun refreshXtreamLiveCatalogInternal(
+        sourceId: String,
+    ): SourceOnboardingResult {
+        val source = try {
+            database.playlistSourceDao().getById(sourceId)
+        } catch (_: Exception) {
+            return SourceOnboardingResult.Failure(SourceOnboardingFailure.PersistenceFailure)
+        } ?: return SourceOnboardingResult.Failure(SourceOnboardingFailure.PersistenceFailure)
+
+        if (source.sourceKind != SourceKinds.XTREAM) {
+            return SourceOnboardingResult.Failure(SourceOnboardingFailure.CatalogImportFailure)
+        }
+
+        val locatorValue = try {
+            sensitiveValueStore.get(SensitiveValueRef(source.locatorRef))
+        } catch (_: Exception) {
+            null
+        } ?: return SourceOnboardingResult.Failure(SourceOnboardingFailure.SecureStorageFailure)
+
+        val locator = XtreamSourceLocatorCodec.parse(locatorValue)
+            ?: return SourceOnboardingResult.Failure(
+                SourceOnboardingFailure.SourceFailure(SourceError.InvalidUrl),
+            )
+
+        val credentialRefValue = source.credentialRef
+            ?: return SourceOnboardingResult.Failure(SourceOnboardingFailure.SecureStorageFailure)
+        val credentials = try {
+            credentialStore.get(CredentialRef(credentialRefValue))
+        } catch (_: Exception) {
+            null
+        } ?: return SourceOnboardingResult.Failure(SourceOnboardingFailure.SecureStorageFailure)
+
+        when (
+            val validation = xtreamClient.validateAccount(
+                serverUrl = locator.serverUrl,
+                credentials = credentials,
+                allowCleartext = locator.allowCleartext,
+            )
+        ) {
+            is SourceResult.Success -> Unit
+            is SourceResult.Failure -> {
+                return SourceOnboardingResult.Failure(
+                    SourceOnboardingFailure.SourceFailure(validation.error),
+                )
+            }
+        }
+
+        val categories = when (
+            val loaded = xtreamClient.getLiveCategories(
+                serverUrl = locator.serverUrl,
+                credentials = credentials,
+                allowCleartext = locator.allowCleartext,
+            )
+        ) {
+            is SourceResult.Success -> loaded.value
+            is SourceResult.Failure -> {
+                return SourceOnboardingResult.Failure(
+                    SourceOnboardingFailure.SourceFailure(loaded.error),
+                )
+            }
+        }
+        val streams = when (
+            val loaded = xtreamClient.getLiveStreams(
+                serverUrl = locator.serverUrl,
+                credentials = credentials,
+                allowCleartext = locator.allowCleartext,
+            )
+        ) {
+            is SourceResult.Success -> loaded.value
+            is SourceResult.Failure -> {
+                return SourceOnboardingResult.Failure(
+                    SourceOnboardingFailure.SourceFailure(loaded.error),
+                )
+            }
+        }
+
+        val ingestResult = try {
+            liveCatalogIngestor.ingest(
+                sourceId = sourceId,
+                generation = System.currentTimeMillis(),
+                catalog = InitialLiveCatalogFactory.fromXtream(categories, streams),
+            )
+        } catch (_: Exception) {
+            return SourceOnboardingResult.Failure(SourceOnboardingFailure.CatalogImportFailure)
+        }
+
+        return when (ingestResult) {
+            is InitialLiveCatalogIngestResult.Success -> {
+                SourceOnboardingResult.Success(
+                    sourceId = sourceId,
+                    channelCount = ingestResult.channelCount,
+                )
+            }
+            else -> SourceOnboardingResult.Failure(SourceOnboardingFailure.CatalogImportFailure)
+        }
     }
 
     suspend fun executeChannelBulkAction(
