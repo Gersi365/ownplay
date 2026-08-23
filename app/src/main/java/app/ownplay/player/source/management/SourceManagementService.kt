@@ -301,6 +301,6 @@ class SourceManagementService(
     }
 }
 
-private fun Exception.rethrowCancellation() {
+private fun Throwable.rethrowCancellation() {
     if (this is CancellationException) throw this
 }
