@@ -14,6 +14,9 @@ import app.ownplay.player.persistence.PlaylistSourceSummary
 import app.ownplay.player.persistence.SourceKinds
 import app.ownplay.player.persistence.secure.AndroidKeystoreSensitiveValueStore
 import app.ownplay.player.persistence.secure.SensitiveValueRef
+import app.ownplay.player.personalization.CategoryVisibilityMutationResult
+import app.ownplay.player.personalization.CategoryVisibilityMutator
+import app.ownplay.player.personalization.CategoryVisibilityStore
 import app.ownplay.player.personalization.ChannelBulkAction
 import app.ownplay.player.personalization.ChannelBulkActionExecutionResult
 import app.ownplay.player.personalization.ChannelBulkActionExecutor
@@ -47,6 +50,7 @@ import app.ownplay.player.source.onboarding.SourceOnboardingResult
 import app.ownplay.player.source.onboarding.SourceOnboardingService
 import app.ownplay.player.source.xtream.XtreamClient
 import app.ownplay.player.source.xtream.XtreamSourceLocatorCodec
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -68,7 +72,14 @@ class OwnPlayAppRuntime(
     private val database = OwnPlayDatabase.create(applicationContext)
     private val runtimeScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val refreshMutex = Mutex()
-    private val liveCatalogRepository = LiveCatalogRepository(database.liveBrowseDao())
+    private val categoryVisibilityStore = CategoryVisibilityStore(
+        context = applicationContext,
+        scope = runtimeScope,
+    )
+    private val liveCatalogRepository = LiveCatalogRepository(
+        dao = database.liveBrowseDao(),
+        observeHiddenCategoryKeys = categoryVisibilityStore::observeHiddenCategoryKeys,
+    )
     private val playbackConnectivityMonitor =
         AndroidPlaybackConnectivityMonitor(applicationContext)
     private val sensitiveValueStore = AndroidKeystoreSensitiveValueStore(applicationContext)
@@ -99,6 +110,10 @@ class OwnPlayAppRuntime(
     val sourceSyncState: StateFlow<SourceSyncState> = _sourceSyncState.asStateFlow()
 
     private val channelVisibilityMutator = ChannelVisibilityMutator(database)
+    private val categoryVisibilityMutator = CategoryVisibilityMutator(
+        store = categoryVisibilityStore,
+        categoryExists = database.providerCatalogDao()::categoryExistsInSource,
+    )
     private val favoriteChannelMutator = FavoriteChannelMutator(database)
     private val manualChannelOrderMutator = ManualChannelOrderMutator(database)
     private val customGroupMutator = CustomGroupMutator(database)
@@ -133,9 +148,15 @@ class OwnPlayAppRuntime(
 
     init {
         runtimeScope.launch {
-            val sources = observeSources().first()
+            val sources = try {
+                observeSources().first()
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                emptyList()
+            }
             sources.forEach { source ->
-                refreshSourcePipeline(source.sourceId)
+                refreshSource(source.sourceId)
             }
         }
     }
@@ -240,13 +261,26 @@ class OwnPlayAppRuntime(
     }
 
     suspend fun refreshSource(sourceId: String) {
-        refreshSourcePipeline(sourceId)
+        try {
+            refreshSourcePipeline(sourceId)
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            publishUnexpectedRefreshFailure(sourceId)
+        }
     }
 
     suspend fun refreshAllSources() {
-        observeSources().first().forEach { source ->
-            refreshSourcePipeline(source.sourceId)
+        val sources = try {
+            observeSources().first()
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            val current = _sourceSyncState.value
+            _sourceSyncState.value = current.copy(stage = SourceSyncStage.ChannelsFailed)
+            return
         }
+        sources.forEach { source -> refreshSource(source.sourceId) }
     }
 
     private suspend fun refreshSourcePipeline(sourceId: String) = refreshMutex.withLock {
@@ -292,6 +326,27 @@ class OwnPlayAppRuntime(
         }
     }
 
+    private suspend fun publishUnexpectedRefreshFailure(sourceId: String) {
+        val current = _sourceSyncState.value
+        val sourceName = if (current.sourceId == sourceId) {
+            current.sourceName
+        } else {
+            runCatching { database.playlistSourceDao().getById(sourceId)?.name }.getOrNull()
+        }
+        val channelCount = if (current.sourceId == sourceId) {
+            current.channelCount
+        } else {
+            runCatching { database.providerCatalogDao().channelsForSource(sourceId).size }
+                .getOrDefault(0)
+        }
+        _sourceSyncState.value = SourceSyncState(
+            sourceId = sourceId,
+            sourceName = sourceName,
+            stage = SourceSyncStage.ChannelsFailed,
+            channelCount = channelCount,
+        )
+    }
+
     private suspend fun loadEpgAfterChannels(
         sourceId: String,
         sourceName: String,
@@ -303,7 +358,13 @@ class OwnPlayAppRuntime(
             stage = SourceSyncStage.LoadingEpg,
             channelCount = channelCount,
         )
-        val epg = epgRepository.refreshSource(sourceId)
+        val epg = try {
+            epgRepository.refreshSource(sourceId)
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            null
+        }
         _sourceSyncState.value = if (epg == null) {
             SourceSyncState(
                 sourceId = sourceId,
@@ -352,7 +413,7 @@ class OwnPlayAppRuntime(
             allowCleartext = allowCleartext,
         )
         if (result is SourceMutationResult.Success) {
-            refreshSourcePipeline(sourceId)
+            refreshSource(sourceId)
         }
         return result
     }
@@ -361,6 +422,13 @@ class OwnPlayAppRuntime(
         val result = sourceManagementService.delete(sourceId)
         if (result is SourceMutationResult.Success) {
             epgRepository.invalidateSource(sourceId)
+            try {
+                categoryVisibilityStore.clearSource(sourceId)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                // The source is already deleted. A stale source-scoped preference is inert.
+            }
             if (_sourceSyncState.value.sourceId == sourceId) {
                 _sourceSyncState.value = SourceSyncState()
             }
@@ -497,6 +565,22 @@ class OwnPlayAppRuntime(
         selectedChannelIds = selectedChannelIds,
         action = action,
         eventAtEpochMillis = System.currentTimeMillis(),
+    )
+
+    suspend fun hideCategory(
+        sourceId: String,
+        providerCategoryKey: String,
+    ): CategoryVisibilityMutationResult = categoryVisibilityMutator.hide(
+        sourceId = sourceId,
+        providerCategoryKey = providerCategoryKey,
+    )
+
+    suspend fun unhideCategory(
+        sourceId: String,
+        providerCategoryKey: String,
+    ): CategoryVisibilityMutationResult = categoryVisibilityMutator.unhide(
+        sourceId = sourceId,
+        providerCategoryKey = providerCategoryKey,
     )
 
     suspend fun createCustomGroup(name: String): CustomGroupMutationResult =
