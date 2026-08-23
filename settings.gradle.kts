@@ -11,6 +11,19 @@ dependencyResolutionManagement {
     repositories {
         google()
         mavenCentral()
+        ivy {
+            name = "PinnedMedia3Ffmpeg"
+            url = uri("https://raw.githubusercontent.com/moneytoo/Player/fb436e14a5cc03998e69a166f00401ddbc71a138/app/libs")
+            patternLayout {
+                artifact("[artifact].[ext]")
+            }
+            metadataSources {
+                artifact()
+            }
+            content {
+                includeGroup("app.ownplay.ffmpeg")
+            }
+        }
     }
 }
 
