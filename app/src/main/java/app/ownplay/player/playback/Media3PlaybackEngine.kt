@@ -32,6 +32,7 @@ class Media3PlaybackEngine(
     private val applicationContext = context.applicationContext
     private val renderersFactory = DefaultRenderersFactory(applicationContext)
         .setEnableDecoderFallback(true)
+        .setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER)
     private val player = ExoPlayer.Builder(applicationContext, renderersFactory).build()
     private val playerHandler = Handler(player.applicationLooper)
     private val mutableTrackState = MutableStateFlow(PlaybackTrackState())
