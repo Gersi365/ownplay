@@ -66,6 +66,21 @@ interface ProviderCatalogDao {
 
     @Query("SELECT * FROM provider_channels WHERE channelId = :channelId LIMIT 1")
     suspend fun channelById(channelId: String): ProviderChannelEntity?
+
+    @Query(
+        """
+        SELECT EXISTS(
+            SELECT 1
+            FROM provider_categories
+            WHERE sourceId = :sourceId
+                AND providerCategoryKey = :providerCategoryKey
+        )
+        """,
+    )
+    suspend fun categoryExistsInSource(
+        sourceId: String,
+        providerCategoryKey: String,
+    ): Boolean
 }
 
 @Dao
