@@ -14,6 +14,8 @@ import app.ownplay.player.persistence.PlaylistSourceSummary
 import app.ownplay.player.persistence.SourceKinds
 import app.ownplay.player.persistence.secure.AndroidKeystoreSensitiveValueStore
 import app.ownplay.player.persistence.secure.SensitiveValueRef
+import app.ownplay.player.personalization.CategoryOrderMutationResult
+import app.ownplay.player.personalization.CategoryOrderStore
 import app.ownplay.player.personalization.CategoryVisibilityMutationResult
 import app.ownplay.player.personalization.CategoryVisibilityMutator
 import app.ownplay.player.personalization.CategoryVisibilityStore
@@ -76,9 +78,14 @@ class OwnPlayAppRuntime(
         context = applicationContext,
         scope = runtimeScope,
     )
+    private val categoryOrderStore = CategoryOrderStore(
+        context = applicationContext,
+        scope = runtimeScope,
+    )
     private val liveCatalogRepository = LiveCatalogRepository(
         dao = database.liveBrowseDao(),
         observeHiddenCategoryKeys = categoryVisibilityStore::observeHiddenCategoryKeys,
+        observeCategoryOrder = categoryOrderStore::observeOrder,
     )
     private val playbackConnectivityMonitor =
         AndroidPlaybackConnectivityMonitor(applicationContext)
@@ -424,10 +431,11 @@ class OwnPlayAppRuntime(
             epgRepository.invalidateSource(sourceId)
             try {
                 categoryVisibilityStore.clearSource(sourceId)
+                categoryOrderStore.clearSource(sourceId)
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (_: Exception) {
-                // The source is already deleted. A stale source-scoped preference is inert.
+                // The source is already deleted. Stale source-scoped preferences are inert.
             }
             if (_sourceSyncState.value.sourceId == sourceId) {
                 _sourceSyncState.value = SourceSyncState()
@@ -581,6 +589,14 @@ class OwnPlayAppRuntime(
     ): CategoryVisibilityMutationResult = categoryVisibilityMutator.unhide(
         sourceId = sourceId,
         providerCategoryKey = providerCategoryKey,
+    )
+
+    suspend fun setCategoryOrder(
+        sourceId: String,
+        orderedCategoryKeys: List<String>,
+    ): CategoryOrderMutationResult = categoryOrderStore.setOrder(
+        sourceId = sourceId,
+        orderedCategoryKeys = orderedCategoryKeys,
     )
 
     suspend fun createCustomGroup(name: String): CustomGroupMutationResult =
