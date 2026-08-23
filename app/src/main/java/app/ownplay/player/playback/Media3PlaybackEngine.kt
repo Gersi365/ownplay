@@ -4,7 +4,9 @@ import android.content.Context
 import android.os.Handler
 import android.os.Looper
 import androidx.annotation.OptIn
+import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
+import androidx.media3.common.Format
 import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
@@ -15,6 +17,7 @@ import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.HttpDataSource
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.analytics.AnalyticsListener
 import androidx.media3.ui.PlayerView
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -32,8 +35,10 @@ class Media3PlaybackEngine(
     private val applicationContext = context.applicationContext
     private val renderersFactory = DefaultRenderersFactory(applicationContext)
         .setEnableDecoderFallback(true)
-        .setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER)
-    private val player = ExoPlayer.Builder(applicationContext, renderersFactory).build()
+        .setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON)
+    private val player = ExoPlayer.Builder(applicationContext, renderersFactory)
+        .setAudioAttributes(AudioAttributes.DEFAULT, true)
+        .build()
     private val playerHandler = Handler(player.applicationLooper)
     private val mutableTrackState = MutableStateFlow(PlaybackTrackState())
     private var listener: PlaybackEngine.Listener? = null
@@ -72,6 +77,31 @@ class Media3PlaybackEngine(
 
                 override fun onPlayerError(error: PlaybackException) {
                     listener?.onFailure(Media3PlaybackFailureMapper.map(error))
+                }
+            },
+        )
+        player.addAnalyticsListener(
+            object : AnalyticsListener {
+                override fun onAudioDecoderInitialized(
+                    eventTime: AnalyticsListener.EventTime,
+                    decoderName: String,
+                    initializedTimestampMs: Long,
+                    initializationDurationMs: Long,
+                ) {
+                    updateDiagnostics { diagnostics ->
+                        diagnostics.copy(audioDecoder = safeDiagnosticValue(decoderName))
+                    }
+                }
+
+                override fun onVideoDecoderInitialized(
+                    eventTime: AnalyticsListener.EventTime,
+                    decoderName: String,
+                    initializedTimestampMs: Long,
+                    initializationDurationMs: Long,
+                ) {
+                    updateDiagnostics { diagnostics ->
+                        diagnostics.copy(videoDecoder = safeDiagnosticValue(decoderName))
+                    }
                 }
             },
         )
@@ -291,10 +321,55 @@ class Media3PlaybackEngine(
         trackIdsByKey.keys.retainAll(liveKeys)
         trackHandlesById.clear()
         trackHandlesById.putAll(liveHandlesById)
+        val stateWithDiagnostics = mutableTrackState.value.copy(
+            diagnostics = diagnosticsFromTracks(
+                tracks = tracks,
+                previous = mutableTrackState.value.diagnostics,
+            ),
+        )
         mutableTrackState.value = PlaybackTrackSelectionPolicy.withTracks(
-            state = mutableTrackState.value,
+            state = stateWithDiagnostics,
             audioTracks = audioTracks,
             subtitleTracks = subtitleTracks,
+        )
+    }
+
+    private fun diagnosticsFromTracks(
+        tracks: Tracks,
+        previous: PlaybackDiagnostics,
+    ): PlaybackDiagnostics {
+        val audio = selectedFormat(tracks, C.TRACK_TYPE_AUDIO)
+        val video = selectedFormat(tracks, C.TRACK_TYPE_VIDEO)
+        return previous.copy(
+            videoMimeType = safeDiagnosticValue(video?.sampleMimeType),
+            videoCodecs = safeDiagnosticValue(video?.codecs),
+            videoWidth = video?.width?.positiveOrNull(),
+            videoHeight = video?.height?.positiveOrNull(),
+            audioMimeType = safeDiagnosticValue(audio?.sampleMimeType),
+            audioCodecs = safeDiagnosticValue(audio?.codecs),
+            audioSampleRate = audio?.sampleRate?.positiveOrNull(),
+            audioChannelCount = audio?.channelCount?.positiveOrNull(),
+            audioLanguage = safeDiagnosticValue(audio?.language),
+        )
+    }
+
+    private fun selectedFormat(tracks: Tracks, trackType: Int): Format? {
+        for (group in tracks.groups) {
+            if (group.type != trackType) continue
+            for (trackIndex in 0 until group.length) {
+                if (group.isTrackSelected(trackIndex)) {
+                    return group.getTrackFormat(trackIndex)
+                }
+            }
+        }
+        return null
+    }
+
+    private fun updateDiagnostics(
+        transform: (PlaybackDiagnostics) -> PlaybackDiagnostics,
+    ) {
+        mutableTrackState.value = mutableTrackState.value.copy(
+            diagnostics = transform(mutableTrackState.value.diagnostics),
         )
     }
 
@@ -350,6 +425,28 @@ class Media3PlaybackEngine(
             playerHandler.post(action)
         }
     }
+}
+
+private fun Int.positiveOrNull(): Int? = takeIf { it > 0 }
+
+private fun safeDiagnosticValue(raw: String?): String? {
+    val normalized = raw
+        ?.replace(Regex("\\s+"), " ")
+        ?.trim()
+        ?.take(120)
+        ?.takeIf(String::isNotBlank)
+        ?: return null
+    val lower = normalized.lowercase()
+    val sensitiveMarker = listOf(
+        "://",
+        "password=",
+        "passwd=",
+        "token=",
+        "username=",
+        "authorization=",
+        "bearer ",
+    ).any(lower::contains)
+    return normalized.takeUnless { sensitiveMarker }
 }
 
 private data class Media3TrackKey(
