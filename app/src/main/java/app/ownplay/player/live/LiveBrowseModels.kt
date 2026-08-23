@@ -8,6 +8,7 @@ data class LiveCategory(
     val providerCategoryKey: String,
     val name: String,
     val providerOrder: Long,
+    val isHidden: Boolean = false,
 )
 
 data class LiveChannelItem(
@@ -56,6 +57,7 @@ object LiveBrowseProjector {
         records: List<LiveChannelRecord>,
         query: LiveBrowseQuery,
         customGroupIdsByChannelId: Map<String, Set<String>> = emptyMap(),
+        hiddenCategoryKeys: Set<String> = emptySet(),
     ): List<LiveChannelItem> {
         val normalizedSearch = query.searchTerm.trim().lowercase(Locale.ROOT)
 
@@ -64,6 +66,7 @@ object LiveBrowseProjector {
                 toItem(
                     record = record,
                     customGroupIds = customGroupIdsByChannelId[record.channelId].orEmpty(),
+                    hiddenCategoryKeys = hiddenCategoryKeys,
                 )
             }
             .filter { item ->
@@ -115,6 +118,7 @@ object LiveBrowseProjector {
     private fun toItem(
         record: LiveChannelRecord,
         customGroupIds: Set<String>,
+        hiddenCategoryKeys: Set<String>,
     ): LiveChannelItem = LiveChannelItem(
         channelId = record.channelId,
         sourceId = record.sourceId,
@@ -131,7 +135,8 @@ object LiveBrowseProjector {
         manualOrder = record.manualOrder,
         favoriteOrder = record.favoriteOrder,
         isFavorite = record.favoriteOrder != null,
-        isHidden = record.hiddenAtEpochMillis != null,
+        isHidden = record.hiddenAtEpochMillis != null ||
+            record.providerCategoryKey in hiddenCategoryKeys,
         availability = record.availability,
         recentAtEpochMillis = record.recentAtEpochMillis,
         customGroupIds = customGroupIds,
