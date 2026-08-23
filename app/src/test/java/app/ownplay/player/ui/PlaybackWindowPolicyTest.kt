@@ -29,6 +29,36 @@ class PlaybackWindowPolicyTest {
     }
 
     @Test
+    fun visibleStatusBarMeansNormalAppShell() {
+        assertFalse(
+            PlaybackWindowPolicy.isFullscreen(
+                statusBarsVisible = true,
+                inPictureInPicture = false,
+            ),
+        )
+    }
+
+    @Test
+    fun hiddenStatusBarMeansFullscreenOutsidePip() {
+        assertTrue(
+            PlaybackWindowPolicy.isFullscreen(
+                statusBarsVisible = false,
+                inPictureInPicture = false,
+            ),
+        )
+    }
+
+    @Test
+    fun pictureInPictureNeverCountsAsFullscreen() {
+        assertFalse(
+            PlaybackWindowPolicy.isFullscreen(
+                statusBarsVisible = false,
+                inPictureInPicture = true,
+            ),
+        )
+    }
+
+    @Test
     fun appShellUsesFullSensorOrientation() {
         assertEquals(
             PlaybackOrientationIntent.FULL_SENSOR,

@@ -25,6 +25,11 @@ internal object PlaybackWindowPolicy {
         isPlaying: Boolean,
     ): Boolean = pipSupported && isPlaying
 
+    fun isFullscreen(
+        statusBarsVisible: Boolean,
+        inPictureInPicture: Boolean,
+    ): Boolean = !inPictureInPicture && !statusBarsVisible
+
     fun orientationIntent(
         fullscreen: Boolean,
         inPictureInPicture: Boolean,
@@ -65,8 +70,10 @@ class PlaybackWindowController(
         layoutListener = listener
         view.addOnLayoutChangeListener(listener)
         ViewCompat.setOnApplyWindowInsetsListener(view) { _, insets ->
-            fullscreen = !_isInPictureInPictureMode.value &&
-                !insets.isVisible(WindowInsetsCompat.Type.systemBars())
+            fullscreen = PlaybackWindowPolicy.isFullscreen(
+                statusBarsVisible = insets.isVisible(WindowInsetsCompat.Type.statusBars()),
+                inPictureInPicture = _isInPictureInPictureMode.value,
+            )
             applyOrientationPolicy()
             insets
         }
@@ -149,10 +156,12 @@ class PlaybackWindowController(
     }
 
     private fun detectFullscreen(): Boolean {
-        if (_isInPictureInPictureMode.value) return false
         val root = windowRoot ?: return false
         val insets = ViewCompat.getRootWindowInsets(root) ?: return false
-        return !insets.isVisible(WindowInsetsCompat.Type.systemBars())
+        return PlaybackWindowPolicy.isFullscreen(
+            statusBarsVisible = insets.isVisible(WindowInsetsCompat.Type.statusBars()),
+            inPictureInPicture = _isInPictureInPictureMode.value,
+        )
     }
 
     private fun detachWindowRoot() {
