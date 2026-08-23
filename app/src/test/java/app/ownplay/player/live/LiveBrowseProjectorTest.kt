@@ -56,6 +56,37 @@ class LiveBrowseProjectorTest {
     }
 
     @Test
+    fun hiddenCategoryMakesEveryMemberEffectivelyHidden() {
+        val normal = LiveBrowseProjector.project(
+            records = records,
+            query = LiveBrowseQuery(),
+            hiddenCategoryKeys = setOf("news"),
+        )
+        assertEquals(listOf("two"), normal.map { it.channelId })
+
+        val editing = LiveBrowseProjector.project(
+            records = records,
+            query = LiveBrowseQuery(includeHidden = true),
+            hiddenCategoryKeys = setOf("news"),
+        )
+        assertEquals(listOf("two", "one", "hidden"), editing.map { it.channelId })
+        assertTrue(editing.first { it.channelId == "one" }.isHidden)
+        assertTrue(editing.first { it.channelId == "hidden" }.isHidden)
+    }
+
+    @Test
+    fun unhidingCategoryDoesNotEraseIndependentChannelHide() {
+        val result = LiveBrowseProjector.project(
+            records = records,
+            query = LiveBrowseQuery(includeHidden = true),
+            hiddenCategoryKeys = emptySet(),
+        )
+
+        assertFalse(result.first { it.channelId == "one" }.isHidden)
+        assertTrue(result.first { it.channelId == "hidden" }.isHidden)
+    }
+
+    @Test
     fun localAndTvgNamesOverrideProviderName() {
         val customized = records.first().copy(
             localDisplayName = "My News",
