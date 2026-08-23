@@ -21,6 +21,8 @@ import app.ownplay.player.source.m3u.RemoteM3uLoader
 import app.ownplay.player.source.xtream.XtreamClient
 import java.util.UUID
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.withContext
 
 sealed interface SourceOnboardingFailure {
     data object InvalidName : SourceOnboardingFailure
@@ -124,7 +126,7 @@ class SourceOnboardingService(
 
         val normalizedServerUrl = serverUrl.trim()
         val credentials = XtreamCredentials(
-            username = username,
+            username = username.trim(),
             password = password,
         )
 
@@ -167,13 +169,18 @@ class SourceOnboardingService(
             )
         }
 
-        val result = persistSourceAndCatalog(
-            name = normalizedName,
-            sourceKind = SourceKinds.XTREAM,
-            locatorValue = normalizedServerUrl,
-            credentialRef = credentialRef,
-            catalog = InitialLiveCatalogFactory.fromXtream(categories, streams),
-        )
+        val result = try {
+            persistSourceAndCatalog(
+                name = normalizedName,
+                sourceKind = SourceKinds.XTREAM,
+                locatorValue = normalizedServerUrl,
+                credentialRef = credentialRef,
+                catalog = InitialLiveCatalogFactory.fromXtream(categories, streams),
+            )
+        } catch (cancelled: CancellationException) {
+            runCatching { credentialStore.delete(credentialRef) }
+            throw cancelled
+        }
         if (result is SourceOnboardingResult.Failure) {
             runCatching { credentialStore.delete(credentialRef) }
         }
@@ -212,8 +219,8 @@ class SourceOnboardingService(
                 ),
             )
         } catch (error: Exception) {
+            rollbackSource(sourceId, locatorRef)
             error.rethrowCancellation()
-            cleanupLocator(locatorRef)
             return SourceOnboardingResult.Failure(
                 SourceOnboardingFailure.PersistenceFailure,
             )
@@ -226,8 +233,8 @@ class SourceOnboardingService(
                 catalog = catalog,
             )
         } catch (error: Exception) {
-            error.rethrowCancellation()
             rollbackSource(sourceId, locatorRef)
+            error.rethrowCancellation()
             return SourceOnboardingResult.Failure(
                 SourceOnboardingFailure.CatalogImportFailure,
             )
@@ -253,8 +260,10 @@ class SourceOnboardingService(
         sourceId: String,
         locatorRef: SensitiveValueRef,
     ) {
-        runCatching { database.playlistSourceDao().deleteById(sourceId) }
-        cleanupLocator(locatorRef)
+        withContext(NonCancellable) {
+            runCatching { database.playlistSourceDao().deleteById(sourceId) }
+            cleanupLocator(locatorRef)
+        }
     }
 
     private fun cleanupLocator(locatorRef: SensitiveValueRef) {
