@@ -32,8 +32,14 @@ import app.ownplay.player.OwnPlayAppRuntime
 import app.ownplay.player.epg.EpgSnapshot
 import app.ownplay.player.live.LiveBrowseSession
 import app.ownplay.player.live.LiveBrowseState
+import app.ownplay.player.live.LiveCategory
+import app.ownplay.player.personalization.CategoryVisibilityFailureReason
+import app.ownplay.player.personalization.CategoryVisibilityMutationResult
+import app.ownplay.player.personalization.ChannelBulkAction
+import app.ownplay.player.personalization.ChannelBulkActionExecutionResult
 import app.ownplay.player.personalization.ChannelEditReducer
 import app.ownplay.player.personalization.ChannelEditState
+import app.ownplay.player.personalization.ChannelVisibilityMutationResult
 import app.ownplay.player.playback.LiveChannelSelectionAction
 import app.ownplay.player.playback.LiveChannelSelectionRouter
 import app.ownplay.player.playback.LivePlaybackBrowseContext
@@ -44,6 +50,7 @@ import app.ownplay.player.playback.PlaybackVideoOutput
 import app.ownplay.player.source.SourceSyncStage
 import app.ownplay.player.source.SourceSyncState
 import app.ownplay.player.ui.live.LiveBrowseScreen
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 
 @Composable
@@ -79,31 +86,56 @@ internal fun LiveRoute(
     var epgLookupLoading by remember(sourceId, preview?.request?.channelId) {
         mutableStateOf(false)
     }
+    var epgLookupFailed by remember(sourceId, preview?.request?.channelId) {
+        mutableStateOf(false)
+    }
+    var categoryMutationInFlight by remember(sourceId) { mutableStateOf(false) }
+    var categoryMutationError by remember(sourceId) { mutableStateOf<String?>(null) }
 
     val syncForThisSource = syncState.sourceId == sourceId
     val loadingChannels = syncForThisSource && syncState.stage == SourceSyncStage.LoadingChannels
     val loadingEpg = syncForThisSource && syncState.stage == SourceSyncStage.LoadingEpg
     val channelRefreshFailed = syncForThisSource && syncState.stage == SourceSyncStage.ChannelsFailed
     val epgRefreshFailed = syncForThisSource && syncState.stage == SourceSyncStage.EpgFailed
+    val selectedCategory = browseState.query.categoryKey?.let { categoryKey ->
+        browseState.categories.firstOrNull { category ->
+            category.providerCategoryKey == categoryKey
+        }
+    }
+
+    LaunchedEffect(browseState.query.categoryKey) {
+        categoryMutationError = null
+    }
 
     LaunchedEffect(preview?.request?.channelId, syncState.sourceId, syncState.stage) {
         val selected = preview
         if (selected == null) {
             epgSnapshot = null
             epgLookupLoading = false
+            epgLookupFailed = false
             return@LaunchedEffect
         }
         if (loadingEpg) {
             epgSnapshot = null
             epgLookupLoading = false
+            epgLookupFailed = false
             return@LaunchedEffect
         }
         epgLookupLoading = true
-        epgSnapshot = runtime.epgSnapshot(
-            sourceId = sourceId,
-            channelId = selected.request.channelId,
-        )
-        epgLookupLoading = false
+        epgLookupFailed = false
+        try {
+            epgSnapshot = runtime.epgSnapshot(
+                sourceId = sourceId,
+                channelId = selected.request.channelId,
+            )
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            epgSnapshot = null
+            epgLookupFailed = true
+        } finally {
+            epgLookupLoading = false
+        }
     }
 
     LaunchedEffect(browseState.channels, editState.isEditing) {
@@ -142,7 +174,7 @@ internal fun LiveRoute(
                         EpgPanel(
                             snapshot = epgSnapshot,
                             loading = loadingEpg || epgLookupLoading,
-                            failed = epgRefreshFailed,
+                            failed = epgRefreshFailed || epgLookupFailed,
                             modifier = Modifier.weight(1f),
                         )
                     }
@@ -165,7 +197,7 @@ internal fun LiveRoute(
                         EpgPanel(
                             snapshot = epgSnapshot,
                             loading = loadingEpg || epgLookupLoading,
-                            failed = epgRefreshFailed,
+                            failed = epgRefreshFailed || epgLookupFailed,
                         )
                     }
                 }
@@ -175,7 +207,7 @@ internal fun LiveRoute(
         when {
             loadingChannels -> SyncBanner(
                 text = "Loading channels…",
-                supporting = if (browseState.channels.isEmpty()) {
+                supporting = if (browseState.catalogChannelCount == 0) {
                     "Building the Live catalog."
                 } else {
                     "Refreshing in the background. Existing channels stay available."
@@ -197,7 +229,58 @@ internal fun LiveRoute(
             )
         }
 
-        if (browseState.channels.isEmpty() && !loadingChannels) {
+        if (editState.isEditing && selectedCategory != null) {
+            CategoryEditBar(
+                category = selectedCategory,
+                mutationInFlight = categoryMutationInFlight,
+                errorMessage = categoryMutationError,
+                onToggleVisibility = {
+                    if (categoryMutationInFlight) return@CategoryEditBar
+                    val category = selectedCategory
+                    val previewCategoryKey = preview?.request?.channelId?.let { channelId ->
+                        browseState.channelCategoryKeyById[channelId]
+                    }
+                    categoryMutationInFlight = true
+                    categoryMutationError = null
+                    mutationScope.launch {
+                        try {
+                            val result = if (category.isHidden) {
+                                runtime.unhideCategory(
+                                    sourceId = sourceId,
+                                    providerCategoryKey = category.providerCategoryKey,
+                                )
+                            } else {
+                                runtime.hideCategory(
+                                    sourceId = sourceId,
+                                    providerCategoryKey = category.providerCategoryKey,
+                                )
+                            }
+                            when (result) {
+                                is CategoryVisibilityMutationResult.Success -> {
+                                    if (
+                                        result.hidden &&
+                                        previewCategoryKey == result.providerCategoryKey
+                                    ) {
+                                        onPreviewClosed()
+                                    }
+                                }
+                                is CategoryVisibilityMutationResult.Failure -> {
+                                    categoryMutationError = categoryVisibilityFailureLabel(result)
+                                }
+                            }
+                        } catch (cancelled: CancellationException) {
+                            throw cancelled
+                        } catch (_: Exception) {
+                            categoryMutationError = "Could not update this category. Try again."
+                        } finally {
+                            categoryMutationInFlight = false
+                        }
+                    }
+                },
+            )
+        }
+
+        if (browseState.catalogChannelCount == 0 && !loadingChannels) {
             LiveCatalogEmptyState(
                 failed = channelRefreshFailed,
                 onRetry = { mutationScope.launch { runtime.refreshSource(sourceId) } },
@@ -212,13 +295,25 @@ internal fun LiveRoute(
                 onFavoritesOnlyChanged = browseSession::setFavoritesOnly,
                 onOrderChanged = browseSession::setOrder,
                 onCustomGroupSelected = browseSession::selectCustomGroup,
-                onHiddenOnlyChanged = browseSession::setHiddenOnly,
+                onHiddenOnlyChanged = { enabled ->
+                    browseSession.setHiddenOnly(
+                        enabled = enabled,
+                        includeHiddenWhenDisabled = editState.isEditing,
+                    )
+                },
                 editState = editState,
                 onEditModeChanged = { editing ->
-                    editState = if (editing) {
-                        ChannelEditReducer.enter(editState)
+                    if (editing) {
+                        browseSession.setIncludeHidden(true)
+                        editState = ChannelEditReducer.enter(editState)
                     } else {
-                        ChannelEditReducer.exit(editState)
+                        if (selectedCategory?.isHidden == true) {
+                            browseSession.selectCategory(null)
+                        }
+                        if (!browseState.query.hiddenOnly) {
+                            browseSession.setIncludeHidden(false)
+                        }
+                        editState = ChannelEditReducer.exit(editState)
                     }
                 },
                 onChannelSelectionToggle = { channelId ->
@@ -237,11 +332,19 @@ internal fun LiveRoute(
                     val selection = editState.selectedChannelIds
                     if (selection.isNotEmpty()) {
                         mutationScope.launch {
-                            runtime.executeChannelBulkAction(
+                            val result = runtime.executeChannelBulkAction(
                                 sourceId = sourceId,
                                 selectedChannelIds = selection,
                                 action = action,
                             )
+                            val activeChannelWasHidden =
+                                action == ChannelBulkAction.Hide &&
+                                    result is ChannelBulkActionExecutionResult.Visibility &&
+                                    result.result is ChannelVisibilityMutationResult.Success &&
+                                    preview?.request?.channelId in selection
+                            if (activeChannelWasHidden) {
+                                onPreviewClosed()
+                            }
                         }
                     }
                 },
@@ -325,6 +428,76 @@ internal fun LiveRoute(
             )
         }
     }
+}
+
+@Composable
+private fun CategoryEditBar(
+    category: LiveCategory,
+    mutationInFlight: Boolean,
+    errorMessage: String?,
+    onToggleVisibility: () -> Unit,
+) {
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 4.dp),
+        shape = RoundedCornerShape(16.dp),
+        color = if (category.isHidden) {
+            MaterialTheme.colorScheme.errorContainer
+        } else {
+            MaterialTheme.colorScheme.secondaryContainer
+        },
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = category.name,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                Text(
+                    text = when {
+                        errorMessage != null -> errorMessage
+                        category.isHidden -> "Hidden category. Its channels stay visible while editing."
+                        else -> "Hide this category and all channels inside it."
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = if (errorMessage != null) {
+                        MaterialTheme.colorScheme.error
+                    } else if (category.isHidden) {
+                        MaterialTheme.colorScheme.onErrorContainer
+                    } else {
+                        MaterialTheme.colorScheme.onSecondaryContainer
+                    },
+                )
+            }
+            if (mutationInFlight) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(20.dp),
+                    strokeWidth = 2.dp,
+                )
+            } else {
+                TextButton(onClick = onToggleVisibility) {
+                    Text(if (category.isHidden) "Unhide category" else "Hide category")
+                }
+            }
+        }
+    }
+}
+
+private fun categoryVisibilityFailureLabel(
+    failure: CategoryVisibilityMutationResult.Failure,
+): String = when (failure.reason) {
+    CategoryVisibilityFailureReason.CATEGORY_NOT_FOUND ->
+        "This category is no longer available. Refresh and try again."
+    CategoryVisibilityFailureReason.PERSISTENCE_FAILURE ->
+        "Could not save category visibility. Try again."
+    CategoryVisibilityFailureReason.INVALID_SOURCE_ID,
+    CategoryVisibilityFailureReason.EMPTY_CATEGORY_KEY,
+    -> "Category visibility is unavailable for this item."
 }
 
 @Composable
