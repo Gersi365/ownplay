@@ -12,17 +12,33 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.AspectRatio
+import androidx.compose.material.icons.filled.Fullscreen
+import androidx.compose.material.icons.filled.FullscreenExit
+import androidx.compose.material.icons.filled.Pause
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.SkipNext
+import androidx.compose.material.icons.filled.SkipPrevious
+import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -36,7 +52,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -274,159 +289,144 @@ private fun PlaybackControlsOverlay(
     onReturnToChannels: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val compact = LocalConfiguration.current.screenWidthDp < 600
     Column(
         modifier = modifier
-            .background(Color.Black.copy(alpha = 0.72f))
+            .background(Color.Black.copy(alpha = 0.78f))
             .navigationBarsPadding()
             .padding(horizontal = 14.dp, vertical = 10.dp),
-        verticalArrangement = Arrangement.spacedBy(6.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        Text(
-            text = selection.displayName,
-            style = MaterialTheme.typography.titleMedium,
-            fontWeight = FontWeight.SemiBold,
-            color = Color.White,
-            maxLines = 2,
-            overflow = TextOverflow.Ellipsis,
-        )
-        Text(
-            text = playbackStatusLabel(state),
-            style = MaterialTheme.typography.bodyMedium,
-            color = Color.White.copy(alpha = 0.78f),
-        )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = selection.displayName,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    color = Color.White,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    text = playbackStatusLabel(state),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Color.White.copy(alpha = 0.76f),
+                    maxLines = 1,
+                )
+            }
+        }
 
-        if (compact) {
-            CompactPlaybackControls(
-                selection = selection,
-                state = state,
-                controls = controls,
-                resizeMode = resizeMode,
-                isFullscreen = isFullscreen,
-                onPlay = onPlay,
-                onPause = onPause,
-                onNavigate = onNavigate,
-                onResizeModeChanged = onResizeModeChanged,
-                onFullscreenChanged = onFullscreenChanged,
-                onTracksRequested = onTracksRequested,
-                onReturnToChannels = onReturnToChannels,
-            )
-        } else {
-            ExpandedPlaybackControls(
-                selection = selection,
-                state = state,
-                controls = controls,
-                resizeMode = resizeMode,
-                isFullscreen = isFullscreen,
-                onPlay = onPlay,
-                onPause = onPause,
-                onNavigate = onNavigate,
-                onResizeModeChanged = onResizeModeChanged,
-                onFullscreenChanged = onFullscreenChanged,
-                onTracksRequested = onTracksRequested,
-                onReturnToChannels = onReturnToChannels,
-            )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            PlaybackControlSlot {
+                IconButton(onClick = onReturnToChannels) {
+                    Icon(
+                        Icons.Filled.ArrowBack,
+                        contentDescription = "Back to channels",
+                        tint = Color.White,
+                    )
+                }
+            }
+            PlaybackControlSlot {
+                IconButton(
+                    onClick = { onNavigate(PlaybackNavigationDirection.PREVIOUS) },
+                    enabled = selection.request.navigationTarget(
+                        PlaybackNavigationDirection.PREVIOUS,
+                    ) != null,
+                ) {
+                    Icon(
+                        Icons.Filled.SkipPrevious,
+                        contentDescription = "Previous channel",
+                        tint = Color.White,
+                    )
+                }
+            }
+            PlaybackControlSlot {
+                FilledIconButton(
+                    onClick = if (controls.canPause) onPause else onPlay,
+                    enabled = controls.canPause || controls.canPlay,
+                ) {
+                    Icon(
+                        imageVector = if (controls.canPause) {
+                            Icons.Filled.Pause
+                        } else {
+                            Icons.Filled.PlayArrow
+                        },
+                        contentDescription = if (controls.canPause) "Pause" else "Play",
+                    )
+                }
+            }
+            PlaybackControlSlot {
+                IconButton(
+                    onClick = { onNavigate(PlaybackNavigationDirection.NEXT) },
+                    enabled = selection.request.navigationTarget(
+                        PlaybackNavigationDirection.NEXT,
+                    ) != null,
+                ) {
+                    Icon(
+                        Icons.Filled.SkipNext,
+                        contentDescription = "Next channel",
+                        tint = Color.White,
+                    )
+                }
+            }
+            PlaybackControlSlot {
+                IconButton(onClick = onFullscreenChanged) {
+                    Icon(
+                        imageVector = if (isFullscreen) {
+                            Icons.Filled.FullscreenExit
+                        } else {
+                            Icons.Filled.Fullscreen
+                        },
+                        contentDescription = if (isFullscreen) {
+                            "Exit fullscreen"
+                        } else {
+                            "Enter fullscreen"
+                        },
+                        tint = Color.White,
+                    )
+                }
+            }
+        }
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            OutlinedButton(
+                onClick = onTracksRequested,
+                enabled = state is PlaybackState.Playing || state is PlaybackState.Paused,
+                modifier = Modifier.weight(1f),
+            ) {
+                Icon(Icons.Filled.Tune, contentDescription = null)
+                Spacer(modifier = Modifier.width(6.dp))
+                Text("Tracks")
+            }
+            OutlinedButton(
+                onClick = onResizeModeChanged,
+                modifier = Modifier.weight(1f),
+            ) {
+                Icon(Icons.Filled.AspectRatio, contentDescription = null)
+                Spacer(modifier = Modifier.width(6.dp))
+                Text(resizeModeLabel(resizeMode))
+            }
         }
     }
 }
 
 @Composable
-private fun CompactPlaybackControls(
-    selection: LivePlaybackSelection,
-    state: PlaybackState,
-    controls: PlaybackControlAvailability,
-    resizeMode: PlaybackResizeMode,
-    isFullscreen: Boolean,
-    onPlay: () -> Unit,
-    onPause: () -> Unit,
-    onNavigate: (PlaybackNavigationDirection) -> Unit,
-    onResizeModeChanged: () -> Unit,
-    onFullscreenChanged: () -> Unit,
-    onTracksRequested: () -> Unit,
-    onReturnToChannels: () -> Unit,
+private fun RowScope.PlaybackControlSlot(
+    content: @Composable () -> Unit,
 ) {
-    Row(modifier = Modifier.fillMaxWidth()) {
-        TextButton(
-            onClick = { onNavigate(PlaybackNavigationDirection.PREVIOUS) },
-            enabled = selection.request.navigationTarget(PlaybackNavigationDirection.PREVIOUS) != null,
-            modifier = Modifier.weight(1f),
-        ) { Text("Previous") }
-        if (controls.canPlay) {
-            TextButton(onClick = onPlay, modifier = Modifier.weight(1f)) { Text("Play") }
-        }
-        if (controls.canPause) {
-            TextButton(onClick = onPause, modifier = Modifier.weight(1f)) { Text("Pause") }
-        }
-        TextButton(
-            onClick = { onNavigate(PlaybackNavigationDirection.NEXT) },
-            enabled = selection.request.navigationTarget(PlaybackNavigationDirection.NEXT) != null,
-            modifier = Modifier.weight(1f),
-        ) { Text("Next") }
-    }
-    Row(modifier = Modifier.fillMaxWidth()) {
-        TextButton(onClick = onReturnToChannels, modifier = Modifier.weight(1f)) {
-            Text("Channels")
-        }
-        TextButton(
-            onClick = onTracksRequested,
-            enabled = state is PlaybackState.Playing || state is PlaybackState.Paused,
-            modifier = Modifier.weight(1f),
-        ) { Text("Tracks") }
-    }
-    Row(modifier = Modifier.fillMaxWidth()) {
-        TextButton(onClick = onResizeModeChanged, modifier = Modifier.weight(1f)) {
-            Text(resizeModeLabel(resizeMode))
-        }
-        TextButton(onClick = onFullscreenChanged, modifier = Modifier.weight(1f)) {
-            Text(if (isFullscreen) "Exit fullscreen" else "Fullscreen")
-        }
-    }
-}
-
-@Composable
-private fun ExpandedPlaybackControls(
-    selection: LivePlaybackSelection,
-    state: PlaybackState,
-    controls: PlaybackControlAvailability,
-    resizeMode: PlaybackResizeMode,
-    isFullscreen: Boolean,
-    onPlay: () -> Unit,
-    onPause: () -> Unit,
-    onNavigate: (PlaybackNavigationDirection) -> Unit,
-    onResizeModeChanged: () -> Unit,
-    onFullscreenChanged: () -> Unit,
-    onTracksRequested: () -> Unit,
-    onReturnToChannels: () -> Unit,
-) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.CenterVertically,
+    Box(
+        modifier = Modifier.weight(1f),
+        contentAlignment = Alignment.Center,
     ) {
-        TextButton(onClick = onReturnToChannels) { Text("Channels") }
-        TextButton(
-            onClick = { onNavigate(PlaybackNavigationDirection.PREVIOUS) },
-            enabled = selection.request.navigationTarget(PlaybackNavigationDirection.PREVIOUS) != null,
-        ) { Text("Previous") }
-        if (controls.canPlay) TextButton(onClick = onPlay) { Text("Play") }
-        if (controls.canPause) TextButton(onClick = onPause) { Text("Pause") }
-        TextButton(
-            onClick = { onNavigate(PlaybackNavigationDirection.NEXT) },
-            enabled = selection.request.navigationTarget(PlaybackNavigationDirection.NEXT) != null,
-        ) { Text("Next") }
-    }
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Spacer(modifier = Modifier.weight(1f))
-        TextButton(
-            onClick = onTracksRequested,
-            enabled = state is PlaybackState.Playing || state is PlaybackState.Paused,
-        ) { Text("Tracks") }
-        TextButton(onClick = onResizeModeChanged) { Text(resizeModeLabel(resizeMode)) }
-        TextButton(onClick = onFullscreenChanged) {
-            Text(if (isFullscreen) "Exit fullscreen" else "Fullscreen")
-        }
+        content()
     }
 }
 
@@ -463,7 +463,11 @@ private fun PlaybackTracksPanel(
                 TextButton(onClick = onClose) { Text("Close") }
             }
 
-            Text("Audio", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Medium)
+            Text(
+                "Audio",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Medium,
+            )
             TrackChoiceButton(
                 label = "Default",
                 selected = state.audioSelection == PlaybackAudioSelection.Default,
@@ -484,7 +488,11 @@ private fun PlaybackTracksPanel(
             }
 
             HorizontalDivider()
-            Text("Subtitles", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Medium)
+            Text(
+                "Subtitles",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Medium,
+            )
             TrackChoiceButton(
                 label = "Default",
                 selected = state.subtitleSelection == PlaybackSubtitleSelection.Default,

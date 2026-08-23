@@ -14,6 +14,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -27,6 +28,16 @@ internal fun EpgPanel(
     failed: Boolean,
     modifier: Modifier = Modifier,
 ) {
+    if (LocalConfiguration.current.screenWidthDp < 700) {
+        CompactEpgPanel(
+            snapshot = snapshot,
+            loading = loading,
+            failed = failed,
+            modifier = modifier,
+        )
+        return
+    }
+
     Surface(
         modifier = modifier.fillMaxWidth(),
         shape = RoundedCornerShape(24.dp),
@@ -104,6 +115,58 @@ internal fun EpgPanel(
                             future.forEach { program -> ProgramLine(program) }
                         }
                     }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun CompactEpgPanel(
+    snapshot: EpgSnapshot?,
+    loading: Boolean,
+    failed: Boolean,
+    modifier: Modifier = Modifier,
+) {
+    Surface(
+        modifier = modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(16.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant,
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            if (loading) {
+                CircularProgressIndicator(strokeWidth = 2.dp)
+            }
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(2.dp),
+            ) {
+                val current = snapshot?.current
+                val next = snapshot?.next
+                Text(
+                    text = when {
+                        loading -> "Loading EPG…"
+                        failed -> "EPG unavailable"
+                        current != null -> "Now · ${current.title}"
+                        else -> "No EPG for this channel"
+                    },
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.Medium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                if (!loading && !failed && next != null) {
+                    Text(
+                        text = "Next · ${next.title}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
                 }
             }
         }

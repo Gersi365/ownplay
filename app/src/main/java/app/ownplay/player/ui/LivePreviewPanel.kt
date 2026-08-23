@@ -8,15 +8,24 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Button
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Fullscreen
+import androidx.compose.material.icons.filled.Pause
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.SkipNext
+import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.FilledIconButton
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -56,7 +65,7 @@ internal fun LivePreviewPanel(
 
     Surface(
         modifier = modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(24.dp),
+        shape = RoundedCornerShape(20.dp),
         color = MaterialTheme.colorScheme.surface,
         tonalElevation = 4.dp,
     ) {
@@ -135,20 +144,11 @@ internal fun LivePreviewPanel(
                         }
                     }
                 }
-
-                Text(
-                    text = "Tap preview to open player",
-                    modifier = Modifier
-                        .align(Alignment.BottomEnd)
-                        .padding(10.dp),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = Color.White.copy(alpha = 0.78f),
-                )
             }
 
             Column(
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp),
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
             ) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -157,7 +157,7 @@ internal fun LivePreviewPanel(
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
                             text = selection.displayName,
-                            style = MaterialTheme.typography.titleMedium,
+                            style = MaterialTheme.typography.titleSmall,
                             fontWeight = FontWeight.SemiBold,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
@@ -166,44 +166,74 @@ internal fun LivePreviewPanel(
                             text = playbackStatusLabel(state),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
                         )
-                    }
-                    TextButton(onClick = onClose) {
-                        Text("Hide")
                     }
                 }
 
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    TextButton(
-                        onClick = { onNavigate(PlaybackNavigationDirection.PREVIOUS) },
-                        enabled = selection.request.navigationTarget(PlaybackNavigationDirection.PREVIOUS) != null,
-                    ) {
-                        Text("Previous")
+                    PreviewControlSlot {
+                        IconButton(
+                            onClick = { onNavigate(PlaybackNavigationDirection.PREVIOUS) },
+                            enabled = selection.request.navigationTarget(
+                                PlaybackNavigationDirection.PREVIOUS,
+                            ) != null,
+                        ) {
+                            Icon(Icons.Filled.SkipPrevious, contentDescription = "Previous channel")
+                        }
                     }
-
-                    when {
-                        controls.canPause -> Button(onClick = onPause) { Text("Pause") }
-                        controls.canPlay -> Button(onClick = onPlay) { Text("Play") }
+                    PreviewControlSlot {
+                        FilledIconButton(
+                            onClick = if (controls.canPause) onPause else onPlay,
+                            enabled = controls.canPause || controls.canPlay,
+                        ) {
+                            Icon(
+                                imageVector = if (controls.canPause) {
+                                    Icons.Filled.Pause
+                                } else {
+                                    Icons.Filled.PlayArrow
+                                },
+                                contentDescription = if (controls.canPause) "Pause" else "Play",
+                            )
+                        }
                     }
-
-                    TextButton(
-                        onClick = { onNavigate(PlaybackNavigationDirection.NEXT) },
-                        enabled = selection.request.navigationTarget(PlaybackNavigationDirection.NEXT) != null,
-                    ) {
-                        Text("Next")
+                    PreviewControlSlot {
+                        IconButton(
+                            onClick = { onNavigate(PlaybackNavigationDirection.NEXT) },
+                            enabled = selection.request.navigationTarget(
+                                PlaybackNavigationDirection.NEXT,
+                            ) != null,
+                        ) {
+                            Icon(Icons.Filled.SkipNext, contentDescription = "Next channel")
+                        }
                     }
-
-                    Spacer(modifier = Modifier.weight(1f))
-
-                    Button(onClick = onOpenFullscreen) {
-                        Text("Open")
+                    PreviewControlSlot {
+                        IconButton(onClick = onOpenFullscreen) {
+                            Icon(Icons.Filled.Fullscreen, contentDescription = "Open full player")
+                        }
+                    }
+                    PreviewControlSlot {
+                        IconButton(onClick = onClose) {
+                            Icon(Icons.Filled.Close, contentDescription = "Close preview")
+                        }
                     }
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun RowScope.PreviewControlSlot(
+    content: @Composable () -> Unit,
+) {
+    Box(
+        modifier = Modifier.weight(1f),
+        contentAlignment = Alignment.Center,
+    ) {
+        content()
     }
 }

@@ -13,6 +13,7 @@ import androidx.media3.common.TrackSelectionOverride
 import androidx.media3.common.Tracks
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.HttpDataSource
+import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -28,7 +29,10 @@ interface PlaybackVideoOutput {
 class Media3PlaybackEngine(
     context: Context,
 ) : PlaybackEngine, PlaybackVideoOutput, PlaybackTrackController {
-    private val player = ExoPlayer.Builder(context.applicationContext).build()
+    private val applicationContext = context.applicationContext
+    private val renderersFactory = DefaultRenderersFactory(applicationContext)
+        .setEnableDecoderFallback(true)
+    private val player = ExoPlayer.Builder(applicationContext, renderersFactory).build()
     private val playerHandler = Handler(player.applicationLooper)
     private val mutableTrackState = MutableStateFlow(PlaybackTrackState())
     private var listener: PlaybackEngine.Listener? = null
@@ -62,6 +66,7 @@ class Media3PlaybackEngine(
 
                 override fun onTracksChanged(tracks: Tracks) {
                     publishTracks(tracks)
+                    ensureSupportedAudioSelected(tracks)
                 }
 
                 override fun onPlayerError(error: PlaybackException) {
@@ -290,6 +295,34 @@ class Media3PlaybackEngine(
             audioTracks = audioTracks,
             subtitleTracks = subtitleTracks,
         )
+    }
+
+    private fun ensureSupportedAudioSelected(tracks: Tracks) {
+        val hasSelectedAudio = tracks.groups.any { group ->
+            group.type == C.TRACK_TYPE_AUDIO &&
+                (0 until group.length).any { index -> group.isTrackSelected(index) }
+        }
+        if (hasSelectedAudio) return
+
+        val fallback = tracks.groups.firstNotNullOfOrNull { group ->
+            if (group.type != C.TRACK_TYPE_AUDIO) {
+                null
+            } else {
+                val index = (0 until group.length).firstOrNull { index -> group.isTrackSupported(index) }
+                index?.let { supportedIndex -> group.mediaTrackGroup to supportedIndex }
+            }
+        } ?: return
+
+        player.trackSelectionParameters = player.trackSelectionParameters
+            .buildUpon()
+            .setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, false)
+            .setOverrideForType(
+                TrackSelectionOverride(
+                    fallback.first,
+                    fallback.second,
+                ),
+            )
+            .build()
     }
 
     private fun resetTrackSelectionForNewMedia() {
