@@ -13,6 +13,27 @@ interface PlaylistSourceDao {
     @Query("SELECT * FROM playlist_sources WHERE enabled = 1 ORDER BY createdAtEpochMillis ASC")
     fun observeAll(): Flow<List<PlaylistSourceEntity>>
 
+    @Query(
+        """
+        SELECT
+            source.sourceId AS sourceId,
+            source.name AS name,
+            source.sourceKind AS sourceKind,
+            source.enabled AS enabled,
+            CAST(COUNT(channel.channelId) AS INTEGER) AS channelCount,
+            source.createdAtEpochMillis AS createdAtEpochMillis,
+            source.updatedAtEpochMillis AS updatedAtEpochMillis
+        FROM playlist_sources AS source
+        LEFT JOIN provider_channels AS channel
+            ON channel.sourceId = source.sourceId
+            AND channel.availability != 'removed'
+        WHERE source.enabled = 1
+        GROUP BY source.sourceId
+        ORDER BY source.createdAtEpochMillis ASC
+        """,
+    )
+    fun observeSummaries(): Flow<List<PlaylistSourceSummary>>
+
     @Query("SELECT * FROM playlist_sources WHERE sourceId = :sourceId LIMIT 1")
     suspend fun getById(sourceId: String): PlaylistSourceEntity?
 
