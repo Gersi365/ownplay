@@ -97,7 +97,19 @@ class InitialLiveCatalogIngestor(
             -> return InitialLiveCatalogIngestResult.DuplicateChannelKey
         }
 
-        val allocatedRefs = mutableListOf<SensitiveValueRef>()
+        val sensitiveValues = buildList {
+            catalog.channels.forEach { incoming ->
+                add(incoming.locatorValue)
+                incoming.logoValue?.let(::add)
+            }
+        }
+        val allocatedRefs = try {
+            sensitiveValueStore.putAll(sensitiveValues)
+        } catch (error: Exception) {
+            error.rethrowCancellation()
+            return InitialLiveCatalogIngestResult.SecureStorageFailure
+        }
+        val refIterator = allocatedRefs.iterator()
         val existingByChannelId = existing.associateBy(ProviderChannelEntity::channelId)
         val oldRefsToDelete = linkedSetOf<SensitiveValueRef>()
 
@@ -107,11 +119,8 @@ class InitialLiveCatalogIngestor(
                     ?: stableLocalId("channel", sourceId, incoming.providerKey)
                 val previous = existingByChannelId[channelId]
 
-                val streamRef = sensitiveValueStore.put(incoming.locatorValue)
-                    .also(allocatedRefs::add)
-                val logoRef = incoming.logoValue?.let { logoValue ->
-                    sensitiveValueStore.put(logoValue).also(allocatedRefs::add)
-                }
+                val streamRef = refIterator.next()
+                val logoRef = incoming.logoValue?.let { refIterator.next() }
 
                 previous?.streamLocatorRef?.let { oldRef ->
                     if (oldRef != streamRef.value) oldRefsToDelete += SensitiveValueRef(oldRef)
@@ -169,9 +178,9 @@ class InitialLiveCatalogIngestor(
     }
 
     private fun cleanup(refs: Iterable<SensitiveValueRef>) {
-        refs.forEach { ref ->
-            runCatching { sensitiveValueStore.delete(ref) }
-        }
+        val batch = refs.toList()
+        if (batch.isEmpty()) return
+        runCatching { sensitiveValueStore.deleteAll(batch) }
     }
 
     private fun hasDuplicateCategoryKeys(categories: List<IncomingLiveCategory>): Boolean {

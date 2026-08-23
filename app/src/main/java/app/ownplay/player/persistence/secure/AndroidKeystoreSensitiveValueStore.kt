@@ -15,29 +15,36 @@ class AndroidKeystoreSensitiveValueStore(context: Context) : SensitiveValueStore
         PREFERENCES_NAME,
         Context.MODE_PRIVATE,
     )
+    private val encryptionKey: SecretKey by lazy { getOrCreateKey() }
 
-    override fun put(value: String): SensitiveValueRef {
-        val ref = SensitiveValueRef(UUID.randomUUID().toString())
-        val plaintext = value.toByteArray(StandardCharsets.UTF_8)
-        val encrypted = try {
-            SensitiveValueCrypto.encrypt(getOrCreateKey(), plaintext)
-        } finally {
-            plaintext.fill(0)
+    override fun put(value: String): SensitiveValueRef = putAll(listOf(value)).single()
+
+    override fun putAll(values: List<String>): List<SensitiveValueRef> {
+        if (values.isEmpty()) return emptyList()
+
+        val encryptedValues = values.map { value ->
+            val ref = SensitiveValueRef(UUID.randomUUID().toString())
+            val plaintext = value.toByteArray(StandardCharsets.UTF_8)
+            val encrypted = try {
+                SensitiveValueCrypto.encrypt(encryptionKey, plaintext)
+            } finally {
+                plaintext.fill(0)
+            }
+            ref to encode(encrypted)
         }
 
-        check(
-            preferences.edit()
-                .putString(storageKey(ref), encode(encrypted))
-                .commit(),
-        ) { "Unable to persist encrypted sensitive value" }
-
-        return ref
+        val editor = preferences.edit()
+        encryptedValues.forEach { (ref, encoded) ->
+            editor.putString(storageKey(ref), encoded)
+        }
+        check(editor.commit()) { "Unable to persist encrypted sensitive values" }
+        return encryptedValues.map { (ref, _) -> ref }
     }
 
     override fun get(ref: SensitiveValueRef): String? {
         val encoded = preferences.getString(storageKey(ref), null) ?: return null
         val encrypted = decode(encoded)
-        val plaintext = SensitiveValueCrypto.decrypt(getOrCreateKey(), encrypted)
+        val plaintext = SensitiveValueCrypto.decrypt(encryptionKey, encrypted)
         return try {
             String(plaintext, StandardCharsets.UTF_8)
         } finally {
@@ -46,9 +53,14 @@ class AndroidKeystoreSensitiveValueStore(context: Context) : SensitiveValueStore
     }
 
     override fun delete(ref: SensitiveValueRef) {
-        check(preferences.edit().remove(storageKey(ref)).commit()) {
-            "Unable to delete encrypted sensitive value"
-        }
+        deleteAll(listOf(ref))
+    }
+
+    override fun deleteAll(refs: Collection<SensitiveValueRef>) {
+        if (refs.isEmpty()) return
+        val editor = preferences.edit()
+        refs.forEach { ref -> editor.remove(storageKey(ref)) }
+        check(editor.commit()) { "Unable to delete encrypted sensitive values" }
     }
 
     private fun getOrCreateKey(): SecretKey = synchronized(KEY_LOCK) {
