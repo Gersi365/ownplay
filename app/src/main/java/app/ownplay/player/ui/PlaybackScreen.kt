@@ -23,10 +23,11 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.AspectRatio
 import androidx.compose.material.icons.filled.Fullscreen
 import androidx.compose.material.icons.filled.FullscreenExit
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.SkipNext
@@ -66,6 +67,7 @@ import androidx.media3.ui.PlayerView
 import app.ownplay.player.playback.LivePlaybackSelection
 import app.ownplay.player.playback.PlaybackAudioSelection
 import app.ownplay.player.playback.PlaybackControlAvailability
+import app.ownplay.player.playback.PlaybackDiagnostics
 import app.ownplay.player.playback.PlaybackNavigationDirection
 import app.ownplay.player.playback.PlaybackPresentationPolicy
 import app.ownplay.player.playback.PlaybackResizeMode
@@ -96,6 +98,7 @@ internal fun PlaybackScreen(
     var resizeMode by remember { mutableStateOf(PlaybackResizeMode.FIT) }
     var controlsVisible by remember { mutableStateOf(true) }
     var showTracks by remember { mutableStateOf(false) }
+    var showDiagnostics by remember { mutableStateOf(false) }
     val controls = PlaybackPresentationPolicy.controlsFor(state)
 
     FullscreenSystemBarsEffect(enabled = isFullscreen)
@@ -107,8 +110,13 @@ internal fun PlaybackScreen(
         onDispose { onFullscreenStateChanged(false) }
     }
 
-    LaunchedEffect(state, controlsVisible, showTracks) {
-        if (state is PlaybackState.Playing && controlsVisible && !showTracks) {
+    LaunchedEffect(state, controlsVisible, showTracks, showDiagnostics) {
+        if (
+            state is PlaybackState.Playing &&
+            controlsVisible &&
+            !showTracks &&
+            !showDiagnostics
+        ) {
             delay(3_000L)
             controlsVisible = false
         }
@@ -116,6 +124,7 @@ internal fun PlaybackScreen(
 
     BackHandler {
         when {
+            showDiagnostics -> showDiagnostics = false
             showTracks -> showTracks = false
             isFullscreen -> {
                 isFullscreen = false
@@ -140,10 +149,10 @@ internal fun PlaybackScreen(
                 modifier = Modifier
                     .fillMaxSize()
                     .clickable {
-                        if (showTracks) {
-                            showTracks = false
-                        } else {
-                            controlsVisible = !controlsVisible
+                        when {
+                            showDiagnostics -> showDiagnostics = false
+                            showTracks -> showTracks = false
+                            else -> controlsVisible = !controlsVisible
                         }
                     },
             ) {}
@@ -181,6 +190,7 @@ internal fun PlaybackScreen(
                     },
                     onNavigate = { direction ->
                         showTracks = false
+                        showDiagnostics = false
                         controlsVisible = true
                         onNavigate(direction)
                     },
@@ -193,7 +203,13 @@ internal fun PlaybackScreen(
                         controlsVisible = true
                     },
                     onTracksRequested = {
+                        showDiagnostics = false
                         showTracks = true
+                        controlsVisible = true
+                    },
+                    onDiagnosticsRequested = {
+                        showTracks = false
+                        showDiagnostics = true
                         controlsVisible = true
                     },
                     onReturnToChannels = onReturnToChannels,
@@ -213,6 +229,18 @@ internal fun PlaybackScreen(
                         .align(Alignment.Center)
                         .fillMaxWidth()
                         .fillMaxHeight(0.86f)
+                        .padding(16.dp),
+                )
+            }
+
+            if (showDiagnostics) {
+                PlaybackDiagnosticsPanel(
+                    diagnostics = trackState.diagnostics,
+                    onClose = { showDiagnostics = false },
+                    modifier = Modifier
+                        .align(Alignment.Center)
+                        .fillMaxWidth()
+                        .fillMaxHeight(0.78f)
                         .padding(16.dp),
                 )
             }
@@ -286,6 +314,7 @@ private fun PlaybackControlsOverlay(
     onResizeModeChanged: () -> Unit,
     onFullscreenChanged: () -> Unit,
     onTracksRequested: () -> Unit,
+    onDiagnosticsRequested: () -> Unit,
     onReturnToChannels: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -316,6 +345,13 @@ private fun PlaybackControlsOverlay(
                     maxLines = 1,
                 )
             }
+            IconButton(onClick = onDiagnosticsRequested) {
+                Icon(
+                    Icons.Filled.Info,
+                    contentDescription = "Playback diagnostics",
+                    tint = Color.White,
+                )
+            }
         }
 
         Row(
@@ -325,7 +361,7 @@ private fun PlaybackControlsOverlay(
             PlaybackControlSlot {
                 IconButton(onClick = onReturnToChannels) {
                     Icon(
-                        Icons.Filled.ArrowBack,
+                        Icons.AutoMirrored.Filled.ArrowBack,
                         contentDescription = "Back to channels",
                         tint = Color.White,
                     )
@@ -517,6 +553,101 @@ private fun PlaybackTracksPanel(
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun PlaybackDiagnosticsPanel(
+    diagnostics: PlaybackDiagnostics,
+    onClose: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Surface(
+        modifier = modifier,
+        tonalElevation = 8.dp,
+        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.98f),
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState())
+                .padding(20.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = "Playback diagnostics",
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                Spacer(modifier = Modifier.weight(1f))
+                TextButton(onClick = onClose) { Text("Close") }
+            }
+
+            Text(
+                text = "Technical media information only. Stream URLs and credentials are never shown here.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            DiagnosticRow("Decoder policy", diagnostics.rendererPolicy)
+
+            HorizontalDivider()
+            Text("Audio", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Medium)
+            DiagnosticRow("Format", diagnostics.audioMimeType ?: "Not reported")
+            DiagnosticRow("Codec", diagnostics.audioCodecs ?: "Not reported")
+            DiagnosticRow("Decoder", diagnostics.audioDecoder ?: "Pending / not reported")
+            DiagnosticRow("FFmpeg", if (diagnostics.usingFfmpegAudio) "Active fallback" else "Not active")
+            DiagnosticRow(
+                "Output",
+                listOfNotNull(
+                    diagnostics.audioChannelCount?.let { "$it ch" },
+                    diagnostics.audioSampleRate?.let { "$it Hz" },
+                ).joinToString(" · ").ifBlank { "Not reported" },
+            )
+            DiagnosticRow("Language", diagnostics.audioLanguage ?: "Not reported")
+
+            HorizontalDivider()
+            Text("Video", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Medium)
+            DiagnosticRow("Format", diagnostics.videoMimeType ?: "Not reported")
+            DiagnosticRow("Codec", diagnostics.videoCodecs ?: "Not reported")
+            DiagnosticRow("Decoder", diagnostics.videoDecoder ?: "Pending / not reported")
+            DiagnosticRow(
+                "Resolution",
+                if (diagnostics.videoWidth != null && diagnostics.videoHeight != null) {
+                    "${diagnostics.videoWidth} × ${diagnostics.videoHeight}"
+                } else {
+                    "Not reported"
+                },
+            )
+        }
+    }
+}
+
+@Composable
+private fun DiagnosticRow(
+    label: String,
+    value: String,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalAlignment = Alignment.Top,
+    ) {
+        Text(
+            text = label,
+            modifier = Modifier.weight(0.38f),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Text(
+            text = value,
+            modifier = Modifier.weight(0.62f),
+            style = MaterialTheme.typography.bodySmall,
+            fontWeight = FontWeight.Medium,
+        )
     }
 }
 
