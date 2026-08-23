@@ -31,6 +31,11 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -46,6 +51,7 @@ import app.ownplay.player.playback.PlaybackNavigationDirection
 import app.ownplay.player.playback.PlaybackPresentationPolicy
 import app.ownplay.player.playback.PlaybackState
 import app.ownplay.player.playback.PlaybackVideoOutput
+import kotlinx.coroutines.delay
 
 @OptIn(UnstableApi::class)
 @Composable
@@ -62,6 +68,22 @@ internal fun LivePreviewPanel(
     modifier: Modifier = Modifier,
 ) {
     val controls = PlaybackPresentationPolicy.controlsFor(state)
+    var controlsVisible by remember(selection.request.channelId) { mutableStateOf(true) }
+    var interactionToken by remember(selection.request.channelId) { mutableStateOf(0) }
+
+    fun revealControls() {
+        controlsVisible = true
+        interactionToken += 1
+    }
+
+    LaunchedEffect(selection.request.channelId, state, interactionToken) {
+        if (state is PlaybackState.Playing) {
+            delay(CONTROLS_AUTO_HIDE_MILLIS)
+            controlsVisible = false
+        } else {
+            controlsVisible = true
+        }
+    }
 
     Surface(
         modifier = modifier.fillMaxWidth(),
@@ -74,7 +96,7 @@ internal fun LivePreviewPanel(
                 .fillMaxWidth()
                 .aspectRatio(16f / 9f)
                 .background(Color.Black)
-                .clickable(onClick = onOpenFullscreen),
+                .clickable(onClick = ::revealControls),
         ) {
             AndroidView(
                 factory = { context ->
@@ -136,7 +158,12 @@ internal fun LivePreviewPanel(
                             fontWeight = FontWeight.Medium,
                         )
                         if (controls.canRetry) {
-                            TextButton(onClick = onRetry) {
+                            TextButton(
+                                onClick = {
+                                    revealControls()
+                                    onRetry()
+                                },
+                            ) {
                                 Text("Retry")
                             }
                         }
@@ -144,99 +171,117 @@ internal fun LivePreviewPanel(
                 }
             }
 
-            Column(
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .fillMaxWidth()
-                    .background(Color.Black.copy(alpha = 0.72f))
-                    .padding(horizontal = 12.dp, vertical = 8.dp),
-                verticalArrangement = Arrangement.spacedBy(4.dp),
-            ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
+            if (controlsVisible || state !is PlaybackState.Playing) {
+                Column(
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .fillMaxWidth()
+                        .background(Color.Black.copy(alpha = 0.72f))
+                        .padding(horizontal = 12.dp, vertical = 8.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
                 ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = selection.displayName,
-                            style = MaterialTheme.typography.titleSmall,
-                            fontWeight = FontWeight.SemiBold,
-                            color = Color.White,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                        Text(
-                            text = playbackStatusLabel(state),
-                            style = MaterialTheme.typography.labelSmall,
-                            color = Color.White.copy(alpha = 0.72f),
-                            maxLines = 1,
-                        )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = selection.displayName,
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.SemiBold,
+                                color = Color.White,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                            Text(
+                                text = playbackStatusLabel(state),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = Color.White.copy(alpha = 0.72f),
+                                maxLines = 1,
+                            )
+                        }
                     }
-                }
 
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    PreviewControlSlot {
-                        IconButton(
-                            onClick = { onNavigate(PlaybackNavigationDirection.PREVIOUS) },
-                            enabled = selection.request.navigationTarget(
-                                PlaybackNavigationDirection.PREVIOUS,
-                            ) != null,
-                        ) {
-                            Icon(
-                                Icons.Filled.SkipPrevious,
-                                contentDescription = "Previous channel",
-                                tint = Color.White,
-                            )
-                        }
-                    }
-                    PreviewControlSlot {
-                        FilledIconButton(
-                            onClick = if (controls.canPause) onPause else onPlay,
-                            enabled = controls.canPause || controls.canPlay,
-                        ) {
-                            Icon(
-                                imageVector = if (controls.canPause) {
-                                    Icons.Filled.Pause
-                                } else {
-                                    Icons.Filled.PlayArrow
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        PreviewControlSlot {
+                            IconButton(
+                                onClick = {
+                                    revealControls()
+                                    onNavigate(PlaybackNavigationDirection.PREVIOUS)
                                 },
-                                contentDescription = if (controls.canPause) "Pause" else "Play",
-                            )
+                                enabled = selection.request.navigationTarget(
+                                    PlaybackNavigationDirection.PREVIOUS,
+                                ) != null,
+                            ) {
+                                Icon(
+                                    Icons.Filled.SkipPrevious,
+                                    contentDescription = "Previous channel",
+                                    tint = Color.White,
+                                )
+                            }
                         }
-                    }
-                    PreviewControlSlot {
-                        IconButton(
-                            onClick = { onNavigate(PlaybackNavigationDirection.NEXT) },
-                            enabled = selection.request.navigationTarget(
-                                PlaybackNavigationDirection.NEXT,
-                            ) != null,
-                        ) {
-                            Icon(
-                                Icons.Filled.SkipNext,
-                                contentDescription = "Next channel",
-                                tint = Color.White,
-                            )
+                        PreviewControlSlot {
+                            FilledIconButton(
+                                onClick = if (controls.canPause) {
+                                    {
+                                        revealControls()
+                                        onPause()
+                                    }
+                                } else {
+                                    {
+                                        revealControls()
+                                        onPlay()
+                                    }
+                                },
+                                enabled = controls.canPause || controls.canPlay,
+                            ) {
+                                Icon(
+                                    imageVector = if (controls.canPause) {
+                                        Icons.Filled.Pause
+                                    } else {
+                                        Icons.Filled.PlayArrow
+                                    },
+                                    contentDescription = if (controls.canPause) "Pause" else "Play",
+                                )
+                            }
                         }
-                    }
-                    PreviewControlSlot {
-                        IconButton(onClick = onOpenFullscreen) {
-                            Icon(
-                                Icons.Filled.Fullscreen,
-                                contentDescription = "Open full player",
-                                tint = Color.White,
-                            )
+                        PreviewControlSlot {
+                            IconButton(
+                                onClick = {
+                                    revealControls()
+                                    onNavigate(PlaybackNavigationDirection.NEXT)
+                                },
+                                enabled = selection.request.navigationTarget(
+                                    PlaybackNavigationDirection.NEXT,
+                                ) != null,
+                            ) {
+                                Icon(
+                                    Icons.Filled.SkipNext,
+                                    contentDescription = "Next channel",
+                                    tint = Color.White,
+                                )
+                            }
                         }
-                    }
-                    PreviewControlSlot {
-                        IconButton(onClick = onClose) {
-                            Icon(
-                                Icons.Filled.Close,
-                                contentDescription = "Close preview",
-                                tint = Color.White,
-                            )
+                        PreviewControlSlot {
+                            IconButton(onClick = onOpenFullscreen) {
+                                Icon(
+                                    Icons.Filled.Fullscreen,
+                                    contentDescription = "Open full player",
+                                    tint = Color.White,
+                                )
+                            }
+                        }
+                        PreviewControlSlot {
+                            IconButton(onClick = onClose) {
+                                Icon(
+                                    Icons.Filled.Close,
+                                    contentDescription = "Close preview",
+                                    tint = Color.White,
+                                )
+                            }
                         }
                     }
                 }
@@ -256,3 +301,5 @@ private fun RowScope.PreviewControlSlot(
         content()
     }
 }
+
+private const val CONTROLS_AUTO_HIDE_MILLIS = 3_000L
