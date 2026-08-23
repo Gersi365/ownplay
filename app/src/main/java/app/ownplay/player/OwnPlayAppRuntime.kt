@@ -12,6 +12,8 @@ import app.ownplay.player.playback.PlaybackController
 import app.ownplay.player.playback.PlaybackTrackController
 import app.ownplay.player.playback.RoomPlaybackResolutionLookup
 import app.ownplay.player.source.credential.AndroidKeystoreCredentialStore
+import app.ownplay.player.source.onboarding.SourceOnboardingResult
+import app.ownplay.player.source.onboarding.SourceOnboardingService
 import kotlinx.coroutines.flow.Flow
 
 class OwnPlayAppRuntime(
@@ -22,14 +24,22 @@ class OwnPlayAppRuntime(
     private val liveCatalogRepository = LiveCatalogRepository(database.liveBrowseDao())
     private val playbackConnectivityMonitor =
         AndroidPlaybackConnectivityMonitor(applicationContext)
+    private val sensitiveValueStore = AndroidKeystoreSensitiveValueStore(applicationContext)
+    private val credentialStore = AndroidKeystoreCredentialStore(applicationContext)
+    private val sourceOnboardingService = SourceOnboardingService(
+        database = database,
+        sensitiveValueStore = sensitiveValueStore,
+        credentialStore = credentialStore,
+        contentResolver = applicationContext.contentResolver,
+    )
 
     private val playbackResolver = LivePlaybackResolver(
         lookup = RoomPlaybackResolutionLookup(
             sourceDao = database.playlistSourceDao(),
             catalogDao = database.providerCatalogDao(),
         ),
-        sensitiveValueStore = AndroidKeystoreSensitiveValueStore(applicationContext),
-        credentialStore = AndroidKeystoreCredentialStore(applicationContext),
+        sensitiveValueStore = sensitiveValueStore,
+        credentialStore = credentialStore,
     )
     private val playbackEngine = Media3PlaybackEngine(applicationContext)
 
@@ -46,6 +56,34 @@ class OwnPlayAppRuntime(
 
     fun observeLiveCatalog(sourceId: String) =
         liveCatalogRepository.observe(sourceId)
+
+    suspend fun addXtreamSource(
+        name: String,
+        serverUrl: String,
+        username: String,
+        password: String,
+    ): SourceOnboardingResult = sourceOnboardingService.addXtream(
+        name = name,
+        serverUrl = serverUrl,
+        username = username,
+        password = password,
+    )
+
+    suspend fun addRemoteM3uSource(
+        name: String,
+        playlistUrl: String,
+    ): SourceOnboardingResult = sourceOnboardingService.addRemoteM3u(
+        name = name,
+        playlistUrl = playlistUrl,
+    )
+
+    suspend fun addLocalM3uSource(
+        name: String,
+        documentUri: String,
+    ): SourceOnboardingResult = sourceOnboardingService.addLocalM3u(
+        name = name,
+        documentUri = documentUri,
+    )
 
     override fun close() {
         playbackController.close()
