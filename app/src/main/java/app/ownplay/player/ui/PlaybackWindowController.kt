@@ -15,7 +15,6 @@ import kotlinx.coroutines.flow.asStateFlow
 
 internal enum class PlaybackOrientationIntent {
     FOLLOW_SYSTEM,
-    PORTRAIT,
     SENSOR_LANDSCAPE,
 }
 
@@ -28,15 +27,10 @@ internal object PlaybackWindowPolicy {
     fun orientationIntent(
         fullscreen: Boolean,
         inPictureInPicture: Boolean,
-    ): PlaybackOrientationIntent {
-        if (inPictureInPicture) {
-            return PlaybackOrientationIntent.FOLLOW_SYSTEM
-        }
-        return if (fullscreen) {
-            PlaybackOrientationIntent.SENSOR_LANDSCAPE
-        } else {
-            PlaybackOrientationIntent.PORTRAIT
-        }
+    ): PlaybackOrientationIntent = if (fullscreen && !inPictureInPicture) {
+        PlaybackOrientationIntent.SENSOR_LANDSCAPE
+    } else {
+        PlaybackOrientationIntent.FOLLOW_SYSTEM
     }
 }
 
@@ -181,7 +175,6 @@ class PlaybackWindowController(
             )
         ) {
             PlaybackOrientationIntent.FOLLOW_SYSTEM -> ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
-            PlaybackOrientationIntent.PORTRAIT -> ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
             PlaybackOrientationIntent.SENSOR_LANDSCAPE -> ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
         }
         if (activity.requestedOrientation != target) {
