@@ -7,9 +7,11 @@ import app.ownplay.player.OwnPlayAppRuntime
 fun OwnPlayRoot(
     runtime: OwnPlayAppRuntime,
     onPlaybackFullscreenChanged: (Boolean) -> Unit = {},
+    onPlaybackSurfaceActiveChanged: (Boolean) -> Unit = {},
 ) {
     OwnPlayApp(
         runtime = runtime,
         onPlaybackFullscreenChanged = onPlaybackFullscreenChanged,
+        onPlaybackSurfaceActiveChanged = onPlaybackSurfaceActiveChanged,
     )
 }
