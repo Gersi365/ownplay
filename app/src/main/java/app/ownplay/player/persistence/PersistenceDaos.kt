@@ -10,7 +10,7 @@ interface PlaylistSourceDao {
     @Upsert
     suspend fun upsert(source: PlaylistSourceEntity)
 
-    @Query("SELECT * FROM playlist_sources ORDER BY createdAtEpochMillis ASC")
+    @Query("SELECT * FROM playlist_sources WHERE enabled = 1 ORDER BY createdAtEpochMillis ASC")
     fun observeAll(): Flow<List<PlaylistSourceEntity>>
 
     @Query("SELECT * FROM playlist_sources WHERE sourceId = :sourceId LIMIT 1")
