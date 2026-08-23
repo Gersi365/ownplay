@@ -10,6 +10,7 @@ object SourceHttpClient {
             .readTimeout(30, TimeUnit.SECONDS)
             .callTimeout(45, TimeUnit.SECONDS)
             .retryOnConnectionFailure(true)
+            .followSslRedirects(false)
             .build()
     }
 }

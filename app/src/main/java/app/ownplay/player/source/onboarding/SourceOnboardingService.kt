@@ -14,11 +14,15 @@ import app.ownplay.player.persistence.secure.SensitiveValueStore
 import app.ownplay.player.source.CredentialRef
 import app.ownplay.player.source.SourceError
 import app.ownplay.player.source.SourceResult
+import app.ownplay.player.source.SourceValidator
+import app.ownplay.player.source.UrlValidationResult
 import app.ownplay.player.source.credential.CredentialStore
 import app.ownplay.player.source.credential.XtreamCredentials
 import app.ownplay.player.source.m3u.AndroidLocalM3uLoader
 import app.ownplay.player.source.m3u.RemoteM3uLoader
 import app.ownplay.player.source.xtream.XtreamClient
+import app.ownplay.player.source.xtream.XtreamSourceLocator
+import app.ownplay.player.source.xtream.XtreamSourceLocatorCodec
 import java.util.UUID
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.NonCancellable
@@ -118,19 +122,41 @@ class SourceOnboardingService(
         serverUrl: String,
         username: String,
         password: String,
+        allowCleartext: Boolean = false,
     ): SourceOnboardingResult {
         val normalizedName = name.trim()
         if (normalizedName.isEmpty()) {
             return SourceOnboardingResult.Failure(SourceOnboardingFailure.InvalidName)
         }
 
-        val normalizedServerUrl = serverUrl.trim()
+        val validatedServer = when (val validation = SourceValidator.validateXtreamServer(serverUrl)) {
+            is UrlValidationResult.Invalid -> {
+                return SourceOnboardingResult.Failure(
+                    SourceOnboardingFailure.SourceFailure(validation.error),
+                )
+            }
+            is UrlValidationResult.Valid -> validation
+        }
+        if (validatedServer.usesCleartext && !allowCleartext) {
+            return SourceOnboardingResult.Failure(
+                SourceOnboardingFailure.SourceFailure(
+                    SourceError.CleartextTransportRequiresOptIn,
+                ),
+            )
+        }
+        val normalizedServerUrl = validatedServer.normalizedUrl
         val credentials = XtreamCredentials(
             username = username.trim(),
             password = password,
         )
 
-        when (val validation = xtreamClient.validateAccount(normalizedServerUrl, credentials)) {
+        when (
+            val validation = xtreamClient.validateAccount(
+                serverUrl = normalizedServerUrl,
+                credentials = credentials,
+                allowCleartext = allowCleartext,
+            )
+        ) {
             is SourceResult.Success -> Unit
             is SourceResult.Failure -> {
                 return SourceOnboardingResult.Failure(
@@ -140,7 +166,11 @@ class SourceOnboardingService(
         }
 
         val categories = when (
-            val loaded = xtreamClient.getLiveCategories(normalizedServerUrl, credentials)
+            val loaded = xtreamClient.getLiveCategories(
+                serverUrl = normalizedServerUrl,
+                credentials = credentials,
+                allowCleartext = allowCleartext,
+            )
         ) {
             is SourceResult.Success -> loaded.value
             is SourceResult.Failure -> {
@@ -150,7 +180,11 @@ class SourceOnboardingService(
             }
         }
         val streams = when (
-            val loaded = xtreamClient.getLiveStreams(normalizedServerUrl, credentials)
+            val loaded = xtreamClient.getLiveStreams(
+                serverUrl = normalizedServerUrl,
+                credentials = credentials,
+                allowCleartext = allowCleartext,
+            )
         ) {
             is SourceResult.Success -> loaded.value
             is SourceResult.Failure -> {
@@ -169,11 +203,17 @@ class SourceOnboardingService(
             )
         }
 
+        val sourceLocator = XtreamSourceLocatorCodec.encode(
+            XtreamSourceLocator(
+                serverUrl = normalizedServerUrl,
+                allowCleartext = allowCleartext,
+            ),
+        )
         val result = try {
             persistSourceAndCatalog(
                 name = normalizedName,
                 sourceKind = SourceKinds.XTREAM,
-                locatorValue = normalizedServerUrl,
+                locatorValue = sourceLocator,
                 credentialRef = credentialRef,
                 catalog = InitialLiveCatalogFactory.fromXtream(categories, streams),
             )

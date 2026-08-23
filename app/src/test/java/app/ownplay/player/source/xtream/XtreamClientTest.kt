@@ -137,4 +137,23 @@ class XtreamClientTest {
             result,
         )
     }
+
+    @Test
+    fun cleartextCanBeAllowedForOneCall() = runBlocking {
+        server.enqueue(
+            MockResponse.Builder()
+                .body("""{"user_info":{"auth":1}}""")
+                .build(),
+        )
+        val client = XtreamClient()
+
+        val result = client.validateAccount(
+            serverUrl = server.url("/").toString(),
+            credentials = XtreamCredentials("fixture-user", "fixture-password"),
+            allowCleartext = true,
+        )
+
+        assertTrue(result is SourceResult.Success)
+        assertEquals("/player_api.php", server.takeRequest().url.encodedPath)
+    }
 }

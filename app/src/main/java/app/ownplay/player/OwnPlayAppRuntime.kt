@@ -90,11 +90,13 @@ class OwnPlayAppRuntime(
         serverUrl: String,
         username: String,
         password: String,
+        allowCleartext: Boolean = false,
     ): SourceOnboardingResult = sourceOnboardingService.addXtream(
         name = name,
         serverUrl = serverUrl,
         username = username,
         password = password,
+        allowCleartext = allowCleartext,
     )
 
     suspend fun addRemoteM3uSource(

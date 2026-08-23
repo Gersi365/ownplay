@@ -23,6 +23,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.HorizontalDivider
@@ -243,9 +244,11 @@ private fun XtreamSourceForm(
     var serverUrl by remember { mutableStateOf("") }
     var username by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
+    var allowInsecureHttp by remember { mutableStateOf(false) }
     var submitting by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
+    val serverUsesCleartext = serverUrl.trim().startsWith("http://", ignoreCase = true)
 
     Text(
         text = "Xtream",
@@ -266,6 +269,44 @@ private fun XtreamSourceForm(
         singleLine = true,
         modifier = Modifier.fillMaxWidth(),
     )
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.Top,
+    ) {
+        Checkbox(
+            checked = allowInsecureHttp,
+            onCheckedChange = { allowInsecureHttp = it },
+            enabled = !submitting,
+        )
+        Column(
+            modifier = Modifier
+                .weight(1f)
+                .padding(top = 10.dp),
+            verticalArrangement = Arrangement.spacedBy(2.dp),
+        ) {
+            Text(
+                text = "Allow insecure HTTP for this Xtream source",
+                style = MaterialTheme.typography.bodyLarge,
+            )
+            Text(
+                text = if (serverUsesCleartext) {
+                    "This server uses HTTP, so this option is required to connect."
+                } else {
+                    "Leave disabled unless your provider requires HTTP for API or stream traffic."
+                },
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+    if (allowInsecureHttp) {
+        Text(
+            text = "Warning: HTTP does not encrypt your Xtream username, password, or stream traffic. " +
+                "Use it only with a provider and network you trust.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.error,
+        )
+    }
     OutlinedTextField(
         value = username,
         onValueChange = { username = it },
@@ -285,6 +326,7 @@ private fun XtreamSourceForm(
     SubmitButton(
         label = "Connect",
         submitting = submitting,
+        enabled = !serverUsesCleartext || allowInsecureHttp,
         onClick = {
             if (submitting) return@SubmitButton
             submitting = true
@@ -296,6 +338,7 @@ private fun XtreamSourceForm(
                         serverUrl = serverUrl,
                         username = username,
                         password = password,
+                        allowCleartext = allowInsecureHttp,
                     )
                 ) {
                     is SourceOnboardingResult.Success -> {
@@ -523,7 +566,7 @@ private fun sourceErrorMessage(error: SourceError): String = when (error) {
     SourceError.AuthenticationFailed,
     -> "The source rejected the supplied credentials."
     SourceError.CleartextTransportRequiresOptIn ->
-        "This build requires HTTPS for remote sources."
+        "HTTP is blocked unless you explicitly enable insecure HTTP for this source."
     SourceError.SecureConnectionFailed -> "A secure connection could not be established."
     SourceError.NetworkUnavailable -> "The source could not be reached. Check your network."
     SourceError.Timeout -> "The source did not respond in time."

@@ -28,11 +28,14 @@ import okhttp3.Request
 class XtreamClient(
     private val httpClient: OkHttpClient = SourceHttpClient.shared,
     private val json: Json = Json { isLenient = true },
-    private val allowCleartext: Boolean = false,
+    allowCleartext: Boolean = false,
 ) {
+    private val defaultAllowCleartext = allowCleartext
+
     suspend fun validateAccount(
         serverUrl: String,
         credentials: XtreamCredentials,
+        allowCleartext: Boolean = defaultAllowCleartext,
     ): SourceResult<XtreamAccountInfo> {
         if (credentials.username.isBlank() || credentials.password.isBlank()) {
             return SourceResult.Failure(SourceError.InvalidCredentials)
@@ -42,6 +45,7 @@ class XtreamClient(
             serverUrl = serverUrl,
             credentials = credentials,
             action = null,
+            allowCleartext = allowCleartext,
         )
         if (response is SourceResult.Failure) return response
         return parseAccount((response as SourceResult.Success).value)
@@ -50,11 +54,13 @@ class XtreamClient(
     suspend fun getLiveCategories(
         serverUrl: String,
         credentials: XtreamCredentials,
+        allowCleartext: Boolean = defaultAllowCleartext,
     ): SourceResult<List<XtreamCategory>> {
         val response = requestJson(
             serverUrl = serverUrl,
             credentials = credentials,
             action = "get_live_categories",
+            allowCleartext = allowCleartext,
         )
         if (response is SourceResult.Failure) return response
 
@@ -78,6 +84,7 @@ class XtreamClient(
         serverUrl: String,
         credentials: XtreamCredentials,
         categoryId: String? = null,
+        allowCleartext: Boolean = defaultAllowCleartext,
     ): SourceResult<List<XtreamLiveStream>> {
         val response = requestJson(
             serverUrl = serverUrl,
@@ -86,6 +93,7 @@ class XtreamClient(
             extraQuery = buildMap {
                 categoryId?.takeIf(String::isNotBlank)?.let { put("category_id", it) }
             },
+            allowCleartext = allowCleartext,
         )
         if (response is SourceResult.Failure) return response
 
@@ -114,6 +122,7 @@ class XtreamClient(
         credentials: XtreamCredentials,
         action: String?,
         extraQuery: Map<String, String> = emptyMap(),
+        allowCleartext: Boolean,
     ): SourceResult<JsonElement> {
         val validation = SourceValidator.validateXtreamServer(serverUrl)
         if (validation is UrlValidationResult.Invalid) {

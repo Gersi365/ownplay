@@ -5,6 +5,8 @@ import app.ownplay.player.persistence.secure.SensitiveValueStore
 import app.ownplay.player.source.CredentialRef
 import app.ownplay.player.source.credential.CredentialStore
 import app.ownplay.player.source.credential.XtreamCredentials
+import app.ownplay.player.source.xtream.XtreamSourceLocator
+import app.ownplay.player.source.xtream.XtreamSourceLocatorCodec
 import java.util.concurrent.CancellationException
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
@@ -154,6 +156,65 @@ class PlaybackResolutionTest {
                 xtreamStores,
             ).resolve(PlaybackRequest(sourceId = "source", channelId = "channel")),
         )
+    }
+
+    @Test
+    fun sourceSpecificXtreamOptInAllowsHttpServerPlayback() = runBlocking {
+        val sourceLocator = XtreamSourceLocatorCodec.encode(
+            XtreamSourceLocator(
+                serverUrl = "http://provider.example.test/base/",
+                allowCleartext = true,
+            ),
+        )
+        val stores = FixtureStores(
+            sensitiveValues = mapOf(
+                "stream-ref" to "ownplay-locator-v1|xtream-live|7",
+                "source-ref" to sourceLocator,
+            ),
+            credentials = mapOf(
+                "credential-ref" to XtreamCredentials("user", "pass"),
+            ),
+        )
+
+        val result = resolver(
+            source(kind = PlaybackResolutionSourceKind.XTREAM),
+            channel(),
+            stores,
+        ).resolve(PlaybackRequest(sourceId = "source", channelId = "channel"))
+
+        val success = result as PlaybackResolutionResult.Success
+        assertEquals(
+            "http://provider.example.test/base/live/user/pass/7.ts",
+            success.locator.value,
+        )
+        assertEquals(ResolvedPlaybackOrigin.XTREAM_LIVE, success.locator.origin)
+    }
+
+    @Test
+    fun sourceSpecificXtreamOptInAlsoAllowsHttpDirectSource() = runBlocking {
+        val sourceLocator = XtreamSourceLocatorCodec.encode(
+            XtreamSourceLocator(
+                serverUrl = "https://provider.example.test/",
+                allowCleartext = true,
+            ),
+        )
+        val stores = FixtureStores(
+            sensitiveValues = mapOf(
+                "stream-ref" to "ownplay-locator-v1|direct|http://cdn.example.test/live.m3u8",
+                "source-ref" to sourceLocator,
+            ),
+        )
+
+        val result = resolver(
+            source(kind = PlaybackResolutionSourceKind.XTREAM),
+            channel(),
+            stores,
+        ).resolve(PlaybackRequest(sourceId = "source", channelId = "channel"))
+
+        val success = result as PlaybackResolutionResult.Success
+        assertEquals("http://cdn.example.test/live.m3u8", success.locator.value)
+        assertEquals(ResolvedPlaybackOrigin.DIRECT, success.locator.origin)
+        assertEquals(0, stores.credentialGetCount)
     }
 
     @Test

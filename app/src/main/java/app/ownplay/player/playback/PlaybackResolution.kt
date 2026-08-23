@@ -6,6 +6,7 @@ import app.ownplay.player.source.CredentialRef
 import app.ownplay.player.source.SourceValidator
 import app.ownplay.player.source.UrlValidationResult
 import app.ownplay.player.source.credential.CredentialStore
+import app.ownplay.player.source.xtream.XtreamSourceLocatorCodec
 import java.util.concurrent.CancellationException
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 
@@ -91,6 +92,17 @@ sealed interface PlaybackResolutionResult {
     ) : PlaybackResolutionResult
 }
 
+private data class LoadedXtreamSource(
+    val normalizedServerUrl: String,
+    val usesCleartext: Boolean,
+    val allowCleartext: Boolean,
+)
+
+private sealed interface LoadedXtreamSourceResult {
+    data class Success(val source: LoadedXtreamSource) : LoadedXtreamSourceResult
+    data class Failure(val reason: PlaybackResolutionFailureReason) : LoadedXtreamSourceResult
+}
+
 class LivePlaybackResolver(
     private val lookup: PlaybackResolutionLookup,
     private val sensitiveValueStore: SensitiveValueStore,
@@ -138,26 +150,39 @@ class LivePlaybackResolver(
         return when (val parsed = PlaybackLocatorParser.parse(descriptor)) {
             is PlaybackLocatorParseResult.Failure -> failure(PlaybackResolutionFailureReason.DESCRIPTOR_INVALID)
             is PlaybackLocatorParseResult.Success -> when (val locator = parsed.locator) {
-                is ParsedPlaybackLocator.Direct -> resolveDirect(locator.locator)
+                is ParsedPlaybackLocator.Direct -> resolveDirect(source, locator.locator)
                 is ParsedPlaybackLocator.XtreamLive -> resolveXtream(source, locator.streamId)
             }
         }
     }
 
-    private fun resolveDirect(locator: String): PlaybackResolutionResult {
+    private suspend fun resolveDirect(
+        source: PlaybackSourceRecord,
+        locator: String,
+    ): PlaybackResolutionResult {
         return when (val validation = SourceValidator.validateRemotePlaylistUrl(locator)) {
             is UrlValidationResult.Invalid -> failure(PlaybackResolutionFailureReason.DESCRIPTOR_INVALID)
             is UrlValidationResult.Valid -> {
                 if (validation.usesCleartext && !allowCleartext) {
-                    failure(PlaybackResolutionFailureReason.CLEARTEXT_NOT_ALLOWED)
-                } else {
-                    success(validation.normalizedUrl, ResolvedPlaybackOrigin.DIRECT)
+                    val sourceAllowsCleartext = when (source.sourceKind) {
+                        PlaybackResolutionSourceKind.OTHER -> false
+                        PlaybackResolutionSourceKind.XTREAM -> when (
+                            val loaded = loadXtreamSource(source)
+                        ) {
+                            is LoadedXtreamSourceResult.Success -> loaded.source.allowCleartext
+                            is LoadedXtreamSourceResult.Failure -> return failure(loaded.reason)
+                        }
+                    }
+                    if (!sourceAllowsCleartext) {
+                        return failure(PlaybackResolutionFailureReason.CLEARTEXT_NOT_ALLOWED)
+                    }
                 }
+                success(validation.normalizedUrl, ResolvedPlaybackOrigin.DIRECT)
             }
         }
     }
 
-    private fun resolveXtream(
+    private suspend fun resolveXtream(
         source: PlaybackSourceRecord,
         streamId: Int,
     ): PlaybackResolutionResult {
@@ -165,23 +190,15 @@ class LivePlaybackResolver(
             return failure(PlaybackResolutionFailureReason.UNSUPPORTED_SOURCE_KIND)
         }
 
-        val sourceLocatorRef = sensitiveRef(source.locatorRef)
-            ?: return failure(PlaybackResolutionFailureReason.SOURCE_LOCATOR_REFERENCE_INVALID)
-        val serverUrl = try {
-            sensitiveValueStore.get(sourceLocatorRef)
-        } catch (cancelled: CancellationException) {
-            throw cancelled
-        } catch (_: Exception) {
-            return failure(PlaybackResolutionFailureReason.SECURE_STORE_FAILURE)
-        } ?: return failure(PlaybackResolutionFailureReason.SOURCE_LOCATOR_NOT_FOUND)
-
-        val validatedServer = when (val validation = SourceValidator.validateXtreamServer(serverUrl)) {
-            is UrlValidationResult.Invalid -> {
-                return failure(PlaybackResolutionFailureReason.SOURCE_LOCATOR_INVALID)
-            }
-            is UrlValidationResult.Valid -> validation
+        val loadedSource = when (val loaded = loadXtreamSource(source)) {
+            is LoadedXtreamSourceResult.Success -> loaded.source
+            is LoadedXtreamSourceResult.Failure -> return failure(loaded.reason)
         }
-        if (validatedServer.usesCleartext && !allowCleartext) {
+        if (
+            loadedSource.usesCleartext &&
+            !allowCleartext &&
+            !loadedSource.allowCleartext
+        ) {
             return failure(PlaybackResolutionFailureReason.CLEARTEXT_NOT_ALLOWED)
         }
 
@@ -204,7 +221,7 @@ class LivePlaybackResolver(
             return failure(PlaybackResolutionFailureReason.CREDENTIALS_INVALID)
         }
 
-        val baseUrl = validatedServer.normalizedUrl.toHttpUrlOrNull()
+        val baseUrl = loadedSource.normalizedServerUrl.toHttpUrlOrNull()
             ?: return failure(PlaybackResolutionFailureReason.SOURCE_LOCATOR_INVALID)
         val resolved = baseUrl.newBuilder()
             .addPathSegment("live")
@@ -215,6 +232,55 @@ class LivePlaybackResolver(
             .toString()
 
         return success(resolved, ResolvedPlaybackOrigin.XTREAM_LIVE)
+    }
+
+    private suspend fun loadXtreamSource(
+        source: PlaybackSourceRecord,
+    ): LoadedXtreamSourceResult {
+        if (source.sourceKind != PlaybackResolutionSourceKind.XTREAM) {
+            return LoadedXtreamSourceResult.Failure(
+                PlaybackResolutionFailureReason.UNSUPPORTED_SOURCE_KIND,
+            )
+        }
+
+        val sourceLocatorRef = sensitiveRef(source.locatorRef)
+            ?: return LoadedXtreamSourceResult.Failure(
+                PlaybackResolutionFailureReason.SOURCE_LOCATOR_REFERENCE_INVALID,
+            )
+        val storedLocator = try {
+            sensitiveValueStore.get(sourceLocatorRef)
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            return LoadedXtreamSourceResult.Failure(
+                PlaybackResolutionFailureReason.SECURE_STORE_FAILURE,
+            )
+        } ?: return LoadedXtreamSourceResult.Failure(
+            PlaybackResolutionFailureReason.SOURCE_LOCATOR_NOT_FOUND,
+        )
+
+        val sourceLocator = XtreamSourceLocatorCodec.parse(storedLocator)
+            ?: return LoadedXtreamSourceResult.Failure(
+                PlaybackResolutionFailureReason.SOURCE_LOCATOR_INVALID,
+            )
+        val validatedServer = when (
+            val validation = SourceValidator.validateXtreamServer(sourceLocator.serverUrl)
+        ) {
+            is UrlValidationResult.Invalid -> {
+                return LoadedXtreamSourceResult.Failure(
+                    PlaybackResolutionFailureReason.SOURCE_LOCATOR_INVALID,
+                )
+            }
+            is UrlValidationResult.Valid -> validation
+        }
+
+        return LoadedXtreamSourceResult.Success(
+            LoadedXtreamSource(
+                normalizedServerUrl = validatedServer.normalizedUrl,
+                usesCleartext = validatedServer.usesCleartext,
+                allowCleartext = sourceLocator.allowCleartext,
+            ),
+        )
     }
 
     private fun sensitiveRef(value: String): SensitiveValueRef? = try {
