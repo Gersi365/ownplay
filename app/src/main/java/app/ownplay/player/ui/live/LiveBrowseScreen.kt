@@ -3,6 +3,7 @@ package app.ownplay.player.ui.live
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
+import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -33,6 +34,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -52,6 +54,7 @@ import app.ownplay.player.personalization.ChannelDragTargetResolver
 import app.ownplay.player.personalization.ChannelEditState
 import app.ownplay.player.personalization.ManualOrderPlacement
 import app.ownplay.player.personalization.VisibleChannelBounds
+import kotlinx.coroutines.launch
 
 @Composable
 fun LiveBrowseScreen(
@@ -64,7 +67,9 @@ fun LiveBrowseScreen(
     onCustomGroupSelected: (String?) -> Unit = {},
     onHiddenOnlyChanged: (Boolean) -> Unit = {},
     editState: ChannelEditState = ChannelEditState(),
+    playingChannelId: String? = null,
     onEditModeChanged: (Boolean) -> Unit = {},
+    onReorderCategoriesRequested: () -> Unit = {},
     onChannelSelectionToggle: (String) -> Unit = {},
     onSelectVisible: () -> Unit = {},
     onClearSelection: () -> Unit = {},
@@ -81,6 +86,7 @@ fun LiveBrowseScreen(
     modifier: Modifier = Modifier,
 ) {
     val listState = rememberLazyListState()
+    val dragScope = rememberCoroutineScope()
     var draggedChannelId by remember { mutableStateOf<String?>(null) }
     var draggedPointerY by remember { mutableStateOf<Float?>(null) }
     var dragTarget by remember { mutableStateOf<ChannelDragTarget?>(null) }
@@ -112,6 +118,7 @@ fun LiveBrowseScreen(
                     onFavoritesOnlyChanged = onFavoritesOnlyChanged,
                     onHiddenOnlyChanged = onHiddenOnlyChanged,
                     onOrderChanged = onOrderChanged,
+                    onReorderCategoriesRequested = onReorderCategoriesRequested,
                     onEditModeChanged = { editing ->
                         val editOrder = if (state.query.favoritesOnly) {
                             LiveBrowseOrder.FAVORITE_ORDER
@@ -190,15 +197,15 @@ fun LiveBrowseScreen(
                     key = { _, channel -> channel.channelId },
                 ) { index, channel ->
                     val isDropAnchor = dragTarget?.anchorChannelId == channel.channelId
-                    val rowModifier = if (dragEnabled) {
-                        Modifier.pointerInput(channel.channelId) {
+                    val dragHandleModifier = if (dragEnabled) {
+                        Modifier.pointerInput(channel.channelId, favoriteDragEnabled) {
                             detectDragGesturesAfterLongPress(
-                                onDragStart = { startOffset ->
+                                onDragStart = {
                                     val itemInfo = listState.layoutInfo.visibleItemsInfo
                                         .firstOrNull { info -> info.key == channel.channelId }
                                     draggedChannelId = channel.channelId
                                     draggedPointerY = itemInfo?.let { info ->
-                                        info.offset.toFloat() + startOffset.y
+                                        info.offset + (info.size / 2f)
                                     }
                                     dragTarget = draggedPointerY?.let { pointerY ->
                                         resolveDragTarget(
@@ -208,7 +215,8 @@ fun LiveBrowseScreen(
                                         )
                                     }
                                 },
-                                onDrag = { _, dragAmount ->
+                                onDrag = { change, dragAmount ->
+                                    change.consume()
                                     val draggedId = draggedChannelId
                                         ?: return@detectDragGesturesAfterLongPress
                                     val pointerY = (
@@ -216,10 +224,20 @@ fun LiveBrowseScreen(
                                             ?: return@detectDragGesturesAfterLongPress
                                         ) + dragAmount.y
                                     draggedPointerY = pointerY
+                                    val layout = listState.layoutInfo
+                                    val edge = 80f
+                                    when {
+                                        pointerY < layout.viewportStartOffset + edge -> {
+                                            dragScope.launch { listState.scrollBy(-40f) }
+                                        }
+                                        pointerY > layout.viewportEndOffset - edge -> {
+                                            dragScope.launch { listState.scrollBy(40f) }
+                                        }
+                                    }
                                     dragTarget = resolveDragTarget(
                                         pointerY = pointerY,
                                         draggedChannelId = draggedId,
-                                        visibleItems = listState.layoutInfo.visibleItemsInfo,
+                                        visibleItems = layout.visibleItemsInfo,
                                     )
                                 },
                                 onDragEnd = {
@@ -253,11 +271,13 @@ fun LiveBrowseScreen(
                         channel = channel,
                         isEditing = editState.isEditing,
                         isSelected = channel.channelId in editState.selectedChannelIds,
+                        isPlaying = channel.channelId == playingChannelId,
                         isDragging = draggedChannelId == channel.channelId,
                         dropPlacement = if (isDropAnchor) dragTarget?.placement else null,
+                        showDragHandle = dragEnabled,
+                        dragHandleModifier = dragHandleModifier,
                         onClick = { onChannelSelected(channel.channelId) },
                         onSelectionToggle = { onChannelSelectionToggle(channel.channelId) },
-                        modifier = rowModifier,
                     )
                     if (index != state.channels.lastIndex) {
                         HorizontalDivider(
@@ -297,13 +317,17 @@ private fun LiveBrowseHeader(
     onFavoritesOnlyChanged: (Boolean) -> Unit,
     onHiddenOnlyChanged: (Boolean) -> Unit,
     onOrderChanged: (LiveBrowseOrder) -> Unit,
+    onReorderCategoriesRequested: () -> Unit,
     onEditModeChanged: (Boolean) -> Unit,
 ) {
+    var searchExpanded by remember { mutableStateOf(false) }
+    val showSearch = searchExpanded || state.query.searchTerm.isNotBlank()
+
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(start = 16.dp, top = 8.dp, end = 16.dp, bottom = 6.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
+            .padding(start = 16.dp, top = 6.dp, end = 16.dp, bottom = 4.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -320,25 +344,43 @@ private fun LiveBrowseHeader(
                 fontWeight = FontWeight.SemiBold,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            if (!editState.isEditing) {
+            if (editState.isEditing) {
+                TextButton(onClick = onReorderCategoriesRequested) {
+                    Text("Categories")
+                }
+            } else {
                 LiveOrderMenu(
                     selected = state.query.order,
                     onSelected = onOrderChanged,
                 )
+                TextButton(
+                    onClick = {
+                        if (showSearch) {
+                            onSearchChange("")
+                            searchExpanded = false
+                        } else {
+                            searchExpanded = true
+                        }
+                    },
+                ) {
+                    Text(if (showSearch) "Close search" else "Search")
+                }
             }
             TextButton(onClick = { onEditModeChanged(!editState.isEditing) }) {
                 Text(if (editState.isEditing) "Done" else "Edit")
             }
         }
 
-        OutlinedTextField(
-            value = state.query.searchTerm,
-            onValueChange = onSearchChange,
-            modifier = Modifier.fillMaxWidth(),
-            singleLine = true,
-            placeholder = { Text("Search channels") },
-            shape = RoundedCornerShape(14.dp),
-        )
+        if (showSearch) {
+            OutlinedTextField(
+                value = state.query.searchTerm,
+                onValueChange = onSearchChange,
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = true,
+                placeholder = { Text("Search channels") },
+                shape = RoundedCornerShape(12.dp),
+            )
+        }
 
         LazyRow(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -392,7 +434,7 @@ private fun CategoryStrip(
                 onClick = { onCategorySelected(category.providerCategoryKey) },
                 label = {
                     Text(
-                        text = category.name,
+                        text = if (category.isHidden) "${category.name} · hidden" else category.name,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
@@ -467,8 +509,8 @@ private fun BulkEditBar(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 20.dp, vertical = 8.dp),
-        verticalArrangement = Arrangement.spacedBy(6.dp),
+            .padding(horizontal = 20.dp, vertical = 6.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp),
     ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -493,9 +535,9 @@ private fun BulkEditBar(
         if (dragEnabled) {
             Text(
                 text = if (favoriteDragEnabled) {
-                    "Long-press and drag a favorite to reorder Favorite order."
+                    "Drag the ≡ handle to reorder Favorite order."
                 } else {
-                    "Long-press and drag a channel to reorder My Order."
+                    "Drag the ≡ handle to reorder My Order."
                 },
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -666,11 +708,13 @@ private fun LiveChannelRow(
     channel: LiveChannelItem,
     isEditing: Boolean,
     isSelected: Boolean,
+    isPlaying: Boolean,
     isDragging: Boolean,
     dropPlacement: ManualOrderPlacement?,
+    showDragHandle: Boolean,
+    dragHandleModifier: Modifier,
     onClick: () -> Unit,
     onSelectionToggle: () -> Unit,
-    modifier: Modifier = Modifier,
 ) {
     val highlight = when {
         isDragging -> MaterialTheme.colorScheme.surfaceVariant
@@ -678,20 +722,34 @@ private fun LiveChannelRow(
         else -> MaterialTheme.colorScheme.background
     }
     Row(
-        modifier = modifier
+        modifier = Modifier
             .fillMaxWidth()
             .background(highlight)
             .clickable {
                 if (isEditing) onSelectionToggle() else onClick()
             }
-            .padding(horizontal = 20.dp, vertical = 12.dp),
+            .padding(horizontal = 20.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         if (isEditing) {
             Checkbox(
                 checked = isSelected,
                 onCheckedChange = { onSelectionToggle() },
+            )
+        }
+
+        if (showDragHandle) {
+            Text(
+                text = "≡",
+                modifier = dragHandleModifier
+                    .background(
+                        color = MaterialTheme.colorScheme.surfaceVariant,
+                        shape = RoundedCornerShape(8.dp),
+                    )
+                    .padding(horizontal = 10.dp, vertical = 8.dp),
+                style = MaterialTheme.typography.titleLarge,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
 
@@ -714,7 +772,7 @@ private fun LiveChannelRow(
             Text(
                 text = channel.displayName,
                 style = MaterialTheme.typography.bodyLarge,
-                fontWeight = FontWeight.Medium,
+                fontWeight = if (isPlaying) FontWeight.SemiBold else FontWeight.Medium,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
@@ -746,6 +804,13 @@ private fun LiveChannelRow(
             horizontalAlignment = Alignment.End,
             verticalArrangement = Arrangement.spacedBy(2.dp),
         ) {
+            if (isPlaying) {
+                Text(
+                    text = "▶",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.primary,
+                )
+            }
             if (channel.isFavorite) {
                 Text(
                     text = "Favorite",
