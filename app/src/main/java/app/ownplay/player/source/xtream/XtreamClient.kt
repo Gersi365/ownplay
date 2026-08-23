@@ -11,6 +11,8 @@ import java.net.ConnectException
 import java.net.NoRouteToHostException
 import java.net.SocketTimeoutException
 import java.net.UnknownHostException
+import java.nio.charset.StandardCharsets
+import java.util.Base64
 import javax.net.ssl.SSLException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -115,6 +117,53 @@ class XtreamClient(
                 )
             },
         )
+    }
+
+    suspend fun getShortEpg(
+        serverUrl: String,
+        credentials: XtreamCredentials,
+        streamId: String,
+        limit: Int = 12,
+        allowCleartext: Boolean = defaultAllowCleartext,
+    ): SourceResult<XtreamEpgGuide> {
+        val normalizedStreamId = streamId.trim()
+        if (normalizedStreamId.isEmpty()) {
+            return SourceResult.Failure(SourceError.MalformedResponse)
+        }
+        val response = requestJson(
+            serverUrl = serverUrl,
+            credentials = credentials,
+            action = "get_short_epg",
+            extraQuery = mapOf(
+                "stream_id" to normalizedStreamId,
+                "limit" to limit.coerceIn(2, 50).toString(),
+            ),
+            allowCleartext = allowCleartext,
+        )
+        if (response is SourceResult.Failure) return response
+
+        val root = (response as SourceResult.Success).value as? JsonObject
+            ?: return SourceResult.Failure(SourceError.MalformedResponse)
+        val listings = root["epg_listings"] as? JsonArray
+            ?: return SourceResult.Success(XtreamEpgGuide(emptyList()))
+
+        val programs = listings.mapNotNull { element ->
+            val item = element as? JsonObject ?: return@mapNotNull null
+            val rawTitle = item.text("title") ?: return@mapNotNull null
+            XtreamEpgProgram(
+                id = item.text("id"),
+                title = decodeMaybeBase64(rawTitle),
+                description = item.text("description")
+                    ?.takeIf(String::isNotBlank)
+                    ?.let(::decodeMaybeBase64),
+                startEpochSeconds = item.long("start_timestamp"),
+                endEpochSeconds = item.long("stop_timestamp")
+                    ?: item.long("end_timestamp"),
+                startLabel = item.text("start"),
+                endLabel = item.text("end"),
+            )
+        }
+        return SourceResult.Success(XtreamEpgGuide(programs))
     }
 
     private suspend fun requestJson(
@@ -244,5 +293,19 @@ class XtreamClient(
         "1", "true", "yes" -> true
         "0", "false", "no" -> false
         else -> null
+    }
+
+    private fun decodeMaybeBase64(value: String): String {
+        val trimmed = value.trim()
+        if (trimmed.length < 4 || trimmed.any(Char::isWhitespace)) return trimmed
+        val padded = trimmed + "=".repeat((4 - trimmed.length % 4) % 4)
+        val decoded = runCatching { Base64.getDecoder().decode(padded) }.getOrNull()
+            ?: return trimmed
+        val candidate = String(decoded, StandardCharsets.UTF_8).trim()
+        if (candidate.isEmpty()) return trimmed
+        val printable = candidate.all { char ->
+            char == '\n' || char == '\r' || char == '\t' || !char.isISOControl()
+        }
+        return if (printable) candidate else trimmed
     }
 }
