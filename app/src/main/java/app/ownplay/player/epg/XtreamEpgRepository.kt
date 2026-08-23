@@ -7,9 +7,12 @@ import app.ownplay.player.persistence.secure.SensitiveValueStore
 import app.ownplay.player.source.CredentialRef
 import app.ownplay.player.source.SourceResult
 import app.ownplay.player.source.credential.CredentialStore
-import app.ownplay.player.source.xtream.XtreamClient
-import app.ownplay.player.source.xtream.XtreamEpgProgram
 import app.ownplay.player.source.xtream.XtreamSourceLocatorCodec
+import app.ownplay.player.source.xtream.XtreamXmlTvClient
+import app.ownplay.player.source.xtream.XtreamXmlTvProgram
+import java.time.Instant
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
 import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -29,38 +32,37 @@ data class EpgSnapshot(
     val programs: List<EpgProgram>,
 )
 
+data class EpgRefreshResult(
+    val matchedChannelCount: Int,
+    val programCount: Int,
+)
+
 class XtreamEpgRepository(
     private val database: OwnPlayDatabase,
     private val sensitiveValueStore: SensitiveValueStore,
     private val credentialStore: CredentialStore,
-    private val xtreamClient: XtreamClient = XtreamClient(),
-    private val cacheTtlMillis: Long = 120_000L,
+    private val xmlTvClient: XtreamXmlTvClient = XtreamXmlTvClient(),
 ) {
-    private data class CacheEntry(
-        val loadedAtEpochMillis: Long,
-        val snapshot: EpgSnapshot,
+    private data class SourceCache(
+        val programsByEpgChannelId: Map<String, List<EpgProgram>>,
     )
 
-    private val cache = ConcurrentHashMap<String, CacheEntry>()
+    private val cache = ConcurrentHashMap<String, SourceCache>()
 
-    suspend fun load(
-        sourceId: String,
-        channelId: String,
-        force: Boolean = false,
-    ): EpgSnapshot? = withContext(Dispatchers.IO) {
-        val cacheKey = "$sourceId:$channelId"
-        val nowMillis = System.currentTimeMillis()
-        if (!force) {
-            cache[cacheKey]
-                ?.takeIf { nowMillis - it.loadedAtEpochMillis <= cacheTtlMillis }
-                ?.let { return@withContext it.snapshot }
-        }
-
+    suspend fun refreshSource(sourceId: String): EpgRefreshResult? = withContext(Dispatchers.IO) {
         val source = database.playlistSourceDao().getById(sourceId) ?: return@withContext null
-        if (source.sourceKind != SourceKinds.XTREAM) return@withContext null
-        val channel = database.providerCatalogDao().channelById(channelId) ?: return@withContext null
-        if (channel.sourceId != sourceId) return@withContext null
-        val streamId = channel.providerStreamId?.takeIf(String::isNotBlank) ?: return@withContext null
+        if (source.sourceKind != SourceKinds.XTREAM) {
+            cache.remove(sourceId)
+            return@withContext EpgRefreshResult(0, 0)
+        }
+        val channels = database.providerCatalogDao().channelsForSource(sourceId)
+        val epgIds = channels.asSequence()
+            .mapNotNull { channel -> channel.tvgId?.trim()?.takeIf(String::isNotBlank) }
+            .toSet()
+        if (epgIds.isEmpty()) {
+            cache[sourceId] = SourceCache(emptyMap())
+            return@withContext EpgRefreshResult(0, 0)
+        }
 
         val locatorValue = runCatching {
             sensitiveValueStore.get(SensitiveValueRef(source.locatorRef))
@@ -70,12 +72,11 @@ class XtreamEpgRepository(
         val credentials = runCatching { credentialStore.get(credentialRef) }.getOrNull()
             ?: return@withContext null
 
-        val guide = when (
-            val result = xtreamClient.getShortEpg(
+        val snapshot = when (
+            val result = xmlTvClient.load(
                 serverUrl = locator.serverUrl,
                 credentials = credentials,
-                streamId = streamId,
-                limit = 16,
+                channelIds = epgIds,
                 allowCleartext = locator.allowCleartext,
             )
         ) {
@@ -83,49 +84,63 @@ class XtreamEpgRepository(
             is SourceResult.Failure -> return@withContext null
         }
 
-        val programs = guide.programs.map(::toProgram)
-        val nowSeconds = System.currentTimeMillis() / 1_000L
-        val currentIndex = guide.programs.indexOfFirst { program ->
+        val mapped = snapshot.programsByChannelId.mapValues { (_, entries) ->
+            entries.map(::toProgram)
+        }
+        cache[sourceId] = SourceCache(mapped)
+        EpgRefreshResult(
+            matchedChannelCount = snapshot.matchedChannelCount,
+            programCount = snapshot.programCount,
+        )
+    }
+
+    suspend fun snapshot(
+        sourceId: String,
+        channelId: String,
+    ): EpgSnapshot? = withContext(Dispatchers.IO) {
+        val channel = database.providerCatalogDao().channelById(channelId) ?: return@withContext null
+        if (channel.sourceId != sourceId) return@withContext null
+        val epgId = channel.tvgId?.trim()?.takeIf(String::isNotBlank) ?: return@withContext null
+        val programs = cache[sourceId]?.programsByEpgChannelId?.get(epgId).orEmpty()
+        if (programs.isEmpty()) return@withContext EpgSnapshot(null, null, emptyList())
+
+        val now = System.currentTimeMillis() / 1_000L
+        val currentIndex = programs.indexOfFirst { program ->
             val start = program.startEpochSeconds
             val end = program.endEpochSeconds
-            start != null && end != null && nowSeconds >= start && nowSeconds < end
+            start != null && end != null && now >= start && now < end
         }
-
-        val current = when {
-            currentIndex >= 0 -> programs[currentIndex]
-            programs.isNotEmpty() && guide.programs.all { it.startEpochSeconds == null } -> programs.first()
-            else -> null
-        }
+        val current = programs.getOrNull(currentIndex)
         val next = when {
             currentIndex >= 0 -> programs.getOrNull(currentIndex + 1)
-            else -> guide.programs.indexOfFirst { program ->
-                program.startEpochSeconds?.let { it >= nowSeconds } == true
-            }.takeIf { it >= 0 }?.let(programs::getOrNull)
+            else -> programs.firstOrNull { program ->
+                program.startEpochSeconds?.let { it >= now } == true
+            }
         }
-
         EpgSnapshot(
             current = current,
             next = next,
             programs = programs,
-        ).also { snapshot ->
-            cache[cacheKey] = CacheEntry(
-                loadedAtEpochMillis = nowMillis,
-                snapshot = snapshot,
-            )
-        }
+        )
     }
 
     fun invalidateSource(sourceId: String) {
-        val prefix = "$sourceId:"
-        cache.keys.removeIf { key -> key.startsWith(prefix) }
+        cache.remove(sourceId)
     }
 
-    private fun toProgram(program: XtreamEpgProgram): EpgProgram = EpgProgram(
+    private fun toProgram(program: XtreamXmlTvProgram): EpgProgram = EpgProgram(
         title = program.title,
         description = program.description,
         startEpochSeconds = program.startEpochSeconds,
         endEpochSeconds = program.endEpochSeconds,
-        startLabel = program.startLabel,
-        endLabel = program.endLabel,
+        startLabel = program.startEpochSeconds?.let(::formatTime),
+        endLabel = program.endEpochSeconds?.let(::formatTime),
     )
+
+    private fun formatTime(epochSeconds: Long): String =
+        TIME_FORMATTER.format(Instant.ofEpochSecond(epochSeconds).atZone(ZoneId.systemDefault()))
+
+    private companion object {
+        val TIME_FORMATTER: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm")
+    }
 }
