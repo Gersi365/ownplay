@@ -29,9 +29,9 @@ class PlaybackWindowPolicyTest {
     }
 
     @Test
-    fun normalAppShellAlwaysUsesFullSensorOrientation() {
+    fun normalAppShellIsPortraitFirst() {
         assertEquals(
-            PlaybackOrientationIntent.FULL_SENSOR,
+            PlaybackOrientationIntent.PORTRAIT,
             PlaybackWindowPolicy.orientationIntent(
                 fullscreen = false,
                 inPictureInPicture = false,
@@ -51,7 +51,7 @@ class PlaybackWindowPolicyTest {
     }
 
     @Test
-    fun pictureInPictureAlwaysReleasesOrientationToSystem() {
+    fun pictureInPictureReleasesOrientationToSystem() {
         assertEquals(
             PlaybackOrientationIntent.FOLLOW_SYSTEM,
             PlaybackWindowPolicy.orientationIntent(
@@ -69,9 +69,9 @@ class PlaybackWindowPolicyTest {
     }
 
     @Test
-    fun leavingFullscreenReturnsToFullSensorOrientation() {
+    fun leavingFullscreenReturnsToPortrait() {
         assertEquals(
-            PlaybackOrientationIntent.FULL_SENSOR,
+            PlaybackOrientationIntent.PORTRAIT,
             PlaybackWindowPolicy.orientationIntent(
                 fullscreen = false,
                 inPictureInPicture = false,
