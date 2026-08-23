@@ -34,17 +34,31 @@ class PlaybackWindowPolicyTest {
             PlaybackOrientationIntent.PORTRAIT,
             PlaybackWindowPolicy.orientationIntent(
                 fullscreen = false,
+                playbackSurfaceActive = false,
                 inPictureInPicture = false,
             ),
         )
     }
 
     @Test
-    fun fullscreenPlaybackRequestsSensorLandscape() {
+    fun playbackSurfaceFollowsPhysicalSensor() {
         assertEquals(
-            PlaybackOrientationIntent.SENSOR_LANDSCAPE,
+            PlaybackOrientationIntent.SENSOR,
+            PlaybackWindowPolicy.orientationIntent(
+                fullscreen = false,
+                playbackSurfaceActive = true,
+                inPictureInPicture = false,
+            ),
+        )
+    }
+
+    @Test
+    fun immersiveFullscreenAlsoFollowsPhysicalSensor() {
+        assertEquals(
+            PlaybackOrientationIntent.SENSOR,
             PlaybackWindowPolicy.orientationIntent(
                 fullscreen = true,
+                playbackSurfaceActive = true,
                 inPictureInPicture = false,
             ),
         )
@@ -56,6 +70,7 @@ class PlaybackWindowPolicyTest {
             PlaybackOrientationIntent.FOLLOW_SYSTEM,
             PlaybackWindowPolicy.orientationIntent(
                 fullscreen = true,
+                playbackSurfaceActive = true,
                 inPictureInPicture = true,
             ),
         )
@@ -63,18 +78,52 @@ class PlaybackWindowPolicyTest {
             PlaybackOrientationIntent.FOLLOW_SYSTEM,
             PlaybackWindowPolicy.orientationIntent(
                 fullscreen = false,
+                playbackSurfaceActive = false,
                 inPictureInPicture = true,
             ),
         )
     }
 
     @Test
-    fun leavingFullscreenReturnsToPortrait() {
+    fun leavingPlaybackSurfaceReturnsToPortrait() {
         assertEquals(
             PlaybackOrientationIntent.PORTRAIT,
             PlaybackWindowPolicy.orientationIntent(
                 fullscreen = false,
+                playbackSurfaceActive = false,
                 inPictureInPicture = false,
+            ),
+        )
+    }
+
+    @Test
+    fun previewPromotionRequiresLandscapeAndRearm() {
+        assertTrue(
+            PlaybackWindowPolicy.shouldPromotePreviewToFullscreen(
+                previewActive = true,
+                isLandscape = true,
+                promotionArmed = true,
+            ),
+        )
+        assertFalse(
+            PlaybackWindowPolicy.shouldPromotePreviewToFullscreen(
+                previewActive = true,
+                isLandscape = false,
+                promotionArmed = true,
+            ),
+        )
+        assertFalse(
+            PlaybackWindowPolicy.shouldPromotePreviewToFullscreen(
+                previewActive = true,
+                isLandscape = true,
+                promotionArmed = false,
+            ),
+        )
+        assertFalse(
+            PlaybackWindowPolicy.shouldPromotePreviewToFullscreen(
+                previewActive = false,
+                isLandscape = true,
+                promotionArmed = true,
             ),
         )
     }
