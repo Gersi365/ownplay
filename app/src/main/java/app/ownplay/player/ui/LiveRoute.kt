@@ -114,35 +114,6 @@ internal fun LiveRoute(
     }
 
     Column(modifier = Modifier.fillMaxSize()) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 18.dp, vertical = 10.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = "Live TV",
-                    style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.SemiBold,
-                )
-                Text(
-                    text = "${browseState.channels.size} channels",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-            TextButton(
-                onClick = { mutationScope.launch { runtime.refreshSource(sourceId) } },
-                enabled = !loadingChannels && !loadingEpg,
-            ) {
-                Text("Refresh")
-            }
-            TextButton(onClick = onOpenSettings) {
-                Text("Settings")
-            }
-        }
-
         if (preview != null) {
             BoxWithConstraints(
                 modifier = Modifier
@@ -178,7 +149,7 @@ internal fun LiveRoute(
                 } else {
                     Column(
                         modifier = Modifier.fillMaxWidth(),
-                        verticalArrangement = Arrangement.spacedBy(10.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
                         LivePreviewPanel(
                             selection = preview,
