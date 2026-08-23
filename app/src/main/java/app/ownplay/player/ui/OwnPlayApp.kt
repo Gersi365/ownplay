@@ -2,22 +2,32 @@ package app.ownplay.player.ui
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.LiveTv
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -28,8 +38,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import app.ownplay.player.OwnPlayAppRuntime
+import app.ownplay.player.persistence.PlaylistSourceSummary
 import app.ownplay.player.playback.LivePlaybackSelection
 import app.ownplay.player.playback.PlaybackNavigationDirection
 import app.ownplay.player.source.SourceSyncStage
@@ -106,8 +118,18 @@ fun OwnPlayApp(
         containerColor = MaterialTheme.colorScheme.background,
         topBar = {
             OwnPlayHeader(
-                activeSourceName = activeSummary?.name,
+                section = section,
+                activeSourceId = activeSourceId,
+                summaries = summaries,
                 syncState = syncState,
+                onSourceSelected = { sourceId ->
+                    if (sourceId != activeSourceId) {
+                        activeSourceId = sourceId
+                        activeSelection = null
+                        fullscreenSelection = null
+                        runtime.playbackController.stop()
+                    }
+                },
             )
         },
         bottomBar = {
@@ -119,13 +141,23 @@ fun OwnPlayApp(
                 NavigationBarItem(
                     selected = section == OwnPlaySection.LIVE,
                     onClick = { section = OwnPlaySection.LIVE },
-                    icon = { Text("TV", fontWeight = FontWeight.Bold) },
+                    icon = {
+                        Icon(
+                            Icons.Filled.LiveTv,
+                            contentDescription = "Live",
+                        )
+                    },
                     label = { Text("Live") },
                 )
                 NavigationBarItem(
                     selected = section == OwnPlaySection.SETTINGS,
                     onClick = { section = OwnPlaySection.SETTINGS },
-                    icon = { Text("⚙") },
+                    icon = {
+                        Icon(
+                            Icons.Filled.Settings,
+                            contentDescription = "Settings",
+                        )
+                    },
                     label = { Text("Settings") },
                 )
             }
@@ -188,6 +220,11 @@ fun OwnPlayApp(
                     hasActivePlayback = activeSelection != null,
                     onOpenLive = { section = OwnPlaySection.LIVE },
                     onOpenSourceInLive = { sourceId ->
+                        if (sourceId != activeSourceId) {
+                            activeSelection = null
+                            fullscreenSelection = null
+                            runtime.playbackController.stop()
+                        }
                         activeSourceId = sourceId
                         section = OwnPlaySection.LIVE
                     },
@@ -203,8 +240,11 @@ fun OwnPlayApp(
 
 @Composable
 private fun OwnPlayHeader(
-    activeSourceName: String?,
+    section: OwnPlaySection,
+    activeSourceId: String?,
+    summaries: List<PlaylistSourceSummary>,
     syncState: SourceSyncState,
+    onSourceSelected: (String) -> Unit,
 ) {
     Surface(
         color = MaterialTheme.colorScheme.surface,
@@ -214,7 +254,7 @@ private fun OwnPlayHeader(
             modifier = Modifier
                 .fillMaxWidth()
                 .statusBarsPadding()
-                .padding(horizontal = 18.dp, vertical = 12.dp),
+                .padding(horizontal = 18.dp, vertical = 10.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
@@ -236,18 +276,89 @@ private fun OwnPlayHeader(
                     style = MaterialTheme.typography.titleLarge,
                     fontWeight = FontWeight.Bold,
                 )
-                Text(
-                    text = activeSourceName ?: "Live media hub",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                )
+                when {
+                    section == OwnPlaySection.LIVE && summaries.isNotEmpty() -> LiveSourceSelector(
+                        activeSourceId = activeSourceId,
+                        summaries = summaries,
+                        onSourceSelected = onSourceSelected,
+                    )
+                    section == OwnPlaySection.SETTINGS -> Text(
+                        text = "Settings",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    else -> Text(
+                        text = "Live media hub",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
             }
             when (syncState.stage) {
                 SourceSyncStage.LoadingChannels,
                 SourceSyncStage.LoadingEpg,
-                -> CircularProgressIndicator(strokeWidth = 2.dp)
+                -> CircularProgressIndicator(
+                    modifier = Modifier.size(22.dp),
+                    strokeWidth = 2.dp,
+                )
                 else -> Unit
+            }
+        }
+    }
+}
+
+@Composable
+private fun LiveSourceSelector(
+    activeSourceId: String?,
+    summaries: List<PlaylistSourceSummary>,
+    onSourceSelected: (String) -> Unit,
+) {
+    var expanded by remember { mutableStateOf(false) }
+    val active = summaries.firstOrNull { it.sourceId == activeSourceId } ?: summaries.first()
+
+    Box {
+        TextButton(
+            onClick = { expanded = true },
+            modifier = Modifier.padding(start = 0.dp),
+        ) {
+            Text(
+                text = active.name,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Icon(
+                Icons.Filled.KeyboardArrowDown,
+                contentDescription = "Choose playlist",
+            )
+        }
+        DropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false },
+        ) {
+            summaries.forEach { summary ->
+                DropdownMenuItem(
+                    text = {
+                        Column {
+                            Text(
+                                text = summary.name,
+                                fontWeight = if (summary.sourceId == active.sourceId) {
+                                    FontWeight.SemiBold
+                                } else {
+                                    FontWeight.Normal
+                                },
+                            )
+                            Text(
+                                text = "${summary.channelCount} channels",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    },
+                    onClick = {
+                        expanded = false
+                        onSourceSelected(summary.sourceId)
+                    },
+                )
             }
         }
     }
