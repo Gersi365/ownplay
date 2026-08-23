@@ -1,5 +1,6 @@
 package app.ownplay.player.ui
 
+import android.content.res.Configuration
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -37,6 +38,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -56,7 +58,9 @@ private enum class OwnPlaySection {
 fun OwnPlayApp(
     runtime: OwnPlayAppRuntime,
     onPlaybackFullscreenChanged: (Boolean) -> Unit = {},
+    onPlaybackSurfaceActiveChanged: (Boolean) -> Unit = {},
 ) {
+    val configuration = LocalConfiguration.current
     val summaries by runtime.observeSourceSummaries().collectAsState(initial = emptyList())
     val syncState by runtime.sourceSyncState.collectAsState()
     val playbackState by runtime.playbackController.state.collectAsState()
@@ -66,6 +70,7 @@ fun OwnPlayApp(
     var activeSourceId by remember { mutableStateOf<String?>(null) }
     var activeSelection by remember { mutableStateOf<LivePlaybackSelection?>(null) }
     var fullscreenSelection by remember { mutableStateOf<LivePlaybackSelection?>(null) }
+    var autoFullscreenPromotionArmed by remember { mutableStateOf(true) }
 
     LaunchedEffect(summaries) {
         val ids = summaries.map { it.sourceId }.toSet()
@@ -80,6 +85,40 @@ fun OwnPlayApp(
             activeSelection = null
             fullscreenSelection = null
             runtime.playbackController.stop()
+        }
+    }
+
+    val previewActive =
+        section == OwnPlaySection.LIVE &&
+            activeSelection != null &&
+            fullscreenSelection == null
+    val playbackSurfaceActive = previewActive || fullscreenSelection != null
+    val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
+
+    LaunchedEffect(playbackSurfaceActive) {
+        onPlaybackSurfaceActiveChanged(playbackSurfaceActive)
+    }
+
+    LaunchedEffect(
+        previewActive,
+        isLandscape,
+        autoFullscreenPromotionArmed,
+        activeSelection?.request?.channelId,
+    ) {
+        if (!isLandscape) {
+            autoFullscreenPromotionArmed = true
+            return@LaunchedEffect
+        }
+        if (
+            PlaybackWindowPolicy.shouldPromotePreviewToFullscreen(
+                previewActive = previewActive,
+                isLandscape = true,
+                promotionArmed = autoFullscreenPromotionArmed,
+            )
+        ) {
+            val selection = activeSelection ?: return@LaunchedEffect
+            autoFullscreenPromotionArmed = false
+            fullscreenSelection = selection
         }
     }
 
