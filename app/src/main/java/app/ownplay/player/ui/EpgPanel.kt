@@ -5,8 +5,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
@@ -102,12 +100,8 @@ internal fun EpgPanel(
                         .take(4)
                     if (future.isNotEmpty()) {
                         HorizontalDivider()
-                        LazyColumn(
-                            verticalArrangement = Arrangement.spacedBy(8.dp),
-                        ) {
-                            items(future) { program ->
-                                ProgramLine(program)
-                            }
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            future.forEach { program -> ProgramLine(program) }
                         }
                     }
                 }
