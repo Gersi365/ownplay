@@ -27,6 +27,29 @@ class ChannelDragTargetResolverTest {
     }
 
     @Test
+    fun persistedChannelDragIgnoresStringLazyLayoutKeys() {
+        val dragged = "00000000-0000-0000-0000-000000000001"
+        val target = "00000000-0000-0000-0000-000000000002"
+        val result = ChannelDragTargetResolver.resolve(
+            pointerY = 30f,
+            draggedChannelId = dragged,
+            visibleItems = listOf(
+                VisibleChannelBounds("browse-header", top = 0f, bottom = 60f),
+                VisibleChannelBounds(target, top = 60f, bottom = 120f),
+                VisibleChannelBounds(dragged, top = 120f, bottom = 180f),
+            ),
+        )
+
+        assertEquals(
+            ChannelDragTarget(
+                anchorChannelId = target,
+                placement = ManualOrderPlacement.BEFORE,
+            ),
+            result,
+        )
+    }
+
+    @Test
     fun pointerAtOrBelowCenterPlacesAfterAnchor() {
         val result = ChannelDragTargetResolver.resolve(
             pointerY = 150f,
