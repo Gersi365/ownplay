@@ -28,6 +28,24 @@ data class PlaybackTrackOption(
             "selectedByPlayer=$selectedByPlayer, supported=$supported)"
 }
 
+data class PlaybackDiagnostics(
+    val rendererPolicy: String = "Platform first · FFmpeg fallback",
+    val videoMimeType: String? = null,
+    val videoCodecs: String? = null,
+    val videoWidth: Int? = null,
+    val videoHeight: Int? = null,
+    val videoDecoder: String? = null,
+    val audioMimeType: String? = null,
+    val audioCodecs: String? = null,
+    val audioSampleRate: Int? = null,
+    val audioChannelCount: Int? = null,
+    val audioLanguage: String? = null,
+    val audioDecoder: String? = null,
+) {
+    val usingFfmpegAudio: Boolean
+        get() = audioDecoder?.contains("ffmpeg", ignoreCase = true) == true
+}
+
 sealed interface PlaybackAudioSelection {
     data object Default : PlaybackAudioSelection
 
@@ -62,6 +80,7 @@ data class PlaybackTrackState(
     val subtitleTracks: List<PlaybackTrackOption> = emptyList(),
     val audioSelection: PlaybackAudioSelection = PlaybackAudioSelection.Default,
     val subtitleSelection: PlaybackSubtitleSelection = PlaybackSubtitleSelection.Default,
+    val diagnostics: PlaybackDiagnostics = PlaybackDiagnostics(),
 ) {
     init {
         require(audioTracks.all { it.kind == PlaybackTrackKind.AUDIO }) {
@@ -88,7 +107,7 @@ internal object PlaybackTrackSelectionPolicy {
         state: PlaybackTrackState,
         audioTracks: List<PlaybackTrackOption>,
         subtitleTracks: List<PlaybackTrackOption>,
-    ): PlaybackTrackState = PlaybackTrackState(
+    ): PlaybackTrackState = state.copy(
         audioTracks = audioTracks,
         subtitleTracks = subtitleTracks,
         audioSelection = normalizeAudioSelection(state.audioSelection, audioTracks),
