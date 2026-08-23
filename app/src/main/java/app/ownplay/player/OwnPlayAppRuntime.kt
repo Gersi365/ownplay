@@ -1,6 +1,8 @@
 package app.ownplay.player
 
 import android.content.Context
+import app.ownplay.player.epg.EpgSnapshot
+import app.ownplay.player.epg.XtreamEpgRepository
 import app.ownplay.player.live.LiveCatalogRepository
 import app.ownplay.player.live.ingest.InitialLiveCatalogFactory
 import app.ownplay.player.live.ingest.InitialLiveCatalogIngestResult
@@ -8,6 +10,7 @@ import app.ownplay.player.live.ingest.InitialLiveCatalogIngestor
 import app.ownplay.player.live.ingest.RoomLiveCatalogPersistence
 import app.ownplay.player.persistence.OwnPlayDatabase
 import app.ownplay.player.persistence.PlaylistSourceEntity
+import app.ownplay.player.persistence.PlaylistSourceSummary
 import app.ownplay.player.persistence.SourceKinds
 import app.ownplay.player.persistence.secure.AndroidKeystoreSensitiveValueStore
 import app.ownplay.player.persistence.secure.SensitiveValueRef
@@ -33,14 +36,29 @@ import app.ownplay.player.playback.RoomPlaybackResolutionLookup
 import app.ownplay.player.source.CredentialRef
 import app.ownplay.player.source.SourceError
 import app.ownplay.player.source.SourceResult
+import app.ownplay.player.source.SourceSyncStage
+import app.ownplay.player.source.SourceSyncState
 import app.ownplay.player.source.credential.AndroidKeystoreCredentialStore
+import app.ownplay.player.source.management.SourceEditSnapshot
+import app.ownplay.player.source.management.SourceManagementService
+import app.ownplay.player.source.management.SourceMutationResult
 import app.ownplay.player.source.onboarding.SourceOnboardingFailure
 import app.ownplay.player.source.onboarding.SourceOnboardingResult
 import app.ownplay.player.source.onboarding.SourceOnboardingService
 import app.ownplay.player.source.xtream.XtreamClient
 import app.ownplay.player.source.xtream.XtreamSourceLocatorCodec
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 
 class OwnPlayAppRuntime(
@@ -48,6 +66,8 @@ class OwnPlayAppRuntime(
 ) : AutoCloseable {
     private val applicationContext = context.applicationContext
     private val database = OwnPlayDatabase.create(applicationContext)
+    private val runtimeScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val refreshMutex = Mutex()
     private val liveCatalogRepository = LiveCatalogRepository(database.liveBrowseDao())
     private val playbackConnectivityMonitor =
         AndroidPlaybackConnectivityMonitor(applicationContext)
@@ -59,11 +79,24 @@ class OwnPlayAppRuntime(
         credentialStore = credentialStore,
         contentResolver = applicationContext.contentResolver,
     )
+    private val sourceManagementService = SourceManagementService(
+        database = database,
+        sensitiveValueStore = sensitiveValueStore,
+        credentialStore = credentialStore,
+    )
     private val xtreamClient = XtreamClient()
     private val liveCatalogIngestor = InitialLiveCatalogIngestor(
         persistence = RoomLiveCatalogPersistence(database),
         sensitiveValueStore = sensitiveValueStore,
     )
+    private val epgRepository = XtreamEpgRepository(
+        database = database,
+        sensitiveValueStore = sensitiveValueStore,
+        credentialStore = credentialStore,
+    )
+
+    private val _sourceSyncState = MutableStateFlow(SourceSyncState())
+    val sourceSyncState: StateFlow<SourceSyncState> = _sourceSyncState.asStateFlow()
 
     private val channelVisibilityMutator = ChannelVisibilityMutator(database)
     private val favoriteChannelMutator = FavoriteChannelMutator(database)
@@ -98,8 +131,20 @@ class OwnPlayAppRuntime(
     val playbackVideoOutput = playbackEngine
     val playbackTrackController: PlaybackTrackController = playbackEngine
 
+    init {
+        runtimeScope.launch {
+            val sources = observeSources().first()
+            sources.forEach { source ->
+                refreshSourcePipeline(source.sourceId)
+            }
+        }
+    }
+
     fun observeSources(): Flow<List<PlaylistSourceEntity>> =
         database.playlistSourceDao().observeAll()
+
+    fun observeSourceSummaries(): Flow<List<PlaylistSourceSummary>> =
+        database.playlistSourceDao().observeSummaries()
 
     fun observeLiveCatalog(sourceId: String) =
         liveCatalogRepository.observe(sourceId)
@@ -111,33 +156,216 @@ class OwnPlayAppRuntime(
         password: String,
         allowCleartext: Boolean = false,
     ): SourceOnboardingResult = withContext(Dispatchers.IO) {
-        sourceOnboardingService.addXtream(
+        _sourceSyncState.value = SourceSyncState(
+            sourceName = name.trim().ifBlank { "Xtream" },
+            stage = SourceSyncStage.LoadingChannels,
+        )
+        val result = sourceOnboardingService.addXtream(
             name = name,
             serverUrl = serverUrl,
             username = username,
             password = password,
             allowCleartext = allowCleartext,
         )
+        when (result) {
+            is SourceOnboardingResult.Success -> {
+                loadEpgAfterChannels(
+                    sourceId = result.sourceId,
+                    sourceName = name.trim(),
+                    channelCount = result.channelCount,
+                )
+            }
+            is SourceOnboardingResult.Failure -> {
+                _sourceSyncState.value = SourceSyncState(
+                    sourceName = name.trim().ifBlank { "Xtream" },
+                    stage = SourceSyncStage.ChannelsFailed,
+                )
+            }
+        }
+        result
     }
 
     suspend fun addRemoteM3uSource(
         name: String,
         playlistUrl: String,
     ): SourceOnboardingResult = withContext(Dispatchers.IO) {
-        sourceOnboardingService.addRemoteM3u(
+        _sourceSyncState.value = SourceSyncState(
+            sourceName = name.trim().ifBlank { "M3U" },
+            stage = SourceSyncStage.LoadingChannels,
+        )
+        val result = sourceOnboardingService.addRemoteM3u(
             name = name,
             playlistUrl = playlistUrl,
         )
+        _sourceSyncState.value = when (result) {
+            is SourceOnboardingResult.Success -> SourceSyncState(
+                sourceId = result.sourceId,
+                sourceName = name.trim(),
+                stage = SourceSyncStage.Ready,
+                channelCount = result.channelCount,
+            )
+            is SourceOnboardingResult.Failure -> SourceSyncState(
+                sourceName = name.trim().ifBlank { "M3U" },
+                stage = SourceSyncStage.ChannelsFailed,
+            )
+        }
+        result
     }
 
     suspend fun addLocalM3uSource(
         name: String,
         documentUri: String,
     ): SourceOnboardingResult = withContext(Dispatchers.IO) {
-        sourceOnboardingService.addLocalM3u(
+        _sourceSyncState.value = SourceSyncState(
+            sourceName = name.trim().ifBlank { "Local M3U" },
+            stage = SourceSyncStage.LoadingChannels,
+        )
+        val result = sourceOnboardingService.addLocalM3u(
             name = name,
             documentUri = documentUri,
         )
+        _sourceSyncState.value = when (result) {
+            is SourceOnboardingResult.Success -> SourceSyncState(
+                sourceId = result.sourceId,
+                sourceName = name.trim(),
+                stage = SourceSyncStage.Ready,
+                channelCount = result.channelCount,
+            )
+            is SourceOnboardingResult.Failure -> SourceSyncState(
+                sourceName = name.trim().ifBlank { "Local M3U" },
+                stage = SourceSyncStage.ChannelsFailed,
+            )
+        }
+        result
+    }
+
+    suspend fun refreshSource(sourceId: String) {
+        refreshSourcePipeline(sourceId)
+    }
+
+    suspend fun refreshAllSources() {
+        observeSources().first().forEach { source ->
+            refreshSourcePipeline(source.sourceId)
+        }
+    }
+
+    private suspend fun refreshSourcePipeline(sourceId: String) = refreshMutex.withLock {
+        val source = database.playlistSourceDao().getById(sourceId) ?: return@withLock
+        val existingCount = runCatching {
+            database.providerCatalogDao().channelsForSource(sourceId).size
+        }.getOrDefault(0)
+        _sourceSyncState.value = SourceSyncState(
+            sourceId = sourceId,
+            sourceName = source.name,
+            stage = SourceSyncStage.LoadingChannels,
+            channelCount = existingCount,
+        )
+
+        val channelResult = when (source.sourceKind) {
+            SourceKinds.XTREAM -> refreshXtreamLiveCatalogInternal(sourceId)
+            else -> SourceOnboardingResult.Success(sourceId, existingCount)
+        }
+        if (channelResult is SourceOnboardingResult.Failure) {
+            _sourceSyncState.value = SourceSyncState(
+                sourceId = sourceId,
+                sourceName = source.name,
+                stage = SourceSyncStage.ChannelsFailed,
+                channelCount = existingCount,
+            )
+            return@withLock
+        }
+        channelResult as SourceOnboardingResult.Success
+
+        if (source.sourceKind == SourceKinds.XTREAM) {
+            loadEpgAfterChannels(
+                sourceId = sourceId,
+                sourceName = source.name,
+                channelCount = channelResult.channelCount,
+            )
+        } else {
+            _sourceSyncState.value = SourceSyncState(
+                sourceId = sourceId,
+                sourceName = source.name,
+                stage = SourceSyncStage.Ready,
+                channelCount = channelResult.channelCount,
+            )
+        }
+    }
+
+    private suspend fun loadEpgAfterChannels(
+        sourceId: String,
+        sourceName: String,
+        channelCount: Int,
+    ) {
+        _sourceSyncState.value = SourceSyncState(
+            sourceId = sourceId,
+            sourceName = sourceName,
+            stage = SourceSyncStage.LoadingEpg,
+            channelCount = channelCount,
+        )
+        val epg = epgRepository.refreshSource(sourceId)
+        _sourceSyncState.value = if (epg == null) {
+            SourceSyncState(
+                sourceId = sourceId,
+                sourceName = sourceName,
+                stage = SourceSyncStage.EpgFailed,
+                channelCount = channelCount,
+            )
+        } else {
+            SourceSyncState(
+                sourceId = sourceId,
+                sourceName = sourceName,
+                stage = SourceSyncStage.Ready,
+                channelCount = channelCount,
+                epgChannelCount = epg.matchedChannelCount,
+            )
+        }
+    }
+
+    suspend fun epgSnapshot(
+        sourceId: String,
+        channelId: String,
+    ): EpgSnapshot? = epgRepository.snapshot(sourceId, channelId)
+
+    suspend fun loadSourceEditSnapshot(sourceId: String): SourceEditSnapshot? =
+        sourceManagementService.load(sourceId)
+
+    suspend fun renameSource(
+        sourceId: String,
+        name: String,
+    ): SourceMutationResult = sourceManagementService.rename(sourceId, name)
+
+    suspend fun updateXtreamSource(
+        sourceId: String,
+        name: String,
+        serverUrl: String,
+        replacementUsername: String,
+        replacementPassword: String,
+        allowCleartext: Boolean,
+    ): SourceMutationResult {
+        val result = sourceManagementService.updateXtream(
+            sourceId = sourceId,
+            name = name,
+            serverUrl = serverUrl,
+            replacementUsername = replacementUsername,
+            replacementPassword = replacementPassword,
+            allowCleartext = allowCleartext,
+        )
+        if (result is SourceMutationResult.Success) {
+            refreshSourcePipeline(sourceId)
+        }
+        return result
+    }
+
+    suspend fun deleteSource(sourceId: String): SourceMutationResult {
+        val result = sourceManagementService.delete(sourceId)
+        if (result is SourceMutationResult.Success) {
+            epgRepository.invalidateSource(sourceId)
+            if (_sourceSyncState.value.sourceId == sourceId) {
+                _sourceSyncState.value = SourceSyncState()
+            }
+        }
+        return result
     }
 
     suspend fun ensureLiveCatalog(sourceId: String): SourceOnboardingResult =
@@ -346,6 +574,7 @@ class OwnPlayAppRuntime(
     )
 
     override fun close() {
+        runtimeScope.cancel()
         playbackController.close()
         playbackConnectivityMonitor.close()
         database.close()
