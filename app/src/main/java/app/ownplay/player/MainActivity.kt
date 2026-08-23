@@ -37,7 +37,10 @@ class MainActivity : ComponentActivity() {
                 if (isInPictureInPictureMode) {
                     PictureInPicturePlaybackSurface(runtime.playbackVideoOutput)
                 } else {
-                    OwnPlayRoot(runtime)
+                    OwnPlayRoot(
+                        runtime = runtime,
+                        onPlaybackFullscreenChanged = playbackWindowController::updateFullscreenState,
+                    )
                 }
             }
         }

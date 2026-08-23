@@ -14,7 +14,10 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
@@ -57,6 +60,7 @@ private enum class SourceOnboardingMode {
 @Composable
 fun OwnPlayRoot(
     runtime: OwnPlayAppRuntime,
+    onPlaybackFullscreenChanged: (Boolean) -> Unit = {},
 ) {
     val sources by runtime.observeSources().collectAsState(initial = emptyList())
     val playbackState by runtime.playbackController.state.collectAsState()
@@ -73,13 +77,17 @@ fun OwnPlayRoot(
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
-        OwnPlayApp(runtime)
+        OwnPlayApp(
+            runtime = runtime,
+            onPlaybackFullscreenChanged = onPlaybackFullscreenChanged,
+        )
         if (playbackState is PlaybackState.Idle) {
             ExtendedFloatingActionButton(
                 onClick = { showOnboarding = true },
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
-                    .padding(20.dp),
+                    .navigationBarsPadding()
+                    .padding(16.dp),
             ) {
                 Text("Add source")
             }
@@ -111,36 +119,45 @@ private fun SourceOnboardingScreen(
         Column(
             modifier = Modifier
                 .fillMaxSize()
+                .safeDrawingPadding()
+                .imePadding()
                 .verticalScroll(rememberScrollState())
-                .padding(horizontal = 24.dp, vertical = 36.dp),
+                .padding(horizontal = 20.dp, vertical = 20.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
-            Row(
+            if (mode != null || canCancel) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    if (mode != null) {
+                        TextButton(onClick = { mode = null }) {
+                            Text("Back")
+                        }
+                    }
+                    Spacer(modifier = Modifier.weight(1f))
+                    if (canCancel) {
+                        TextButton(onClick = onCancel) {
+                            Text("Cancel")
+                        }
+                    }
+                }
+            }
+
+            Column(
                 modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
+                verticalArrangement = Arrangement.spacedBy(4.dp),
             ) {
-                if (mode != null) {
-                    TextButton(onClick = { mode = null }) {
-                        Text("Back")
-                    }
-                }
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = "Add playlist",
-                        style = MaterialTheme.typography.headlineMedium,
-                        fontWeight = FontWeight.SemiBold,
-                    )
-                    Text(
-                        text = "Use a media source you are authorized to access.",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-                if (canCancel) {
-                    TextButton(onClick = onCancel) {
-                        Text("Cancel")
-                    }
-                }
+                Text(
+                    text = "Add playlist",
+                    style = MaterialTheme.typography.headlineMedium,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                Text(
+                    text = "Use a media source you are authorized to access.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
 
             HorizontalDivider()

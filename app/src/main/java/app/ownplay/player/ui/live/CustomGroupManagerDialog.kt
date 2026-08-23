@@ -119,6 +119,7 @@ fun CustomGroupManagerDialog(
                 title = { Text("Custom groups") },
                 text = {
                     Column(
+                        modifier = Modifier.fillMaxWidth(),
                         verticalArrangement = Arrangement.spacedBy(12.dp),
                     ) {
                         OutlinedTextField(
@@ -128,22 +129,18 @@ fun CustomGroupManagerDialog(
                             label = { Text("New group") },
                             singleLine = true,
                         )
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.End,
+                        TextButton(
+                            onClick = {
+                                val normalized = newGroupName.trim()
+                                if (normalized.isNotEmpty()) {
+                                    onCreateGroup(normalized)
+                                    newGroupName = ""
+                                }
+                            },
+                            enabled = newGroupName.isNotBlank(),
+                            modifier = Modifier.align(Alignment.End),
                         ) {
-                            TextButton(
-                                onClick = {
-                                    val normalized = newGroupName.trim()
-                                    if (normalized.isNotEmpty()) {
-                                        onCreateGroup(normalized)
-                                        newGroupName = ""
-                                    }
-                                },
-                                enabled = newGroupName.isNotBlank(),
-                            ) {
-                                Text("Create")
-                            }
+                            Text("Create")
                         }
 
                         HorizontalDivider()
@@ -152,36 +149,41 @@ fun CustomGroupManagerDialog(
                             Text("No custom groups yet.")
                         } else {
                             LazyColumn(
-                                modifier = Modifier.heightIn(max = 320.dp),
-                                verticalArrangement = Arrangement.spacedBy(4.dp),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .heightIn(max = 360.dp),
+                                verticalArrangement = Arrangement.spacedBy(6.dp),
                             ) {
                                 items(
                                     items = groups,
                                     key = LiveCustomGroup::groupId,
                                 ) { group ->
-                                    Row(
+                                    Column(
                                         modifier = Modifier
                                             .fillMaxWidth()
                                             .padding(vertical = 4.dp),
-                                        verticalAlignment = Alignment.CenterVertically,
+                                        verticalArrangement = Arrangement.spacedBy(2.dp),
                                     ) {
                                         Text(
                                             text = group.name,
-                                            modifier = Modifier.weight(1f),
                                             fontWeight = FontWeight.Medium,
                                         )
-                                        TextButton(
-                                            onClick = {
-                                                renameTarget = group
-                                                renameValue = group.name
-                                            },
+                                        Row(
+                                            modifier = Modifier.align(Alignment.End),
                                         ) {
-                                            Text("Rename")
-                                        }
-                                        TextButton(
-                                            onClick = { deleteTarget = group },
-                                        ) {
-                                            Text("Delete")
+                                            TextButton(
+                                                onClick = {
+                                                    renameTarget = group
+                                                    renameValue = group.name
+                                                },
+                                            ) {
+                                                Text("Rename")
+                                            }
+                                            TextButton(
+                                                onClick = { deleteTarget = group },
+                                            ) {
+                                                Text("Delete")
+                                            }
                                         }
                                     }
                                 }

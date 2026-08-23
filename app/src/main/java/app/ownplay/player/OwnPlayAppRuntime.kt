@@ -5,6 +5,19 @@ import app.ownplay.player.live.LiveCatalogRepository
 import app.ownplay.player.persistence.OwnPlayDatabase
 import app.ownplay.player.persistence.PlaylistSourceEntity
 import app.ownplay.player.persistence.secure.AndroidKeystoreSensitiveValueStore
+import app.ownplay.player.personalization.ChannelBulkAction
+import app.ownplay.player.personalization.ChannelBulkActionExecutionResult
+import app.ownplay.player.personalization.ChannelBulkActionExecutor
+import app.ownplay.player.personalization.ChannelCustomizationMutationResult
+import app.ownplay.player.personalization.ChannelCustomizationMutator
+import app.ownplay.player.personalization.ChannelVisibilityMutator
+import app.ownplay.player.personalization.CustomGroupMutationResult
+import app.ownplay.player.personalization.CustomGroupMutator
+import app.ownplay.player.personalization.FavoriteChannelMutator
+import app.ownplay.player.personalization.FavoriteMutationResult
+import app.ownplay.player.personalization.ManualChannelOrderMutator
+import app.ownplay.player.personalization.ManualOrderMutationResult
+import app.ownplay.player.personalization.ManualOrderPlacement
 import app.ownplay.player.playback.AndroidPlaybackConnectivityMonitor
 import app.ownplay.player.playback.LivePlaybackResolver
 import app.ownplay.player.playback.Media3PlaybackEngine
@@ -31,6 +44,21 @@ class OwnPlayAppRuntime(
         sensitiveValueStore = sensitiveValueStore,
         credentialStore = credentialStore,
         contentResolver = applicationContext.contentResolver,
+    )
+
+    private val channelVisibilityMutator = ChannelVisibilityMutator(database)
+    private val favoriteChannelMutator = FavoriteChannelMutator(database)
+    private val manualChannelOrderMutator = ManualChannelOrderMutator(database)
+    private val customGroupMutator = CustomGroupMutator(database)
+    private val channelCustomizationMutator = ChannelCustomizationMutator(
+        database = database,
+        sensitiveValueStore = sensitiveValueStore,
+    )
+    private val channelBulkActionExecutor = ChannelBulkActionExecutor(
+        visibilityMutator = channelVisibilityMutator,
+        favoriteMutator = favoriteChannelMutator,
+        manualOrderMutator = manualChannelOrderMutator,
+        customGroupMutator = customGroupMutator,
     )
 
     private val playbackResolver = LivePlaybackResolver(
@@ -83,6 +111,91 @@ class OwnPlayAppRuntime(
     ): SourceOnboardingResult = sourceOnboardingService.addLocalM3u(
         name = name,
         documentUri = documentUri,
+    )
+
+    suspend fun executeChannelBulkAction(
+        sourceId: String,
+        selectedChannelIds: Set<String>,
+        action: ChannelBulkAction,
+    ): ChannelBulkActionExecutionResult = channelBulkActionExecutor.execute(
+        sourceId = sourceId,
+        selectedChannelIds = selectedChannelIds,
+        action = action,
+        eventAtEpochMillis = System.currentTimeMillis(),
+    )
+
+    suspend fun createCustomGroup(name: String): CustomGroupMutationResult =
+        customGroupMutator.createGroup(
+            name = name,
+            createdAtEpochMillis = System.currentTimeMillis(),
+        )
+
+    suspend fun renameCustomGroup(
+        groupId: String,
+        name: String,
+    ): CustomGroupMutationResult = customGroupMutator.renameGroup(groupId, name)
+
+    suspend fun deleteCustomGroup(groupId: String): CustomGroupMutationResult =
+        customGroupMutator.deleteGroup(groupId)
+
+    suspend fun setLocalDisplayName(
+        sourceId: String,
+        channelId: String,
+        name: String,
+    ): ChannelCustomizationMutationResult = channelCustomizationMutator.setLocalDisplayName(
+        sourceId = sourceId,
+        channelId = channelId,
+        localDisplayName = name,
+    )
+
+    suspend fun clearLocalDisplayName(
+        sourceId: String,
+        channelId: String,
+    ): ChannelCustomizationMutationResult = channelCustomizationMutator.clearLocalDisplayName(
+        sourceId = sourceId,
+        channelId = channelId,
+    )
+
+    suspend fun setLogoOverride(
+        sourceId: String,
+        channelId: String,
+        logoValue: String,
+    ): ChannelCustomizationMutationResult = channelCustomizationMutator.setLogoOverride(
+        sourceId = sourceId,
+        channelId = channelId,
+        logoValue = logoValue,
+    )
+
+    suspend fun clearLogoOverride(
+        sourceId: String,
+        channelId: String,
+    ): ChannelCustomizationMutationResult = channelCustomizationMutator.clearLogoOverride(
+        sourceId = sourceId,
+        channelId = channelId,
+    )
+
+    suspend fun moveChannelRelative(
+        sourceId: String,
+        channelId: String,
+        anchorChannelId: String,
+        placement: ManualOrderPlacement,
+    ): ManualOrderMutationResult = manualChannelOrderMutator.moveRelative(
+        sourceId = sourceId,
+        channelId = channelId,
+        anchorChannelId = anchorChannelId,
+        placement = placement,
+    )
+
+    suspend fun moveFavoriteRelative(
+        sourceId: String,
+        channelId: String,
+        anchorChannelId: String,
+        placement: ManualOrderPlacement,
+    ): FavoriteMutationResult = favoriteChannelMutator.moveFavoriteRelative(
+        sourceId = sourceId,
+        channelId = channelId,
+        anchorChannelId = anchorChannelId,
+        placement = placement,
     )
 
     override fun close() {

@@ -7,8 +7,6 @@ import android.content.pm.PackageManager
 import android.graphics.Rect
 import android.os.Build
 import android.view.View
-import androidx.core.view.ViewCompat
-import androidx.core.view.WindowInsetsCompat
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -24,11 +22,6 @@ internal object PlaybackWindowPolicy {
         pipSupported: Boolean,
         isPlaying: Boolean,
     ): Boolean = pipSupported && isPlaying
-
-    fun isFullscreen(
-        statusBarsVisible: Boolean,
-        inPictureInPicture: Boolean,
-    ): Boolean = !inPictureInPicture && !statusBarsVisible
 
     fun orientationIntent(
         fullscreen: Boolean,
@@ -52,10 +45,14 @@ class PlaybackWindowController(
         _isInPictureInPictureMode.asStateFlow()
 
     private var isPlaying = false
-    private var fullscreen = false
+    private var fullscreenRequested = false
     private var sourceRectHint: Rect? = null
     private var windowRoot: View? = null
     private var layoutListener: View.OnLayoutChangeListener? = null
+
+    init {
+        applyOrientationPolicy()
+    }
 
     fun attachWindowRoot(view: View) {
         if (windowRoot === view) {
@@ -65,19 +62,11 @@ class PlaybackWindowController(
         detachWindowRoot()
         windowRoot = view
         val listener = View.OnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
-            refreshWindowState()
+            updateSourceRectHint()
+            updatePictureInPictureParams()
         }
         layoutListener = listener
         view.addOnLayoutChangeListener(listener)
-        ViewCompat.setOnApplyWindowInsetsListener(view) { _, insets ->
-            fullscreen = PlaybackWindowPolicy.isFullscreen(
-                statusBarsVisible = insets.isVisible(WindowInsetsCompat.Type.statusBars()),
-                inPictureInPicture = _isInPictureInPictureMode.value,
-            )
-            applyOrientationPolicy()
-            insets
-        }
-        ViewCompat.requestApplyInsets(view)
         refreshWindowState()
     }
 
@@ -86,9 +75,14 @@ class PlaybackWindowController(
         updatePictureInPictureParams()
     }
 
+    fun updateFullscreenState(fullscreen: Boolean) {
+        if (fullscreenRequested == fullscreen) return
+        fullscreenRequested = fullscreen
+        applyOrientationPolicy()
+    }
+
     fun refreshWindowState() {
         updateSourceRectHint()
-        fullscreen = detectFullscreen()
         applyOrientationPolicy()
         updatePictureInPictureParams()
     }
@@ -118,7 +112,7 @@ class PlaybackWindowController(
 
     fun release() {
         isPlaying = false
-        fullscreen = false
+        fullscreenRequested = false
         detachWindowRoot()
         sourceRectHint = null
         updatePictureInPictureParams()
@@ -155,23 +149,11 @@ class PlaybackWindowController(
         }
     }
 
-    private fun detectFullscreen(): Boolean {
-        val root = windowRoot ?: return false
-        val insets = ViewCompat.getRootWindowInsets(root) ?: return false
-        return PlaybackWindowPolicy.isFullscreen(
-            statusBarsVisible = insets.isVisible(WindowInsetsCompat.Type.statusBars()),
-            inPictureInPicture = _isInPictureInPictureMode.value,
-        )
-    }
-
     private fun detachWindowRoot() {
         val view = windowRoot
         val listener = layoutListener
-        if (view != null) {
-            if (listener != null) {
-                view.removeOnLayoutChangeListener(listener)
-            }
-            ViewCompat.setOnApplyWindowInsetsListener(view, null)
+        if (view != null && listener != null) {
+            view.removeOnLayoutChangeListener(listener)
         }
         windowRoot = null
         layoutListener = null
@@ -180,7 +162,7 @@ class PlaybackWindowController(
     private fun applyOrientationPolicy() {
         val target = when (
             PlaybackWindowPolicy.orientationIntent(
-                fullscreen = fullscreen,
+                fullscreen = fullscreenRequested,
                 inPictureInPicture = _isInPictureInPictureMode.value,
             )
         ) {
