@@ -9,11 +9,9 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -33,6 +31,8 @@ import app.ownplay.player.epg.EpgSnapshot
 import app.ownplay.player.live.LiveBrowseSession
 import app.ownplay.player.live.LiveBrowseState
 import app.ownplay.player.live.LiveCategory
+import app.ownplay.player.personalization.CategoryOrderFailureReason
+import app.ownplay.player.personalization.CategoryOrderMutationResult
 import app.ownplay.player.personalization.CategoryVisibilityFailureReason
 import app.ownplay.player.personalization.CategoryVisibilityMutationResult
 import app.ownplay.player.personalization.ChannelBulkAction
@@ -89,8 +89,11 @@ internal fun LiveRoute(
     var epgLookupFailed by remember(sourceId, preview?.request?.channelId) {
         mutableStateOf(false)
     }
+    var showEpgGuide by remember(sourceId) { mutableStateOf(false) }
+    var showCategoryReorder by remember(sourceId) { mutableStateOf(false) }
     var categoryMutationInFlight by remember(sourceId) { mutableStateOf(false) }
     var categoryMutationError by remember(sourceId) { mutableStateOf<String?>(null) }
+    var categoryOrderError by remember(sourceId) { mutableStateOf<String?>(null) }
 
     val syncForThisSource = syncState.sourceId == sourceId
     val loadingChannels = syncForThisSource && syncState.stage == SourceSyncStage.LoadingChannels
@@ -105,6 +108,10 @@ internal fun LiveRoute(
 
     LaunchedEffect(browseState.query.categoryKey) {
         categoryMutationError = null
+    }
+
+    LaunchedEffect(preview?.request?.channelId) {
+        showEpgGuide = false
     }
 
     LaunchedEffect(preview?.request?.channelId, syncState.sourceId, syncState.stage) {
@@ -175,13 +182,14 @@ internal fun LiveRoute(
                             snapshot = epgSnapshot,
                             loading = loadingEpg || epgLookupLoading,
                             failed = epgRefreshFailed || epgLookupFailed,
+                            onOpenGuide = { showEpgGuide = true },
                             modifier = Modifier.weight(1f),
                         )
                     }
                 } else {
                     Column(
                         modifier = Modifier.fillMaxWidth(),
-                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp),
                     ) {
                         LivePreviewPanel(
                             selection = preview,
@@ -198,6 +206,7 @@ internal fun LiveRoute(
                             snapshot = epgSnapshot,
                             loading = loadingEpg || epgLookupLoading,
                             failed = epgRefreshFailed || epgLookupFailed,
+                            onOpenGuide = { showEpgGuide = true },
                         )
                     }
                 }
@@ -205,27 +214,31 @@ internal fun LiveRoute(
         }
 
         when {
-            loadingChannels -> SyncBanner(
-                text = "Loading channels…",
-                supporting = if (browseState.catalogChannelCount == 0) {
-                    "Building the Live catalog."
+            loadingChannels -> InlineSyncStatus(
+                text = if (browseState.catalogChannelCount == 0) {
+                    "Loading channels…"
                 } else {
-                    "Refreshing in the background. Existing channels stay available."
+                    "Updating channels…"
                 },
             )
-            loadingEpg -> SyncBanner(
-                text = "Loading EPG…",
-                supporting = "Channels are ready. Program guide data is loading now.",
-            )
-            channelRefreshFailed -> ErrorBanner(
+            loadingEpg -> InlineSyncStatus(text = "Updating EPG…")
+            channelRefreshFailed -> InlineErrorStatus(
                 text = "Channel refresh failed. Existing channels were kept.",
                 actionLabel = "Retry",
                 onAction = { mutationScope.launch { runtime.refreshSource(sourceId) } },
             )
-            epgRefreshFailed -> ErrorBanner(
-                text = "EPG unavailable. Live channels remain usable.",
+            epgRefreshFailed -> InlineErrorStatus(
+                text = "EPG unavailable. Live remains usable.",
                 actionLabel = "Retry EPG",
                 onAction = { mutationScope.launch { runtime.refreshSource(sourceId) } },
+            )
+        }
+
+        categoryOrderError?.let { error ->
+            InlineErrorStatus(
+                text = error,
+                actionLabel = "Dismiss",
+                onAction = { categoryOrderError = null },
             )
         }
 
@@ -302,11 +315,19 @@ internal fun LiveRoute(
                     )
                 },
                 editState = editState,
+                playingChannelId = preview?.request?.channelId,
+                onReorderCategoriesRequested = {
+                    if (editState.isEditing) {
+                        categoryOrderError = null
+                        showCategoryReorder = true
+                    }
+                },
                 onEditModeChanged = { editing ->
                     if (editing) {
                         browseSession.setIncludeHidden(true)
                         editState = ChannelEditReducer.enter(editState)
                     } else {
+                        showCategoryReorder = false
                         if (selectedCategory?.isHidden == true) {
                             browseSession.selectCategory(null)
                         }
@@ -428,6 +449,38 @@ internal fun LiveRoute(
             )
         }
     }
+
+    if (showEpgGuide && preview != null) {
+        EpgGuideSheet(
+            channelName = preview.displayName,
+            snapshot = epgSnapshot,
+            loading = loadingEpg || epgLookupLoading,
+            failed = epgRefreshFailed || epgLookupFailed,
+            onDismiss = { showEpgGuide = false },
+        )
+    }
+
+    if (showCategoryReorder && editState.isEditing) {
+        CategoryReorderSheet(
+            categories = browseState.categories,
+            onOrderChanged = { orderedKeys ->
+                mutationScope.launch {
+                    when (
+                        val result = runtime.setCategoryOrder(
+                            sourceId = sourceId,
+                            orderedCategoryKeys = orderedKeys,
+                        )
+                    ) {
+                        is CategoryOrderMutationResult.Success -> categoryOrderError = null
+                        is CategoryOrderMutationResult.Failure -> {
+                            categoryOrderError = categoryOrderFailureLabel(result)
+                        }
+                    }
+                }
+            },
+            onDismiss = { showCategoryReorder = false },
+        )
+    }
 }
 
 @Composable
@@ -437,52 +490,41 @@ private fun CategoryEditBar(
     errorMessage: String?,
     onToggleVisibility: () -> Unit,
 ) {
-    Surface(
+    Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 4.dp),
-        shape = RoundedCornerShape(16.dp),
-        color = if (category.isHidden) {
-            MaterialTheme.colorScheme.errorContainer
-        } else {
-            MaterialTheme.colorScheme.secondaryContainer
-        },
+            .padding(horizontal = 16.dp, vertical = 2.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-        Row(
-            modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
-        ) {
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = category.name,
-                    fontWeight = FontWeight.SemiBold,
-                )
-                Text(
-                    text = when {
-                        errorMessage != null -> errorMessage
-                        category.isHidden -> "Hidden category. Its channels stay visible while editing."
-                        else -> "Hide this category and all channels inside it."
-                    },
-                    style = MaterialTheme.typography.bodySmall,
-                    color = if (errorMessage != null) {
-                        MaterialTheme.colorScheme.error
-                    } else if (category.isHidden) {
-                        MaterialTheme.colorScheme.onErrorContainer
-                    } else {
-                        MaterialTheme.colorScheme.onSecondaryContainer
-                    },
-                )
-            }
-            if (mutationInFlight) {
-                CircularProgressIndicator(
-                    modifier = Modifier.size(20.dp),
-                    strokeWidth = 2.dp,
-                )
-            } else {
-                TextButton(onClick = onToggleVisibility) {
-                    Text(if (category.isHidden) "Unhide category" else "Hide category")
-                }
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = category.name,
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = FontWeight.SemiBold,
+            )
+            Text(
+                text = when {
+                    errorMessage != null -> errorMessage
+                    category.isHidden -> "Hidden category · visible while editing"
+                    else -> "Category visibility"
+                },
+                style = MaterialTheme.typography.bodySmall,
+                color = if (errorMessage != null) {
+                    MaterialTheme.colorScheme.error
+                } else {
+                    MaterialTheme.colorScheme.onSurfaceVariant
+                },
+            )
+        }
+        if (mutationInFlight) {
+            CircularProgressIndicator(
+                modifier = Modifier.size(18.dp),
+                strokeWidth = 2.dp,
+            )
+        } else {
+            TextButton(onClick = onToggleVisibility) {
+                Text(if (category.isHidden) "Unhide" else "Hide")
             }
         }
     }
@@ -500,60 +542,45 @@ private fun categoryVisibilityFailureLabel(
     -> "Category visibility is unavailable for this item."
 }
 
-@Composable
-private fun SyncBanner(
-    text: String,
-    supporting: String,
-) {
-    Surface(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 6.dp),
-        shape = RoundedCornerShape(16.dp),
-        color = MaterialTheme.colorScheme.secondaryContainer,
-    ) {
-        Row(
-            modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
-        ) {
-            CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
-            Column {
-                Text(text, fontWeight = FontWeight.SemiBold)
-                Text(
-                    supporting,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSecondaryContainer,
-                )
-            }
-        }
-    }
+private fun categoryOrderFailureLabel(
+    failure: CategoryOrderMutationResult.Failure,
+): String = when (failure.reason) {
+    CategoryOrderFailureReason.PERSISTENCE_FAILURE ->
+        "Could not save category order. The channel list remains usable."
+    CategoryOrderFailureReason.INVALID_SOURCE_ID,
+    CategoryOrderFailureReason.INVALID_CATEGORY_ORDER,
+    -> "Category order could not be saved."
 }
 
 @Composable
-private fun ErrorBanner(
+private fun InlineSyncStatus(text: String) {
+    Text(
+        text = text,
+        modifier = Modifier.padding(horizontal = 20.dp, vertical = 2.dp),
+        style = MaterialTheme.typography.labelMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+}
+
+@Composable
+private fun InlineErrorStatus(
     text: String,
     actionLabel: String,
     onAction: () -> Unit,
 ) {
-    Surface(
+    Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 6.dp),
-        shape = RoundedCornerShape(16.dp),
-        color = MaterialTheme.colorScheme.errorContainer,
+            .padding(start = 20.dp, end = 12.dp, top = 1.dp, bottom = 1.dp),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
-        Row(
-            modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text(
-                text,
-                modifier = Modifier.weight(1f),
-                color = MaterialTheme.colorScheme.onErrorContainer,
-            )
-            TextButton(onClick = onAction) { Text(actionLabel) }
-        }
+        Text(
+            text = text,
+            modifier = Modifier.weight(1f),
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.error,
+        )
+        TextButton(onClick = onAction) { Text(actionLabel) }
     }
 }
 
