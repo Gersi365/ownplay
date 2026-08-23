@@ -9,9 +9,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -25,6 +23,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import app.ownplay.player.OwnPlayAppRuntime
 import app.ownplay.player.live.LiveBrowseSession
@@ -35,7 +34,9 @@ import app.ownplay.player.playback.LiveChannelSelectionAction
 import app.ownplay.player.playback.LiveChannelSelectionRouter
 import app.ownplay.player.playback.LivePlaybackBrowseContext
 import app.ownplay.player.playback.LivePlaybackSelection
+import app.ownplay.player.playback.PlaybackNavigationDirection
 import app.ownplay.player.playback.PlaybackState
+import app.ownplay.player.playback.PlaybackVideoOutput
 import app.ownplay.player.source.onboarding.SourceOnboardingResult
 import app.ownplay.player.ui.live.LiveBrowseScreen
 import kotlinx.coroutines.launch
@@ -46,9 +47,15 @@ internal fun LiveRoute(
     sourceId: String,
     activeSelection: LivePlaybackSelection?,
     playbackState: PlaybackState,
+    videoOutput: PlaybackVideoOutput,
+    onPlay: () -> Unit,
+    onPause: () -> Unit,
+    onRetry: () -> Unit,
     onBackToSources: () -> Unit,
-    onPlaybackRequested: (LivePlaybackSelection) -> Unit,
-    onResumePlayback: (LivePlaybackSelection) -> Unit,
+    onPreviewRequested: (LivePlaybackSelection) -> Unit,
+    onPreviewClosed: () -> Unit,
+    onOpenFullscreen: (LivePlaybackSelection) -> Unit,
+    onNavigatePreview: (PlaybackNavigationDirection) -> Unit,
 ) {
     val browseSession = remember(sourceId) { LiveBrowseSession() }
     val browseFlow = remember(sourceId) {
@@ -89,13 +96,22 @@ internal fun LiveRoute(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .statusBarsPadding()
-                .padding(horizontal = 12.dp, vertical = 6.dp),
+                .padding(horizontal = 16.dp, vertical = 10.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            TextButton(onClick = onBackToSources) {
-                Text("Sources")
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = "Live TV",
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                Text(
+                    text = "${browseState.channels.size} channels",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
+
             TextButton(
                 onClick = {
                     if (!catalogRefreshing) {
@@ -106,17 +122,25 @@ internal fun LiveRoute(
             ) {
                 Text("Refresh")
             }
-            Spacer(modifier = Modifier.weight(1f))
-            val resumable = activeSelection?.takeIf { selection ->
-                selection.request.sourceId == sourceId && playbackState !is PlaybackState.Idle
-            }
-            if (resumable != null) {
-                TextButton(onClick = { onResumePlayback(resumable) }) {
-                    Text("Now playing")
-                }
-            }
         }
-        HorizontalDivider()
+
+        val preview = activeSelection?.takeIf { selection ->
+            selection.request.sourceId == sourceId
+        }
+        if (preview != null) {
+            LivePreviewPanel(
+                selection = preview,
+                state = playbackState,
+                videoOutput = videoOutput,
+                onPlay = onPlay,
+                onPause = onPause,
+                onRetry = onRetry,
+                onNavigate = onNavigatePreview,
+                onOpenFullscreen = { onOpenFullscreen(preview) },
+                onClose = onPreviewClosed,
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+            )
+        }
 
         if (catalogRefreshing) {
             Row(
@@ -240,8 +264,10 @@ internal fun LiveRoute(
                 }
             },
             onChannelSelected = { channelId ->
-                val channel = browseState.channels.firstOrNull { item -> item.channelId == channelId }
-                    ?: return@LiveBrowseScreen
+                val channel = browseState.channels.firstOrNull { item ->
+                    item.channelId == channelId
+                } ?: return@LiveBrowseScreen
+
                 val browseContext = if (editState.isEditing) {
                     null
                 } else {
@@ -250,6 +276,7 @@ internal fun LiveRoute(
                         visibleChannels = browseState.channels,
                     )
                 }
+
                 when (
                     val action = LiveChannelSelectionRouter.route(
                         channel = channel,
@@ -263,7 +290,10 @@ internal fun LiveRoute(
                             channelId = action.channelId,
                         )
                     }
-                    is LiveChannelSelectionAction.StartPlayback -> onPlaybackRequested(action.selection)
+
+                    is LiveChannelSelectionAction.StartPlayback -> {
+                        onPreviewRequested(action.selection)
+                    }
                 }
             },
             modifier = Modifier
