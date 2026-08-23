@@ -14,7 +14,7 @@ import kotlinx.coroutines.flow.asStateFlow
 internal enum class PlaybackOrientationIntent {
     PORTRAIT,
     FOLLOW_SYSTEM,
-    SENSOR_LANDSCAPE,
+    SENSOR,
 }
 
 internal object PlaybackWindowPolicy {
@@ -25,12 +25,19 @@ internal object PlaybackWindowPolicy {
 
     fun orientationIntent(
         fullscreen: Boolean,
+        playbackSurfaceActive: Boolean,
         inPictureInPicture: Boolean,
     ): PlaybackOrientationIntent = when {
         inPictureInPicture -> PlaybackOrientationIntent.FOLLOW_SYSTEM
-        fullscreen -> PlaybackOrientationIntent.SENSOR_LANDSCAPE
+        fullscreen || playbackSurfaceActive -> PlaybackOrientationIntent.SENSOR
         else -> PlaybackOrientationIntent.PORTRAIT
     }
+
+    fun shouldPromotePreviewToFullscreen(
+        previewActive: Boolean,
+        isLandscape: Boolean,
+        promotionArmed: Boolean,
+    ): Boolean = previewActive && isLandscape && promotionArmed
 }
 
 class PlaybackWindowController(
@@ -46,6 +53,7 @@ class PlaybackWindowController(
 
     private var isPlaying = false
     private var fullscreenRequested = false
+    private var playbackSurfaceActive = false
     private var sourceRectHint: Rect? = null
     private var windowRoot: View? = null
     private var layoutListener: View.OnLayoutChangeListener? = null
@@ -81,6 +89,12 @@ class PlaybackWindowController(
         applyOrientationPolicy()
     }
 
+    fun updatePlaybackSurfaceState(active: Boolean) {
+        if (playbackSurfaceActive == active) return
+        playbackSurfaceActive = active
+        applyOrientationPolicy()
+    }
+
     fun refreshWindowState() {
         updateSourceRectHint()
         applyOrientationPolicy()
@@ -113,6 +127,7 @@ class PlaybackWindowController(
     fun release() {
         isPlaying = false
         fullscreenRequested = false
+        playbackSurfaceActive = false
         detachWindowRoot()
         sourceRectHint = null
         updatePictureInPictureParams()
@@ -163,12 +178,13 @@ class PlaybackWindowController(
         val target = when (
             PlaybackWindowPolicy.orientationIntent(
                 fullscreen = fullscreenRequested,
+                playbackSurfaceActive = playbackSurfaceActive,
                 inPictureInPicture = _isInPictureInPictureMode.value,
             )
         ) {
             PlaybackOrientationIntent.PORTRAIT -> ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
             PlaybackOrientationIntent.FOLLOW_SYSTEM -> ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
-            PlaybackOrientationIntent.SENSOR_LANDSCAPE -> ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+            PlaybackOrientationIntent.SENSOR -> ActivityInfo.SCREEN_ORIENTATION_SENSOR
         }
         if (activity.requestedOrientation != target) {
             activity.requestedOrientation = target
