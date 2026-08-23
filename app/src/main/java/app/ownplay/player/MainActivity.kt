@@ -40,6 +40,7 @@ class MainActivity : ComponentActivity() {
                     OwnPlayRoot(
                         runtime = runtime,
                         onPlaybackFullscreenChanged = playbackWindowController::updateFullscreenState,
+                        onPlaybackSurfaceActiveChanged = playbackWindowController::updatePlaybackSurfaceState,
                     )
                 }
             }
