@@ -29,57 +29,23 @@ class PlaybackWindowPolicyTest {
     }
 
     @Test
-    fun phoneAppShellRequestsPortrait() {
+    fun appShellRequestsPortrait() {
         assertEquals(
             PlaybackOrientationIntent.PORTRAIT,
             PlaybackWindowPolicy.orientationIntent(
                 fullscreen = false,
                 inPictureInPicture = false,
-                smallestScreenWidthDp = 411,
             ),
         )
     }
 
     @Test
-    fun phoneFullscreenRequestsSensorLandscape() {
+    fun fullscreenRequestsSensorLandscape() {
         assertEquals(
             PlaybackOrientationIntent.SENSOR_LANDSCAPE,
             PlaybackWindowPolicy.orientationIntent(
                 fullscreen = true,
                 inPictureInPicture = false,
-                smallestScreenWidthDp = 411,
-            ),
-        )
-    }
-
-    @Test
-    fun largeScreenFollowsSystem() {
-        assertEquals(
-            PlaybackOrientationIntent.FOLLOW_SYSTEM,
-            PlaybackWindowPolicy.orientationIntent(
-                fullscreen = false,
-                inPictureInPicture = false,
-                smallestScreenWidthDp = 600,
-            ),
-        )
-        assertEquals(
-            PlaybackOrientationIntent.FOLLOW_SYSTEM,
-            PlaybackWindowPolicy.orientationIntent(
-                fullscreen = true,
-                inPictureInPicture = false,
-                smallestScreenWidthDp = 600,
-            ),
-        )
-    }
-
-    @Test
-    fun unknownWidthFollowsSystem() {
-        assertEquals(
-            PlaybackOrientationIntent.FOLLOW_SYSTEM,
-            PlaybackWindowPolicy.orientationIntent(
-                fullscreen = false,
-                inPictureInPicture = false,
-                smallestScreenWidthDp = 0,
             ),
         )
     }
@@ -91,19 +57,24 @@ class PlaybackWindowPolicyTest {
             PlaybackWindowPolicy.orientationIntent(
                 fullscreen = true,
                 inPictureInPicture = true,
-                smallestScreenWidthDp = 411,
+            ),
+        )
+        assertEquals(
+            PlaybackOrientationIntent.FOLLOW_SYSTEM,
+            PlaybackWindowPolicy.orientationIntent(
+                fullscreen = false,
+                inPictureInPicture = true,
             ),
         )
     }
 
     @Test
-    fun leavingFullscreenReturnsPhoneToPortrait() {
+    fun leavingFullscreenReturnsToPortrait() {
         assertEquals(
             PlaybackOrientationIntent.PORTRAIT,
             PlaybackWindowPolicy.orientationIntent(
                 fullscreen = false,
                 inPictureInPicture = false,
-                smallestScreenWidthDp = 411,
             ),
         )
     }

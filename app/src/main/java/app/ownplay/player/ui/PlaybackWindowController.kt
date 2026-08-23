@@ -20,8 +20,6 @@ internal enum class PlaybackOrientationIntent {
 }
 
 internal object PlaybackWindowPolicy {
-    private const val LARGE_SCREEN_SMALLEST_WIDTH_DP = 600
-
     fun isPipEligible(
         pipSupported: Boolean,
         isPlaying: Boolean,
@@ -30,13 +28,8 @@ internal object PlaybackWindowPolicy {
     fun orientationIntent(
         fullscreen: Boolean,
         inPictureInPicture: Boolean,
-        smallestScreenWidthDp: Int,
     ): PlaybackOrientationIntent {
-        if (
-            inPictureInPicture ||
-            smallestScreenWidthDp <= 0 ||
-            smallestScreenWidthDp >= LARGE_SCREEN_SMALLEST_WIDTH_DP
-        ) {
+        if (inPictureInPicture) {
             return PlaybackOrientationIntent.FOLLOW_SYSTEM
         }
         return if (fullscreen) {
@@ -185,7 +178,6 @@ class PlaybackWindowController(
             PlaybackWindowPolicy.orientationIntent(
                 fullscreen = fullscreen,
                 inPictureInPicture = _isInPictureInPictureMode.value,
-                smallestScreenWidthDp = activity.resources.configuration.smallestScreenWidthDp,
             )
         ) {
             PlaybackOrientationIntent.FOLLOW_SYSTEM -> ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED

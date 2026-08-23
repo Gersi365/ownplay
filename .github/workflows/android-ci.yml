@@ -33,6 +33,12 @@ jobs:
         with:
           gradle-version: "9.5.0"
 
+      - name: Preserve manual-test debug signing identity
+        uses: actions/cache@v4
+        with:
+          path: ~/.android/debug.keystore
+          key: ownplay-pr16-debug-keystore-v1
+
       - name: Verify Android SDK 36
         shell: bash
         run: |
@@ -41,6 +47,16 @@ jobs:
 
       - name: Validate
         run: gradle :app:testDebugUnitTest :app:lintDebug :app:assembleDebug :app:compileDebugAndroidTestKotlin --stacktrace
+
+      - name: Verify debug signing identity
+        if: success()
+        shell: bash
+        run: |
+          test -f "$HOME/.android/debug.keystore"
+          keytool -list \
+            -keystore "$HOME/.android/debug.keystore" \
+            -storepass android \
+            -alias androiddebugkey
 
       - name: Upload Room schema
         if: success()
