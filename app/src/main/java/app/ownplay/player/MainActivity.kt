@@ -8,7 +8,7 @@ import androidx.activity.enableEdgeToEdge
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import app.ownplay.player.playback.PlaybackState
-import app.ownplay.player.ui.OwnPlayApp
+import app.ownplay.player.ui.OwnPlayRoot
 import app.ownplay.player.ui.PictureInPicturePlaybackSurface
 import app.ownplay.player.ui.PlaybackWindowController
 import app.ownplay.player.ui.theme.OwnPlayTheme
@@ -28,6 +28,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         runtime = OwnPlayAppRuntime(applicationContext)
         playbackWindowController = PlaybackWindowController(this)
+        playbackWindowController.refreshWindowState()
         enableEdgeToEdge()
         setContent {
             val isInPictureInPictureMode by
@@ -36,7 +37,7 @@ class MainActivity : ComponentActivity() {
                 if (isInPictureInPictureMode) {
                     PictureInPicturePlaybackSurface(runtime.playbackVideoOutput)
                 } else {
-                    OwnPlayApp(runtime)
+                    OwnPlayRoot(runtime)
                 }
             }
         }
