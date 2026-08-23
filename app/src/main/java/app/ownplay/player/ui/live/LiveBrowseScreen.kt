@@ -100,153 +100,171 @@ fun LiveBrowseScreen(
         modifier = modifier.fillMaxSize(),
         color = MaterialTheme.colorScheme.background,
     ) {
-        Column(
+        LazyColumn(
+            state = listState,
             modifier = Modifier.fillMaxSize(),
         ) {
-            LiveBrowseHeader(
-                state = state,
-                editState = editState,
-                onSearchChange = onSearchChange,
-                onFavoritesOnlyChanged = onFavoritesOnlyChanged,
-                onHiddenOnlyChanged = onHiddenOnlyChanged,
-                onOrderChanged = onOrderChanged,
-                onEditModeChanged = { editing ->
-                    val editOrder = if (state.query.favoritesOnly) {
-                        LiveBrowseOrder.FAVORITE_ORDER
-                    } else {
-                        LiveBrowseOrder.MY_ORDER
-                    }
-                    if (editing && state.query.order != editOrder) {
-                        onOrderChanged(editOrder)
-                    }
-                    if (!editing) clearDragState()
-                    onEditModeChanged(editing)
-                },
-            )
-            CategoryStrip(
-                categories = state.categories,
-                selectedCategoryKey = state.query.categoryKey,
-                onCategorySelected = onCategorySelected,
-            )
+            item(key = "browse-header") {
+                LiveBrowseHeader(
+                    state = state,
+                    editState = editState,
+                    onSearchChange = onSearchChange,
+                    onFavoritesOnlyChanged = onFavoritesOnlyChanged,
+                    onHiddenOnlyChanged = onHiddenOnlyChanged,
+                    onOrderChanged = onOrderChanged,
+                    onEditModeChanged = { editing ->
+                        val editOrder = if (state.query.favoritesOnly) {
+                            LiveBrowseOrder.FAVORITE_ORDER
+                        } else {
+                            LiveBrowseOrder.MY_ORDER
+                        }
+                        if (editing && state.query.order != editOrder) {
+                            onOrderChanged(editOrder)
+                        }
+                        if (!editing) clearDragState()
+                        onEditModeChanged(editing)
+                    },
+                )
+            }
+
+            item(key = "category-strip") {
+                CategoryStrip(
+                    categories = state.categories,
+                    selectedCategoryKey = state.query.categoryKey,
+                    onCategorySelected = onCategorySelected,
+                )
+            }
+
             if (state.customGroups.isNotEmpty()) {
-                CustomGroupStrip(
-                    groups = state.customGroups,
-                    selectedGroupId = state.query.customGroupId,
-                    onGroupSelected = onCustomGroupSelected,
-                )
-            }
-            if (editState.isEditing) {
-                val selectedVisibleChannel = state.channels.singleOrNull { channel ->
-                    channel.channelId in editState.selectedChannelIds
+                item(key = "custom-groups") {
+                    CustomGroupStrip(
+                        groups = state.customGroups,
+                        selectedGroupId = state.query.customGroupId,
+                        onGroupSelected = onCustomGroupSelected,
+                    )
                 }
-                BulkEditBar(
-                    selectedCount = editState.selectedChannelIds.size,
-                    selectedVisibleChannel = selectedVisibleChannel,
-                    groups = state.customGroups,
-                    dragEnabled = dragEnabled,
-                    favoriteDragEnabled = favoriteDragEnabled,
-                    onSelectVisible = onSelectVisible,
-                    onClearSelection = onClearSelection,
-                    onBulkAction = onBulkAction,
-                    onCreateGroup = onCreateGroup,
-                    onRenameGroup = onRenameGroup,
-                    onDeleteGroup = onDeleteGroup,
-                    onSetLocalDisplayName = onSetLocalDisplayName,
-                    onClearLocalDisplayName = onClearLocalDisplayName,
-                    onSetLogoOverride = onSetLogoOverride,
-                    onClearLogoOverride = onClearLogoOverride,
-                )
             }
-            HorizontalDivider()
+
+            if (editState.isEditing) {
+                item(key = "bulk-edit") {
+                    val selectedVisibleChannel = state.channels.singleOrNull { channel ->
+                        channel.channelId in editState.selectedChannelIds
+                    }
+                    BulkEditBar(
+                        selectedCount = editState.selectedChannelIds.size,
+                        selectedVisibleChannel = selectedVisibleChannel,
+                        groups = state.customGroups,
+                        dragEnabled = dragEnabled,
+                        favoriteDragEnabled = favoriteDragEnabled,
+                        onSelectVisible = onSelectVisible,
+                        onClearSelection = onClearSelection,
+                        onBulkAction = onBulkAction,
+                        onCreateGroup = onCreateGroup,
+                        onRenameGroup = onRenameGroup,
+                        onDeleteGroup = onDeleteGroup,
+                        onSetLocalDisplayName = onSetLocalDisplayName,
+                        onClearLocalDisplayName = onClearLocalDisplayName,
+                        onSetLogoOverride = onSetLogoOverride,
+                        onClearLogoOverride = onClearLogoOverride,
+                    )
+                }
+            }
+
+            item(key = "channel-divider") {
+                HorizontalDivider()
+            }
+
             if (state.channels.isEmpty()) {
-                LiveEmptyState(
-                    hasActiveFilter = state.query.searchTerm.isNotBlank() ||
-                        state.query.categoryKey != null ||
-                        state.query.customGroupId != null ||
-                        state.query.favoritesOnly ||
-                        state.query.hiddenOnly,
-                )
+                item(key = "empty") {
+                    LiveEmptyState(
+                        hasActiveFilter = state.query.searchTerm.isNotBlank() ||
+                            state.query.categoryKey != null ||
+                            state.query.customGroupId != null ||
+                            state.query.favoritesOnly ||
+                            state.query.hiddenOnly,
+                    )
+                }
             } else {
-                LazyColumn(
-                    state = listState,
-                    modifier = Modifier.fillMaxSize(),
-                ) {
-                    itemsIndexed(
-                        items = state.channels,
-                        key = { _, channel -> channel.channelId },
-                    ) { index, channel ->
-                        val isDropAnchor = dragTarget?.anchorChannelId == channel.channelId
-                        val rowModifier = if (dragEnabled) {
-                            Modifier.pointerInput(channel.channelId) {
-                                detectDragGesturesAfterLongPress(
-                                    onDragStart = { startOffset ->
-                                        val itemInfo = listState.layoutInfo.visibleItemsInfo
-                                            .firstOrNull { info -> info.key == channel.channelId }
-                                        draggedChannelId = channel.channelId
-                                        draggedPointerY = itemInfo?.let { info ->
-                                            info.offset.toFloat() + startOffset.y
-                                        }
-                                        dragTarget = draggedPointerY?.let { pointerY ->
-                                            resolveDragTarget(
-                                                pointerY = pointerY,
-                                                draggedChannelId = channel.channelId,
-                                                visibleItems = listState.layoutInfo.visibleItemsInfo,
-                                            )
-                                        }
-                                    },
-                                    onDrag = { _, dragAmount ->
-                                        val draggedId = draggedChannelId ?: return@detectDragGesturesAfterLongPress
-                                        val pointerY = (draggedPointerY ?: return@detectDragGesturesAfterLongPress) +
-                                            dragAmount.y
-                                        draggedPointerY = pointerY
-                                        dragTarget = resolveDragTarget(
+                itemsIndexed(
+                    items = state.channels,
+                    key = { _, channel -> channel.channelId },
+                ) { index, channel ->
+                    val isDropAnchor = dragTarget?.anchorChannelId == channel.channelId
+                    val rowModifier = if (dragEnabled) {
+                        Modifier.pointerInput(channel.channelId) {
+                            detectDragGesturesAfterLongPress(
+                                onDragStart = { startOffset ->
+                                    val itemInfo = listState.layoutInfo.visibleItemsInfo
+                                        .firstOrNull { info -> info.key == channel.channelId }
+                                    draggedChannelId = channel.channelId
+                                    draggedPointerY = itemInfo?.let { info ->
+                                        info.offset.toFloat() + startOffset.y
+                                    }
+                                    dragTarget = draggedPointerY?.let { pointerY ->
+                                        resolveDragTarget(
                                             pointerY = pointerY,
-                                            draggedChannelId = draggedId,
+                                            draggedChannelId = channel.channelId,
                                             visibleItems = listState.layoutInfo.visibleItemsInfo,
                                         )
-                                    },
-                                    onDragEnd = {
-                                        val draggedId = draggedChannelId
-                                        val target = dragTarget
-                                        if (draggedId != null && target != null) {
-                                            if (favoriteDragEnabled) {
-                                                onFavoriteMoveRelative(
-                                                    draggedId,
-                                                    target.anchorChannelId,
-                                                    target.placement,
-                                                )
-                                            } else {
-                                                onManualMoveRelative(
-                                                    draggedId,
-                                                    target.anchorChannelId,
-                                                    target.placement,
-                                                )
-                                            }
+                                    }
+                                },
+                                onDrag = { _, dragAmount ->
+                                    val draggedId = draggedChannelId
+                                        ?: return@detectDragGesturesAfterLongPress
+                                    val pointerY = (
+                                        draggedPointerY
+                                            ?: return@detectDragGesturesAfterLongPress
+                                        ) + dragAmount.y
+                                    draggedPointerY = pointerY
+                                    dragTarget = resolveDragTarget(
+                                        pointerY = pointerY,
+                                        draggedChannelId = draggedId,
+                                        visibleItems = listState.layoutInfo.visibleItemsInfo,
+                                    )
+                                },
+                                onDragEnd = {
+                                    val draggedId = draggedChannelId
+                                    val target = dragTarget
+                                    if (draggedId != null && target != null) {
+                                        if (favoriteDragEnabled) {
+                                            onFavoriteMoveRelative(
+                                                draggedId,
+                                                target.anchorChannelId,
+                                                target.placement,
+                                            )
+                                        } else {
+                                            onManualMoveRelative(
+                                                draggedId,
+                                                target.anchorChannelId,
+                                                target.placement,
+                                            )
                                         }
-                                        clearDragState()
-                                    },
-                                    onDragCancel = ::clearDragState,
-                                )
-                            }
-                        } else {
-                            Modifier
-                        }
-
-                        LiveChannelRow(
-                            channel = channel,
-                            isEditing = editState.isEditing,
-                            isSelected = channel.channelId in editState.selectedChannelIds,
-                            isDragging = draggedChannelId == channel.channelId,
-                            dropPlacement = if (isDropAnchor) dragTarget?.placement else null,
-                            onClick = { onChannelSelected(channel.channelId) },
-                            onSelectionToggle = { onChannelSelectionToggle(channel.channelId) },
-                            modifier = rowModifier,
-                        )
-                        if (index != state.channels.lastIndex) {
-                            HorizontalDivider(
-                                modifier = Modifier.padding(start = if (editState.isEditing) 116.dp else 68.dp),
+                                    }
+                                    clearDragState()
+                                },
+                                onDragCancel = ::clearDragState,
                             )
                         }
+                    } else {
+                        Modifier
+                    }
+
+                    LiveChannelRow(
+                        channel = channel,
+                        isEditing = editState.isEditing,
+                        isSelected = channel.channelId in editState.selectedChannelIds,
+                        isDragging = draggedChannelId == channel.channelId,
+                        dropPlacement = if (isDropAnchor) dragTarget?.placement else null,
+                        onClick = { onChannelSelected(channel.channelId) },
+                        onSelectionToggle = { onChannelSelectionToggle(channel.channelId) },
+                        modifier = rowModifier,
+                    )
+                    if (index != state.channels.lastIndex) {
+                        HorizontalDivider(
+                            modifier = Modifier.padding(
+                                start = if (editState.isEditing) 116.dp else 68.dp,
+                            ),
+                        )
                     }
                 }
             }
@@ -284,29 +302,24 @@ private fun LiveBrowseHeader(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(start = 20.dp, top = 20.dp, end = 20.dp, bottom = 12.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
+            .padding(start = 16.dp, top = 8.dp, end = 16.dp, bottom = 6.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = "Live",
-                    style = MaterialTheme.typography.headlineMedium,
-                    fontWeight = FontWeight.SemiBold,
-                )
-                Text(
-                    text = if (editState.isEditing) {
-                        "${editState.selectedChannelIds.size} selected"
-                    } else {
-                        "${state.channels.size} channels"
-                    },
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
+            Text(
+                text = if (editState.isEditing) {
+                    "${editState.selectedChannelIds.size} selected"
+                } else {
+                    "${state.channels.size} channels"
+                },
+                modifier = Modifier.weight(1f),
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
             if (!editState.isEditing) {
                 LiveOrderMenu(
                     selected = state.query.order,
@@ -323,7 +336,8 @@ private fun LiveBrowseHeader(
             onValueChange = onSearchChange,
             modifier = Modifier.fillMaxWidth(),
             singleLine = true,
-            label = { Text("Search channels") },
+            placeholder = { Text("Search channels") },
+            shape = RoundedCornerShape(14.dp),
         )
 
         LazyRow(
@@ -356,9 +370,9 @@ private fun CategoryStrip(
     LazyRow(
         modifier = Modifier.fillMaxWidth(),
         contentPadding = androidx.compose.foundation.layout.PaddingValues(
-            start = 20.dp,
-            end = 20.dp,
-            bottom = 8.dp,
+            start = 16.dp,
+            end = 16.dp,
+            bottom = 4.dp,
         ),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
@@ -397,9 +411,9 @@ private fun CustomGroupStrip(
     LazyRow(
         modifier = Modifier.fillMaxWidth(),
         contentPadding = androidx.compose.foundation.layout.PaddingValues(
-            start = 20.dp,
-            end = 20.dp,
-            bottom = 12.dp,
+            start = 16.dp,
+            end = 16.dp,
+            bottom = 6.dp,
         ),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
@@ -754,7 +768,7 @@ private fun LiveChannelRow(
 private fun LiveEmptyState(hasActiveFilter: Boolean) {
     Box(
         modifier = Modifier
-            .fillMaxSize()
+            .fillMaxWidth()
             .padding(32.dp),
         contentAlignment = Alignment.Center,
     ) {
