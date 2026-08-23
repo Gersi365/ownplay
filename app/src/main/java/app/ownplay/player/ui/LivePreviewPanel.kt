@@ -66,80 +66,78 @@ internal fun LivePreviewPanel(
     Surface(
         modifier = modifier.fillMaxWidth(),
         shape = RoundedCornerShape(20.dp),
-        color = MaterialTheme.colorScheme.surface,
+        color = Color.Black,
         tonalElevation = 4.dp,
     ) {
-        Column {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .aspectRatio(16f / 9f)
-                    .background(Color.Black)
-                    .clickable(onClick = onOpenFullscreen),
-            ) {
-                AndroidView(
-                    factory = { context ->
-                        PlayerView(context).apply {
-                            useController = false
-                            resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
-                            setShutterBackgroundColor(AndroidColor.BLACK)
-                            videoOutput.bind(this)
-                        }
-                    },
-                    modifier = Modifier.fillMaxSize(),
-                    update = { view ->
-                        view.useController = false
-                        view.resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
-                    },
-                    onRelease = { view -> videoOutput.unbind(view) },
-                )
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .aspectRatio(16f / 9f)
+                .background(Color.Black)
+                .clickable(onClick = onOpenFullscreen),
+        ) {
+            AndroidView(
+                factory = { context ->
+                    PlayerView(context).apply {
+                        useController = false
+                        resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
+                        setShutterBackgroundColor(AndroidColor.BLACK)
+                        videoOutput.bind(this)
+                    }
+                },
+                modifier = Modifier.fillMaxSize(),
+                update = { view ->
+                    view.useController = false
+                    view.resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
+                },
+                onRelease = { view -> videoOutput.unbind(view) },
+            )
 
+            Surface(
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .padding(10.dp),
+                shape = RoundedCornerShape(999.dp),
+                color = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.92f),
+            ) {
+                Text(
+                    text = "LIVE",
+                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onErrorContainer,
+                    fontWeight = FontWeight.Bold,
+                )
+            }
+
+            if (controls.showLoading) {
+                CircularProgressIndicator(
+                    modifier = Modifier
+                        .align(Alignment.Center)
+                        .size(34.dp),
+                )
+            }
+
+            if (state is PlaybackState.Failed) {
                 Surface(
                     modifier = Modifier
-                        .align(Alignment.TopStart)
-                        .padding(10.dp),
-                    shape = RoundedCornerShape(999.dp),
-                    color = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.92f),
+                        .align(Alignment.Center)
+                        .padding(20.dp),
+                    shape = RoundedCornerShape(16.dp),
+                    color = MaterialTheme.colorScheme.surface.copy(alpha = 0.92f),
                 ) {
-                    Text(
-                        text = "LIVE",
-                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onErrorContainer,
-                        fontWeight = FontWeight.Bold,
-                    )
-                }
-
-                if (controls.showLoading) {
-                    CircularProgressIndicator(
-                        modifier = Modifier
-                            .align(Alignment.Center)
-                            .size(34.dp),
-                    )
-                }
-
-                if (state is PlaybackState.Failed) {
-                    Surface(
-                        modifier = Modifier
-                            .align(Alignment.Center)
-                            .padding(20.dp),
-                        shape = RoundedCornerShape(16.dp),
-                        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.92f),
+                    Column(
+                        modifier = Modifier.padding(16.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(6.dp),
                     ) {
-                        Column(
-                            modifier = Modifier.padding(16.dp),
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            verticalArrangement = Arrangement.spacedBy(6.dp),
-                        ) {
-                            Text(
-                                text = playbackStatusLabel(state),
-                                style = MaterialTheme.typography.bodyMedium,
-                                fontWeight = FontWeight.Medium,
-                            )
-                            if (controls.canRetry) {
-                                TextButton(onClick = onRetry) {
-                                    Text("Retry")
-                                }
+                        Text(
+                            text = playbackStatusLabel(state),
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.Medium,
+                        )
+                        if (controls.canRetry) {
+                            TextButton(onClick = onRetry) {
+                                Text("Retry")
                             }
                         }
                     }
@@ -147,8 +145,12 @@ internal fun LivePreviewPanel(
             }
 
             Column(
-                modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
-                verticalArrangement = Arrangement.spacedBy(6.dp),
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    .background(Color.Black.copy(alpha = 0.72f))
+                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
             ) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -159,13 +161,14 @@ internal fun LivePreviewPanel(
                             text = selection.displayName,
                             style = MaterialTheme.typography.titleSmall,
                             fontWeight = FontWeight.SemiBold,
+                            color = Color.White,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                         )
                         Text(
                             text = playbackStatusLabel(state),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = Color.White.copy(alpha = 0.72f),
                             maxLines = 1,
                         )
                     }
@@ -182,7 +185,11 @@ internal fun LivePreviewPanel(
                                 PlaybackNavigationDirection.PREVIOUS,
                             ) != null,
                         ) {
-                            Icon(Icons.Filled.SkipPrevious, contentDescription = "Previous channel")
+                            Icon(
+                                Icons.Filled.SkipPrevious,
+                                contentDescription = "Previous channel",
+                                tint = Color.White,
+                            )
                         }
                     }
                     PreviewControlSlot {
@@ -207,17 +214,29 @@ internal fun LivePreviewPanel(
                                 PlaybackNavigationDirection.NEXT,
                             ) != null,
                         ) {
-                            Icon(Icons.Filled.SkipNext, contentDescription = "Next channel")
+                            Icon(
+                                Icons.Filled.SkipNext,
+                                contentDescription = "Next channel",
+                                tint = Color.White,
+                            )
                         }
                     }
                     PreviewControlSlot {
                         IconButton(onClick = onOpenFullscreen) {
-                            Icon(Icons.Filled.Fullscreen, contentDescription = "Open full player")
+                            Icon(
+                                Icons.Filled.Fullscreen,
+                                contentDescription = "Open full player",
+                                tint = Color.White,
+                            )
                         }
                     }
                     PreviewControlSlot {
                         IconButton(onClick = onClose) {
-                            Icon(Icons.Filled.Close, contentDescription = "Close preview")
+                            Icon(
+                                Icons.Filled.Close,
+                                contentDescription = "Close preview",
+                                tint = Color.White,
+                            )
                         }
                     }
                 }
