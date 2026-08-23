@@ -41,11 +41,11 @@ import app.ownplay.player.persistence.SourceKinds
 import app.ownplay.player.source.SourceError
 import app.ownplay.player.source.SourceSyncStage
 import app.ownplay.player.source.SourceSyncState
+import app.ownplay.player.source.SourceValidator
+import app.ownplay.player.source.UrlValidationResult
 import app.ownplay.player.source.management.SourceEditSnapshot
 import app.ownplay.player.source.management.SourceMutationFailure
 import app.ownplay.player.source.management.SourceMutationResult
-import app.ownplay.player.source.onboarding.SourceOnboardingFailure
-import app.ownplay.player.source.onboarding.SourceOnboardingResult
 import kotlinx.coroutines.launch
 
 private enum class AddPlaylistMode { XTREAM, REMOTE_M3U, LOCAL_M3U }
@@ -317,14 +317,12 @@ private fun AddPlaylistDialog(
     onCompleted: () -> Unit,
 ) {
     val context = LocalContext.current
-    val scope = rememberCoroutineScope()
     var name by remember(mode) { mutableStateOf("") }
     var endpoint by remember(mode) { mutableStateOf("") }
     var username by remember(mode) { mutableStateOf("") }
     var password by remember(mode) { mutableStateOf("") }
     var allowCleartext by remember(mode) { mutableStateOf(false) }
     var localUri by remember(mode) { mutableStateOf<String?>(null) }
-    var working by remember(mode) { mutableStateOf(false) }
     var error by remember(mode) { mutableStateOf<String?>(null) }
 
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
@@ -345,7 +343,7 @@ private fun AddPlaylistDialog(
     }
 
     AlertDialog(
-        onDismissRequest = { if (!working) onDismiss() },
+        onDismissRequest = onDismiss,
         title = { Text("Add playlist") },
         text = {
             Column(
@@ -425,61 +423,57 @@ private fun AddPlaylistDialog(
                         }
                     }
                 }
+                Text(
+                    text = "After you tap Add, this form closes immediately. Channel and EPG import continue in the background.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
                 error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
-                if (working) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(10.dp),
-                    ) {
-                        CircularProgressIndicator(strokeWidth = 2.dp)
-                        Text("Loading channels…")
-                    }
-                }
             }
         },
         confirmButton = {
             Button(
-                enabled = !working,
                 onClick = {
-                    if (working) return@Button
-                    working = true
-                    error = null
-                    scope.launch {
-                        val result = when (mode) {
-                            AddPlaylistMode.XTREAM -> runtime.addXtreamSource(
-                                name = name,
-                                serverUrl = endpoint,
-                                username = username,
-                                password = password,
-                                allowCleartext = allowCleartext,
-                            )
-                            AddPlaylistMode.REMOTE_M3U -> runtime.addRemoteM3uSource(
-                                name = name,
-                                playlistUrl = endpoint,
-                            )
-                            AddPlaylistMode.LOCAL_M3U -> {
-                                val uri = localUri
-                                if (uri == null) {
-                                    working = false
-                                    error = "Choose a local M3U file."
-                                    return@launch
-                                }
-                                runtime.addLocalM3uSource(name, uri)
-                            }
-                        }
-                        when (result) {
-                            is SourceOnboardingResult.Success -> onCompleted()
-                            is SourceOnboardingResult.Failure -> {
-                                working = false
-                                error = onboardingFailureMessage(result.reason)
-                            }
-                        }
+                    val validationError = validateAddPlaylistInput(
+                        mode = mode,
+                        name = name,
+                        endpoint = endpoint,
+                        username = username,
+                        password = password,
+                        allowCleartext = allowCleartext,
+                        localUri = localUri,
+                    )
+                    if (validationError != null) {
+                        error = validationError
+                        return@Button
                     }
+
+                    when (mode) {
+                        AddPlaylistMode.XTREAM -> SourceSubmissionCoordinator.submitXtream(
+                            runtime = runtime,
+                            name = name,
+                            serverUrl = endpoint,
+                            username = username,
+                            password = password,
+                            allowCleartext = allowCleartext,
+                        )
+                        AddPlaylistMode.REMOTE_M3U -> SourceSubmissionCoordinator.submitRemoteM3u(
+                            runtime = runtime,
+                            name = name,
+                            playlistUrl = endpoint,
+                        )
+                        AddPlaylistMode.LOCAL_M3U -> SourceSubmissionCoordinator.submitLocalM3u(
+                            runtime = runtime,
+                            name = name,
+                            documentUri = checkNotNull(localUri),
+                        )
+                    }
+                    onCompleted()
                 },
             ) { Text("Add") }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss, enabled = !working) { Text("Cancel") }
+            TextButton(onClick = onDismiss) { Text("Cancel") }
         },
     )
 }
@@ -599,6 +593,43 @@ private fun EditPlaylistDialog(
     )
 }
 
+private fun validateAddPlaylistInput(
+    mode: AddPlaylistMode,
+    name: String,
+    endpoint: String,
+    username: String,
+    password: String,
+    allowCleartext: Boolean,
+    localUri: String?,
+): String? {
+    if (name.trim().isEmpty()) return "Enter a playlist name."
+
+    return when (mode) {
+        AddPlaylistMode.XTREAM -> {
+            when (val validation = SourceValidator.validateXtreamServer(endpoint)) {
+                is UrlValidationResult.Invalid -> sourceErrorMessage(validation.error)
+                is UrlValidationResult.Valid -> when {
+                    validation.usesCleartext && !allowCleartext ->
+                        sourceErrorMessage(SourceError.CleartextTransportRequiresOptIn)
+                    username.trim().isEmpty() || password.isEmpty() ->
+                        sourceErrorMessage(SourceError.InvalidCredentials)
+                    else -> null
+                }
+            }
+        }
+        AddPlaylistMode.REMOTE_M3U -> {
+            when (val validation = SourceValidator.validateRemotePlaylistUrl(endpoint)) {
+                is UrlValidationResult.Invalid -> sourceErrorMessage(validation.error)
+                is UrlValidationResult.Valid -> null
+            }
+        }
+        AddPlaylistMode.LOCAL_M3U -> {
+            val uri = localUri ?: return "Choose a local M3U file."
+            SourceValidator.validateLocalDocumentUri(uri)?.let(::sourceErrorMessage)
+        }
+    }
+}
+
 private fun SourceSyncStage.isLoading(): Boolean =
     this == SourceSyncStage.LoadingChannels || this == SourceSyncStage.LoadingEpg
 
@@ -616,14 +647,6 @@ private fun sourceSyncStatus(state: SourceSyncState): String? = when (state.stag
     SourceSyncStage.Ready -> "Ready • ${state.channelCount} channels • ${state.epgChannelCount} with EPG"
     SourceSyncStage.ChannelsFailed -> "Channel refresh failed. Existing channels were kept."
     SourceSyncStage.EpgFailed -> "Channels are ready. EPG refresh failed."
-}
-
-private fun onboardingFailureMessage(failure: SourceOnboardingFailure): String = when (failure) {
-    SourceOnboardingFailure.InvalidName -> "Enter a playlist name."
-    SourceOnboardingFailure.SecureStorageFailure -> "Secure storage failed."
-    SourceOnboardingFailure.PersistenceFailure -> "Could not save the playlist."
-    SourceOnboardingFailure.CatalogImportFailure -> "Could not import channels."
-    is SourceOnboardingFailure.SourceFailure -> sourceErrorMessage(failure.error)
 }
 
 private fun mutationFailureMessage(failure: SourceMutationFailure): String = when (failure) {
