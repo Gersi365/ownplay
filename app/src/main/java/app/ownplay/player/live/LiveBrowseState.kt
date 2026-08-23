@@ -9,6 +9,7 @@ data class LiveBrowseState(
     val categories: List<LiveCategory> = emptyList(),
     val customGroups: List<LiveCustomGroup> = emptyList(),
     val channels: List<LiveChannelItem> = emptyList(),
+    val channelCategoryKeyById: Map<String, String?> = emptyMap(),
     val query: LiveBrowseQuery = LiveBrowseQuery(),
 )
 
@@ -22,13 +23,21 @@ class LiveBrowseSession(
         query,
     ) { snapshot, currentQuery ->
         LiveBrowseState(
-            categories = snapshot.categories.sortedBy(LiveCategory::providerOrder),
+            categories = snapshot.categories
+                .asSequence()
+                .filter { category -> currentQuery.includeHidden || !category.isHidden }
+                .sortedBy(LiveCategory::providerOrder)
+                .toList(),
             customGroups = snapshot.customGroups.sortedBy(LiveCustomGroup::groupOrder),
             channels = LiveBrowseProjector.project(
                 records = snapshot.channels,
                 query = currentQuery,
                 customGroupIdsByChannelId = snapshot.customGroupIdsByChannelId,
+                hiddenCategoryKeys = snapshot.hiddenCategoryKeys,
             ),
+            channelCategoryKeyById = snapshot.channels.associate { channel ->
+                channel.channelId to channel.providerCategoryKey
+            },
             query = currentQuery,
         )
     }
@@ -49,11 +58,14 @@ class LiveBrowseSession(
         query.update { current -> current.copy(favoritesOnly = enabled) }
     }
 
-    fun setHiddenOnly(enabled: Boolean) {
+    fun setHiddenOnly(
+        enabled: Boolean,
+        includeHiddenWhenDisabled: Boolean = false,
+    ) {
         query.update { current ->
             current.copy(
                 hiddenOnly = enabled,
-                includeHidden = enabled,
+                includeHidden = enabled || includeHiddenWhenDisabled,
             )
         }
     }
