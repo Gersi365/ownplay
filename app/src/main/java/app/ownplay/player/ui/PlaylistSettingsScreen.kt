@@ -64,9 +64,7 @@ internal fun PlaylistSettingsScreen(
     val scope = rememberCoroutineScope()
 
     Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .verticalScroll(rememberScrollState()),
+        modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
         Row(
@@ -101,14 +99,12 @@ internal fun PlaylistSettingsScreen(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
-                    if (
-                        syncState.stage == SourceSyncStage.LoadingChannels ||
-                        syncState.stage == SourceSyncStage.LoadingEpg
-                    ) {
+                    if (syncState.stage.isLoading()) {
                         CircularProgressIndicator(strokeWidth = 2.dp)
                     }
                     Text(
                         text = status,
+                        modifier = Modifier.weight(1f),
                         style = MaterialTheme.typography.bodyMedium,
                         fontWeight = FontWeight.Medium,
                     )
@@ -136,7 +132,7 @@ internal fun PlaylistSettingsScreen(
                 ) {
                     Text("No playlists yet", fontWeight = FontWeight.SemiBold)
                     Text(
-                        "Add an Xtream or M3U source. Live stays available while channels are imported.",
+                        text = "Add Xtream or M3U here. Live remains available while the catalog loads.",
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                     Button(onClick = { addMode = AddPlaylistMode.XTREAM }) {
@@ -151,11 +147,7 @@ internal fun PlaylistSettingsScreen(
                 summary = summary,
                 syncState = syncState,
                 onOpen = { onOpenInLive(summary.sourceId) },
-                onRefresh = {
-                    scope.launch {
-                        runtime.refreshSource(summary.sourceId)
-                    }
-                },
+                onRefresh = { scope.launch { runtime.refreshSource(summary.sourceId) } },
                 onEdit = {
                     scope.launch {
                         val loaded = runtime.loadSourceEditSnapshot(summary.sourceId)
@@ -225,9 +217,7 @@ internal fun PlaylistSettingsScreen(
             onDismissRequest = { deleteTarget = null },
             title = { Text("Delete playlist?") },
             text = {
-                Text(
-                    "${target.name} and its imported channel catalog will be removed from OwnPlay."
-                )
+                Text("${target.name} and its imported catalog will be removed from OwnPlay.")
             },
             confirmButton = {
                 Button(
@@ -239,8 +229,8 @@ internal fun PlaylistSettingsScreen(
                                     actionError = null
                                 }
                                 is SourceMutationResult.Failure -> {
-                                    actionError = mutationFailureMessage(result.reason)
                                     deleteTarget = null
+                                    actionError = mutationFailureMessage(result.reason)
                                 }
                             }
                         }
@@ -263,9 +253,7 @@ private fun PlaylistCard(
     onEdit: () -> Unit,
     onDelete: () -> Unit,
 ) {
-    val isSyncing = syncState.sourceId == summary.sourceId &&
-        (syncState.stage == SourceSyncStage.LoadingChannels ||
-            syncState.stage == SourceSyncStage.LoadingEpg)
+    val syncing = syncState.sourceId == summary.sourceId && syncState.stage.isLoading()
     Surface(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(20.dp),
@@ -277,7 +265,22 @@ private fun PlaylistCard(
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Column(modifier = Modifier.weight(1f)) {
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = MaterialTheme.colorScheme.primaryContainer,
+                ) {
+                    Text(
+                        text = summary.name.trim().take(1).ifBlank { "P" }.uppercase(),
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                        color = MaterialTheme.colorScheme.onPrimaryContainer,
+                        fontWeight = FontWeight.Bold,
+                    )
+                }
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .padding(start = 12.dp),
+                ) {
                     Text(
                         text = summary.name,
                         style = MaterialTheme.typography.titleMedium,
@@ -291,18 +294,16 @@ private fun PlaylistCard(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
-                if (isSyncing) {
-                    CircularProgressIndicator(strokeWidth = 2.dp)
-                }
+                if (syncing) CircularProgressIndicator(strokeWidth = 2.dp)
             }
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
             ) {
                 TextButton(onClick = onOpen) { Text("Live") }
-                TextButton(onClick = onRefresh, enabled = !isSyncing) { Text("Refresh") }
-                TextButton(onClick = onEdit, enabled = !isSyncing) { Text("Edit") }
-                TextButton(onClick = onDelete, enabled = !isSyncing) { Text("Delete") }
+                TextButton(onClick = onRefresh, enabled = !syncing) { Text("Refresh") }
+                TextButton(onClick = onEdit, enabled = !syncing) { Text("Edit") }
+                TextButton(onClick = onDelete, enabled = !syncing) { Text("Delete") }
             }
         }
     }
@@ -328,14 +329,18 @@ private fun AddPlaylistDialog(
 
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) {
-            runCatching {
+            val retained = runCatching {
                 context.contentResolver.takePersistableUriPermission(
                     uri,
                     Intent.FLAG_GRANT_READ_URI_PERMISSION,
                 )
+            }.isSuccess
+            if (retained) {
+                localUri = uri.toString()
+                if (name.isBlank()) name = "Local playlist"
+            } else {
+                error = "OwnPlay could not retain access to this file."
             }
-            localUri = uri.toString()
-            if (name.isBlank()) name = "Local playlist"
         }
     }
 
@@ -347,17 +352,15 @@ private fun AddPlaylistDialog(
                 modifier = Modifier.verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Text(
-                        text = when (mode) {
-                            AddPlaylistMode.XTREAM -> "Xtream"
-                            AddPlaylistMode.REMOTE_M3U -> "M3U URL"
-                            AddPlaylistMode.LOCAL_M3U -> "Local M3U"
-                        },
-                        style = MaterialTheme.typography.labelLarge,
-                        color = MaterialTheme.colorScheme.primary,
-                    )
-                }
+                Text(
+                    text = when (mode) {
+                        AddPlaylistMode.XTREAM -> "Xtream"
+                        AddPlaylistMode.REMOTE_M3U -> "M3U URL"
+                        AddPlaylistMode.LOCAL_M3U -> "Local M3U"
+                    },
+                    color = MaterialTheme.colorScheme.primary,
+                    fontWeight = FontWeight.SemiBold,
+                )
                 OutlinedTextField(
                     value = name,
                     onValueChange = { name = it },
@@ -396,6 +399,13 @@ private fun AddPlaylistDialog(
                             )
                             Text("Allow HTTP for this provider")
                         }
+                        if (allowCleartext) {
+                            Text(
+                                text = "HTTP does not encrypt Xtream credentials or stream traffic.",
+                                color = MaterialTheme.colorScheme.error,
+                                style = MaterialTheme.typography.bodySmall,
+                            )
+                        }
                     }
                     AddPlaylistMode.REMOTE_M3U -> {
                         OutlinedTextField(
@@ -415,9 +425,7 @@ private fun AddPlaylistDialog(
                         }
                     }
                 }
-                error?.let {
-                    Text(it, color = MaterialTheme.colorScheme.error)
-                }
+                error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
                 if (working) {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
@@ -431,6 +439,7 @@ private fun AddPlaylistDialog(
         },
         confirmButton = {
             Button(
+                enabled = !working,
                 onClick = {
                     if (working) return@Button
                     working = true
@@ -467,10 +476,7 @@ private fun AddPlaylistDialog(
                         }
                     }
                 },
-                enabled = !working,
-            ) {
-                Text("Add")
-            }
+            ) { Text("Add") }
         },
         dismissButton = {
             TextButton(onClick = onDismiss, enabled = !working) { Text("Cancel") }
@@ -518,7 +524,7 @@ private fun EditPlaylistDialog(
                         modifier = Modifier.fillMaxWidth(),
                     )
                     Text(
-                        "Leave username/password empty to keep existing credentials.",
+                        text = "Leave new credentials empty to keep the existing username/password.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -559,9 +565,10 @@ private fun EditPlaylistDialog(
         },
         confirmButton = {
             Button(
+                enabled = !working,
                 onClick = {
-                    if (working) return@Button
                     working = true
+                    error = null
                     scope.launch {
                         val result = if (snapshot.sourceKind == SourceKinds.XTREAM) {
                             runtime.updateXtreamSource(
@@ -584,7 +591,6 @@ private fun EditPlaylistDialog(
                         }
                     }
                 },
-                enabled = !working,
             ) { Text("Save") }
         },
         dismissButton = {
@@ -592,6 +598,9 @@ private fun EditPlaylistDialog(
         },
     )
 }
+
+private fun SourceSyncStage.isLoading(): Boolean =
+    this == SourceSyncStage.LoadingChannels || this == SourceSyncStage.LoadingEpg
 
 private fun sourceKindLabel(kind: String): String = when (kind) {
     SourceKinds.XTREAM -> "Xtream"
@@ -604,7 +613,7 @@ private fun sourceSyncStatus(state: SourceSyncState): String? = when (state.stag
     SourceSyncStage.Idle -> null
     SourceSyncStage.LoadingChannels -> "Loading channels…"
     SourceSyncStage.LoadingEpg -> "Channels loaded. Loading EPG…"
-    SourceSyncStage.Ready -> "Ready • ${state.channelCount} channels • ${state.epgChannelCount} EPG channels"
+    SourceSyncStage.Ready -> "Ready • ${state.channelCount} channels • ${state.epgChannelCount} with EPG"
     SourceSyncStage.ChannelsFailed -> "Channel refresh failed. Existing channels were kept."
     SourceSyncStage.EpgFailed -> "Channels are ready. EPG refresh failed."
 }
@@ -620,7 +629,7 @@ private fun onboardingFailureMessage(failure: SourceOnboardingFailure): String =
 private fun mutationFailureMessage(failure: SourceMutationFailure): String = when (failure) {
     SourceMutationFailure.NotFound -> "Playlist no longer exists."
     SourceMutationFailure.InvalidName -> "Enter a playlist name."
-    SourceMutationFailure.UnsupportedEdit -> "This playlist type cannot edit its endpoint yet."
+    SourceMutationFailure.UnsupportedEdit -> "This playlist type only supports renaming for now."
     SourceMutationFailure.IncompleteCredentialReplacement -> "Enter both new username and password, or leave both empty."
     SourceMutationFailure.SecureStorageFailure -> "Secure storage failed."
     SourceMutationFailure.PersistenceFailure -> "Could not save playlist changes."
@@ -628,14 +637,25 @@ private fun mutationFailureMessage(failure: SourceMutationFailure): String = whe
 }
 
 private fun sourceErrorMessage(error: SourceError): String = when (error) {
-    SourceError.InvalidUrl -> "Invalid URL."
-    SourceError.InvalidCredentials -> "Invalid credentials."
+    SourceError.EmptyValue -> "A required value is empty."
+    SourceError.InvalidUrl,
+    SourceError.UnsupportedScheme,
+    SourceError.MissingHost,
+    SourceError.EmbeddedCredentialsNotAllowed,
+    SourceError.UnexpectedUrlComponent,
+    -> "Invalid source URL."
+    SourceError.UnsupportedLocalUri -> "Unsupported local file URI."
+    SourceError.InvalidCredentials,
+    SourceError.CredentialUnavailable,
+    -> "Invalid or unavailable credentials."
     SourceError.AuthenticationFailed -> "Authentication failed."
+    SourceError.CleartextTransportRequiresOptIn -> "Enable HTTP for this provider."
+    SourceError.SecureConnectionFailed -> "Secure connection failed."
     SourceError.NetworkUnavailable -> "Network unavailable."
     SourceError.Timeout -> "Provider timed out."
-    SourceError.SecureConnectionFailed -> "Secure connection failed."
-    SourceError.MalformedResponse -> "Provider returned an unsupported response."
-    SourceError.CleartextTransportRequiresOptIn -> "Enable HTTP for this provider."
+    SourceError.SourceReadFailed -> "Could not read the source."
     is SourceError.HttpFailure -> "Provider returned HTTP ${error.statusCode}."
-    else -> "Could not connect to this source."
+    SourceError.MalformedResponse -> "Provider returned an unsupported response."
+    SourceError.MalformedPlaylist -> "Playlist data is malformed."
+    SourceError.Unknown -> "Could not connect to this source."
 }
