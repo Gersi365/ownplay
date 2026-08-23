@@ -245,19 +245,18 @@ class SourceOnboardingService(
         }
 
         val now = System.currentTimeMillis()
+        val pendingSource = PlaylistSourceEntity(
+            sourceId = sourceId,
+            name = name,
+            sourceKind = sourceKind,
+            locatorRef = locatorRef.value,
+            credentialRef = credentialRef?.value,
+            enabled = false,
+            createdAtEpochMillis = now,
+            updatedAtEpochMillis = now,
+        )
         try {
-            database.playlistSourceDao().upsert(
-                PlaylistSourceEntity(
-                    sourceId = sourceId,
-                    name = name,
-                    sourceKind = sourceKind,
-                    locatorRef = locatorRef.value,
-                    credentialRef = credentialRef?.value,
-                    enabled = true,
-                    createdAtEpochMillis = now,
-                    updatedAtEpochMillis = now,
-                ),
-            )
+            database.playlistSourceDao().upsert(pendingSource)
         } catch (error: Exception) {
             rollbackSource(sourceId, locatorRef)
             error.rethrowCancellation()
@@ -282,6 +281,20 @@ class SourceOnboardingService(
 
         return when (ingestResult) {
             is InitialLiveCatalogIngestResult.Success -> {
+                try {
+                    database.playlistSourceDao().upsert(
+                        pendingSource.copy(
+                            enabled = true,
+                            updatedAtEpochMillis = System.currentTimeMillis(),
+                        ),
+                    )
+                } catch (error: Exception) {
+                    rollbackSource(sourceId, locatorRef)
+                    error.rethrowCancellation()
+                    return SourceOnboardingResult.Failure(
+                        SourceOnboardingFailure.PersistenceFailure,
+                    )
+                }
                 SourceOnboardingResult.Success(
                     sourceId = sourceId,
                     channelCount = ingestResult.channelCount,
