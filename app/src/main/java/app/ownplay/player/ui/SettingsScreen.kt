@@ -15,19 +15,23 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import app.ownplay.player.OwnPlayAppRuntime
+import app.ownplay.player.persistence.PlaylistSourceSummary
+import app.ownplay.player.source.SourceSyncState
 
 @Composable
 internal fun SettingsScreen(
-    sourceCount: Int,
+    runtime: OwnPlayAppRuntime,
+    summaries: List<PlaylistSourceSummary>,
+    syncState: SourceSyncState,
     activeSourceName: String?,
     hasActivePlayback: Boolean,
-    onOpenSources: () -> Unit,
     onOpenLive: () -> Unit,
+    onOpenSourceInLive: (String) -> Unit,
     onStopPlayback: () -> Unit,
 ) {
     Column(
@@ -36,7 +40,7 @@ internal fun SettingsScreen(
             .verticalScroll(rememberScrollState())
             .navigationBarsPadding()
             .padding(horizontal = 16.dp, vertical = 20.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp),
+        verticalArrangement = Arrangement.spacedBy(18.dp),
     ) {
         Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Text(
@@ -45,28 +49,32 @@ internal fun SettingsScreen(
                 fontWeight = FontWeight.Bold,
             )
             Text(
-                text = "Playback, sources and app behavior live here — separate from channel browsing.",
+                text = "Playlists, playback and OwnPlay behavior.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
 
         SettingsCard(
-            title = "Playback",
-            subtitle = "Preview-first channel playback",
+            title = "Playlists",
+            subtitle = "Add, edit, delete and refresh your media sources",
         ) {
-            SettingValueRow(
-                label = "Channel tap",
-                value = "Open preview",
+            PlaylistSettingsScreen(
+                runtime = runtime,
+                summaries = summaries,
+                syncState = syncState,
+                onOpenInLive = onOpenSourceInLive,
             )
-            SettingValueRow(
-                label = "Fullscreen",
-                value = "Manual",
-            )
-            SettingValueRow(
-                label = "Primary orientation",
-                value = "Portrait",
-            )
+        }
+
+        SettingsCard(
+            title = "Playback",
+            subtitle = "Preview-first Live TV",
+        ) {
+            SettingValueRow(label = "Channel tap", value = "Preview")
+            SettingValueRow(label = "Fullscreen", value = "Manual")
+            SettingValueRow(label = "Primary orientation", value = "Portrait")
+            SettingValueRow(label = "Active playlist", value = activeSourceName ?: "None")
             if (hasActivePlayback) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -75,45 +83,25 @@ internal fun SettingsScreen(
                     Button(
                         onClick = onOpenLive,
                         modifier = Modifier.weight(1f),
-                    ) {
-                        Text("Back to Live")
-                    }
+                    ) { Text("Back to Live") }
                     OutlinedButton(
                         onClick = onStopPlayback,
                         modifier = Modifier.weight(1f),
-                    ) {
-                        Text("Stop")
-                    }
+                    ) { Text("Stop") }
                 }
             }
         }
 
         SettingsCard(
-            title = "Sources",
-            subtitle = "$sourceCount playlist${if (sourceCount == 1) "" else "s"} configured",
+            title = "Automatic refresh",
+            subtitle = "Runs whenever OwnPlay opens",
         ) {
-            SettingValueRow(
-                label = "Active source",
-                value = activeSourceName ?: "None selected",
-            )
-            Button(
-                onClick = onOpenSources,
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                Text("Manage sources")
-            }
-        }
-
-        SettingsCard(
-            title = "Interface",
-            subtitle = "OwnPlay navigation structure",
-        ) {
-            SettingValueRow(label = "Live", value = "Preview + channels")
-            SettingValueRow(label = "Sources", value = "Playlist management")
-            SettingValueRow(label = "Settings", value = "Dedicated section")
+            SettingValueRow(label = "1", value = "Channels")
+            SettingValueRow(label = "2", value = "EPG")
+            SettingValueRow(label = "Future", value = "VOD / Series")
             Text(
-                text = "The preview panel stays hidden until you select a channel. " +
-                    "It is part of the Live screen, not a popup.",
+                text = "Existing channels stay available while a refresh is running. " +
+                    "EPG starts only after the channel refresh finishes.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -129,9 +117,6 @@ internal fun SettingsScreen(
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            TextButton(onClick = onOpenLive) {
-                Text("Open Live")
-            }
         }
     }
 }
