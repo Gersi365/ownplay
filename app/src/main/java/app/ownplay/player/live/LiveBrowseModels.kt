@@ -8,6 +8,7 @@ data class LiveCategory(
     val providerCategoryKey: String,
     val name: String,
     val providerOrder: Long,
+    val manualOrder: Long? = null,
     val isHidden: Boolean = false,
 )
 
