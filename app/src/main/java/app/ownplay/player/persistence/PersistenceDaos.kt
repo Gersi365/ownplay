@@ -15,6 +15,9 @@ interface PlaylistSourceDao {
 
     @Query("SELECT * FROM playlist_sources WHERE sourceId = :sourceId LIMIT 1")
     suspend fun getById(sourceId: String): PlaylistSourceEntity?
+
+    @Query("DELETE FROM playlist_sources WHERE sourceId = :sourceId")
+    suspend fun deleteById(sourceId: String): Int
 }
 
 @Dao
