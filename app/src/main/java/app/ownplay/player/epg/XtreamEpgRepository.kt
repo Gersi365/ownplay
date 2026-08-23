@@ -85,12 +85,12 @@ class XtreamEpgRepository(
         }
 
         val mapped = snapshot.programsByChannelId.mapValues { (_, entries) ->
-            entries.map(::toProgram)
+            EpgTimelineProjector.normalize(entries.map(::toProgram))
         }
         cache[sourceId] = SourceCache(mapped)
         EpgRefreshResult(
             matchedChannelCount = snapshot.matchedChannelCount,
-            programCount = snapshot.programCount,
+            programCount = mapped.values.sumOf(List<EpgProgram>::size),
         )
     }
 
@@ -104,23 +104,14 @@ class XtreamEpgRepository(
         val programs = cache[sourceId]?.programsByEpgChannelId?.get(epgId).orEmpty()
         if (programs.isEmpty()) return@withContext EpgSnapshot(null, null, emptyList())
 
-        val now = System.currentTimeMillis() / 1_000L
-        val currentIndex = programs.indexOfFirst { program ->
-            val start = program.startEpochSeconds
-            val end = program.endEpochSeconds
-            start != null && end != null && now >= start && now < end
-        }
-        val current = programs.getOrNull(currentIndex)
-        val next = when {
-            currentIndex >= 0 -> programs.getOrNull(currentIndex + 1)
-            else -> programs.firstOrNull { program ->
-                program.startEpochSeconds?.let { it >= now } == true
-            }
-        }
-        EpgSnapshot(
-            current = current,
-            next = next,
+        val timeline = EpgTimelineProjector.project(
             programs = programs,
+            nowEpochSeconds = System.currentTimeMillis() / 1_000L,
+        )
+        EpgSnapshot(
+            current = timeline.current,
+            next = timeline.future.firstOrNull(),
+            programs = timeline.programs,
         )
     }
 
