@@ -28,7 +28,11 @@ class LiveBrowseSession(
             categories = snapshot.categories
                 .asSequence()
                 .filter { category -> currentQuery.includeHidden || !category.isHidden }
-                .sortedBy(LiveCategory::providerOrder)
+                .sortedWith(
+                    compareBy<LiveCategory> { it.manualOrder == null }
+                        .thenBy { it.manualOrder ?: Long.MAX_VALUE }
+                        .thenBy(LiveCategory::providerOrder),
+                )
                 .toList(),
             customGroups = snapshot.customGroups.sortedBy(LiveCustomGroup::groupOrder),
             channels = LiveBrowseProjector.project(
