@@ -1,18 +1,21 @@
 package app.ownplay.player.ui
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Button
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.NavigationBar
+import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -24,16 +27,16 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import app.ownplay.player.OwnPlayAppRuntime
 import app.ownplay.player.playback.LivePlaybackSelection
 import app.ownplay.player.playback.PlaybackNavigationDirection
+import app.ownplay.player.source.SourceSyncStage
+import app.ownplay.player.source.SourceSyncState
 
 private enum class OwnPlaySection {
     LIVE,
-    SOURCES,
     SETTINGS,
 }
 
@@ -42,25 +45,26 @@ fun OwnPlayApp(
     runtime: OwnPlayAppRuntime,
     onPlaybackFullscreenChanged: (Boolean) -> Unit = {},
 ) {
-    val sources by runtime.observeSources().collectAsState(initial = emptyList())
+    val summaries by runtime.observeSourceSummaries().collectAsState(initial = emptyList())
+    val syncState by runtime.sourceSyncState.collectAsState()
     val playbackState by runtime.playbackController.state.collectAsState()
     val playbackTrackState by runtime.playbackTrackController.state.collectAsState()
 
-    var section by remember { mutableStateOf(OwnPlaySection.SOURCES) }
+    var section by remember { mutableStateOf(OwnPlaySection.LIVE) }
     var activeSourceId by remember { mutableStateOf<String?>(null) }
     var activeSelection by remember { mutableStateOf<LivePlaybackSelection?>(null) }
     var fullscreenSelection by remember { mutableStateOf<LivePlaybackSelection?>(null) }
 
-    LaunchedEffect(sources) {
-        if (activeSourceId == null) {
-            activeSourceId = sources.firstOrNull()?.sourceId
-        } else if (sources.none { source -> source.sourceId == activeSourceId }) {
-            activeSourceId = sources.firstOrNull()?.sourceId
-            section = OwnPlaySection.SOURCES
+    LaunchedEffect(summaries) {
+        val ids = summaries.map { it.sourceId }.toSet()
+        activeSourceId = when {
+            activeSourceId in ids -> activeSourceId
+            summaries.isNotEmpty() -> summaries.first().sourceId
+            else -> null
         }
 
         val selectionSourceId = activeSelection?.request?.sourceId
-        if (selectionSourceId != null && sources.none { source -> source.sourceId == selectionSourceId }) {
+        if (selectionSourceId != null && selectionSourceId !in ids) {
             activeSelection = null
             fullscreenSelection = null
             runtime.playbackController.stop()
@@ -96,211 +100,224 @@ fun OwnPlayApp(
         return
     }
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background),
-    ) {
-        OwnPlayTopShell(
-            selected = section,
-            activeSourceName = sources
-                .firstOrNull { source -> source.sourceId == activeSourceId }
-                ?.name,
-            onSelected = { target ->
-                section = when {
-                    target == OwnPlaySection.LIVE && activeSourceId == null -> OwnPlaySection.SOURCES
-                    else -> target
-                }
-            },
-        )
+    val activeSummary = summaries.firstOrNull { it.sourceId == activeSourceId }
 
-        when (section) {
-            OwnPlaySection.SOURCES -> SourcePickerScreen(
-                sources = sources,
-                selectedSourceId = activeSourceId,
-                onSourceSelected = { sourceId ->
-                    activeSourceId = sourceId
-                    section = OwnPlaySection.LIVE
-                },
+    Scaffold(
+        containerColor = MaterialTheme.colorScheme.background,
+        topBar = {
+            OwnPlayHeader(
+                activeSourceName = activeSummary?.name,
+                syncState = syncState,
             )
-
-            OwnPlaySection.LIVE -> {
-                val sourceId = activeSourceId
-                if (sourceId == null) {
-                    SourcePickerScreen(
-                        sources = sources,
-                        selectedSourceId = null,
-                        onSourceSelected = { selected ->
-                            activeSourceId = selected
-                            section = OwnPlaySection.LIVE
-                        },
-                    )
-                } else {
-                    LiveRoute(
-                        runtime = runtime,
-                        sourceId = sourceId,
-                        activeSelection = activeSelection,
-                        playbackState = playbackState,
-                        videoOutput = runtime.playbackVideoOutput,
-                        onPlay = runtime.playbackController::play,
-                        onPause = runtime.playbackController::pause,
-                        onRetry = runtime.playbackController::retry,
-                        onBackToSources = { section = OwnPlaySection.SOURCES },
-                        onPreviewRequested = { selection ->
-                            activeSelection = selection
-                            runtime.playbackController.start(selection.request)
-                        },
-                        onPreviewClosed = {
-                            activeSelection = null
-                            runtime.playbackController.stop()
-                        },
-                        onOpenFullscreen = { selection ->
-                            fullscreenSelection = selection
-                        },
-                        onNavigatePreview = { direction ->
-                            activeSelection
-                                ?.navigate(direction)
-                                ?.let { target ->
-                                    activeSelection = target
-                                    runtime.playbackController.start(target.request)
-                                }
-                        },
-                    )
-                }
+        },
+        bottomBar = {
+            NavigationBar(
+                modifier = Modifier.navigationBarsPadding(),
+                containerColor = MaterialTheme.colorScheme.surface,
+                tonalElevation = 4.dp,
+            ) {
+                NavigationBarItem(
+                    selected = section == OwnPlaySection.LIVE,
+                    onClick = { section = OwnPlaySection.LIVE },
+                    icon = { Text("TV", fontWeight = FontWeight.Bold) },
+                    label = { Text("Live") },
+                )
+                NavigationBarItem(
+                    selected = section == OwnPlaySection.SETTINGS,
+                    onClick = { section = OwnPlaySection.SETTINGS },
+                    icon = { Text("⚙") },
+                    label = { Text("Settings") },
+                )
             }
-
-            OwnPlaySection.SETTINGS -> SettingsScreen(
-                sourceCount = sources.size,
-                activeSourceName = sources
-                    .firstOrNull { source -> source.sourceId == activeSourceId }
-                    ?.name,
-                hasActivePlayback = activeSelection != null,
-                onOpenSources = { section = OwnPlaySection.SOURCES },
-                onOpenLive = {
-                    section = if (activeSourceId == null) {
-                        OwnPlaySection.SOURCES
+        },
+    ) { innerPadding ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(MaterialTheme.colorScheme.background)
+                .padding(innerPadding),
+        ) {
+            when (section) {
+                OwnPlaySection.LIVE -> {
+                    val sourceId = activeSourceId
+                    if (sourceId == null) {
+                        LiveNoSourceScreen(
+                            syncState = syncState,
+                            onAddPlaylist = { section = OwnPlaySection.SETTINGS },
+                        )
                     } else {
-                        OwnPlaySection.LIVE
+                        LiveRoute(
+                            runtime = runtime,
+                            sourceId = sourceId,
+                            activeSelection = activeSelection,
+                            playbackState = playbackState,
+                            videoOutput = runtime.playbackVideoOutput,
+                            syncState = syncState,
+                            onPlay = runtime.playbackController::play,
+                            onPause = runtime.playbackController::pause,
+                            onRetry = runtime.playbackController::retry,
+                            onOpenSettings = { section = OwnPlaySection.SETTINGS },
+                            onPreviewRequested = { selection ->
+                                activeSelection = selection
+                                runtime.playbackController.start(selection.request)
+                            },
+                            onPreviewClosed = {
+                                activeSelection = null
+                                runtime.playbackController.stop()
+                            },
+                            onOpenFullscreen = { selection ->
+                                fullscreenSelection = selection
+                            },
+                            onNavigatePreview = { direction ->
+                                activeSelection
+                                    ?.navigate(direction)
+                                    ?.let { target ->
+                                        activeSelection = target
+                                        runtime.playbackController.start(target.request)
+                                    }
+                            },
+                        )
                     }
-                },
-                onStopPlayback = {
-                    activeSelection = null
-                    runtime.playbackController.stop()
-                },
-            )
+                }
+
+                OwnPlaySection.SETTINGS -> SettingsScreen(
+                    runtime = runtime,
+                    summaries = summaries,
+                    syncState = syncState,
+                    activeSourceName = activeSummary?.name,
+                    hasActivePlayback = activeSelection != null,
+                    onOpenLive = { section = OwnPlaySection.LIVE },
+                    onOpenSourceInLive = { sourceId ->
+                        activeSourceId = sourceId
+                        section = OwnPlaySection.LIVE
+                    },
+                    onStopPlayback = {
+                        activeSelection = null
+                        runtime.playbackController.stop()
+                    },
+                )
+            }
         }
     }
 }
 
 @Composable
-private fun OwnPlayTopShell(
-    selected: OwnPlaySection,
+private fun OwnPlayHeader(
     activeSourceName: String?,
-    onSelected: (OwnPlaySection) -> Unit,
+    syncState: SourceSyncState,
 ) {
     Surface(
         color = MaterialTheme.colorScheme.surface,
         tonalElevation = 2.dp,
     ) {
-        Column(
+        Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .statusBarsPadding()
-                .padding(horizontal = 16.dp, vertical = 12.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
+                .padding(horizontal = 18.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
+            Surface(
+                shape = RoundedCornerShape(12.dp),
+                color = MaterialTheme.colorScheme.primary,
             ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = "OwnPlay",
-                        style = MaterialTheme.typography.headlineSmall,
-                        fontWeight = FontWeight.Bold,
-                    )
-                    Text(
-                        text = activeSourceName ?: "Your media hub",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 1,
-                    )
-                }
-                Surface(
-                    shape = RoundedCornerShape(999.dp),
-                    color = MaterialTheme.colorScheme.primaryContainer,
-                ) {
-                    Text(
-                        text = selected.name,
-                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.onPrimaryContainer,
-                        fontWeight = FontWeight.SemiBold,
-                    )
-                }
+                Text(
+                    text = "OP",
+                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp),
+                    color = MaterialTheme.colorScheme.onPrimary,
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.Black,
+                )
             }
-
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(16.dp))
-                    .background(MaterialTheme.colorScheme.surfaceVariant)
-                    .padding(4.dp),
-                horizontalArrangement = Arrangement.spacedBy(4.dp),
-            ) {
-                SectionTab(
-                    label = "Live",
-                    selected = selected == OwnPlaySection.LIVE,
-                    onClick = { onSelected(OwnPlaySection.LIVE) },
-                    modifier = Modifier.weight(1f),
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = "OwnPlay",
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold,
                 )
-                SectionTab(
-                    label = "Sources",
-                    selected = selected == OwnPlaySection.SOURCES,
-                    onClick = { onSelected(OwnPlaySection.SOURCES) },
-                    modifier = Modifier.weight(1f),
+                Text(
+                    text = activeSourceName ?: "Live media hub",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
                 )
-                SectionTab(
-                    label = "Settings",
-                    selected = selected == OwnPlaySection.SETTINGS,
-                    onClick = { onSelected(OwnPlaySection.SETTINGS) },
-                    modifier = Modifier.weight(1f),
-                )
+            }
+            when (syncState.stage) {
+                SourceSyncStage.LoadingChannels,
+                SourceSyncStage.LoadingEpg,
+                -> CircularProgressIndicator(strokeWidth = 2.dp)
+                else -> Unit
             }
         }
     }
 }
 
 @Composable
-private fun SectionTab(
-    label: String,
-    selected: Boolean,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier,
+private fun LiveNoSourceScreen(
+    syncState: SourceSyncState,
+    onAddPlaylist: () -> Unit,
 ) {
-    Box(
-        modifier = modifier
-            .clip(RoundedCornerShape(12.dp))
-            .background(
-                if (selected) {
-                    MaterialTheme.colorScheme.primaryContainer
-                } else {
-                    MaterialTheme.colorScheme.surfaceVariant
-                },
-            )
-            .clickable(onClick = onClick)
-            .padding(horizontal = 10.dp, vertical = 10.dp),
-        contentAlignment = Alignment.Center,
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(horizontal = 20.dp, vertical = 24.dp),
+        verticalArrangement = Arrangement.spacedBy(18.dp),
     ) {
-        Text(
-            text = label,
-            style = MaterialTheme.typography.labelLarge,
-            color = if (selected) {
-                MaterialTheme.colorScheme.onPrimaryContainer
-            } else {
-                MaterialTheme.colorScheme.onSurfaceVariant
-            },
-            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
-        )
+        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text(
+                text = "Live TV",
+                style = MaterialTheme.typography.headlineMedium,
+                fontWeight = FontWeight.Bold,
+            )
+            Text(
+                text = "0 channels",
+                style = MaterialTheme.typography.bodyLarge,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+
+        Surface(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(24.dp),
+            color = MaterialTheme.colorScheme.surface,
+            tonalElevation = 2.dp,
+        ) {
+            Column(
+                modifier = Modifier.padding(20.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                if (syncState.stage == SourceSyncStage.LoadingChannels) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    ) {
+                        CircularProgressIndicator(strokeWidth = 2.dp)
+                        Text(
+                            text = "Loading channels…",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                    }
+                    Text(
+                        text = "The playlist will appear automatically when the channel catalog is ready.",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                } else {
+                    Text(
+                        text = "No playlist configured",
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                    Text(
+                        text = "Add a playlist from Settings. Live remains your home screen even when no source is configured.",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Button(onClick = onAddPlaylist) {
+                        Text("Add playlist")
+                    }
+                }
+            }
+        }
     }
 }
