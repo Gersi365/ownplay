@@ -1,5 +1,6 @@
 package app.ownplay.player.live
 
+import app.ownplay.player.persistence.ChannelAvailability
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.combine
@@ -10,6 +11,7 @@ data class LiveBrowseState(
     val customGroups: List<LiveCustomGroup> = emptyList(),
     val channels: List<LiveChannelItem> = emptyList(),
     val channelCategoryKeyById: Map<String, String?> = emptyMap(),
+    val catalogChannelCount: Int = 0,
     val query: LiveBrowseQuery = LiveBrowseQuery(),
 )
 
@@ -37,6 +39,9 @@ class LiveBrowseSession(
             ),
             channelCategoryKeyById = snapshot.channels.associate { channel ->
                 channel.channelId to channel.providerCategoryKey
+            },
+            catalogChannelCount = snapshot.channels.count { channel ->
+                channel.availability != ChannelAvailability.REMOVED
             },
             query = currentQuery,
         )
