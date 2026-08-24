@@ -1,5 +1,6 @@
 package app.ownplay.player.ui
 
+import app.ownplay.player.personalization.AppOrientationMode
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -29,36 +30,44 @@ class PlaybackWindowPolicyTest {
     }
 
     @Test
-    fun normalAppShellIsPortraitFirst() {
+    fun portraitSettingLocksNormalAppShellToPortrait() {
         assertEquals(
             PlaybackOrientationIntent.PORTRAIT,
             PlaybackWindowPolicy.orientationIntent(
                 fullscreen = false,
-                playbackSurfaceActive = false,
+                appOrientation = AppOrientationMode.PORTRAIT,
                 inPictureInPicture = false,
             ),
         )
     }
 
     @Test
-    fun playbackSurfaceFollowsPhysicalSensor() {
+    fun landscapeSettingLocksNormalAppShellToLandscape() {
         assertEquals(
-            PlaybackOrientationIntent.SENSOR,
+            PlaybackOrientationIntent.LANDSCAPE,
             PlaybackWindowPolicy.orientationIntent(
                 fullscreen = false,
-                playbackSurfaceActive = true,
+                appOrientation = AppOrientationMode.LANDSCAPE,
                 inPictureInPicture = false,
             ),
         )
     }
 
     @Test
-    fun immersiveFullscreenAlsoFollowsPhysicalSensor() {
+    fun fullscreenAlwaysFollowsPhysicalSensor() {
         assertEquals(
             PlaybackOrientationIntent.SENSOR,
             PlaybackWindowPolicy.orientationIntent(
                 fullscreen = true,
-                playbackSurfaceActive = true,
+                appOrientation = AppOrientationMode.PORTRAIT,
+                inPictureInPicture = false,
+            ),
+        )
+        assertEquals(
+            PlaybackOrientationIntent.SENSOR,
+            PlaybackWindowPolicy.orientationIntent(
+                fullscreen = true,
+                appOrientation = AppOrientationMode.LANDSCAPE,
                 inPictureInPicture = false,
             ),
         )
@@ -70,28 +79,8 @@ class PlaybackWindowPolicyTest {
             PlaybackOrientationIntent.FOLLOW_SYSTEM,
             PlaybackWindowPolicy.orientationIntent(
                 fullscreen = true,
-                playbackSurfaceActive = true,
+                appOrientation = AppOrientationMode.LANDSCAPE,
                 inPictureInPicture = true,
-            ),
-        )
-        assertEquals(
-            PlaybackOrientationIntent.FOLLOW_SYSTEM,
-            PlaybackWindowPolicy.orientationIntent(
-                fullscreen = false,
-                playbackSurfaceActive = false,
-                inPictureInPicture = true,
-            ),
-        )
-    }
-
-    @Test
-    fun leavingPlaybackSurfaceReturnsToPortrait() {
-        assertEquals(
-            PlaybackOrientationIntent.PORTRAIT,
-            PlaybackWindowPolicy.orientationIntent(
-                fullscreen = false,
-                playbackSurfaceActive = false,
-                inPictureInPicture = false,
             ),
         )
     }
