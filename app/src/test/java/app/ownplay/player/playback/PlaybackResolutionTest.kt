@@ -337,6 +337,7 @@ class PlaybackResolutionTest {
     ) : PlaybackResolutionLookup {
         override suspend fun sourceById(sourceId: String): PlaybackSourceRecord? = source
         override suspend fun channelById(channelId: String): PlaybackChannelRecord? = channel
+        override suspend fun movieById(movieId: String): PlaybackMovieRecord? = null
     }
 
     private class FixtureStores(
