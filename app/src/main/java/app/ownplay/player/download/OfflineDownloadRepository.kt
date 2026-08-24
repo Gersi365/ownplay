@@ -174,6 +174,7 @@ class OfflineDownloadRepository(
         val mediaKind = when (request.mediaKind) {
             PlaybackMediaKind.LIVE -> return null
             PlaybackMediaKind.MOVIE -> DownloadMediaKinds.MOVIE
+            PlaybackMediaKind.SERIES_EPISODE -> DownloadMediaKinds.SERIES_EPISODE
         }
         val row = dao.getForContent(
             sourceId = request.sourceId,
