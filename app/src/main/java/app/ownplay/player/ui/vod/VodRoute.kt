@@ -5,6 +5,7 @@ import androidx.annotation.OptIn
 import androidx.compose.foundation.background
 import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -69,6 +70,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -101,6 +103,8 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlin.math.max
+
+private const val VOD_CONTROLS_AUTO_HIDE_MILLIS = 3_000L
 
 enum class VodSortOrder {
     PROVIDER,
@@ -976,6 +980,13 @@ private fun VodPlaybackScreen(
     var currentPosition by remember(movie.movieId) { mutableStateOf(movie.positionMs ?: 0L) }
     var duration by remember(movie.movieId) { mutableStateOf(movie.durationMs ?: 0L) }
     var resumeApplied by remember(movie.movieId) { mutableStateOf(false) }
+    var controlsVisible by remember(movie.movieId) { mutableStateOf(true) }
+    var controlsInteractionToken by remember(movie.movieId) { mutableStateOf(0) }
+
+    fun revealControls() {
+        controlsVisible = true
+        controlsInteractionToken += 1
+    }
 
     DisposableEffect(movie.movieId) {
         onFullscreenStateChanged(true)
@@ -1028,6 +1039,22 @@ private fun VodPlaybackScreen(
         }
     }
 
+    LaunchedEffect(playbackState, controlsVisible, controlsInteractionToken, movie.movieId) {
+        when (playbackState) {
+            is PlaybackState.Playing -> {
+                if (controlsVisible) {
+                    delay(VOD_CONTROLS_AUTO_HIDE_MILLIS)
+                    controlsVisible = false
+                }
+            }
+            is PlaybackState.Loading,
+            is PlaybackState.Paused,
+            is PlaybackState.Failed,
+            -> controlsVisible = true
+            PlaybackState.Idle -> Unit
+        }
+    }
+
     Surface(
         modifier = Modifier.fillMaxSize(),
         color = Color.Black,
@@ -1055,79 +1082,100 @@ private fun VodPlaybackScreen(
                 },
             )
 
-            Row(
+            Box(
                 modifier = Modifier
-                    .align(Alignment.TopStart)
-                    .fillMaxWidth()
-                    .background(Color.Black.copy(alpha = 0.65f))
-                    .padding(horizontal = 8.dp, vertical = 5.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                IconButton(onClick = onExit) {
-                    Icon(Icons.Filled.ArrowBack, contentDescription = "Back", tint = Color.White)
-                }
-                Text(
-                    text = movie.name,
-                    modifier = Modifier.weight(1f),
-                    color = Color.White,
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.SemiBold,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
-
-            Column(
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .fillMaxWidth()
-                    .background(Color.Black.copy(alpha = 0.70f))
-                    .padding(horizontal = 14.dp, vertical = 8.dp),
-                verticalArrangement = Arrangement.spacedBy(4.dp),
-            ) {
-                val maxDuration = max(duration, 1L)
-                Slider(
-                    value = currentPosition.coerceIn(0L, maxDuration).toFloat(),
-                    onValueChange = { currentPosition = it.toLong() },
-                    onValueChangeFinished = {
-                        playerView?.player?.seekTo(currentPosition)
-                    },
-                    valueRange = 0f..maxDuration.toFloat(),
-                )
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    IconButton(
-                        onClick = {
-                            when (playbackState) {
-                                is PlaybackState.Playing -> runtime.playbackController.pause()
-                                is PlaybackState.Paused -> runtime.playbackController.play()
-                                is PlaybackState.Failed -> runtime.playbackController.retry()
-                                else -> Unit
+                    .fillMaxSize()
+                    .pointerInput(movie.movieId, controlsVisible) {
+                        detectTapGestures {
+                            if (controlsVisible) {
+                                controlsVisible = false
+                            } else {
+                                revealControls()
                             }
-                        },
-                    ) {
-                        Icon(
-                            if (playbackState is PlaybackState.Playing) Icons.Filled.Pause else Icons.Filled.PlayArrow,
-                            contentDescription = null,
-                            tint = Color.White,
-                        )
+                        }
+                    },
+            )
+
+            if (controlsVisible) {
+                Row(
+                    modifier = Modifier
+                        .align(Alignment.TopStart)
+                        .fillMaxWidth()
+                        .background(Color.Black.copy(alpha = 0.65f))
+                        .padding(horizontal = 8.dp, vertical = 5.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    IconButton(onClick = onExit) {
+                        Icon(Icons.Filled.ArrowBack, contentDescription = "Back", tint = Color.White)
                     }
                     Text(
-                        text = "${formatDuration(currentPosition)} / ${formatDuration(duration)}",
-                        color = Color.White.copy(alpha = 0.82f),
-                        style = MaterialTheme.typography.labelMedium,
+                        text = movie.name,
+                        modifier = Modifier.weight(1f),
+                        color = Color.White,
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
                     )
-                    Spacer(Modifier.weight(1f))
-                    when (playbackState) {
-                        is PlaybackState.Loading -> CircularProgressIndicator(
-                            modifier = Modifier.size(20.dp),
-                            strokeWidth = 2.dp,
-                        )
-                        is PlaybackState.Failed -> Text(
-                            text = "Playback failed",
-                            color = MaterialTheme.colorScheme.error,
+                }
+
+                Column(
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .fillMaxWidth()
+                        .background(Color.Black.copy(alpha = 0.70f))
+                        .padding(horizontal = 14.dp, vertical = 8.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    val maxDuration = max(duration, 1L)
+                    Slider(
+                        value = currentPosition.coerceIn(0L, maxDuration).toFloat(),
+                        onValueChange = {
+                            currentPosition = it.toLong()
+                            revealControls()
+                        },
+                        onValueChangeFinished = {
+                            playerView?.player?.seekTo(currentPosition)
+                            revealControls()
+                        },
+                        valueRange = 0f..maxDuration.toFloat(),
+                    )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        IconButton(
+                            onClick = {
+                                when (playbackState) {
+                                    is PlaybackState.Playing -> runtime.playbackController.pause()
+                                    is PlaybackState.Paused -> runtime.playbackController.play()
+                                    is PlaybackState.Failed -> runtime.playbackController.retry()
+                                    else -> Unit
+                                }
+                                revealControls()
+                            },
+                        ) {
+                            Icon(
+                                if (playbackState is PlaybackState.Playing) Icons.Filled.Pause else Icons.Filled.PlayArrow,
+                                contentDescription = null,
+                                tint = Color.White,
+                            )
+                        }
+                        Text(
+                            text = "${formatDuration(currentPosition)} / ${formatDuration(duration)}",
+                            color = Color.White.copy(alpha = 0.82f),
                             style = MaterialTheme.typography.labelMedium,
                         )
-                        else -> Unit
+                        Spacer(Modifier.weight(1f))
+                        when (playbackState) {
+                            is PlaybackState.Loading -> CircularProgressIndicator(
+                                modifier = Modifier.size(20.dp),
+                                strokeWidth = 2.dp,
+                            )
+                            is PlaybackState.Failed -> Text(
+                                text = "Playback failed",
+                                color = MaterialTheme.colorScheme.error,
+                                style = MaterialTheme.typography.labelMedium,
+                            )
+                            else -> Unit
+                        }
                     }
                 }
             }
