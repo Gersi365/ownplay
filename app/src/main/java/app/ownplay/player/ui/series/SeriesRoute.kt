@@ -1,5 +1,6 @@
 package app.ownplay.player.ui.series
 
+import android.content.res.Configuration
 import androidx.annotation.OptIn
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -40,6 +41,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -81,6 +83,8 @@ internal fun SeriesRoute(
     onFullscreenStateChanged: (Boolean) -> Unit,
 ) {
     val context = LocalContext.current
+    val configuration = LocalConfiguration.current
+    val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
     val featureRuntime = remember(context) { SeriesFeatureRuntime(context.applicationContext) }
     val downloadRuntime = remember(context) {
         OfflineDownloadFeatureRuntime(context.applicationContext)
@@ -227,6 +231,37 @@ internal fun SeriesRoute(
         (categoryKey == null || item.categoryKey == categoryKey) &&
             (!favoritesOnly || item.isFavorite) &&
             (normalizedQuery.isBlank() || item.name.lowercase().contains(normalizedQuery))
+    }
+
+    val portraitSelection = selectedSeries
+    if (!isLandscape && portraitSelection != null) {
+        SeriesDetailsPane(
+            selected = portraitSelection,
+            details = details,
+            loading = detailsLoading,
+            error = detailsError,
+            selectedSeasonNumber = selectedSeasonNumber,
+            downloads = downloads,
+            onSeasonSelected = { selectedSeasonNumber = it },
+            onFavoriteChanged = { favorite ->
+                selectedSeries = portraitSelection.copy(isFavorite = favorite)
+                scope.launch {
+                    featureRuntime.setFavorite(sourceId, portraitSelection.seriesId, favorite)
+                }
+            },
+            onPlay = ::playEpisode,
+            onDownload = ::downloadEpisode,
+            onClearProgress = { episode ->
+                scope.launch {
+                    featureRuntime.clearEpisodeProgress(sourceId, episode.episodeId)
+                }
+            },
+            onClose = { selectedSeries = null },
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(8.dp),
+        )
+        return
     }
 
     Row(
