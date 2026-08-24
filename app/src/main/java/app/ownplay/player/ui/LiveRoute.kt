@@ -53,6 +53,8 @@ internal fun LiveRoute(
     onPlay: () -> Unit,
     onPause: () -> Unit,
     onRetry: () -> Unit,
+    onOpenMovies: () -> Unit,
+    onOpenSeries: () -> Unit,
     onOpenSettings: () -> Unit,
     onPreviewRequested: (LivePlaybackSelection) -> Unit,
     onPreviewClosed: () -> Unit,
@@ -163,6 +165,8 @@ internal fun LiveRoute(
             onOpenFullscreen = onOpenFullscreen,
             onPreviewClosed = onPreviewClosed,
             onOpenEpgGuide = { showEpgGuide = true },
+            onOpenMovies = onOpenMovies,
+            onOpenSeries = onOpenSeries,
             onOpenSettings = onOpenSettings,
         )
     } else {
