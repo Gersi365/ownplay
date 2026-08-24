@@ -18,7 +18,7 @@ object LocalVideoPlayback {
         val normalized = normalizeContentUri(request.channelId) ?: return null
         return ResolvedPlaybackLocator(
             value = normalized,
-            origin = ResolvedPlaybackOrigin.DIRECT,
+            origin = ResolvedPlaybackOrigin.LOCAL_DOWNLOAD,
         )
     }
 
