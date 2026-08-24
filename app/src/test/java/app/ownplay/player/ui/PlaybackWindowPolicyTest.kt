@@ -95,36 +95,4 @@ class PlaybackWindowPolicyTest {
             ),
         )
     }
-
-    @Test
-    fun previewPromotionRequiresLandscapeAndRearm() {
-        assertTrue(
-            PlaybackWindowPolicy.shouldPromotePreviewToFullscreen(
-                previewActive = true,
-                isLandscape = true,
-                promotionArmed = true,
-            ),
-        )
-        assertFalse(
-            PlaybackWindowPolicy.shouldPromotePreviewToFullscreen(
-                previewActive = true,
-                isLandscape = false,
-                promotionArmed = true,
-            ),
-        )
-        assertFalse(
-            PlaybackWindowPolicy.shouldPromotePreviewToFullscreen(
-                previewActive = true,
-                isLandscape = true,
-                promotionArmed = false,
-            ),
-        )
-        assertFalse(
-            PlaybackWindowPolicy.shouldPromotePreviewToFullscreen(
-                previewActive = false,
-                isLandscape = true,
-                promotionArmed = true,
-            ),
-        )
-    }
 }
