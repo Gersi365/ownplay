@@ -630,6 +630,7 @@ private fun PlaybackAndEpgColumn(
         tonalElevation = 1.dp,
     ) {
         BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+            val availableHeight = maxHeight
             Column(
                 modifier = Modifier
                     .fillMaxSize()
@@ -658,7 +659,7 @@ private fun PlaybackAndEpgColumn(
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(maxHeight * 0.30f)
+                            .height(availableHeight * 0.30f)
                             .clip(RoundedCornerShape(14.dp))
                             .background(MaterialTheme.colorScheme.surfaceVariant),
                         contentAlignment = Alignment.Center,
