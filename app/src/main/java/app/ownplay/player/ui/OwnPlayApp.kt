@@ -10,35 +10,27 @@ import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.LiveTv
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -50,10 +42,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import app.ownplay.player.OwnPlayAppRuntime
-import app.ownplay.player.persistence.PlaylistSourceSummary
 import app.ownplay.player.playback.LivePlaybackSelection
 import app.ownplay.player.source.SourceSyncStage
 import app.ownplay.player.source.SourceSyncState
@@ -144,22 +134,12 @@ fun OwnPlayApp(
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
         topBar = {
-            OwnPlayHeader(
-                section = section,
-                activeSourceId = activeSourceId,
-                summaries = summaries,
-                syncState = syncState,
-                compact = compactLiveLandscape,
-                onSettingsRequested = { section = OwnPlaySection.SETTINGS },
-                onSourceSelected = { sourceId ->
-                    if (sourceId != activeSourceId) {
-                        activeSourceId = sourceId
-                        activeSelection = null
-                        fullscreenSelection = null
-                        runtime.playbackController.stop()
-                    }
-                },
-            )
+            if (section == OwnPlaySection.SETTINGS) {
+                SettingsHeader(
+                    activeSourceName = activeSummary?.name,
+                    syncState = syncState,
+                )
+            }
         },
         bottomBar = {
             if (!compactLiveLandscape) {
@@ -281,169 +261,54 @@ fun OwnPlayApp(
 }
 
 @Composable
-private fun OwnPlayHeader(
-    section: OwnPlaySection,
-    activeSourceId: String?,
-    summaries: List<PlaylistSourceSummary>,
+private fun SettingsHeader(
+    activeSourceName: String?,
     syncState: SourceSyncState,
-    compact: Boolean,
-    onSettingsRequested: () -> Unit,
-    onSourceSelected: (String) -> Unit,
 ) {
     Surface(
         color = MaterialTheme.colorScheme.surface,
-        tonalElevation = if (compact) 1.dp else 2.dp,
+        tonalElevation = 2.dp,
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .statusBarsPadding()
-                .padding(
-                    horizontal = if (compact) 8.dp else 16.dp,
-                    vertical = if (compact) 0.dp else 7.dp,
-                ),
+                .padding(horizontal = 16.dp, vertical = 7.dp),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(if (compact) 6.dp else 10.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             Surface(
-                shape = RoundedCornerShape(if (compact) 8.dp else 11.dp),
+                shape = RoundedCornerShape(11.dp),
                 color = MaterialTheme.colorScheme.primary,
             ) {
                 Text(
                     text = "OP",
-                    modifier = Modifier.padding(
-                        horizontal = if (compact) 7.dp else 9.dp,
-                        vertical = if (compact) 3.dp else 6.dp,
-                    ),
+                    modifier = Modifier.padding(horizontal = 9.dp, vertical = 6.dp),
                     color = MaterialTheme.colorScheme.onPrimary,
-                    style = if (compact) MaterialTheme.typography.labelMedium else MaterialTheme.typography.labelLarge,
+                    style = MaterialTheme.typography.labelLarge,
                     fontWeight = FontWeight.Black,
                 )
             }
-
-            if (compact && section == OwnPlaySection.LIVE) {
-                Box(modifier = Modifier.weight(1f)) {
-                    if (summaries.isNotEmpty()) {
-                        LiveSourceSelector(
-                            activeSourceId = activeSourceId,
-                            summaries = summaries,
-                            compact = true,
-                            onSourceSelected = onSourceSelected,
-                        )
-                    } else {
-                        Text("Live", style = MaterialTheme.typography.labelLarge)
-                    }
-                }
-            } else {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = "OwnPlay",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold,
-                    )
-                    when {
-                        section == OwnPlaySection.LIVE && summaries.isNotEmpty() -> LiveSourceSelector(
-                            activeSourceId = activeSourceId,
-                            summaries = summaries,
-                            compact = false,
-                            onSourceSelected = onSourceSelected,
-                        )
-                        section == OwnPlaySection.SETTINGS -> Text(
-                            text = "Settings",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                        else -> Unit
-                    }
-                }
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = "OwnPlay",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                )
+                Text(
+                    text = activeSourceName?.let { "Settings · $it" } ?: "Settings",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
-
             when (syncState.stage) {
                 SourceSyncStage.LoadingChannels,
                 SourceSyncStage.LoadingEpg,
                 -> CircularProgressIndicator(
-                    modifier = Modifier.size(if (compact) 15.dp else 20.dp),
+                    modifier = Modifier.size(20.dp),
                     strokeWidth = 2.dp,
                 )
                 else -> Unit
-            }
-
-            if (compact && section == OwnPlaySection.LIVE) {
-                IconButton(
-                    onClick = onSettingsRequested,
-                    modifier = Modifier.size(34.dp),
-                ) {
-                    Icon(
-                        Icons.Filled.Settings,
-                        contentDescription = "Settings",
-                        modifier = Modifier.size(20.dp),
-                    )
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun LiveSourceSelector(
-    activeSourceId: String?,
-    summaries: List<PlaylistSourceSummary>,
-    compact: Boolean,
-    onSourceSelected: (String) -> Unit,
-) {
-    var expanded by remember { mutableStateOf(false) }
-    val active = summaries.firstOrNull { it.sourceId == activeSourceId } ?: summaries.first()
-
-    Box {
-        TextButton(
-            onClick = { expanded = true },
-            modifier = if (compact) Modifier.height(32.dp) else Modifier,
-            contentPadding = if (compact) {
-                PaddingValues(horizontal = 6.dp, vertical = 0.dp)
-            } else {
-                PaddingValues(horizontal = 8.dp, vertical = 2.dp)
-            },
-        ) {
-            Text(
-                text = active.name,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                style = if (compact) MaterialTheme.typography.labelLarge else MaterialTheme.typography.bodyMedium,
-            )
-            Icon(
-                Icons.Filled.KeyboardArrowDown,
-                contentDescription = "Choose playlist",
-                modifier = Modifier.size(if (compact) 18.dp else 22.dp),
-            )
-        }
-        DropdownMenu(
-            expanded = expanded,
-            onDismissRequest = { expanded = false },
-        ) {
-            summaries.forEach { summary ->
-                DropdownMenuItem(
-                    text = {
-                        Column {
-                            Text(
-                                text = summary.name,
-                                fontWeight = if (summary.sourceId == active.sourceId) {
-                                    FontWeight.SemiBold
-                                } else {
-                                    FontWeight.Normal
-                                },
-                            )
-                            Text(
-                                text = "${summary.channelCount} channels",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
-                    },
-                    onClick = {
-                        expanded = false
-                        onSourceSelected(summary.sourceId)
-                    },
-                )
             }
         }
     }
