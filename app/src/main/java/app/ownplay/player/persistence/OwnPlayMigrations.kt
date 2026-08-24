@@ -134,3 +134,45 @@ val MIGRATION_2_3 = Migration(2, 3) { database ->
             "ON `playback_progress` (`mediaKind`, `updatedAtEpochMillis`)",
     )
 }
+
+val MIGRATION_3_4 = Migration(3, 4) { database ->
+    database.execSQL(
+        """
+        CREATE TABLE IF NOT EXISTS `media_downloads` (
+            `downloadId` TEXT NOT NULL,
+            `sourceId` TEXT NOT NULL,
+            `mediaKind` TEXT NOT NULL,
+            `contentId` TEXT NOT NULL,
+            `providerStreamId` INTEGER NOT NULL,
+            `title` TEXT NOT NULL,
+            `seriesTitle` TEXT,
+            `seasonNumber` INTEGER,
+            `episodeNumber` INTEGER,
+            `posterUrl` TEXT,
+            `containerExtension` TEXT,
+            `state` TEXT NOT NULL,
+            `bytesDownloaded` INTEGER NOT NULL,
+            `totalBytes` INTEGER,
+            `localRelativePath` TEXT,
+            `failureReason` TEXT,
+            `createdAtEpochMillis` INTEGER NOT NULL,
+            `updatedAtEpochMillis` INTEGER NOT NULL,
+            PRIMARY KEY(`downloadId`),
+            FOREIGN KEY(`sourceId`) REFERENCES `playlist_sources`(`sourceId`)
+                ON UPDATE NO ACTION ON DELETE CASCADE
+        )
+        """.trimIndent(),
+    )
+    database.execSQL(
+        "CREATE INDEX IF NOT EXISTS `index_media_downloads_sourceId` " +
+            "ON `media_downloads` (`sourceId`)",
+    )
+    database.execSQL(
+        "CREATE INDEX IF NOT EXISTS `index_media_downloads_state_updatedAtEpochMillis` " +
+            "ON `media_downloads` (`state`, `updatedAtEpochMillis`)",
+    )
+    database.execSQL(
+        "CREATE UNIQUE INDEX IF NOT EXISTS `index_media_downloads_sourceId_mediaKind_contentId` " +
+            "ON `media_downloads` (`sourceId`, `mediaKind`, `contentId`)",
+    )
+}
