@@ -172,7 +172,9 @@ class OfflineDownloadRepository(
 
     suspend fun localPlaybackLocator(request: PlaybackRequest): ResolvedPlaybackLocator? {
         val mediaKind = when (request.mediaKind) {
-            PlaybackMediaKind.LIVE -> return null
+            PlaybackMediaKind.LIVE,
+            PlaybackMediaKind.LOCAL_VIDEO,
+            -> return null
             PlaybackMediaKind.MOVIE -> DownloadMediaKinds.MOVIE
             PlaybackMediaKind.SERIES_EPISODE -> DownloadMediaKinds.SERIES_EPISODE
         }
