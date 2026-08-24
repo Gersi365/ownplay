@@ -92,4 +92,75 @@ class OwnPlayDatabaseMigrationHarnessTest {
             instrumentation.targetContext.deleteDatabase(databaseName)
         }
     }
+
+    @Test
+    fun migration3To4PreservesVodRowsAndCreatesDownloadMetadata() {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        val databaseName = "ownplay-migration-v3-v4-${UUID.randomUUID()}.db"
+        val helper = MigrationTestHelper(
+            instrumentation,
+            OwnPlayDatabase::class.java,
+        )
+
+        try {
+            helper.createDatabase(databaseName, 3).use { database ->
+                database.execSQL(
+                    """
+                    INSERT INTO playlist_sources (
+                        sourceId, name, sourceKind, locatorRef, credentialRef, enabled,
+                        createdAtEpochMillis, updatedAtEpochMillis
+                    ) VALUES (
+                        'source-vod', 'VOD Source', 'xtream', 'locator-ref', 'credential-ref',
+                        1, 1, 1
+                    )
+                    """.trimIndent(),
+                )
+                database.execSQL(
+                    """
+                    INSERT INTO provider_movies (
+                        movieId, sourceId, providerStreamId, providerName,
+                        providerOrder, lastSeenGeneration
+                    ) VALUES (
+                        'movie-1', 'source-vod', '42', 'Movie One', 0, 1
+                    )
+                    """.trimIndent(),
+                )
+            }
+
+            helper.runMigrationsAndValidate(
+                databaseName,
+                4,
+                true,
+                MIGRATION_3_4,
+            ).use { database ->
+                database.query(
+                    "SELECT providerName FROM provider_movies WHERE movieId = 'movie-1'",
+                ).use { cursor ->
+                    assertTrue(cursor.moveToFirst())
+                    assertEquals("Movie One", cursor.getString(0))
+                }
+
+                database.execSQL(
+                    """
+                    INSERT INTO media_downloads (
+                        downloadId, sourceId, mediaKind, contentId, providerStreamId,
+                        title, state, bytesDownloaded, createdAtEpochMillis, updatedAtEpochMillis
+                    ) VALUES (
+                        'download-1', 'source-vod', 'MOVIE', 'movie-1', 42,
+                        'Movie One', 'QUEUED', 0, 10, 10
+                    )
+                    """.trimIndent(),
+                )
+                database.query(
+                    "SELECT title, state FROM media_downloads WHERE downloadId = 'download-1'",
+                ).use { cursor ->
+                    assertTrue(cursor.moveToFirst())
+                    assertEquals("Movie One", cursor.getString(0))
+                    assertEquals("QUEUED", cursor.getString(1))
+                }
+            }
+        } finally {
+            instrumentation.targetContext.deleteDatabase(databaseName)
+        }
+    }
 }
