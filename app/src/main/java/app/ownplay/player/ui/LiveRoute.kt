@@ -1,5 +1,6 @@
 package app.ownplay.player.ui
 
+import android.content.res.Configuration
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
@@ -24,6 +25,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import app.ownplay.player.OwnPlayAppRuntime
@@ -49,6 +51,7 @@ import app.ownplay.player.playback.PlaybackState
 import app.ownplay.player.playback.PlaybackVideoOutput
 import app.ownplay.player.source.SourceSyncStage
 import app.ownplay.player.source.SourceSyncState
+import app.ownplay.player.ui.live.LandscapeLiveWorkspace
 import app.ownplay.player.ui.live.LiveBrowseScreen
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
@@ -70,6 +73,8 @@ internal fun LiveRoute(
     onOpenFullscreen: (LivePlaybackSelection) -> Unit,
     onNavigatePreview: (PlaybackNavigationDirection) -> Unit,
 ) {
+    val configuration = LocalConfiguration.current
+    val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
     val browseSession = remember(sourceId) { LiveBrowseSession() }
     val browseFlow = remember(sourceId) {
         browseSession.observe(runtime.observeLiveCatalog(sourceId))
@@ -152,301 +157,341 @@ internal fun LiveRoute(
         )
     }
 
-    Column(modifier = Modifier.fillMaxSize()) {
-        if (preview != null) {
-            BoxWithConstraints(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 4.dp),
-            ) {
-                val wide = maxWidth >= 700.dp
-                if (wide) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(12.dp),
-                        verticalAlignment = Alignment.Top,
-                    ) {
-                        LivePreviewPanel(
-                            selection = preview,
-                            state = playbackState,
-                            videoOutput = videoOutput,
-                            onPlay = onPlay,
-                            onPause = onPause,
-                            onRetry = onRetry,
-                            onNavigate = onNavigatePreview,
-                            onOpenFullscreen = { onOpenFullscreen(preview) },
-                            onClose = onPreviewClosed,
-                            modifier = Modifier.weight(1.45f),
-                        )
-                        EpgPanel(
-                            snapshot = epgSnapshot,
-                            loading = loadingEpg || epgLookupLoading,
-                            failed = epgRefreshFailed || epgLookupFailed,
-                            onOpenGuide = { showEpgGuide = true },
-                            modifier = Modifier.weight(1f),
-                        )
-                    }
+    fun setEditMode(editing: Boolean) {
+        if (editing) {
+            browseSession.setIncludeHidden(true)
+            editState = ChannelEditReducer.enter(editState)
+        } else {
+            showCategoryReorder = false
+            if (selectedCategory?.isHidden == true) {
+                browseSession.selectCategory(null)
+            }
+            if (!browseState.query.hiddenOnly) {
+                browseSession.setIncludeHidden(false)
+            }
+            editState = ChannelEditReducer.exit(editState)
+        }
+    }
+
+    fun executeBulkAction(action: ChannelBulkAction) {
+        val selection = editState.selectedChannelIds
+        if (selection.isEmpty()) return
+        mutationScope.launch {
+            val result = runtime.executeChannelBulkAction(
+                sourceId = sourceId,
+                selectedChannelIds = selection,
+                action = action,
+            )
+            val activeChannelWasHidden =
+                action == ChannelBulkAction.Hide &&
+                    result is ChannelBulkActionExecutionResult.Visibility &&
+                    result.result is ChannelVisibilityMutationResult.Success &&
+                    preview?.request?.channelId in selection
+            if (activeChannelWasHidden) {
+                onPreviewClosed()
+            }
+        }
+    }
+
+    fun selectChannel(channelId: String) {
+        val channel = browseState.channels.firstOrNull { item ->
+            item.channelId == channelId
+        } ?: return
+
+        val browseContext = if (editState.isEditing) {
+            null
+        } else {
+            LivePlaybackBrowseContext.capture(
+                sourceId = sourceId,
+                visibleChannels = browseState.channels,
+            )
+        }
+
+        when (
+            val action = LiveChannelSelectionRouter.route(
+                channel = channel,
+                isEditing = editState.isEditing,
+                browseContext = browseContext,
+            )
+        ) {
+            is LiveChannelSelectionAction.ToggleEditSelection -> {
+                editState = ChannelEditReducer.toggleSelection(
+                    state = editState,
+                    channelId = action.channelId,
+                )
+            }
+
+            is LiveChannelSelectionAction.StartPlayback -> {
+                onPreviewRequested(action.selection)
+            }
+        }
+    }
+
+    fun toggleSelectedCategoryVisibility() {
+        val category = selectedCategory ?: return
+        if (categoryMutationInFlight) return
+        val previewCategoryKey = preview?.request?.channelId?.let { channelId ->
+            browseState.channelCategoryKeyById[channelId]
+        }
+        categoryMutationInFlight = true
+        categoryMutationError = null
+        mutationScope.launch {
+            try {
+                val result = if (category.isHidden) {
+                    runtime.unhideCategory(
+                        sourceId = sourceId,
+                        providerCategoryKey = category.providerCategoryKey,
+                    )
                 } else {
-                    Column(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalArrangement = Arrangement.spacedBy(4.dp),
-                    ) {
-                        LivePreviewPanel(
-                            selection = preview,
-                            state = playbackState,
-                            videoOutput = videoOutput,
-                            onPlay = onPlay,
-                            onPause = onPause,
-                            onRetry = onRetry,
-                            onNavigate = onNavigatePreview,
-                            onOpenFullscreen = { onOpenFullscreen(preview) },
-                            onClose = onPreviewClosed,
-                        )
-                        EpgPanel(
-                            snapshot = epgSnapshot,
-                            loading = loadingEpg || epgLookupLoading,
-                            failed = epgRefreshFailed || epgLookupFailed,
-                            onOpenGuide = { showEpgGuide = true },
-                        )
+                    runtime.hideCategory(
+                        sourceId = sourceId,
+                        providerCategoryKey = category.providerCategoryKey,
+                    )
+                }
+                when (result) {
+                    is CategoryVisibilityMutationResult.Success -> {
+                        if (
+                            result.hidden &&
+                            previewCategoryKey == result.providerCategoryKey
+                        ) {
+                            onPreviewClosed()
+                        }
+                    }
+                    is CategoryVisibilityMutationResult.Failure -> {
+                        categoryMutationError = categoryVisibilityFailureLabel(result)
+                    }
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                categoryMutationError = "Could not update this category. Try again."
+            } finally {
+                categoryMutationInFlight = false
+            }
+        }
+    }
+
+    if (isLandscape) {
+        LandscapeLiveWorkspace(
+            runtime = runtime,
+            sourceId = sourceId,
+            browseSession = browseSession,
+            state = browseState,
+            editState = editState,
+            onEditStateChange = { editState = it },
+            preview = preview,
+            playbackState = playbackState,
+            videoOutput = videoOutput,
+            epgSnapshot = epgSnapshot,
+            epgLoading = loadingEpg || epgLookupLoading,
+            epgFailed = epgRefreshFailed || epgLookupFailed,
+            syncState = syncState,
+            onPlay = onPlay,
+            onPause = onPause,
+            onRetry = onRetry,
+            onPreviewRequested = onPreviewRequested,
+            onPreviewClosed = onPreviewClosed,
+            onOpenFullscreen = onOpenFullscreen,
+            onNavigatePreview = onNavigatePreview,
+            onOpenEpgGuide = { showEpgGuide = true },
+            onReorderCategoriesRequested = {
+                if (editState.isEditing) {
+                    categoryOrderError = null
+                    showCategoryReorder = true
+                }
+            },
+            onOpenSettings = onOpenSettings,
+        )
+    } else {
+        Column(modifier = Modifier.fillMaxSize()) {
+            if (preview != null) {
+                BoxWithConstraints(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 4.dp),
+                ) {
+                    val wide = maxWidth >= 700.dp
+                    if (wide) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                            verticalAlignment = Alignment.Top,
+                        ) {
+                            LivePreviewPanel(
+                                selection = preview,
+                                state = playbackState,
+                                videoOutput = videoOutput,
+                                onPlay = onPlay,
+                                onPause = onPause,
+                                onRetry = onRetry,
+                                onNavigate = onNavigatePreview,
+                                onOpenFullscreen = { onOpenFullscreen(preview) },
+                                onClose = onPreviewClosed,
+                                modifier = Modifier.weight(1.45f),
+                            )
+                            EpgPanel(
+                                snapshot = epgSnapshot,
+                                loading = loadingEpg || epgLookupLoading,
+                                failed = epgRefreshFailed || epgLookupFailed,
+                                onOpenGuide = { showEpgGuide = true },
+                                modifier = Modifier.weight(1f),
+                            )
+                        }
+                    } else {
+                        Column(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalArrangement = Arrangement.spacedBy(4.dp),
+                        ) {
+                            LivePreviewPanel(
+                                selection = preview,
+                                state = playbackState,
+                                videoOutput = videoOutput,
+                                onPlay = onPlay,
+                                onPause = onPause,
+                                onRetry = onRetry,
+                                onNavigate = onNavigatePreview,
+                                onOpenFullscreen = { onOpenFullscreen(preview) },
+                                onClose = onPreviewClosed,
+                            )
+                            EpgPanel(
+                                snapshot = epgSnapshot,
+                                loading = loadingEpg || epgLookupLoading,
+                                failed = epgRefreshFailed || epgLookupFailed,
+                                onOpenGuide = { showEpgGuide = true },
+                            )
+                        }
                     }
                 }
             }
-        }
 
-        when {
-            loadingChannels -> InlineSyncStatus(
-                text = if (browseState.catalogChannelCount == 0) {
-                    "Loading channels…"
-                } else {
-                    "Updating channels…"
-                },
-            )
-            loadingEpg -> InlineSyncStatus(text = "Updating EPG…")
-            channelRefreshFailed -> InlineErrorStatus(
-                text = "Channel refresh failed. Existing channels were kept.",
-                actionLabel = "Retry",
-                onAction = { mutationScope.launch { runtime.refreshSource(sourceId) } },
-            )
-            epgRefreshFailed -> InlineErrorStatus(
-                text = "EPG unavailable. Live remains usable.",
-                actionLabel = "Retry EPG",
-                onAction = { mutationScope.launch { runtime.refreshSource(sourceId) } },
-            )
-        }
-
-        categoryOrderError?.let { error ->
-            InlineErrorStatus(
-                text = error,
-                actionLabel = "Dismiss",
-                onAction = { categoryOrderError = null },
-            )
-        }
-
-        if (editState.isEditing && selectedCategory != null) {
-            CategoryEditBar(
-                category = selectedCategory,
-                mutationInFlight = categoryMutationInFlight,
-                errorMessage = categoryMutationError,
-                onToggleVisibility = {
-                    if (categoryMutationInFlight) return@CategoryEditBar
-                    val category = selectedCategory
-                    val previewCategoryKey = preview?.request?.channelId?.let { channelId ->
-                        browseState.channelCategoryKeyById[channelId]
-                    }
-                    categoryMutationInFlight = true
-                    categoryMutationError = null
-                    mutationScope.launch {
-                        try {
-                            val result = if (category.isHidden) {
-                                runtime.unhideCategory(
-                                    sourceId = sourceId,
-                                    providerCategoryKey = category.providerCategoryKey,
-                                )
-                            } else {
-                                runtime.hideCategory(
-                                    sourceId = sourceId,
-                                    providerCategoryKey = category.providerCategoryKey,
-                                )
-                            }
-                            when (result) {
-                                is CategoryVisibilityMutationResult.Success -> {
-                                    if (
-                                        result.hidden &&
-                                        previewCategoryKey == result.providerCategoryKey
-                                    ) {
-                                        onPreviewClosed()
-                                    }
-                                }
-                                is CategoryVisibilityMutationResult.Failure -> {
-                                    categoryMutationError = categoryVisibilityFailureLabel(result)
-                                }
-                            }
-                        } catch (cancelled: CancellationException) {
-                            throw cancelled
-                        } catch (_: Exception) {
-                            categoryMutationError = "Could not update this category. Try again."
-                        } finally {
-                            categoryMutationInFlight = false
-                        }
-                    }
-                },
-            )
-        }
-
-        if (browseState.catalogChannelCount == 0 && !loadingChannels) {
-            LiveCatalogEmptyState(
-                failed = channelRefreshFailed,
-                onRetry = { mutationScope.launch { runtime.refreshSource(sourceId) } },
-                onOpenSettings = onOpenSettings,
-                modifier = Modifier.weight(1f),
-            )
-        } else {
-            LiveBrowseScreen(
-                state = browseState,
-                onSearchChange = browseSession::updateSearch,
-                onCategorySelected = browseSession::selectCategory,
-                onFavoritesOnlyChanged = browseSession::setFavoritesOnly,
-                onOrderChanged = browseSession::setOrder,
-                onCustomGroupSelected = browseSession::selectCustomGroup,
-                onHiddenOnlyChanged = { enabled ->
-                    browseSession.setHiddenOnly(
-                        enabled = enabled,
-                        includeHiddenWhenDisabled = editState.isEditing,
-                    )
-                },
-                editState = editState,
-                playingChannelId = preview?.request?.channelId,
-                onReorderCategoriesRequested = {
-                    if (editState.isEditing) {
-                        categoryOrderError = null
-                        showCategoryReorder = true
-                    }
-                },
-                onEditModeChanged = { editing ->
-                    if (editing) {
-                        browseSession.setIncludeHidden(true)
-                        editState = ChannelEditReducer.enter(editState)
+            when {
+                loadingChannels -> InlineSyncStatus(
+                    text = if (browseState.catalogChannelCount == 0) {
+                        "Loading channels…"
                     } else {
-                        showCategoryReorder = false
-                        if (selectedCategory?.isHidden == true) {
-                            browseSession.selectCategory(null)
+                        "Updating channels…"
+                    },
+                )
+                loadingEpg -> InlineSyncStatus(text = "Updating EPG…")
+                channelRefreshFailed -> InlineErrorStatus(
+                    text = "Channel refresh failed. Existing channels were kept.",
+                    actionLabel = "Retry",
+                    onAction = { mutationScope.launch { runtime.refreshSource(sourceId) } },
+                )
+                epgRefreshFailed -> InlineErrorStatus(
+                    text = "EPG unavailable. Live remains usable.",
+                    actionLabel = "Retry EPG",
+                    onAction = { mutationScope.launch { runtime.refreshSource(sourceId) } },
+                )
+            }
+
+            categoryOrderError?.let { error ->
+                InlineErrorStatus(
+                    text = error,
+                    actionLabel = "Dismiss",
+                    onAction = { categoryOrderError = null },
+                )
+            }
+
+            if (editState.isEditing && selectedCategory != null) {
+                CategoryEditBar(
+                    category = selectedCategory,
+                    mutationInFlight = categoryMutationInFlight,
+                    errorMessage = categoryMutationError,
+                    onToggleVisibility = ::toggleSelectedCategoryVisibility,
+                )
+            }
+
+            if (browseState.catalogChannelCount == 0 && !loadingChannels) {
+                LiveCatalogEmptyState(
+                    failed = channelRefreshFailed,
+                    onRetry = { mutationScope.launch { runtime.refreshSource(sourceId) } },
+                    onOpenSettings = onOpenSettings,
+                    modifier = Modifier.weight(1f),
+                )
+            } else {
+                LiveBrowseScreen(
+                    state = browseState,
+                    onSearchChange = browseSession::updateSearch,
+                    onCategorySelected = browseSession::selectCategory,
+                    onFavoritesOnlyChanged = browseSession::setFavoritesOnly,
+                    onOrderChanged = browseSession::setOrder,
+                    onCustomGroupSelected = browseSession::selectCustomGroup,
+                    onHiddenOnlyChanged = { enabled ->
+                        browseSession.setHiddenOnly(
+                            enabled = enabled,
+                            includeHiddenWhenDisabled = editState.isEditing,
+                        )
+                    },
+                    editState = editState,
+                    playingChannelId = preview?.request?.channelId,
+                    onReorderCategoriesRequested = {
+                        if (editState.isEditing) {
+                            categoryOrderError = null
+                            showCategoryReorder = true
                         }
-                        if (!browseState.query.hiddenOnly) {
-                            browseSession.setIncludeHidden(false)
-                        }
-                        editState = ChannelEditReducer.exit(editState)
-                    }
-                },
-                onChannelSelectionToggle = { channelId ->
-                    editState = ChannelEditReducer.toggleSelection(editState, channelId)
-                },
-                onSelectVisible = {
-                    editState = ChannelEditReducer.selectVisible(
-                        state = editState,
-                        visibleChannelIds = browseState.channels.map { channel -> channel.channelId },
-                    )
-                },
-                onClearSelection = {
-                    editState = ChannelEditReducer.clearSelection(editState)
-                },
-                onBulkAction = { action ->
-                    val selection = editState.selectedChannelIds
-                    if (selection.isNotEmpty()) {
+                    },
+                    onEditModeChanged = ::setEditMode,
+                    onChannelSelectionToggle = { channelId ->
+                        editState = ChannelEditReducer.toggleSelection(editState, channelId)
+                    },
+                    onSelectVisible = {
+                        editState = ChannelEditReducer.selectVisible(
+                            state = editState,
+                            visibleChannelIds = browseState.channels.map { channel -> channel.channelId },
+                        )
+                    },
+                    onClearSelection = {
+                        editState = ChannelEditReducer.clearSelection(editState)
+                    },
+                    onBulkAction = ::executeBulkAction,
+                    onCreateGroup = { name ->
+                        mutationScope.launch { runtime.createCustomGroup(name) }
+                    },
+                    onRenameGroup = { groupId, name ->
+                        mutationScope.launch { runtime.renameCustomGroup(groupId, name) }
+                    },
+                    onDeleteGroup = { groupId ->
+                        mutationScope.launch { runtime.deleteCustomGroup(groupId) }
+                    },
+                    onSetLocalDisplayName = { channelId, name ->
+                        mutationScope.launch { runtime.setLocalDisplayName(sourceId, channelId, name) }
+                    },
+                    onClearLocalDisplayName = { channelId ->
+                        mutationScope.launch { runtime.clearLocalDisplayName(sourceId, channelId) }
+                    },
+                    onSetLogoOverride = { channelId, logoValue ->
+                        mutationScope.launch { runtime.setLogoOverride(sourceId, channelId, logoValue) }
+                    },
+                    onClearLogoOverride = { channelId ->
+                        mutationScope.launch { runtime.clearLogoOverride(sourceId, channelId) }
+                    },
+                    onManualMoveRelative = { channelId, anchorChannelId, placement ->
                         mutationScope.launch {
-                            val result = runtime.executeChannelBulkAction(
+                            runtime.moveChannelRelative(
                                 sourceId = sourceId,
-                                selectedChannelIds = selection,
-                                action = action,
-                            )
-                            val activeChannelWasHidden =
-                                action == ChannelBulkAction.Hide &&
-                                    result is ChannelBulkActionExecutionResult.Visibility &&
-                                    result.result is ChannelVisibilityMutationResult.Success &&
-                                    preview?.request?.channelId in selection
-                            if (activeChannelWasHidden) {
-                                onPreviewClosed()
-                            }
-                        }
-                    }
-                },
-                onCreateGroup = { name ->
-                    mutationScope.launch { runtime.createCustomGroup(name) }
-                },
-                onRenameGroup = { groupId, name ->
-                    mutationScope.launch { runtime.renameCustomGroup(groupId, name) }
-                },
-                onDeleteGroup = { groupId ->
-                    mutationScope.launch { runtime.deleteCustomGroup(groupId) }
-                },
-                onSetLocalDisplayName = { channelId, name ->
-                    mutationScope.launch { runtime.setLocalDisplayName(sourceId, channelId, name) }
-                },
-                onClearLocalDisplayName = { channelId ->
-                    mutationScope.launch { runtime.clearLocalDisplayName(sourceId, channelId) }
-                },
-                onSetLogoOverride = { channelId, logoValue ->
-                    mutationScope.launch { runtime.setLogoOverride(sourceId, channelId, logoValue) }
-                },
-                onClearLogoOverride = { channelId ->
-                    mutationScope.launch { runtime.clearLogoOverride(sourceId, channelId) }
-                },
-                onManualMoveRelative = { channelId, anchorChannelId, placement ->
-                    mutationScope.launch {
-                        runtime.moveChannelRelative(
-                            sourceId = sourceId,
-                            channelId = channelId,
-                            anchorChannelId = anchorChannelId,
-                            placement = placement,
-                        )
-                    }
-                },
-                onFavoriteMoveRelative = { channelId, anchorChannelId, placement ->
-                    mutationScope.launch {
-                        runtime.moveFavoriteRelative(
-                            sourceId = sourceId,
-                            channelId = channelId,
-                            anchorChannelId = anchorChannelId,
-                            placement = placement,
-                        )
-                    }
-                },
-                onChannelSelected = { channelId ->
-                    val channel = browseState.channels.firstOrNull { item ->
-                        item.channelId == channelId
-                    } ?: return@LiveBrowseScreen
-
-                    val browseContext = if (editState.isEditing) {
-                        null
-                    } else {
-                        LivePlaybackBrowseContext.capture(
-                            sourceId = sourceId,
-                            visibleChannels = browseState.channels,
-                        )
-                    }
-
-                    when (
-                        val action = LiveChannelSelectionRouter.route(
-                            channel = channel,
-                            isEditing = editState.isEditing,
-                            browseContext = browseContext,
-                        )
-                    ) {
-                        is LiveChannelSelectionAction.ToggleEditSelection -> {
-                            editState = ChannelEditReducer.toggleSelection(
-                                state = editState,
-                                channelId = action.channelId,
+                                channelId = channelId,
+                                anchorChannelId = anchorChannelId,
+                                placement = placement,
                             )
                         }
-
-                        is LiveChannelSelectionAction.StartPlayback -> {
-                            onPreviewRequested(action.selection)
+                    },
+                    onFavoriteMoveRelative = { channelId, anchorChannelId, placement ->
+                        mutationScope.launch {
+                            runtime.moveFavoriteRelative(
+                                sourceId = sourceId,
+                                channelId = channelId,
+                                anchorChannelId = anchorChannelId,
+                                placement = placement,
+                            )
                         }
-                    }
-                },
-                modifier = Modifier
-                    .weight(1f)
-                    .navigationBarsPadding(),
-            )
+                    },
+                    onChannelSelected = ::selectChannel,
+                    modifier = Modifier
+                        .weight(1f)
+                        .navigationBarsPadding(),
+                )
+            }
         }
     }
 
