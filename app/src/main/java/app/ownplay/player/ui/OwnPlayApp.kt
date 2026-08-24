@@ -112,11 +112,7 @@ fun OwnPlayApp(
         previewActive || fullscreenSelection != null || vodFullscreen || seriesFullscreen
     val contentLandscape =
         configuration.orientation == Configuration.ORIENTATION_LANDSCAPE &&
-            (
-                section == OwnPlaySection.LIVE ||
-                    section == OwnPlaySection.MOVIES ||
-                    section == OwnPlaySection.SERIES
-                )
+            (section == OwnPlaySection.LIVE || section == OwnPlaySection.MOVIES)
 
     LaunchedEffect(playbackSurfaceActive) {
         onPlaybackSurfaceActiveChanged(playbackSurfaceActive)
