@@ -7,6 +7,9 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import app.ownplay.player.personalization.AppOrientationStore
 import app.ownplay.player.playback.PlaybackState
 import app.ownplay.player.ui.OwnPlayRoot
@@ -33,6 +36,7 @@ class MainActivity : ComponentActivity() {
         playbackWindowController = PlaybackWindowController(this)
         playbackWindowController.refreshWindowState()
         enableEdgeToEdge()
+        hideStatusBar()
         setContent {
             val isInPictureInPictureMode by
                 playbackWindowController.isInPictureInPictureMode.collectAsState()
@@ -61,6 +65,11 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        if (hasFocus) hideStatusBar()
+    }
+
     override fun onUserLeaveHint() {
         super.onUserLeaveHint()
         playbackWindowController.onUserLeaveHint()
@@ -77,6 +86,7 @@ class MainActivity : ComponentActivity() {
     override fun onConfigurationChanged(newConfig: Configuration) {
         super.onConfigurationChanged(newConfig)
         playbackWindowController.refreshWindowState()
+        hideStatusBar()
     }
 
     override fun onDestroy() {
@@ -84,5 +94,12 @@ class MainActivity : ComponentActivity() {
         playbackWindowController.release()
         runtime.close()
         super.onDestroy()
+    }
+
+    private fun hideStatusBar() {
+        WindowCompat.getInsetsController(window, window.decorView).apply {
+            systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+            hide(WindowInsetsCompat.Type.statusBars())
+        }
     }
 }
