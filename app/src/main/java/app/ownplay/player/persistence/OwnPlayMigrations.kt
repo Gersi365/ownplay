@@ -176,3 +176,136 @@ val MIGRATION_3_4 = Migration(3, 4) { database ->
             "ON `media_downloads` (`sourceId`, `mediaKind`, `contentId`)",
     )
 }
+
+val MIGRATION_4_5 = Migration(4, 5) { database ->
+    database.execSQL(
+        """
+        CREATE TABLE IF NOT EXISTS `provider_series_categories` (
+            `categoryId` TEXT NOT NULL,
+            `sourceId` TEXT NOT NULL,
+            `providerCategoryKey` TEXT NOT NULL,
+            `name` TEXT NOT NULL,
+            `parentProviderKey` TEXT,
+            `providerOrder` INTEGER NOT NULL,
+            `lastSeenGeneration` INTEGER NOT NULL,
+            PRIMARY KEY(`categoryId`),
+            FOREIGN KEY(`sourceId`) REFERENCES `playlist_sources`(`sourceId`)
+                ON UPDATE NO ACTION ON DELETE CASCADE
+        )
+        """.trimIndent(),
+    )
+    database.execSQL(
+        "CREATE INDEX IF NOT EXISTS `index_provider_series_categories_sourceId` " +
+            "ON `provider_series_categories` (`sourceId`)",
+    )
+    database.execSQL(
+        "CREATE UNIQUE INDEX IF NOT EXISTS `index_provider_series_categories_sourceId_providerCategoryKey` " +
+            "ON `provider_series_categories` (`sourceId`, `providerCategoryKey`)",
+    )
+    database.execSQL(
+        "CREATE INDEX IF NOT EXISTS `index_provider_series_categories_sourceId_providerOrder` " +
+            "ON `provider_series_categories` (`sourceId`, `providerOrder`)",
+    )
+
+    database.execSQL(
+        """
+        CREATE TABLE IF NOT EXISTS `provider_series` (
+            `seriesId` TEXT NOT NULL,
+            `sourceId` TEXT NOT NULL,
+            `providerSeriesId` TEXT NOT NULL,
+            `providerCategoryKey` TEXT,
+            `providerName` TEXT NOT NULL,
+            `posterRef` TEXT,
+            `description` TEXT,
+            `providerRating` REAL,
+            `lastModifiedEpochSeconds` INTEGER,
+            `providerOrder` INTEGER NOT NULL,
+            `lastSeenGeneration` INTEGER NOT NULL,
+            PRIMARY KEY(`seriesId`),
+            FOREIGN KEY(`sourceId`) REFERENCES `playlist_sources`(`sourceId`)
+                ON UPDATE NO ACTION ON DELETE CASCADE
+        )
+        """.trimIndent(),
+    )
+    database.execSQL(
+        "CREATE INDEX IF NOT EXISTS `index_provider_series_sourceId` " +
+            "ON `provider_series` (`sourceId`)",
+    )
+    database.execSQL(
+        "CREATE UNIQUE INDEX IF NOT EXISTS `index_provider_series_sourceId_providerSeriesId` " +
+            "ON `provider_series` (`sourceId`, `providerSeriesId`)",
+    )
+    database.execSQL(
+        "CREATE INDEX IF NOT EXISTS `index_provider_series_sourceId_providerCategoryKey` " +
+            "ON `provider_series` (`sourceId`, `providerCategoryKey`)",
+    )
+    database.execSQL(
+        "CREATE INDEX IF NOT EXISTS `index_provider_series_sourceId_providerOrder` " +
+            "ON `provider_series` (`sourceId`, `providerOrder`)",
+    )
+
+    database.execSQL(
+        """
+        CREATE TABLE IF NOT EXISTS `provider_series_seasons` (
+            `seasonId` TEXT NOT NULL,
+            `seriesId` TEXT NOT NULL,
+            `seasonNumber` INTEGER NOT NULL,
+            `name` TEXT,
+            `airDate` TEXT,
+            `posterRef` TEXT,
+            PRIMARY KEY(`seasonId`),
+            FOREIGN KEY(`seriesId`) REFERENCES `provider_series`(`seriesId`)
+                ON UPDATE NO ACTION ON DELETE CASCADE
+        )
+        """.trimIndent(),
+    )
+    database.execSQL(
+        "CREATE INDEX IF NOT EXISTS `index_provider_series_seasons_seriesId` " +
+            "ON `provider_series_seasons` (`seriesId`)",
+    )
+    database.execSQL(
+        "CREATE UNIQUE INDEX IF NOT EXISTS `index_provider_series_seasons_seriesId_seasonNumber` " +
+            "ON `provider_series_seasons` (`seriesId`, `seasonNumber`)",
+    )
+
+    database.execSQL(
+        """
+        CREATE TABLE IF NOT EXISTS `provider_series_episodes` (
+            `episodeId` TEXT NOT NULL,
+            `seriesId` TEXT NOT NULL,
+            `seasonId` TEXT NOT NULL,
+            `providerEpisodeId` TEXT NOT NULL,
+            `seasonNumber` INTEGER NOT NULL,
+            `episodeNumber` INTEGER NOT NULL,
+            `title` TEXT NOT NULL,
+            `containerExtension` TEXT,
+            `durationSeconds` INTEGER,
+            `description` TEXT,
+            `posterRef` TEXT,
+            `providerRating` REAL,
+            `addedAtEpochSeconds` INTEGER,
+            PRIMARY KEY(`episodeId`),
+            FOREIGN KEY(`seriesId`) REFERENCES `provider_series`(`seriesId`)
+                ON UPDATE NO ACTION ON DELETE CASCADE,
+            FOREIGN KEY(`seasonId`) REFERENCES `provider_series_seasons`(`seasonId`)
+                ON UPDATE NO ACTION ON DELETE CASCADE
+        )
+        """.trimIndent(),
+    )
+    database.execSQL(
+        "CREATE INDEX IF NOT EXISTS `index_provider_series_episodes_seriesId` " +
+            "ON `provider_series_episodes` (`seriesId`)",
+    )
+    database.execSQL(
+        "CREATE INDEX IF NOT EXISTS `index_provider_series_episodes_seasonId` " +
+            "ON `provider_series_episodes` (`seasonId`)",
+    )
+    database.execSQL(
+        "CREATE UNIQUE INDEX IF NOT EXISTS `index_provider_series_episodes_seriesId_providerEpisodeId` " +
+            "ON `provider_series_episodes` (`seriesId`, `providerEpisodeId`)",
+    )
+    database.execSQL(
+        "CREATE INDEX IF NOT EXISTS `index_provider_series_episodes_seriesId_seasonNumber_episodeNumber` " +
+            "ON `provider_series_episodes` (`seriesId`, `seasonNumber`, `episodeNumber`)",
+    )
+}
