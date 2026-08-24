@@ -23,7 +23,7 @@ object PlaybackInteractionBridge {
         showNativeController: Boolean = false,
     ) {
         output.bind(view)
-        boundView = WeakReference(view)
+        observeBoundView(view)
         if (showNativeController) {
             view.post {
                 if (boundView.get() !== view) return@post
@@ -40,6 +40,14 @@ object PlaybackInteractionBridge {
         view: PlayerView,
     ) {
         output.unbind(view)
+        observeUnboundView(view)
+    }
+
+    fun observeBoundView(view: PlayerView) {
+        boundView = WeakReference(view)
+    }
+
+    fun observeUnboundView(view: PlayerView) {
         if (boundView.get() === view) {
             boundView.clear()
         }
