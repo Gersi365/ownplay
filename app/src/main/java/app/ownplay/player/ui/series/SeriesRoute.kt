@@ -58,6 +58,7 @@ import app.ownplay.player.download.OfflineDownloadSpec
 import app.ownplay.player.persistence.SourceKinds
 import app.ownplay.player.persistence.download.DownloadMediaKinds
 import app.ownplay.player.persistence.download.DownloadStates
+import app.ownplay.player.playback.PlaybackInteractionBridge
 import app.ownplay.player.playback.PlaybackMediaKind
 import app.ownplay.player.playback.PlaybackRequest
 import app.ownplay.player.playback.PlaybackState
@@ -128,6 +129,18 @@ internal fun SeriesRoute(
     var detailsError by remember(sourceId) { mutableStateOf<SourceError?>(null) }
     var selectedSeasonNumber by remember(sourceId) { mutableStateOf<Int?>(null) }
     var playingEpisode by remember(sourceId) { mutableStateOf<SeriesEpisode?>(null) }
+    val detailsBackOwner = remember(sourceId) { Any() }
+
+    DisposableEffect(selectedSeries?.seriesId, playingEpisode?.episodeId, detailsBackOwner) {
+        if (selectedSeries != null && playingEpisode == null) {
+            PlaybackInteractionBridge.registerBackAction(detailsBackOwner) {
+                selectedSeries = null
+            }
+        }
+        onDispose {
+            PlaybackInteractionBridge.clearBackAction(detailsBackOwner)
+        }
+    }
 
     fun refresh() {
         scope.launch {
@@ -642,10 +655,33 @@ private fun SeriesPlaybackScreen(
     val playbackState by runtime.playbackController.state.collectAsState()
     val scope = rememberCoroutineScope()
     var playerView by remember { mutableStateOf<PlayerView?>(null) }
+    val backOwner = remember(episode.episodeId) { Any() }
 
-    DisposableEffect(Unit) {
+    fun exitPlayback() {
+        val view = playerView
+        scope.launch {
+            val player = view?.player
+            if (player != null) {
+                featureRuntime.saveEpisodeProgress(
+                    sourceId = sourceId,
+                    episodeId = episode.episodeId,
+                    positionMs = player.currentPosition,
+                    durationMs = player.duration.takeIf {
+                        it != C.TIME_UNSET && it > 0L
+                    },
+                )
+            }
+            onExit()
+        }
+    }
+
+    DisposableEffect(backOwner) {
         onFullscreenStateChanged(true)
-        onDispose { onFullscreenStateChanged(false) }
+        PlaybackInteractionBridge.registerBackAction(backOwner, ::exitPlayback)
+        onDispose {
+            PlaybackInteractionBridge.clearBackAction(backOwner)
+            onFullscreenStateChanged(false)
+        }
     }
 
     LaunchedEffect(playerView, episode.episodeId) {
@@ -683,25 +719,7 @@ private fun SeriesPlaybackScreen(
                     style = MaterialTheme.typography.bodySmall,
                 )
             }
-            TextButton(
-                onClick = {
-                    val view = playerView
-                    scope.launch {
-                        val player = view?.player
-                        if (player != null) {
-                            featureRuntime.saveEpisodeProgress(
-                                sourceId = sourceId,
-                                episodeId = episode.episodeId,
-                                positionMs = player.currentPosition,
-                                durationMs = player.duration.takeIf {
-                                    it != C.TIME_UNSET && it > 0L
-                                },
-                            )
-                        }
-                        onExit()
-                    }
-                },
-            ) { Text("Back") }
+            TextButton(onClick = ::exitPlayback) { Text("Back") }
         }
         Box(
             modifier = Modifier
@@ -714,40 +732,29 @@ private fun SeriesPlaybackScreen(
                 factory = { context ->
                     PlayerView(context).also { view ->
                         view.resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
-                        runtime.playbackVideoOutput.bind(view)
+                        PlaybackInteractionBridge.bind(
+                            output = runtime.playbackVideoOutput,
+                            view = view,
+                            showNativeController = true,
+                        )
                         playerView = view
                     }
                 },
                 update = { view ->
-                    runtime.playbackVideoOutput.bind(view)
+                    PlaybackInteractionBridge.bind(
+                        output = runtime.playbackVideoOutput,
+                        view = view,
+                        showNativeController = true,
+                    )
                     playerView = view
                 },
                 onRelease = { view ->
-                    runtime.playbackVideoOutput.unbind(view)
+                    PlaybackInteractionBridge.unbind(runtime.playbackVideoOutput, view)
                     if (playerView === view) playerView = null
                 },
             )
             if (playbackState is PlaybackState.Loading) {
                 CircularProgressIndicator()
-            }
-        }
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(8.dp),
-            horizontalArrangement = Arrangement.Center,
-        ) {
-            when (playbackState) {
-                is PlaybackState.Playing -> Button(onClick = runtime.playbackController::pause) {
-                    Text("Pause")
-                }
-                is PlaybackState.Paused -> Button(onClick = runtime.playbackController::play) {
-                    Text("Play")
-                }
-                is PlaybackState.Failed -> Button(onClick = runtime.playbackController::retry) {
-                    Text("Retry")
-                }
-                else -> Spacer(Modifier.height(40.dp))
             }
         }
     }

@@ -232,17 +232,22 @@ class Media3PlaybackEngine(
 
     override fun bind(view: PlayerView) {
         runOnPlayerThread {
-            if (boundVideoView === view) return@runOnPlayerThread
+            if (boundVideoView === view) {
+                PlaybackInteractionBridge.observeBoundView(view)
+                return@runOnPlayerThread
+            }
             boundVideoView?.player = null
             view.useController = false
             view.player = player
             boundVideoView = view
+            PlaybackInteractionBridge.observeBoundView(view)
         }
     }
 
     override fun unbind(view: PlayerView) {
         runOnPlayerThread {
             if (boundVideoView === view) {
+                PlaybackInteractionBridge.observeUnboundView(view)
                 view.player = null
                 boundVideoView = null
             }
@@ -251,6 +256,7 @@ class Media3PlaybackEngine(
 
     override fun release() {
         runOnPlayerThread {
+            boundVideoView?.let(PlaybackInteractionBridge::observeUnboundView)
             boundVideoView?.player = null
             boundVideoView = null
             player.stop()
