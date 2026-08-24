@@ -59,6 +59,7 @@ enum class ResolvedPlaybackOrigin {
     DIRECT,
     XTREAM_LIVE,
     XTREAM_VOD,
+    LOCAL_DOWNLOAD,
 }
 
 data class ResolvedPlaybackLocator(
@@ -355,7 +356,6 @@ class LivePlaybackResolver(
                 PlaybackResolutionFailureReason.UNSUPPORTED_SOURCE_KIND,
             )
         }
-
         val sourceLocatorRef = sensitiveRef(source.locatorRef)
             ?: return LoadedXtreamSourceResult.Failure(
                 PlaybackResolutionFailureReason.SOURCE_LOCATOR_REFERENCE_INVALID,
