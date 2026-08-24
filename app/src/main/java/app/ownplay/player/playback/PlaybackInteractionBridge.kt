@@ -1,6 +1,8 @@
 package app.ownplay.player.playback
 
+import androidx.annotation.OptIn
 import androidx.media3.common.C
+import androidx.media3.common.util.UnstableApi
 import androidx.media3.ui.PlayerView
 import java.lang.ref.WeakReference
 
@@ -12,6 +14,7 @@ private const val DEFAULT_CONTROLLER_TIMEOUT_MILLIS = 3_000
  * It does not own playback and does not create another player. The currently bound PlayerView
  * remains attached to the single Media3PlaybackEngine through PlaybackVideoOutput.
  */
+@OptIn(UnstableApi::class)
 object PlaybackInteractionBridge {
     private var boundView = WeakReference<PlayerView>(null)
     private var backOwner: Any? = null
