@@ -1,5 +1,6 @@
 package app.ownplay.player.ui
 
+import android.content.res.Configuration
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.tween
@@ -29,6 +30,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
@@ -45,6 +47,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -68,6 +71,7 @@ fun OwnPlayApp(
     onPlaybackFullscreenChanged: (Boolean) -> Unit = {},
     onPlaybackSurfaceActiveChanged: (Boolean) -> Unit = {},
 ) {
+    val configuration = LocalConfiguration.current
     val summaries by runtime.observeSourceSummaries().collectAsState(initial = emptyList())
     val syncState by runtime.sourceSyncState.collectAsState()
     val playbackState by runtime.playbackController.state.collectAsState()
@@ -99,6 +103,9 @@ fun OwnPlayApp(
             activeSelection != null &&
             fullscreenSelection == null
     val playbackSurfaceActive = previewActive || fullscreenSelection != null
+    val compactLiveLandscape =
+        section == OwnPlaySection.LIVE &&
+            configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
 
     LaunchedEffect(playbackSurfaceActive) {
         onPlaybackSurfaceActiveChanged(playbackSurfaceActive)
@@ -143,6 +150,8 @@ fun OwnPlayApp(
                 activeSourceId = activeSourceId,
                 summaries = summaries,
                 syncState = syncState,
+                compact = compactLiveLandscape,
+                onSettingsRequested = { section = OwnPlaySection.SETTINGS },
                 onSourceSelected = { sourceId ->
                     if (sourceId != activeSourceId) {
                         activeSourceId = sourceId
@@ -154,33 +163,35 @@ fun OwnPlayApp(
             )
         },
         bottomBar = {
-            NavigationBar(
-                modifier = Modifier.navigationBarsPadding(),
-                containerColor = MaterialTheme.colorScheme.surface,
-                tonalElevation = 4.dp,
-            ) {
-                NavigationBarItem(
-                    selected = section == OwnPlaySection.LIVE,
-                    onClick = { section = OwnPlaySection.LIVE },
-                    icon = {
-                        Icon(
-                            Icons.Filled.LiveTv,
-                            contentDescription = "Live",
-                        )
-                    },
-                    label = { Text("Live") },
-                )
-                NavigationBarItem(
-                    selected = section == OwnPlaySection.SETTINGS,
-                    onClick = { section = OwnPlaySection.SETTINGS },
-                    icon = {
-                        Icon(
-                            Icons.Filled.Settings,
-                            contentDescription = "Settings",
-                        )
-                    },
-                    label = { Text("Settings") },
-                )
+            if (!compactLiveLandscape) {
+                NavigationBar(
+                    modifier = Modifier.navigationBarsPadding(),
+                    containerColor = MaterialTheme.colorScheme.surface,
+                    tonalElevation = 4.dp,
+                ) {
+                    NavigationBarItem(
+                        selected = section == OwnPlaySection.LIVE,
+                        onClick = { section = OwnPlaySection.LIVE },
+                        icon = {
+                            Icon(
+                                Icons.Filled.LiveTv,
+                                contentDescription = "Live",
+                            )
+                        },
+                        label = { Text("Live") },
+                    )
+                    NavigationBarItem(
+                        selected = section == OwnPlaySection.SETTINGS,
+                        onClick = { section = OwnPlaySection.SETTINGS },
+                        icon = {
+                            Icon(
+                                Icons.Filled.Settings,
+                                contentDescription = "Settings",
+                            )
+                        },
+                        label = { Text("Settings") },
+                    )
+                }
             }
         },
     ) { innerPadding ->
@@ -288,6 +299,8 @@ private fun OwnPlayHeader(
     activeSourceId: String?,
     summaries: List<PlaylistSourceSummary>,
     syncState: SourceSyncState,
+    compact: Boolean,
+    onSettingsRequested: () -> Unit,
     onSourceSelected: (String) -> Unit,
 ) {
     Surface(
@@ -298,58 +311,93 @@ private fun OwnPlayHeader(
             modifier = Modifier
                 .fillMaxWidth()
                 .statusBarsPadding()
-                .padding(horizontal = 18.dp, vertical = 10.dp),
+                .padding(
+                    horizontal = if (compact) 10.dp else 18.dp,
+                    vertical = if (compact) 4.dp else 10.dp,
+                ),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            horizontalArrangement = Arrangement.spacedBy(if (compact) 8.dp else 12.dp),
         ) {
             Surface(
-                shape = RoundedCornerShape(12.dp),
+                shape = RoundedCornerShape(if (compact) 10.dp else 12.dp),
                 color = MaterialTheme.colorScheme.primary,
             ) {
                 Text(
                     text = "OP",
-                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp),
+                    modifier = Modifier.padding(
+                        horizontal = if (compact) 8.dp else 10.dp,
+                        vertical = if (compact) 5.dp else 7.dp,
+                    ),
                     color = MaterialTheme.colorScheme.onPrimary,
                     style = MaterialTheme.typography.labelLarge,
                     fontWeight = FontWeight.Black,
                 )
             }
-            Column(
-                modifier = Modifier
-                    .weight(1f)
-                    .animateContentSize(animationSpec = tween(180)),
-            ) {
-                Text(
-                    text = "OwnPlay",
-                    style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.Bold,
-                )
-                when {
-                    section == OwnPlaySection.LIVE && summaries.isNotEmpty() -> LiveSourceSelector(
-                        activeSourceId = activeSourceId,
-                        summaries = summaries,
-                        onSourceSelected = onSourceSelected,
+
+            if (compact && section == OwnPlaySection.LIVE) {
+                Box(modifier = Modifier.weight(1f)) {
+                    if (summaries.isNotEmpty()) {
+                        LiveSourceSelector(
+                            activeSourceId = activeSourceId,
+                            summaries = summaries,
+                            onSourceSelected = onSourceSelected,
+                        )
+                    } else {
+                        Text(
+                            text = "Live",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                    }
+                }
+            } else {
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .animateContentSize(animationSpec = tween(180)),
+                ) {
+                    Text(
+                        text = "OwnPlay",
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold,
                     )
-                    section == OwnPlaySection.SETTINGS -> Text(
-                        text = "Settings",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    else -> Text(
-                        text = "Live media hub",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
+                    when {
+                        section == OwnPlaySection.LIVE && summaries.isNotEmpty() -> LiveSourceSelector(
+                            activeSourceId = activeSourceId,
+                            summaries = summaries,
+                            onSourceSelected = onSourceSelected,
+                        )
+                        section == OwnPlaySection.SETTINGS -> Text(
+                            text = "Settings",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        else -> Text(
+                            text = "Live media hub",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
                 }
             }
+
             when (syncState.stage) {
                 SourceSyncStage.LoadingChannels,
                 SourceSyncStage.LoadingEpg,
                 -> CircularProgressIndicator(
-                    modifier = Modifier.size(22.dp),
+                    modifier = Modifier.size(if (compact) 18.dp else 22.dp),
                     strokeWidth = 2.dp,
                 )
                 else -> Unit
+            }
+
+            if (compact && section == OwnPlaySection.LIVE) {
+                IconButton(onClick = onSettingsRequested) {
+                    Icon(
+                        Icons.Filled.Settings,
+                        contentDescription = "Settings",
+                    )
+                }
             }
         }
     }
