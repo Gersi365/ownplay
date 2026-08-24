@@ -2,6 +2,7 @@ package app.ownplay.player.playback
 
 enum class PlaybackMediaKind {
     LIVE,
+    MOVIE,
 }
 
 enum class PlaybackNavigationDirection {
@@ -42,12 +43,12 @@ data class PlaybackRequest(
 ) {
     init {
         require(sourceId.isNotBlank()) { "Source ID must not be blank" }
-        require(channelId.isNotBlank()) { "Channel ID must not be blank" }
+        require(channelId.isNotBlank()) { "Content ID must not be blank" }
         require(navigationContext?.previousChannelId != channelId) {
-            "Previous channel must differ from the current channel"
+            "Previous content item must differ from the current content item"
         }
         require(navigationContext?.nextChannelId != channelId) {
-            "Next channel must differ from the current channel"
+            "Next content item must differ from the current content item"
         }
     }
 
