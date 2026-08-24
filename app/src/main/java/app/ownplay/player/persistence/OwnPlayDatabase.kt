@@ -7,6 +7,11 @@ import androidx.room.RoomDatabase
 import app.ownplay.player.persistence.live.LiveBrowseDao
 import app.ownplay.player.persistence.recent.RecentChannelDao
 import app.ownplay.player.persistence.recent.RecentChannelEntity
+import app.ownplay.player.persistence.vod.MediaFavoriteEntity
+import app.ownplay.player.persistence.vod.PlaybackProgressEntity
+import app.ownplay.player.persistence.vod.ProviderMovieEntity
+import app.ownplay.player.persistence.vod.ProviderVodCategoryEntity
+import app.ownplay.player.persistence.vod.VodCatalogDao
 
 @Database(
     entities = [
@@ -20,8 +25,12 @@ import app.ownplay.player.persistence.recent.RecentChannelEntity
         CustomGroupMembershipEntity::class,
         PlaylistRefreshStateEntity::class,
         RecentChannelEntity::class,
+        ProviderVodCategoryEntity::class,
+        ProviderMovieEntity::class,
+        MediaFavoriteEntity::class,
+        PlaybackProgressEntity::class,
     ],
-    version = 2,
+    version = 3,
     exportSchema = true,
 )
 abstract class OwnPlayDatabase : RoomDatabase() {
@@ -31,6 +40,7 @@ abstract class OwnPlayDatabase : RoomDatabase() {
     abstract fun refreshStateDao(): RefreshStateDao
     abstract fun liveBrowseDao(): LiveBrowseDao
     abstract fun recentChannelDao(): RecentChannelDao
+    abstract fun vodCatalogDao(): VodCatalogDao
 
     companion object {
         const val DATABASE_NAME = "ownplay.db"
@@ -41,7 +51,7 @@ abstract class OwnPlayDatabase : RoomDatabase() {
                 OwnPlayDatabase::class.java,
                 DATABASE_NAME,
             )
-                .addMigrations(MIGRATION_1_2)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
                 .build()
     }
 }
