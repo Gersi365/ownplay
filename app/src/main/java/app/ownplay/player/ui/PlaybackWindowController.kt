@@ -7,12 +7,14 @@ import android.content.pm.PackageManager
 import android.graphics.Rect
 import android.os.Build
 import android.view.View
+import app.ownplay.player.personalization.AppOrientationMode
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
 internal enum class PlaybackOrientationIntent {
     PORTRAIT,
+    LANDSCAPE,
     FOLLOW_SYSTEM,
     SENSOR,
 }
@@ -25,11 +27,12 @@ internal object PlaybackWindowPolicy {
 
     fun orientationIntent(
         fullscreen: Boolean,
-        playbackSurfaceActive: Boolean,
+        appOrientation: AppOrientationMode,
         inPictureInPicture: Boolean,
     ): PlaybackOrientationIntent = when {
         inPictureInPicture -> PlaybackOrientationIntent.FOLLOW_SYSTEM
-        fullscreen || playbackSurfaceActive -> PlaybackOrientationIntent.SENSOR
+        fullscreen -> PlaybackOrientationIntent.SENSOR
+        appOrientation == AppOrientationMode.LANDSCAPE -> PlaybackOrientationIntent.LANDSCAPE
         else -> PlaybackOrientationIntent.PORTRAIT
     }
 }
@@ -48,6 +51,7 @@ class PlaybackWindowController(
     private var isPlaying = false
     private var fullscreenRequested = false
     private var playbackSurfaceActive = false
+    private var appOrientation = AppOrientationMode.PORTRAIT
     private var sourceRectHint: Rect? = null
     private var windowRoot: View? = null
     private var layoutListener: View.OnLayoutChangeListener? = null
@@ -84,8 +88,12 @@ class PlaybackWindowController(
     }
 
     fun updatePlaybackSurfaceState(active: Boolean) {
-        if (playbackSurfaceActive == active) return
         playbackSurfaceActive = active
+    }
+
+    fun updateAppOrientation(mode: AppOrientationMode) {
+        if (appOrientation == mode) return
+        appOrientation = mode
         applyOrientationPolicy()
     }
 
@@ -172,11 +180,12 @@ class PlaybackWindowController(
         val target = when (
             PlaybackWindowPolicy.orientationIntent(
                 fullscreen = fullscreenRequested,
-                playbackSurfaceActive = playbackSurfaceActive,
+                appOrientation = appOrientation,
                 inPictureInPicture = _isInPictureInPictureMode.value,
             )
         ) {
             PlaybackOrientationIntent.PORTRAIT -> ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+            PlaybackOrientationIntent.LANDSCAPE -> ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
             PlaybackOrientationIntent.FOLLOW_SYSTEM -> ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
             PlaybackOrientationIntent.SENSOR -> ActivityInfo.SCREEN_ORIENTATION_SENSOR
         }
