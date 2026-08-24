@@ -48,6 +48,7 @@ import kotlinx.coroutines.launch
 private enum class SettingsDestination {
     INTERFACE,
     CONTENT,
+    DOWNLOADS,
     PLAYBACK,
     REFRESH,
     ABOUT,
@@ -116,6 +117,12 @@ internal fun SettingsScreen(
             )
             return
         }
+        SettingsDestination.DOWNLOADS -> {
+            DownloadsSettingsScreen(
+                onBack = { destination = SettingsDestination.CONTENT },
+            )
+            return
+        }
         else -> Unit
     }
 
@@ -129,6 +136,7 @@ internal fun SettingsScreen(
         onStopPlayback = onStopPlayback,
         onOpenLiveManagement = { destination = SettingsDestination.LIVE_MANAGEMENT },
         onOpenPlaylists = { destination = SettingsDestination.PLAYLISTS },
+        onOpenDownloads = { destination = SettingsDestination.DOWNLOADS },
     )
 }
 
@@ -202,6 +210,12 @@ private fun LandscapeSettingsShell(
                     onClick = { onDestinationChange(SettingsDestination.CONTENT) },
                 )
                 SettingsRailItem(
+                    label = "Downloads",
+                    detail = "Offline movies & episodes",
+                    selected = selectedRailDestination == SettingsDestination.DOWNLOADS,
+                    onClick = { onDestinationChange(SettingsDestination.DOWNLOADS) },
+                )
+                SettingsRailItem(
                     label = "Playback",
                     detail = "Preview & fullscreen",
                     selected = selectedRailDestination == SettingsDestination.PLAYBACK,
@@ -253,8 +267,13 @@ private fun LandscapeSettingsShell(
                         onOpenPlaylists = {
                             onDestinationChange(SettingsDestination.PLAYLISTS)
                         },
+                        onOpenDownloads = {
+                            onDestinationChange(SettingsDestination.DOWNLOADS)
+                        },
                     )
                 }
+
+                SettingsDestination.DOWNLOADS -> DownloadsSettingsScreen()
 
                 SettingsDestination.PLAYBACK -> LandscapeSectionPage(
                     title = "Playback",
@@ -387,6 +406,7 @@ private fun PortraitSettingsMenu(
     onStopPlayback: () -> Unit,
     onOpenLiveManagement: () -> Unit,
     onOpenPlaylists: () -> Unit,
+    onOpenDownloads: () -> Unit,
 ) {
     Box(
         modifier = Modifier
@@ -412,7 +432,7 @@ private fun PortraitSettingsMenu(
                     fontWeight = FontWeight.Bold,
                 )
                 Text(
-                    text = "Interface, content management and playback.",
+                    text = "Interface, content, downloads and playback.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -436,6 +456,19 @@ private fun PortraitSettingsMenu(
                     summaries = summaries,
                     onOpenLiveManagement = onOpenLiveManagement,
                     onOpenPlaylists = onOpenPlaylists,
+                    onOpenDownloads = onOpenDownloads,
+                )
+            }
+
+            CompactSettingsSection(
+                title = "Downloads",
+                subtitle = "Offline movies and series episodes",
+            ) {
+                SettingsActionRow(
+                    title = "Downloaded media",
+                    detail = "Progress · retry · remove",
+                    actionLabel = "Open",
+                    onClick = onOpenDownloads,
                 )
             }
 
@@ -510,6 +543,7 @@ private fun ContentSettingsContent(
     summaries: List<PlaylistSourceSummary>,
     onOpenLiveManagement: () -> Unit,
     onOpenPlaylists: () -> Unit,
+    onOpenDownloads: () -> Unit,
 ) {
     SettingsActionRow(
         title = "Live management",
@@ -523,6 +557,13 @@ private fun ContentSettingsContent(
         detail = "${summaries.size} configured · sources & refresh",
         actionLabel = "Manage",
         onClick = onOpenPlaylists,
+    )
+    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+    SettingsActionRow(
+        title = "Downloads",
+        detail = "Movies · series episodes · offline storage",
+        actionLabel = "Open",
+        onClick = onOpenDownloads,
     )
 }
 
@@ -565,7 +606,7 @@ private fun PlaybackSettingsContent(
 private fun RefreshSettingsContent() {
     SettingValueRow(label = "Sequence", value = "Channels → EPG")
     Text(
-        text = "Existing channels remain usable while refresh runs. VOD and Series will join this pipeline later.",
+        text = "Existing content remains usable while refresh runs. Downloads continue independently through WorkManager.",
         style = MaterialTheme.typography.labelSmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
