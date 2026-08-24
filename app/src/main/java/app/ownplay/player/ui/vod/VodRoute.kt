@@ -31,6 +31,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.DownloadDone
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.LiveTv
@@ -48,6 +50,7 @@ import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Slider
@@ -78,7 +81,12 @@ import androidx.media3.common.util.UnstableApi
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
 import app.ownplay.player.OwnPlayAppRuntime
+import app.ownplay.player.download.OfflineDownload
+import app.ownplay.player.download.OfflineDownloadFeatureRuntime
+import app.ownplay.player.download.OfflineDownloadSpec
 import app.ownplay.player.persistence.SourceKinds
+import app.ownplay.player.persistence.download.DownloadMediaKinds
+import app.ownplay.player.persistence.download.DownloadStates
 import app.ownplay.player.playback.PlaybackMediaKind
 import app.ownplay.player.playback.PlaybackRequest
 import app.ownplay.player.playback.PlaybackState
@@ -114,11 +122,17 @@ internal fun VodRoute(
     val context = LocalContext.current
     val configuration = LocalConfiguration.current
     val isLandscape = configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
-    val featureRuntime = remember { VodFeatureRuntime(context.applicationContext) }
+    val featureRuntime = remember(context) { VodFeatureRuntime(context.applicationContext) }
+    val downloadRuntime = remember(context) {
+        OfflineDownloadFeatureRuntime(context.applicationContext)
+    }
     val scope = rememberCoroutineScope()
 
     DisposableEffect(featureRuntime) {
         onDispose { featureRuntime.close() }
+    }
+    DisposableEffect(downloadRuntime) {
+        onDispose { downloadRuntime.close() }
     }
 
     if (sourceId == null) {
@@ -139,6 +153,7 @@ internal fun VodRoute(
     }
 
     val catalog by featureRuntime.observeCatalog(sourceId).collectAsState(initial = VodCatalog())
+    val downloads by downloadRuntime.observeAll().collectAsState(initial = emptyList())
     var loading by remember(sourceId) { mutableStateOf(false) }
     var refreshError by remember(sourceId) { mutableStateOf<SourceError?>(null) }
     var query by remember(sourceId) { mutableStateOf("") }
@@ -150,6 +165,28 @@ internal fun VodRoute(
     var detailsLoading by remember(sourceId) { mutableStateOf(false) }
     var detailsError by remember(sourceId) { mutableStateOf<SourceError?>(null) }
     var playingMovie by remember(sourceId) { mutableStateOf<VodMovie?>(null) }
+
+    fun downloadFor(movie: VodMovie): OfflineDownload? = downloads.firstOrNull { download ->
+        download.sourceId == sourceId &&
+            download.mediaKind == DownloadMediaKinds.MOVIE &&
+            download.contentId == movie.movieId
+    }
+
+    fun enqueueMovieDownload(movie: VodMovie) {
+        scope.launch {
+            downloadRuntime.enqueue(
+                OfflineDownloadSpec(
+                    sourceId = sourceId,
+                    mediaKind = DownloadMediaKinds.MOVIE,
+                    contentId = movie.movieId,
+                    providerStreamId = movie.providerStreamId,
+                    title = movie.name,
+                    posterUrl = movie.posterUrl,
+                    containerExtension = movie.containerExtension,
+                ),
+            )
+        }
+    }
 
     fun refresh() {
         scope.launch {
@@ -277,27 +314,29 @@ internal fun VodRoute(
                 onCategorySelected = { selectedCategoryKey = it },
                 modifier = Modifier.weight(if (selectedMovie == null) 1f else 0.63f),
             )
-            if (selectedMovie != null) {
+            selectedMovie?.let { movie ->
                 MovieDetailsPane(
-                    movie = selectedMovie!!,
+                    movie = movie,
                     details = details,
                     loading = detailsLoading,
                     error = detailsError,
+                    download = downloadFor(movie),
                     onDismiss = { selectedMovie = null },
                     onFavoriteChanged = { favorite ->
                         scope.launch {
-                            featureRuntime.setFavorite(sourceId, selectedMovie!!.movieId, favorite)
+                            featureRuntime.setFavorite(sourceId, movie.movieId, favorite)
                         }
                     },
-                    onPlay = { movie ->
+                    onDownload = ::enqueueMovieDownload,
+                    onPlay = { target ->
                         runtime.playbackController.start(
                             PlaybackRequest(
                                 sourceId = sourceId,
-                                channelId = movie.movieId,
+                                channelId = target.movieId,
                                 mediaKind = PlaybackMediaKind.MOVIE,
                             ),
                         )
-                        playingMovie = movie
+                        playingMovie = target
                     },
                     modifier = Modifier
                         .weight(0.37f)
@@ -332,10 +371,12 @@ internal fun VodRoute(
                     details = details,
                     loading = detailsLoading,
                     error = detailsError,
+                    download = downloadFor(movie),
                     onDismiss = { selectedMovie = null },
                     onFavoriteChanged = { favorite ->
                         scope.launch { featureRuntime.setFavorite(sourceId, movie.movieId, favorite) }
                     },
+                    onDownload = ::enqueueMovieDownload,
                     onPlay = { target ->
                         runtime.playbackController.start(
                             PlaybackRequest(
@@ -770,8 +811,10 @@ private fun MovieDetailsPane(
     details: VodMovieDetails?,
     loading: Boolean,
     error: SourceError?,
+    download: OfflineDownload?,
     onDismiss: () -> Unit,
     onFavoriteChanged: (Boolean) -> Unit,
+    onDownload: (VodMovie) -> Unit,
     onPlay: (VodMovie) -> Unit,
     modifier: Modifier,
 ) {
@@ -868,6 +911,50 @@ private fun MovieDetailsPane(
                         contentDescription = null,
                     )
                 }
+            }
+
+            val target = details?.movie ?: movie
+            val downloadEnabled = download == null || download.state == DownloadStates.FAILED
+            val downloadLabel = when (download?.state) {
+                DownloadStates.QUEUED -> "Queued"
+                DownloadStates.DOWNLOADING -> "Downloading"
+                DownloadStates.COMPLETED -> "Downloaded"
+                DownloadStates.FAILED -> "Retry download"
+                else -> "Download"
+            }
+            FilledTonalButton(
+                onClick = { onDownload(target) },
+                enabled = downloadEnabled,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Icon(
+                    imageVector = if (download?.state == DownloadStates.COMPLETED) {
+                        Icons.Filled.DownloadDone
+                    } else {
+                        Icons.Filled.Download
+                    },
+                    contentDescription = null,
+                )
+                Spacer(Modifier.width(6.dp))
+                Text(downloadLabel)
+            }
+            if (download?.state == DownloadStates.DOWNLOADING) {
+                val progress = download.progressFraction
+                if (progress == null) {
+                    LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                } else {
+                    LinearProgressIndicator(
+                        progress = { progress },
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+            }
+            if (download?.state == DownloadStates.FAILED) {
+                Text(
+                    text = download.failureReason ?: "Download failed. Retry when the source is available.",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.error,
+                )
             }
         }
     }
