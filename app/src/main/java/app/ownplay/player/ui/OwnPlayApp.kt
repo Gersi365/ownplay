@@ -1,6 +1,13 @@
 package app.ownplay.player.ui
 
-import android.content.res.Configuration
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.animation.animateContentSize
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -38,7 +45,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -48,6 +54,8 @@ import app.ownplay.player.playback.LivePlaybackSelection
 import app.ownplay.player.playback.PlaybackNavigationDirection
 import app.ownplay.player.source.SourceSyncStage
 import app.ownplay.player.source.SourceSyncState
+
+private const val SECTION_MOTION_MILLIS = 220
 
 private enum class OwnPlaySection {
     LIVE,
@@ -60,7 +68,6 @@ fun OwnPlayApp(
     onPlaybackFullscreenChanged: (Boolean) -> Unit = {},
     onPlaybackSurfaceActiveChanged: (Boolean) -> Unit = {},
 ) {
-    val configuration = LocalConfiguration.current
     val summaries by runtime.observeSourceSummaries().collectAsState(initial = emptyList())
     val syncState by runtime.sourceSyncState.collectAsState()
     val playbackState by runtime.playbackController.state.collectAsState()
@@ -70,7 +77,6 @@ fun OwnPlayApp(
     var activeSourceId by remember { mutableStateOf<String?>(null) }
     var activeSelection by remember { mutableStateOf<LivePlaybackSelection?>(null) }
     var fullscreenSelection by remember { mutableStateOf<LivePlaybackSelection?>(null) }
-    var autoFullscreenPromotionArmed by remember { mutableStateOf(true) }
 
     LaunchedEffect(summaries) {
         val ids = summaries.map { it.sourceId }.toSet()
@@ -93,33 +99,9 @@ fun OwnPlayApp(
             activeSelection != null &&
             fullscreenSelection == null
     val playbackSurfaceActive = previewActive || fullscreenSelection != null
-    val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
 
     LaunchedEffect(playbackSurfaceActive) {
         onPlaybackSurfaceActiveChanged(playbackSurfaceActive)
-    }
-
-    LaunchedEffect(
-        previewActive,
-        isLandscape,
-        autoFullscreenPromotionArmed,
-        activeSelection?.request?.channelId,
-    ) {
-        if (!isLandscape) {
-            autoFullscreenPromotionArmed = true
-            return@LaunchedEffect
-        }
-        if (
-            PlaybackWindowPolicy.shouldPromotePreviewToFullscreen(
-                previewActive = previewActive,
-                isLandscape = true,
-                promotionArmed = autoFullscreenPromotionArmed,
-            )
-        ) {
-            val selection = activeSelection ?: return@LaunchedEffect
-            autoFullscreenPromotionArmed = false
-            fullscreenSelection = selection
-        }
     }
 
     val openedFullscreen = fullscreenSelection
@@ -202,13 +184,36 @@ fun OwnPlayApp(
             }
         },
     ) { innerPadding ->
-        Column(
+        AnimatedContent(
+            targetState = section,
             modifier = Modifier
                 .fillMaxSize()
                 .background(MaterialTheme.colorScheme.background)
                 .padding(innerPadding),
-        ) {
-            when (section) {
+            transitionSpec = {
+                if (targetState.ordinal > initialState.ordinal) {
+                    (slideInHorizontally(
+                        animationSpec = tween(SECTION_MOTION_MILLIS),
+                        initialOffsetX = { width -> width / 16 },
+                    ) + fadeIn(tween(SECTION_MOTION_MILLIS))) togetherWith
+                        (slideOutHorizontally(
+                            animationSpec = tween(SECTION_MOTION_MILLIS),
+                            targetOffsetX = { width -> -width / 24 },
+                        ) + fadeOut(tween(150)))
+                } else {
+                    (slideInHorizontally(
+                        animationSpec = tween(SECTION_MOTION_MILLIS),
+                        initialOffsetX = { width -> -width / 16 },
+                    ) + fadeIn(tween(SECTION_MOTION_MILLIS))) togetherWith
+                        (slideOutHorizontally(
+                            animationSpec = tween(SECTION_MOTION_MILLIS),
+                            targetOffsetX = { width -> width / 24 },
+                        ) + fadeOut(tween(150)))
+                }
+            },
+            label = "ownPlaySection",
+        ) { targetSection ->
+            when (targetSection) {
                 OwnPlaySection.LIVE -> {
                     val sourceId = activeSourceId
                     if (sourceId == null) {
@@ -309,7 +314,11 @@ private fun OwnPlayHeader(
                     fontWeight = FontWeight.Black,
                 )
             }
-            Column(modifier = Modifier.weight(1f)) {
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .animateContentSize(animationSpec = tween(180)),
+            ) {
                 Text(
                     text = "OwnPlay",
                     style = MaterialTheme.typography.titleLarge,
