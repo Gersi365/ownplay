@@ -59,6 +59,7 @@ enum class ResolvedPlaybackOrigin {
     DIRECT,
     XTREAM_LIVE,
     XTREAM_VOD,
+    XTREAM_SERIES,
     LOCAL_DOWNLOAD,
 }
 
@@ -152,6 +153,7 @@ class LivePlaybackResolver(
         return when (request.mediaKind) {
             PlaybackMediaKind.LIVE -> resolveLiveRequest(source, request)
             PlaybackMediaKind.MOVIE -> resolveMovieRequest(source, request)
+            PlaybackMediaKind.SERIES_EPISODE -> resolveSeriesEpisodeRequest(source, request)
         }
     }
 
@@ -227,11 +229,7 @@ class LivePlaybackResolver(
             return failure(PlaybackResolutionFailureReason.CLEARTEXT_NOT_ALLOWED)
         }
 
-        val extension = movie.containerExtension
-            ?.trim()
-            ?.lowercase()
-            ?.takeIf { candidate -> candidate.matches(Regex("[a-z0-9]{1,8}")) }
-            ?: "mp4"
+        val extension = normalizedExtension(movie.containerExtension)
         val baseUrl = access.source.normalizedServerUrl.toHttpUrlOrNull()
             ?: return failure(PlaybackResolutionFailureReason.SOURCE_LOCATOR_INVALID)
         val resolved = baseUrl.newBuilder()
@@ -243,6 +241,40 @@ class LivePlaybackResolver(
             .toString()
 
         return success(resolved, ResolvedPlaybackOrigin.XTREAM_VOD)
+    }
+
+    private suspend fun resolveSeriesEpisodeRequest(
+        source: PlaybackSourceRecord,
+        request: PlaybackRequest,
+    ): PlaybackResolutionResult {
+        val streamId = request.providerStreamId
+            ?.takeIf { it > 0 }
+            ?: return failure(PlaybackResolutionFailureReason.DESCRIPTOR_INVALID)
+        if (source.sourceKind != PlaybackResolutionSourceKind.XTREAM) {
+            return failure(PlaybackResolutionFailureReason.UNSUPPORTED_SOURCE_KIND)
+        }
+        val access = when (val loaded = loadXtreamAccess(source)) {
+            is LoadedXtreamAccessResult.Success -> loaded.access
+            is LoadedXtreamAccessResult.Failure -> return failure(loaded.reason)
+        }
+        if (
+            access.source.usesCleartext &&
+            !allowCleartext &&
+            !access.source.allowCleartext
+        ) {
+            return failure(PlaybackResolutionFailureReason.CLEARTEXT_NOT_ALLOWED)
+        }
+        val extension = normalizedExtension(request.containerExtension)
+        val baseUrl = access.source.normalizedServerUrl.toHttpUrlOrNull()
+            ?: return failure(PlaybackResolutionFailureReason.SOURCE_LOCATOR_INVALID)
+        val resolved = baseUrl.newBuilder()
+            .addPathSegment("series")
+            .addPathSegment(access.credentials.username)
+            .addPathSegment(access.credentials.password)
+            .addPathSegment("$streamId.$extension")
+            .build()
+            .toString()
+        return success(resolved, ResolvedPlaybackOrigin.XTREAM_SERIES)
     }
 
     private suspend fun resolveDirect(
@@ -395,6 +427,12 @@ class LivePlaybackResolver(
             ),
         )
     }
+
+    private fun normalizedExtension(value: String?): String = value
+        ?.trim()
+        ?.lowercase()
+        ?.takeIf { candidate -> candidate.matches(Regex("[a-z0-9]{1,8}")) }
+        ?: "mp4"
 
     private fun sensitiveRef(value: String): SensitiveValueRef? = try {
         SensitiveValueRef(value)
