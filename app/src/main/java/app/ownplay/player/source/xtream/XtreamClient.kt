@@ -57,30 +57,12 @@ class XtreamClient(
         serverUrl: String,
         credentials: XtreamCredentials,
         allowCleartext: Boolean = defaultAllowCleartext,
-    ): SourceResult<List<XtreamCategory>> {
-        val response = requestJson(
-            serverUrl = serverUrl,
-            credentials = credentials,
-            action = "get_live_categories",
-            allowCleartext = allowCleartext,
-        )
-        if (response is SourceResult.Failure) return response
-
-        val array = (response as SourceResult.Success).value as? JsonArray
-            ?: return SourceResult.Failure(SourceError.MalformedResponse)
-        return SourceResult.Success(
-            array.mapNotNull { element ->
-                val item = element as? JsonObject ?: return@mapNotNull null
-                val id = item.text("category_id") ?: return@mapNotNull null
-                val name = item.text("category_name") ?: return@mapNotNull null
-                XtreamCategory(
-                    id = id,
-                    name = name,
-                    parentId = item.text("parent_id"),
-                )
-            },
-        )
-    }
+    ): SourceResult<List<XtreamCategory>> = getCategories(
+        serverUrl = serverUrl,
+        credentials = credentials,
+        action = "get_live_categories",
+        allowCleartext = allowCleartext,
+    )
 
     suspend fun getLiveStreams(
         serverUrl: String,
@@ -116,6 +98,107 @@ class XtreamClient(
                     directSource = item.text("direct_source")?.takeIf(String::isNotBlank),
                 )
             },
+        )
+    }
+
+    suspend fun getVodCategories(
+        serverUrl: String,
+        credentials: XtreamCredentials,
+        allowCleartext: Boolean = defaultAllowCleartext,
+    ): SourceResult<List<XtreamCategory>> = getCategories(
+        serverUrl = serverUrl,
+        credentials = credentials,
+        action = "get_vod_categories",
+        allowCleartext = allowCleartext,
+    )
+
+    suspend fun getVodStreams(
+        serverUrl: String,
+        credentials: XtreamCredentials,
+        categoryId: String? = null,
+        allowCleartext: Boolean = defaultAllowCleartext,
+    ): SourceResult<List<XtreamVodStream>> {
+        val response = requestJson(
+            serverUrl = serverUrl,
+            credentials = credentials,
+            action = "get_vod_streams",
+            extraQuery = buildMap {
+                categoryId?.takeIf(String::isNotBlank)?.let { put("category_id", it) }
+            },
+            allowCleartext = allowCleartext,
+        )
+        if (response is SourceResult.Failure) return response
+
+        val array = (response as SourceResult.Success).value as? JsonArray
+            ?: return SourceResult.Failure(SourceError.MalformedResponse)
+        return SourceResult.Success(
+            array.mapNotNull { element ->
+                val item = element as? JsonObject ?: return@mapNotNull null
+                val streamId = item.int("stream_id") ?: return@mapNotNull null
+                val name = item.text("name") ?: return@mapNotNull null
+                XtreamVodStream(
+                    streamId = streamId,
+                    name = name,
+                    categoryId = item.text("category_id"),
+                    posterUrl = item.text("stream_icon")?.takeIf(String::isNotBlank),
+                    containerExtension = item.text("container_extension")?.takeIf(String::isNotBlank),
+                    rating = item.double("rating") ?: item.double("rating_5based"),
+                    addedAtEpochSeconds = item.long("added"),
+                    directSource = item.text("direct_source")?.takeIf(String::isNotBlank),
+                )
+            },
+        )
+    }
+
+    suspend fun getVodInfo(
+        serverUrl: String,
+        credentials: XtreamCredentials,
+        vodId: Int,
+        allowCleartext: Boolean = defaultAllowCleartext,
+    ): SourceResult<XtreamVodInfo> {
+        if (vodId <= 0) return SourceResult.Failure(SourceError.MalformedResponse)
+        val response = requestJson(
+            serverUrl = serverUrl,
+            credentials = credentials,
+            action = "get_vod_info",
+            extraQuery = mapOf("vod_id" to vodId.toString()),
+            allowCleartext = allowCleartext,
+        )
+        if (response is SourceResult.Failure) return response
+
+        val root = (response as SourceResult.Success).value as? JsonObject
+            ?: return SourceResult.Failure(SourceError.MalformedResponse)
+        val info = root["info"] as? JsonObject
+        val movieData = root["movie_data"] as? JsonObject
+        if (info == null && movieData == null) {
+            return SourceResult.Failure(SourceError.MalformedResponse)
+        }
+
+        return SourceResult.Success(
+            XtreamVodInfo(
+                streamId = movieData?.int("stream_id") ?: info?.int("stream_id") ?: vodId,
+                name = info?.text("name") ?: movieData?.text("name"),
+                originalName = info?.text("o_name"),
+                description = info?.text("description") ?: info?.text("plot"),
+                posterUrl = info?.text("cover_big")
+                    ?: info?.text("movie_image")
+                    ?: movieData?.text("stream_icon"),
+                backdropUrls = info?.stringList("backdrop_path").orEmpty(),
+                releaseDate = info?.text("releasedate") ?: info?.text("release_date"),
+                durationSeconds = info?.long("duration_secs"),
+                durationLabel = info?.text("duration") ?: info?.text("episode_run_time"),
+                genre = info?.text("genre"),
+                country = info?.text("country"),
+                director = info?.text("director"),
+                cast = info?.text("actors") ?: info?.text("cast"),
+                rating = info?.double("rating") ?: movieData?.double("rating"),
+                youtubeTrailer = info?.text("youtube_trailer"),
+                containerExtension = movieData?.text("container_extension")
+                    ?: info?.text("container_extension"),
+                categoryId = movieData?.text("category_id") ?: info?.text("category_id"),
+                directSource = movieData?.text("direct_source")?.takeIf(String::isNotBlank)
+                    ?: info?.text("direct_source")?.takeIf(String::isNotBlank),
+            ),
         )
     }
 
@@ -164,6 +247,36 @@ class XtreamClient(
             )
         }
         return SourceResult.Success(XtreamEpgGuide(programs))
+    }
+
+    private suspend fun getCategories(
+        serverUrl: String,
+        credentials: XtreamCredentials,
+        action: String,
+        allowCleartext: Boolean,
+    ): SourceResult<List<XtreamCategory>> {
+        val response = requestJson(
+            serverUrl = serverUrl,
+            credentials = credentials,
+            action = action,
+            allowCleartext = allowCleartext,
+        )
+        if (response is SourceResult.Failure) return response
+
+        val array = (response as SourceResult.Success).value as? JsonArray
+            ?: return SourceResult.Failure(SourceError.MalformedResponse)
+        return SourceResult.Success(
+            array.mapNotNull { element ->
+                val item = element as? JsonObject ?: return@mapNotNull null
+                val id = item.text("category_id") ?: return@mapNotNull null
+                val name = item.text("category_name") ?: return@mapNotNull null
+                XtreamCategory(
+                    id = id,
+                    name = name,
+                    parentId = item.text("parent_id"),
+                )
+            },
+        )
     }
 
     private suspend fun requestJson(
@@ -288,6 +401,16 @@ class XtreamClient(
     private fun JsonObject.int(key: String): Int? = text(key)?.toIntOrNull()
 
     private fun JsonObject.long(key: String): Long? = text(key)?.toLongOrNull()
+
+    private fun JsonObject.double(key: String): Double? = text(key)?.toDoubleOrNull()
+
+    private fun JsonObject.stringList(key: String): List<String> = when (val element = this[key]) {
+        is JsonArray -> element.mapNotNull { item ->
+            (item as? JsonPrimitive)?.contentOrNull?.takeIf(String::isNotBlank)
+        }
+        is JsonPrimitive -> element.contentOrNull?.takeIf(String::isNotBlank)?.let(::listOf).orEmpty()
+        else -> emptyList()
+    }
 
     private fun JsonObject.flag(key: String): Boolean? = when (text(key)?.lowercase()) {
         "1", "true", "yes" -> true
