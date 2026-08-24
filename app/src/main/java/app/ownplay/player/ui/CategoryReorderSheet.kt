@@ -4,7 +4,9 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
@@ -14,22 +16,26 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.zIndex
 import app.ownplay.player.live.LiveCategory
 import app.ownplay.player.personalization.ManualOrderPlacement
 import kotlinx.coroutines.launch
@@ -49,6 +55,7 @@ internal fun CategoryReorderSheet(
     var working by remember(categories) { mutableStateOf(categories) }
     var draggedKey by remember { mutableStateOf<String?>(null) }
     var pointerY by remember { mutableStateOf<Float?>(null) }
+    var dragVisualOffsetY by remember { mutableFloatStateOf(0f) }
     var dropTarget by remember { mutableStateOf<CategoryDropTarget?>(null) }
     val listState = rememberLazyListState()
     val scope = rememberCoroutineScope()
@@ -56,6 +63,7 @@ internal fun CategoryReorderSheet(
     fun clearDrag() {
         draggedKey = null
         pointerY = null
+        dragVisualOffsetY = 0f
         dropTarget = null
     }
 
@@ -75,7 +83,7 @@ internal fun CategoryReorderSheet(
                     fontWeight = FontWeight.SemiBold,
                 )
                 Text(
-                    text = "Drag the handle. Hidden categories remain manageable here.",
+                    text = "Hold the handle, then move the category to its new position.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -84,7 +92,7 @@ internal fun CategoryReorderSheet(
             LazyColumn(
                 state = listState,
                 modifier = Modifier.fillMaxWidth(),
-                contentPadding = androidx.compose.foundation.layout.PaddingValues(
+                contentPadding = PaddingValues(
                     horizontal = 12.dp,
                     vertical = 12.dp,
                 ),
@@ -95,6 +103,7 @@ internal fun CategoryReorderSheet(
                     key = { _, category -> category.providerCategoryKey },
                 ) { _, category ->
                     val key = category.providerCategoryKey
+                    val isDragging = draggedKey == key
                     val isTarget = dropTarget?.anchorKey == key
                     val handleModifier = Modifier.pointerInput(key, working) {
                         detectDragGesturesAfterLongPress(
@@ -102,6 +111,7 @@ internal fun CategoryReorderSheet(
                                 val itemInfo = listState.layoutInfo.visibleItemsInfo
                                     .firstOrNull { info -> info.key == key }
                                 draggedKey = key
+                                dragVisualOffsetY = 0f
                                 pointerY = itemInfo?.let { info ->
                                     info.offset + (info.size / 2f)
                                 }
@@ -114,14 +124,18 @@ internal fun CategoryReorderSheet(
                                 val dragged = draggedKey ?: return@detectDragGesturesAfterLongPress
                                 val nextY = (pointerY ?: return@detectDragGesturesAfterLongPress) + dragAmount.y
                                 pointerY = nextY
+                                dragVisualOffsetY += dragAmount.y
                                 val layout = listState.layoutInfo
                                 val edge = 72f
-                                when {
-                                    nextY < layout.viewportStartOffset + edge -> {
-                                        scope.launch { listState.scrollBy(-36f) }
-                                    }
-                                    nextY > layout.viewportEndOffset - edge -> {
-                                        scope.launch { listState.scrollBy(36f) }
+                                val scrollDelta = when {
+                                    nextY < layout.viewportStartOffset + edge -> -36f
+                                    nextY > layout.viewportEndOffset - edge -> 36f
+                                    else -> 0f
+                                }
+                                if (scrollDelta != 0f) {
+                                    scope.launch {
+                                        val consumed = listState.scrollBy(scrollDelta)
+                                        dragVisualOffsetY += consumed
                                     }
                                 }
                                 dropTarget = resolveCategoryTarget(
@@ -151,64 +165,109 @@ internal fun CategoryReorderSheet(
                         )
                     }
 
-                    Surface(
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(12.dp),
-                        color = when {
-                            draggedKey == key -> MaterialTheme.colorScheme.surfaceVariant
-                            isTarget -> MaterialTheme.colorScheme.primaryContainer
-                            else -> MaterialTheme.colorScheme.surface
-                        },
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    Box(modifier = Modifier.fillMaxWidth()) {
+                        if (
+                            isTarget &&
+                            dropTarget?.placement == ManualOrderPlacement.BEFORE
                         ) {
-                            Text(
-                                text = "≡",
-                                modifier = handleModifier
-                                    .background(
-                                        color = MaterialTheme.colorScheme.surfaceVariant,
-                                        shape = RoundedCornerShape(8.dp),
-                                    )
-                                    .padding(horizontal = 12.dp, vertical = 8.dp),
-                                style = MaterialTheme.typography.titleLarge,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            CategoryInsertionIndicator(
+                                modifier = Modifier.align(Alignment.TopCenter),
                             )
-                            Column(modifier = Modifier.weight(1f)) {
+                        }
+
+                        Surface(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .zIndex(if (isDragging) 2f else 0f)
+                                .graphicsLayer {
+                                    translationY = if (isDragging) dragVisualOffsetY else 0f
+                                    scaleX = if (isDragging) 1.025f else 1f
+                                    scaleY = if (isDragging) 1.025f else 1f
+                                    alpha = if (isDragging) 0.98f else 1f
+                                },
+                            shape = RoundedCornerShape(12.dp),
+                            color = when {
+                                isDragging -> MaterialTheme.colorScheme.primaryContainer
+                                isTarget -> MaterialTheme.colorScheme.surfaceVariant
+                                else -> MaterialTheme.colorScheme.surface
+                            },
+                            shadowElevation = if (isDragging) 12.dp else 0.dp,
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                            ) {
                                 Text(
-                                    text = category.name,
-                                    style = MaterialTheme.typography.bodyLarge,
-                                    fontWeight = FontWeight.Medium,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
+                                    text = "≡",
+                                    modifier = handleModifier
+                                        .background(
+                                            color = if (isDragging) {
+                                                MaterialTheme.colorScheme.primary
+                                            } else {
+                                                MaterialTheme.colorScheme.surfaceVariant
+                                            },
+                                            shape = RoundedCornerShape(8.dp),
+                                        )
+                                        .padding(horizontal = 12.dp, vertical = 8.dp),
+                                    style = MaterialTheme.typography.titleLarge,
+                                    color = if (isDragging) {
+                                        MaterialTheme.colorScheme.onPrimary
+                                    } else {
+                                        MaterialTheme.colorScheme.onSurfaceVariant
+                                    },
                                 )
-                                if (category.isHidden) {
+                                Column(modifier = Modifier.weight(1f)) {
                                     Text(
-                                        text = "Hidden",
+                                        text = category.name,
+                                        style = MaterialTheme.typography.bodyLarge,
+                                        fontWeight = FontWeight.Medium,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                    )
+                                    if (category.isHidden) {
+                                        Text(
+                                            text = "Hidden",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        )
+                                    }
+                                }
+                                if (isDragging) {
+                                    Text(
+                                        text = "MOVING",
                                         style = MaterialTheme.typography.labelSmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        color = MaterialTheme.colorScheme.primary,
                                     )
                                 }
                             }
-                            if (isTarget) {
-                                Text(
-                                    text = if (dropTarget?.placement == ManualOrderPlacement.BEFORE) {
-                                        "Before"
-                                    } else {
-                                        "After"
-                                    },
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.primary,
-                                )
-                            }
+                        }
+
+                        if (
+                            isTarget &&
+                            dropTarget?.placement == ManualOrderPlacement.AFTER
+                        ) {
+                            CategoryInsertionIndicator(
+                                modifier = Modifier.align(Alignment.BottomCenter),
+                            )
                         }
                     }
                 }
             }
         }
     }
+}
+
+@Composable
+private fun CategoryInsertionIndicator(modifier: Modifier = Modifier) {
+    HorizontalDivider(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(horizontal = 8.dp)
+            .zIndex(3f),
+        thickness = 3.dp,
+        color = MaterialTheme.colorScheme.primary,
+    )
 }
 
 private fun resolveCategoryTarget(
