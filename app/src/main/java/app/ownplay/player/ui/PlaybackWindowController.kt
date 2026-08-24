@@ -32,12 +32,6 @@ internal object PlaybackWindowPolicy {
         fullscreen || playbackSurfaceActive -> PlaybackOrientationIntent.SENSOR
         else -> PlaybackOrientationIntent.PORTRAIT
     }
-
-    fun shouldPromotePreviewToFullscreen(
-        previewActive: Boolean,
-        isLandscape: Boolean,
-        promotionArmed: Boolean,
-    ): Boolean = previewActive && isLandscape && promotionArmed
 }
 
 class PlaybackWindowController(
