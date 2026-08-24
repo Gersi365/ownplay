@@ -927,7 +927,7 @@ private fun VodPlaybackScreen(
             delay(1_000L)
             val player = playerView?.player ?: continue
             currentPosition = player.currentPosition.coerceAtLeast(0L)
-            duration = player.duration.takeIf { it > 0L && it != Player.TIME_UNSET } ?: duration
+            duration = player.duration.takeIf { it > 0L } ?: duration
             saveTick += 1
             if (saveTick >= 5) {
                 saveTick = 0
