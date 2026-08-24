@@ -98,11 +98,7 @@ fun OwnPlayApp(
         }
     }
 
-    val previewActive =
-        section == OwnPlaySection.LIVE &&
-            activeSelection != null &&
-            fullscreenSelection == null
-    val playbackSurfaceActive = previewActive || fullscreenSelection != null
+    val playbackSurfaceActive = section == OwnPlaySection.LIVE || fullscreenSelection != null
     val compactLiveLandscape =
         section == OwnPlaySection.LIVE &&
             configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
