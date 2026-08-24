@@ -1,6 +1,7 @@
 package app.ownplay.player
 
 import android.content.Context
+import app.ownplay.player.download.OfflineDownloadRepository
 import app.ownplay.player.epg.EpgSnapshot
 import app.ownplay.player.epg.XtreamEpgRepository
 import app.ownplay.player.live.LiveCatalogRepository
@@ -72,6 +73,10 @@ class OwnPlayAppRuntime(
 ) : AutoCloseable {
     private val applicationContext = context.applicationContext
     private val database = OwnPlayDatabase.create(applicationContext)
+    private val offlineDownloadRepository = OfflineDownloadRepository(
+        context = applicationContext,
+        database = database,
+    )
     private val runtimeScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val refreshMutex = Mutex()
     private val categoryVisibilityStore = CategoryVisibilityStore(
@@ -148,6 +153,7 @@ class OwnPlayAppRuntime(
     val playbackController = PlaybackController(
         resolveLocator = playbackResolver::resolve,
         engine = playbackEngine,
+        resolveOfflineLocator = offlineDownloadRepository::localPlaybackLocator,
         networkState = playbackConnectivityMonitor.state,
     )
     val playbackVideoOutput = playbackEngine

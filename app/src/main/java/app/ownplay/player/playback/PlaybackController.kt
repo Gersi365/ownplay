@@ -36,6 +36,7 @@ interface PlaybackEngine {
 class PlaybackController(
     private val resolveLocator: suspend (PlaybackRequest) -> PlaybackResolutionResult,
     private val engine: PlaybackEngine,
+    private val resolveOfflineLocator: suspend (PlaybackRequest) -> ResolvedPlaybackLocator? = { null },
     private val mainDispatcher: CoroutineDispatcher = Dispatchers.Main.immediate,
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
     private val loadingTimeoutMillis: Long = DEFAULT_LOADING_TIMEOUT_MILLIS,
@@ -53,6 +54,7 @@ class PlaybackController(
     private var retryJob: Job? = null
     private var generation: Long = 0L
     private var preparedGeneration: Long? = null
+    private var currentPlaybackUsesNetwork: Boolean? = null
     private var automaticRetryAttempt: Int = 0
     private var desiredPlayWhenReady: Boolean = true
     private var networkAvailable: Boolean =
@@ -172,6 +174,7 @@ class PlaybackController(
         released = true
         generation += 1
         preparedGeneration = null
+        currentPlaybackUsesNetwork = null
         resolutionJob?.cancel()
         timeoutJob?.cancel()
         retryJob?.cancel()
@@ -195,6 +198,7 @@ class PlaybackController(
         retryJob?.cancel()
         retryJob = null
         preparedGeneration = null
+        currentPlaybackUsesNetwork = null
         engine.stop()
 
         if (resetRetryBudget) {
@@ -205,13 +209,6 @@ class PlaybackController(
             mutableState.value,
             PlaybackEvent.Start(request),
         )
-
-        if (!networkAvailable) {
-            failCurrentAndMaybeRetry(
-                PlaybackFailure(PlaybackFailureCategory.NETWORK_UNAVAILABLE),
-            )
-            return
-        }
 
         timeoutJob = scope.launch {
             delay(loadingTimeoutMillis)
@@ -228,6 +225,36 @@ class PlaybackController(
         }
 
         resolutionJob = scope.launch {
+            val offlineLocator = try {
+                withContext(ioDispatcher) {
+                    resolveOfflineLocator(request)
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                null
+            }
+
+            ensureActive()
+            if (released || requestGeneration != generation) return@launch
+
+            if (offlineLocator != null) {
+                prepareResolvedLocator(
+                    locator = offlineLocator,
+                    requestGeneration = requestGeneration,
+                )
+                return@launch
+            }
+
+            currentPlaybackUsesNetwork = true
+            if (!networkAvailable) {
+                timeoutJob?.cancel()
+                failCurrentAndMaybeRetry(
+                    PlaybackFailure(PlaybackFailureCategory.NETWORK_UNAVAILABLE),
+                )
+                return@launch
+            }
+
             val result = try {
                 withContext(ioDispatcher) {
                     resolveLocator(request)
@@ -245,9 +272,10 @@ class PlaybackController(
 
             when (result) {
                 is PlaybackResolutionResult.Success -> {
-                    preparedGeneration = requestGeneration
-                    engine.prepare(result.locator)
-                    engine.play()
+                    prepareResolvedLocator(
+                        locator = result.locator,
+                        requestGeneration = requestGeneration,
+                    )
                 }
                 is PlaybackResolutionResult.Failure -> {
                     timeoutJob?.cancel()
@@ -257,9 +285,28 @@ class PlaybackController(
         }
     }
 
+    private fun prepareResolvedLocator(
+        locator: ResolvedPlaybackLocator,
+        requestGeneration: Long,
+    ) {
+        val usesNetwork = locator.origin != ResolvedPlaybackOrigin.LOCAL_DOWNLOAD
+        currentPlaybackUsesNetwork = usesNetwork
+        if (usesNetwork && !networkAvailable) {
+            timeoutJob?.cancel()
+            failCurrentAndMaybeRetry(
+                PlaybackFailure(PlaybackFailureCategory.NETWORK_UNAVAILABLE),
+            )
+            return
+        }
+        preparedGeneration = requestGeneration
+        engine.prepare(locator)
+        engine.play()
+    }
+
     private fun stopOnControllerDispatcher() {
         generation += 1
         preparedGeneration = null
+        currentPlaybackUsesNetwork = null
         resolutionJob?.cancel()
         timeoutJob?.cancel()
         retryJob?.cancel()
@@ -270,6 +317,7 @@ class PlaybackController(
     }
 
     private fun handleNetworkUnavailable() {
+        if (currentPlaybackUsesNetwork != true) return
         val request = mutableState.value.requestOrNull() ?: return
         retryJob?.cancel()
         retryJob = null
