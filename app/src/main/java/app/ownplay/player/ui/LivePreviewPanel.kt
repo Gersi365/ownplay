@@ -93,9 +93,9 @@ internal fun LivePreviewPanel(
 
     Surface(
         modifier = modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(20.dp),
+        shape = RoundedCornerShape(16.dp),
         color = Color.Black,
-        tonalElevation = 4.dp,
+        tonalElevation = 3.dp,
     ) {
         Box(
             modifier = Modifier
@@ -124,13 +124,13 @@ internal fun LivePreviewPanel(
             Surface(
                 modifier = Modifier
                     .align(Alignment.TopStart)
-                    .padding(10.dp),
+                    .padding(8.dp),
                 shape = RoundedCornerShape(999.dp),
                 color = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.92f),
             ) {
                 Text(
                     text = "LIVE",
-                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                    modifier = Modifier.padding(horizontal = 9.dp, vertical = 3.dp),
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onErrorContainer,
                     fontWeight = FontWeight.Bold,
@@ -141,7 +141,8 @@ internal fun LivePreviewPanel(
                 CircularProgressIndicator(
                     modifier = Modifier
                         .align(Alignment.Center)
-                        .size(34.dp),
+                        .size(30.dp),
+                    strokeWidth = 2.dp,
                 )
             }
 
@@ -149,18 +150,18 @@ internal fun LivePreviewPanel(
                 Surface(
                     modifier = Modifier
                         .align(Alignment.Center)
-                        .padding(20.dp),
-                    shape = RoundedCornerShape(16.dp),
+                        .padding(16.dp),
+                    shape = RoundedCornerShape(14.dp),
                     color = MaterialTheme.colorScheme.surface.copy(alpha = 0.92f),
                 ) {
                     Column(
-                        modifier = Modifier.padding(16.dp),
+                        modifier = Modifier.padding(12.dp),
                         horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.spacedBy(6.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp),
                     ) {
                         Text(
                             text = playbackStatusLabel(state),
-                            style = MaterialTheme.typography.bodyMedium,
+                            style = MaterialTheme.typography.bodySmall,
                             fontWeight = FontWeight.Medium,
                         )
                         if (controls.canRetry) {
@@ -180,44 +181,42 @@ internal fun LivePreviewPanel(
             AnimatedVisibility(
                 visible = controlsVisible || state !is PlaybackState.Playing,
                 modifier = Modifier.align(Alignment.BottomCenter),
-                enter = fadeIn(tween(160)) +
+                enter = fadeIn(tween(150)) +
                     slideInVertically(
-                        animationSpec = tween(180),
-                        initialOffsetY = { fullHeight -> fullHeight / 4 },
+                        animationSpec = tween(170),
+                        initialOffsetY = { fullHeight -> fullHeight / 5 },
                     ),
-                exit = fadeOut(tween(130)) +
+                exit = fadeOut(tween(120)) +
                     slideOutVertically(
-                        animationSpec = tween(150),
-                        targetOffsetY = { fullHeight -> fullHeight / 5 },
+                        animationSpec = tween(140),
+                        targetOffsetY = { fullHeight -> fullHeight / 6 },
                     ),
             ) {
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .background(Color.Black.copy(alpha = 0.72f))
-                        .padding(horizontal = 12.dp, vertical = 8.dp),
-                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                        .background(Color.Black.copy(alpha = 0.70f))
+                        .padding(horizontal = 10.dp, vertical = 5.dp),
+                    verticalArrangement = Arrangement.spacedBy(2.dp),
                 ) {
-                    Row(
+                    Column(
                         modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
+                        verticalArrangement = Arrangement.spacedBy(0.dp),
                     ) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                text = selection.displayName,
-                                style = MaterialTheme.typography.titleSmall,
-                                fontWeight = FontWeight.SemiBold,
-                                color = Color.White,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                            )
-                            Text(
-                                text = playbackStatusLabel(state),
-                                style = MaterialTheme.typography.labelSmall,
-                                color = Color.White.copy(alpha = 0.72f),
-                                maxLines = 1,
-                            )
-                        }
+                        Text(
+                            text = selection.displayName,
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.SemiBold,
+                            color = Color.White,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        Text(
+                            text = playbackStatusLabel(state),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = Color.White.copy(alpha = 0.70f),
+                            maxLines = 1,
+                        )
                     }
 
                     Row(
@@ -233,11 +232,13 @@ internal fun LivePreviewPanel(
                                 enabled = selection.request.navigationTarget(
                                     PlaybackNavigationDirection.PREVIOUS,
                                 ) != null,
+                                modifier = Modifier.size(38.dp),
                             ) {
                                 Icon(
                                     Icons.Filled.SkipPrevious,
                                     contentDescription = "Previous channel",
                                     tint = Color.White,
+                                    modifier = Modifier.size(20.dp),
                                 )
                             }
                         }
@@ -255,6 +256,7 @@ internal fun LivePreviewPanel(
                                     }
                                 },
                                 enabled = controls.canPause || controls.canPlay,
+                                modifier = Modifier.size(42.dp),
                             ) {
                                 Icon(
                                     imageVector = if (controls.canPause) {
@@ -263,6 +265,7 @@ internal fun LivePreviewPanel(
                                         Icons.Filled.PlayArrow
                                     },
                                     contentDescription = if (controls.canPause) "Pause" else "Play",
+                                    modifier = Modifier.size(22.dp),
                                 )
                             }
                         }
@@ -275,29 +278,39 @@ internal fun LivePreviewPanel(
                                 enabled = selection.request.navigationTarget(
                                     PlaybackNavigationDirection.NEXT,
                                 ) != null,
+                                modifier = Modifier.size(38.dp),
                             ) {
                                 Icon(
                                     Icons.Filled.SkipNext,
                                     contentDescription = "Next channel",
                                     tint = Color.White,
+                                    modifier = Modifier.size(20.dp),
                                 )
                             }
                         }
                         PreviewControlSlot {
-                            IconButton(onClick = onOpenFullscreen) {
+                            IconButton(
+                                onClick = onOpenFullscreen,
+                                modifier = Modifier.size(38.dp),
+                            ) {
                                 Icon(
                                     Icons.Filled.Fullscreen,
                                     contentDescription = "Open full player",
                                     tint = Color.White,
+                                    modifier = Modifier.size(20.dp),
                                 )
                             }
                         }
                         PreviewControlSlot {
-                            IconButton(onClick = onClose) {
+                            IconButton(
+                                onClick = onClose,
+                                modifier = Modifier.size(38.dp),
+                            ) {
                                 Icon(
                                     Icons.Filled.Close,
                                     contentDescription = "Close preview",
                                     tint = Color.White,
+                                    modifier = Modifier.size(20.dp),
                                 )
                             }
                         }
