@@ -370,6 +370,8 @@ internal fun PlaybackResolutionFailureReason.toPlaybackFailure(): PlaybackFailur
         PlaybackResolutionFailureReason.CHANNEL_NOT_FOUND,
         PlaybackResolutionFailureReason.SOURCE_CHANNEL_MISMATCH,
         PlaybackResolutionFailureReason.CHANNEL_REMOVED,
+        PlaybackResolutionFailureReason.MOVIE_NOT_FOUND,
+        PlaybackResolutionFailureReason.SOURCE_MOVIE_MISMATCH,
         PlaybackResolutionFailureReason.DESCRIPTOR_REFERENCE_INVALID,
         PlaybackResolutionFailureReason.DESCRIPTOR_NOT_FOUND,
         PlaybackResolutionFailureReason.SOURCE_LOCATOR_REFERENCE_INVALID,
