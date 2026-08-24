@@ -19,9 +19,14 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
 import app.ownplay.player.source.network.SourceHttpClient
+import java.io.ByteArrayOutputStream
+import java.io.InputStream
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.Request
+
+private const val MAX_POSTER_BYTES = 8 * 1024 * 1024
+private const val MAX_POSTER_LONG_EDGE_PX = 768
 
 @Composable
 internal fun RemotePoster(
@@ -39,7 +44,14 @@ internal fun RemotePoster(
                             Request.Builder().url(posterUrl).get().build(),
                         ).execute().use { response ->
                             if (!response.isSuccessful) return@use null
-                            BitmapFactory.decodeStream(response.body.byteStream())?.asImageBitmap()
+                            val body = response.body
+                            val contentLength = body.contentLength()
+                            if (contentLength > MAX_POSTER_BYTES.toLong()) return@use null
+                            val bytes = readPosterBytes(
+                                input = body.byteStream(),
+                                maxBytes = MAX_POSTER_BYTES,
+                            ) ?: return@use null
+                            decodePoster(bytes)
                         }
                     }.getOrNull()
                 }
@@ -52,19 +64,67 @@ internal fun RemotePoster(
             .background(MaterialTheme.colorScheme.surfaceVariant),
         contentAlignment = Alignment.Center,
     ) {
-        if (image != null) {
+        image?.let { poster ->
             Image(
-                bitmap = image!!,
+                bitmap = poster,
                 contentDescription = title,
                 modifier = Modifier.fillMaxSize(),
                 contentScale = ContentScale.Crop,
             )
-        } else {
-            Text(
-                text = title.trim().firstOrNull()?.uppercase() ?: "•",
-                style = MaterialTheme.typography.headlineMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
+        } ?: Text(
+            text = title.trim().firstOrNull()?.uppercase() ?: "•",
+            style = MaterialTheme.typography.headlineMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
     }
+}
+
+private fun decodePoster(bytes: ByteArray): ImageBitmap? {
+    val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+    BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
+    if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null
+
+    val options = BitmapFactory.Options().apply {
+        inSampleSize = calculatePosterInSampleSize(
+            width = bounds.outWidth,
+            height = bounds.outHeight,
+            maxLongEdgePx = MAX_POSTER_LONG_EDGE_PX,
+        )
+    }
+    return BitmapFactory.decodeByteArray(bytes, 0, bytes.size, options)?.asImageBitmap()
+}
+
+internal fun calculatePosterInSampleSize(
+    width: Int,
+    height: Int,
+    maxLongEdgePx: Int = MAX_POSTER_LONG_EDGE_PX,
+): Int {
+    require(maxLongEdgePx > 0) { "maxLongEdgePx must be positive" }
+    if (width <= 0 || height <= 0) return 1
+
+    var sampleSize = 1
+    while (
+        width / sampleSize > maxLongEdgePx ||
+        height / sampleSize > maxLongEdgePx
+    ) {
+        if (sampleSize > Int.MAX_VALUE / 2) break
+        sampleSize *= 2
+    }
+    return sampleSize
+}
+
+internal fun readPosterBytes(input: InputStream, maxBytes: Int): ByteArray? {
+    if (maxBytes <= 0) return null
+    val output = ByteArrayOutputStream(minOf(maxBytes, 64 * 1024))
+    val buffer = ByteArray(16 * 1024)
+    var total = 0
+    while (true) {
+        val read = input.read(buffer)
+        if (read < 0) break
+        if (read == 0) continue
+        total += read
+        if (total > maxBytes) return null
+        output.write(buffer, 0, read)
+    }
+    return output.toByteArray()
 }
