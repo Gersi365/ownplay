@@ -6,6 +6,7 @@ import androidx.room.ForeignKey
 import androidx.room.Index
 import androidx.room.Insert
 import androidx.room.OnConflictStrategy
+import androidx.room.PrimaryKey
 import androidx.room.Query
 import app.ownplay.player.persistence.PlaylistSourceEntity
 import kotlinx.coroutines.flow.Flow
@@ -39,6 +40,7 @@ object DownloadStates {
     ],
 )
 data class MediaDownloadEntity(
+    @PrimaryKey
     val downloadId: String,
     val sourceId: String,
     val mediaKind: String,
