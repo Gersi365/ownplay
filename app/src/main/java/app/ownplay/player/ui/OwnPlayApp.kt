@@ -49,6 +49,7 @@ import app.ownplay.player.OwnPlayAppRuntime
 import app.ownplay.player.playback.LivePlaybackSelection
 import app.ownplay.player.source.SourceSyncStage
 import app.ownplay.player.source.SourceSyncState
+import app.ownplay.player.ui.series.SeriesRoute
 import app.ownplay.player.ui.vod.VodRoute
 
 private const val SECTION_MOTION_MILLIS = 200
@@ -77,6 +78,7 @@ fun OwnPlayApp(
     var activeSelection by remember { mutableStateOf<LivePlaybackSelection?>(null) }
     var fullscreenSelection by remember { mutableStateOf<LivePlaybackSelection?>(null) }
     var vodFullscreen by remember { mutableStateOf(false) }
+    var seriesFullscreen by remember { mutableStateOf(false) }
 
     LaunchedEffect(summaries) {
         val ids = summaries.map { it.sourceId }.toSet()
@@ -106,10 +108,15 @@ fun OwnPlayApp(
         section == OwnPlaySection.LIVE &&
             activeSelection != null &&
             fullscreenSelection == null
-    val playbackSurfaceActive = previewActive || fullscreenSelection != null || vodFullscreen
+    val playbackSurfaceActive =
+        previewActive || fullscreenSelection != null || vodFullscreen || seriesFullscreen
     val contentLandscape =
         configuration.orientation == Configuration.ORIENTATION_LANDSCAPE &&
-            (section == OwnPlaySection.LIVE || section == OwnPlaySection.MOVIES)
+            (
+                section == OwnPlaySection.LIVE ||
+                    section == OwnPlaySection.MOVIES ||
+                    section == OwnPlaySection.SERIES
+                )
 
     LaunchedEffect(playbackSurfaceActive) {
         onPlaybackSurfaceActiveChanged(playbackSurfaceActive)
@@ -157,7 +164,7 @@ fun OwnPlayApp(
             }
         },
         bottomBar = {
-            if (!contentLandscape && !vodFullscreen) {
+            if (!contentLandscape && !vodFullscreen && !seriesFullscreen) {
                 NavigationBar(
                     modifier = Modifier.navigationBarsPadding(),
                     containerColor = MaterialTheme.colorScheme.surface,
@@ -276,9 +283,15 @@ fun OwnPlayApp(
                     },
                 )
 
-                OwnPlaySection.SERIES -> ContentSectionPlaceholder(
-                    title = "Series",
-                    subtitle = "Series, seasons and episodes will live here.",
+                OwnPlaySection.SERIES -> SeriesRoute(
+                    runtime = runtime,
+                    sourceId = activeSourceId,
+                    sourceKind = activeSummary?.sourceKind,
+                    onOpenSettings = { openContentSection(OwnPlaySection.SETTINGS) },
+                    onFullscreenStateChanged = { fullscreen ->
+                        seriesFullscreen = fullscreen
+                        onPlaybackFullscreenChanged(fullscreen)
+                    },
                 )
 
                 OwnPlaySection.SETTINGS -> SettingsScreen(
@@ -286,7 +299,8 @@ fun OwnPlayApp(
                     summaries = summaries,
                     syncState = syncState,
                     activeSourceName = activeSummary?.name,
-                    hasActivePlayback = activeSelection != null || vodFullscreen,
+                    hasActivePlayback =
+                        activeSelection != null || vodFullscreen || seriesFullscreen,
                     onOpenLive = { section = OwnPlaySection.LIVE },
                     onOpenSourceInLive = { sourceId ->
                         if (sourceId != activeSourceId) {
