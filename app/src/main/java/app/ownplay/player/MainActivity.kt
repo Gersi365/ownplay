@@ -7,6 +7,7 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import app.ownplay.player.personalization.AppOrientationStore
 import app.ownplay.player.playback.PlaybackState
 import app.ownplay.player.ui.OwnPlayRoot
 import app.ownplay.player.ui.PictureInPicturePlaybackSurface
@@ -22,11 +23,13 @@ import kotlinx.coroutines.launch
 class MainActivity : ComponentActivity() {
     private lateinit var runtime: OwnPlayAppRuntime
     private lateinit var playbackWindowController: PlaybackWindowController
+    private lateinit var appOrientationStore: AppOrientationStore
     private val activityScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         runtime = OwnPlayAppRuntime(applicationContext)
+        appOrientationStore = AppOrientationStore(applicationContext)
         playbackWindowController = PlaybackWindowController(this)
         playbackWindowController.refreshWindowState()
         enableEdgeToEdge()
@@ -46,6 +49,11 @@ class MainActivity : ComponentActivity() {
             }
         }
         playbackWindowController.attachWindowRoot(findViewById(android.R.id.content))
+        activityScope.launch {
+            appOrientationStore.observe().collectLatest { mode ->
+                playbackWindowController.updateAppOrientation(mode)
+            }
+        }
         activityScope.launch {
             runtime.playbackController.state.collectLatest { state ->
                 playbackWindowController.updatePlaybackState(state is PlaybackState.Playing)
