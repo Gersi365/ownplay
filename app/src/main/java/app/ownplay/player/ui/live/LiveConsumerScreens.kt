@@ -25,10 +25,13 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
@@ -147,6 +150,7 @@ internal fun LandscapeLiveWorkspaceSimple(
     onOpenFullscreen: (LivePlaybackSelection) -> Unit,
     onPreviewClosed: () -> Unit,
     onOpenEpgGuide: () -> Unit,
+    onOpenSettings: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Row(
@@ -158,6 +162,7 @@ internal fun LandscapeLiveWorkspaceSimple(
         CategoryColumn(
             state = state,
             onCategorySelected = onCategorySelected,
+            onOpenSettings = onOpenSettings,
             modifier = Modifier
                 .weight(0.22f)
                 .fillMaxHeight(),
@@ -325,6 +330,7 @@ private fun CategoryStripCompact(
 private fun CategoryColumn(
     state: LiveBrowseState,
     onCategorySelected: (String?) -> Unit,
+    onOpenSettings: () -> Unit,
     modifier: Modifier,
 ) {
     Surface(
@@ -377,6 +383,27 @@ private fun CategoryColumn(
                         onClick = { onCategorySelected(category.providerCategoryKey) },
                     )
                 }
+            }
+            HorizontalDivider()
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable(onClick = onOpenSettings)
+                    .padding(horizontal = 10.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.Settings,
+                    contentDescription = null,
+                    modifier = Modifier.size(18.dp),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Text(
+                    text = "Settings",
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.Medium,
+                )
             }
         }
     }
