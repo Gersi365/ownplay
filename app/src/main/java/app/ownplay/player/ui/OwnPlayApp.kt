@@ -228,6 +228,8 @@ fun OwnPlayApp(
                             onPlay = runtime.playbackController::play,
                             onPause = runtime.playbackController::pause,
                             onRetry = runtime.playbackController::retry,
+                            onOpenMovies = { section = OwnPlaySection.MOVIES },
+                            onOpenSeries = { section = OwnPlaySection.SERIES },
                             onOpenSettings = { section = OwnPlaySection.SETTINGS },
                             onPreviewRequested = { selection ->
                                 activeSelection = selection
