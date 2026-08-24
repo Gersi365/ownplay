@@ -21,7 +21,9 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.LiveTv
+import androidx.compose.material.icons.filled.Movie
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.VideoLibrary
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
@@ -52,6 +54,8 @@ private const val SECTION_MOTION_MILLIS = 200
 
 private enum class OwnPlaySection {
     LIVE,
+    MOVIES,
+    SERIES,
     SETTINGS,
 }
 
@@ -155,6 +159,18 @@ fun OwnPlayApp(
                         label = { Text("Live") },
                     )
                     NavigationBarItem(
+                        selected = section == OwnPlaySection.MOVIES,
+                        onClick = { section = OwnPlaySection.MOVIES },
+                        icon = { Icon(Icons.Filled.Movie, contentDescription = "Movies") },
+                        label = { Text("Movies") },
+                    )
+                    NavigationBarItem(
+                        selected = section == OwnPlaySection.SERIES,
+                        onClick = { section = OwnPlaySection.SERIES },
+                        icon = { Icon(Icons.Filled.VideoLibrary, contentDescription = "Series") },
+                        label = { Text("Series") },
+                    )
+                    NavigationBarItem(
                         selected = section == OwnPlaySection.SETTINGS,
                         onClick = { section = OwnPlaySection.SETTINGS },
                         icon = { Icon(Icons.Filled.Settings, contentDescription = "Settings") },
@@ -233,6 +249,16 @@ fun OwnPlayApp(
                         )
                     }
                 }
+
+                OwnPlaySection.MOVIES -> ContentSectionPlaceholder(
+                    title = "Movies",
+                    subtitle = "Your VOD library will live here.",
+                )
+
+                OwnPlaySection.SERIES -> ContentSectionPlaceholder(
+                    title = "Series",
+                    subtitle = "Series, seasons and episodes will live here.",
+                )
 
                 OwnPlaySection.SETTINGS -> SettingsScreen(
                     runtime = runtime,
