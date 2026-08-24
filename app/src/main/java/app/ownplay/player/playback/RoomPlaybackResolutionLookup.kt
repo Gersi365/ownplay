@@ -32,4 +32,14 @@ class RoomPlaybackResolutionLookup(
                 removed = channel.availability == ChannelAvailability.REMOVED,
             )
         }
+
+    override suspend fun movieById(movieId: String): PlaybackMovieRecord? =
+        catalogDao.movieById(movieId)?.let { movie ->
+            PlaybackMovieRecord(
+                movieId = movie.movieId,
+                sourceId = movie.sourceId,
+                providerStreamId = movie.providerStreamId.toIntOrNull() ?: return@let null,
+                containerExtension = movie.containerExtension,
+            )
+        }
 }
