@@ -27,7 +27,10 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.LiveTv
+import androidx.compose.material.icons.filled.Movie
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.VideoLibrary
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FilterChip
@@ -46,6 +49,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -151,6 +155,8 @@ internal fun LandscapeLiveWorkspaceSimple(
     onOpenFullscreen: (LivePlaybackSelection) -> Unit,
     onPreviewClosed: () -> Unit,
     onOpenEpgGuide: () -> Unit,
+    onOpenMovies: () -> Unit,
+    onOpenSeries: () -> Unit,
     onOpenSettings: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -163,6 +169,8 @@ internal fun LandscapeLiveWorkspaceSimple(
         CategoryColumn(
             state = state,
             onCategorySelected = onCategorySelected,
+            onOpenMovies = onOpenMovies,
+            onOpenSeries = onOpenSeries,
             onOpenSettings = onOpenSettings,
             modifier = Modifier
                 .weight(0.22f)
@@ -331,6 +339,8 @@ private fun CategoryStripCompact(
 private fun CategoryColumn(
     state: LiveBrowseState,
     onCategorySelected: (String?) -> Unit,
+    onOpenMovies: () -> Unit,
+    onOpenSeries: () -> Unit,
     onOpenSettings: () -> Unit,
     modifier: Modifier,
 ) {
@@ -341,6 +351,34 @@ private fun CategoryColumn(
         tonalElevation = 1.dp,
     ) {
         Column(modifier = Modifier.fillMaxSize()) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 6.dp, vertical = 6.dp),
+                verticalArrangement = Arrangement.spacedBy(2.dp),
+            ) {
+                LandscapeSectionRow(
+                    icon = Icons.Filled.LiveTv,
+                    label = "Live",
+                    selected = true,
+                    onClick = {},
+                )
+                LandscapeSectionRow(
+                    icon = Icons.Filled.Movie,
+                    label = "Movies",
+                    selected = false,
+                    onClick = onOpenMovies,
+                )
+                LandscapeSectionRow(
+                    icon = Icons.Filled.VideoLibrary,
+                    label = "Series",
+                    selected = false,
+                    onClick = onOpenSeries,
+                )
+            }
+
+            HorizontalDivider()
+
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -386,27 +424,68 @@ private fun CategoryColumn(
                 }
             }
             HorizontalDivider()
-            Row(
+            Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clickable(onClick = onOpenSettings)
-                    .padding(horizontal = 10.dp, vertical = 8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    .padding(horizontal = 6.dp, vertical = 6.dp),
             ) {
-                Icon(
-                    imageVector = Icons.Filled.Settings,
-                    contentDescription = null,
-                    modifier = Modifier.size(18.dp),
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                Text(
-                    text = "Settings",
-                    style = MaterialTheme.typography.labelLarge,
-                    fontWeight = FontWeight.Medium,
+                LandscapeSectionRow(
+                    icon = Icons.Filled.Settings,
+                    label = "Settings",
+                    selected = false,
+                    onClick = onOpenSettings,
                 )
             }
         }
+    }
+}
+
+@Composable
+private fun LandscapeSectionRow(
+    icon: ImageVector,
+    label: String,
+    selected: Boolean,
+    onClick: () -> Unit,
+) {
+    val background by animateColorAsState(
+        targetValue = if (selected) {
+            MaterialTheme.colorScheme.primaryContainer
+        } else {
+            MaterialTheme.colorScheme.surface
+        },
+        animationSpec = tween(LIVE_MOTION_FAST),
+        label = "landscapeSectionBackground",
+    )
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(10.dp))
+            .background(background)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 9.dp, vertical = 7.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = null,
+            modifier = Modifier.size(17.dp),
+            tint = if (selected) {
+                MaterialTheme.colorScheme.primary
+            } else {
+                MaterialTheme.colorScheme.onSurfaceVariant
+            },
+        )
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelLarge,
+            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
+            color = if (selected) {
+                MaterialTheme.colorScheme.onPrimaryContainer
+            } else {
+                MaterialTheme.colorScheme.onSurfaceVariant
+            },
+        )
     }
 }
 
