@@ -2,7 +2,10 @@ package app.ownplay.player
 
 import android.content.res.Configuration
 import android.os.Bundle
+import android.view.GestureDetector
+import android.view.MotionEvent
 import androidx.activity.ComponentActivity
+import androidx.activity.OnBackPressedCallback
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.runtime.collectAsState
@@ -11,6 +14,8 @@ import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import app.ownplay.player.personalization.AppOrientationStore
+import app.ownplay.player.playback.PlaybackInteractionBridge
+import app.ownplay.player.playback.PlaybackMediaKind
 import app.ownplay.player.playback.PlaybackState
 import app.ownplay.player.ui.OwnPlayRoot
 import app.ownplay.player.ui.PictureInPicturePlaybackSurface
@@ -23,17 +28,61 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 
+private const val DOUBLE_TAP_SEEK_MILLIS = 10_000L
+
 class MainActivity : ComponentActivity() {
     private lateinit var runtime: OwnPlayAppRuntime
     private lateinit var playbackWindowController: PlaybackWindowController
     private lateinit var appOrientationStore: AppOrientationStore
+    private lateinit var playbackGestureDetector: GestureDetector
     private val activityScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    private var playbackFullscreen = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         runtime = OwnPlayAppRuntime(applicationContext)
         appOrientationStore = AppOrientationStore(applicationContext)
         playbackWindowController = PlaybackWindowController(this)
+        playbackGestureDetector = GestureDetector(
+            this,
+            object : GestureDetector.SimpleOnGestureListener() {
+                override fun onDown(e: MotionEvent): Boolean = true
+
+                override fun onDoubleTap(e: MotionEvent): Boolean {
+                    if (!playbackFullscreen) return false
+                    val mediaKind = when (val state = runtime.playbackController.state.value) {
+                        PlaybackState.Idle -> null
+                        is PlaybackState.Loading -> state.request.mediaKind
+                        is PlaybackState.Playing -> state.request.mediaKind
+                        is PlaybackState.Paused -> state.request.mediaKind
+                        is PlaybackState.Failed -> state.request.mediaKind
+                    }
+                    if (
+                        mediaKind != PlaybackMediaKind.MOVIE &&
+                        mediaKind != PlaybackMediaKind.SERIES_EPISODE
+                    ) {
+                        return false
+                    }
+                    val deltaMillis = if (e.x < window.decorView.width / 2f) {
+                        -DOUBLE_TAP_SEEK_MILLIS
+                    } else {
+                        DOUBLE_TAP_SEEK_MILLIS
+                    }
+                    return PlaybackInteractionBridge.seekBy(deltaMillis)
+                }
+            },
+        )
+        onBackPressedDispatcher.addCallback(
+            this,
+            object : OnBackPressedCallback(true) {
+                override fun handleOnBackPressed() {
+                    if (PlaybackInteractionBridge.handleBack()) return
+                    isEnabled = false
+                    onBackPressedDispatcher.onBackPressed()
+                    isEnabled = true
+                }
+            },
+        )
         playbackWindowController.refreshWindowState()
         enableEdgeToEdge()
         hideStatusBar()
@@ -47,6 +96,7 @@ class MainActivity : ComponentActivity() {
                     OwnPlayRoot(
                         runtime = runtime,
                         onPlaybackFullscreenChanged = { isFullscreen ->
+                            playbackFullscreen = isFullscreen
                             playbackWindowController.updateFullscreenState(isFullscreen)
                             if (!isFullscreen) hideStatusBar()
                         },
@@ -66,6 +116,11 @@ class MainActivity : ComponentActivity() {
                 playbackWindowController.updatePlaybackState(state is PlaybackState.Playing)
             }
         }
+    }
+
+    override fun dispatchTouchEvent(event: MotionEvent): Boolean {
+        playbackGestureDetector.onTouchEvent(event)
+        return super.dispatchTouchEvent(event)
     }
 
     override fun onResume() {
