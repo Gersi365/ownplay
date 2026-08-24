@@ -59,7 +59,8 @@ class MainActivity : ComponentActivity() {
                     }
                     if (
                         mediaKind != PlaybackMediaKind.MOVIE &&
-                        mediaKind != PlaybackMediaKind.SERIES_EPISODE
+                        mediaKind != PlaybackMediaKind.SERIES_EPISODE &&
+                        mediaKind != PlaybackMediaKind.LOCAL_VIDEO
                     ) {
                         return false
                     }
