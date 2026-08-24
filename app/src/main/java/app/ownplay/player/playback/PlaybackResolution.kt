@@ -6,6 +6,7 @@ import app.ownplay.player.source.CredentialRef
 import app.ownplay.player.source.SourceValidator
 import app.ownplay.player.source.UrlValidationResult
 import app.ownplay.player.source.credential.CredentialStore
+import app.ownplay.player.source.credential.XtreamCredentials
 import app.ownplay.player.source.xtream.XtreamSourceLocatorCodec
 import java.util.concurrent.CancellationException
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
@@ -37,14 +38,27 @@ data class PlaybackChannelRecord(
         "PlaybackChannelRecord(channelId=<opaque>, sourceId=<opaque>, streamLocatorRef=<opaque>, removed=$removed)"
 }
 
+data class PlaybackMovieRecord(
+    val movieId: String,
+    val sourceId: String,
+    val providerStreamId: Int,
+    val containerExtension: String?,
+) {
+    override fun toString(): String =
+        "PlaybackMovieRecord(movieId=<opaque>, sourceId=<opaque>, providerStreamId=$providerStreamId, " +
+            "containerExtension=$containerExtension)"
+}
+
 interface PlaybackResolutionLookup {
     suspend fun sourceById(sourceId: String): PlaybackSourceRecord?
     suspend fun channelById(channelId: String): PlaybackChannelRecord?
+    suspend fun movieById(movieId: String): PlaybackMovieRecord?
 }
 
 enum class ResolvedPlaybackOrigin {
     DIRECT,
     XTREAM_LIVE,
+    XTREAM_VOD,
 }
 
 data class ResolvedPlaybackLocator(
@@ -63,7 +77,9 @@ enum class PlaybackResolutionFailureReason {
     SOURCE_NOT_FOUND,
     SOURCE_DISABLED,
     CHANNEL_NOT_FOUND,
+    MOVIE_NOT_FOUND,
     SOURCE_CHANNEL_MISMATCH,
+    SOURCE_MOVIE_MISMATCH,
     CHANNEL_REMOVED,
     DESCRIPTOR_REFERENCE_INVALID,
     DESCRIPTOR_NOT_FOUND,
@@ -103,6 +119,16 @@ private sealed interface LoadedXtreamSourceResult {
     data class Failure(val reason: PlaybackResolutionFailureReason) : LoadedXtreamSourceResult
 }
 
+private data class LoadedXtreamAccess(
+    val source: LoadedXtreamSource,
+    val credentials: XtreamCredentials,
+)
+
+private sealed interface LoadedXtreamAccessResult {
+    data class Success(val access: LoadedXtreamAccess) : LoadedXtreamAccessResult
+    data class Failure(val reason: PlaybackResolutionFailureReason) : LoadedXtreamAccessResult
+}
+
 class LivePlaybackResolver(
     private val lookup: PlaybackResolutionLookup,
     private val sensitiveValueStore: SensitiveValueStore,
@@ -122,6 +148,16 @@ class LivePlaybackResolver(
             return failure(PlaybackResolutionFailureReason.SOURCE_DISABLED)
         }
 
+        return when (request.mediaKind) {
+            PlaybackMediaKind.LIVE -> resolveLiveRequest(source, request)
+            PlaybackMediaKind.MOVIE -> resolveMovieRequest(source, request)
+        }
+    }
+
+    private suspend fun resolveLiveRequest(
+        source: PlaybackSourceRecord,
+        request: PlaybackRequest,
+    ): PlaybackResolutionResult {
         val channel = try {
             lookup.channelById(request.channelId)
         } catch (cancelled: CancellationException) {
@@ -151,9 +187,61 @@ class LivePlaybackResolver(
             is PlaybackLocatorParseResult.Failure -> failure(PlaybackResolutionFailureReason.DESCRIPTOR_INVALID)
             is PlaybackLocatorParseResult.Success -> when (val locator = parsed.locator) {
                 is ParsedPlaybackLocator.Direct -> resolveDirect(source, locator.locator)
-                is ParsedPlaybackLocator.XtreamLive -> resolveXtream(source, locator.streamId)
+                is ParsedPlaybackLocator.XtreamLive -> resolveXtreamLive(source, locator.streamId)
             }
         }
+    }
+
+    private suspend fun resolveMovieRequest(
+        source: PlaybackSourceRecord,
+        request: PlaybackRequest,
+    ): PlaybackResolutionResult {
+        val movie = try {
+            lookup.movieById(request.channelId)
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            return failure(PlaybackResolutionFailureReason.PERSISTENCE_FAILURE)
+        } ?: return failure(PlaybackResolutionFailureReason.MOVIE_NOT_FOUND)
+
+        if (movie.sourceId != source.sourceId) {
+            return failure(PlaybackResolutionFailureReason.SOURCE_MOVIE_MISMATCH)
+        }
+        if (movie.providerStreamId <= 0) {
+            return failure(PlaybackResolutionFailureReason.DESCRIPTOR_INVALID)
+        }
+        if (source.sourceKind != PlaybackResolutionSourceKind.XTREAM) {
+            return failure(PlaybackResolutionFailureReason.UNSUPPORTED_SOURCE_KIND)
+        }
+
+        val access = when (val loaded = loadXtreamAccess(source)) {
+            is LoadedXtreamAccessResult.Success -> loaded.access
+            is LoadedXtreamAccessResult.Failure -> return failure(loaded.reason)
+        }
+        if (
+            access.source.usesCleartext &&
+            !allowCleartext &&
+            !access.source.allowCleartext
+        ) {
+            return failure(PlaybackResolutionFailureReason.CLEARTEXT_NOT_ALLOWED)
+        }
+
+        val extension = movie.containerExtension
+            ?.trim()
+            ?.lowercase()
+            ?.takeIf { candidate -> candidate.matches(Regex("[a-z0-9]{1,8}")) }
+            ?: "mp4"
+        val baseUrl = access.source.normalizedServerUrl.toHttpUrlOrNull()
+            ?: return failure(PlaybackResolutionFailureReason.SOURCE_LOCATOR_INVALID)
+        val resolved = baseUrl.newBuilder()
+            .addPathSegment("movie")
+            .addPathSegment(access.credentials.username)
+            .addPathSegment(access.credentials.password)
+            .addPathSegment("${movie.providerStreamId}.$extension")
+            .build()
+            .toString()
+
+        return success(resolved, ResolvedPlaybackOrigin.XTREAM_VOD)
     }
 
     private suspend fun resolveDirect(
@@ -182,7 +270,7 @@ class LivePlaybackResolver(
         }
     }
 
-    private suspend fun resolveXtream(
+    private suspend fun resolveXtreamLive(
         source: PlaybackSourceRecord,
         streamId: Int,
     ): PlaybackResolutionResult {
@@ -190,48 +278,73 @@ class LivePlaybackResolver(
             return failure(PlaybackResolutionFailureReason.UNSUPPORTED_SOURCE_KIND)
         }
 
-        val loadedSource = when (val loaded = loadXtreamSource(source)) {
-            is LoadedXtreamSourceResult.Success -> loaded.source
-            is LoadedXtreamSourceResult.Failure -> return failure(loaded.reason)
+        val access = when (val loaded = loadXtreamAccess(source)) {
+            is LoadedXtreamAccessResult.Success -> loaded.access
+            is LoadedXtreamAccessResult.Failure -> return failure(loaded.reason)
         }
         if (
-            loadedSource.usesCleartext &&
+            access.source.usesCleartext &&
             !allowCleartext &&
-            !loadedSource.allowCleartext
+            !access.source.allowCleartext
         ) {
             return failure(PlaybackResolutionFailureReason.CLEARTEXT_NOT_ALLOWED)
         }
 
+        val baseUrl = access.source.normalizedServerUrl.toHttpUrlOrNull()
+            ?: return failure(PlaybackResolutionFailureReason.SOURCE_LOCATOR_INVALID)
+        val resolved = baseUrl.newBuilder()
+            .addPathSegment("live")
+            .addPathSegment(access.credentials.username)
+            .addPathSegment(access.credentials.password)
+            .addPathSegment("$streamId.ts")
+            .build()
+            .toString()
+
+        return success(resolved, ResolvedPlaybackOrigin.XTREAM_LIVE)
+    }
+
+    private suspend fun loadXtreamAccess(
+        source: PlaybackSourceRecord,
+    ): LoadedXtreamAccessResult {
+        val loadedSource = when (val loaded = loadXtreamSource(source)) {
+            is LoadedXtreamSourceResult.Success -> loaded.source
+            is LoadedXtreamSourceResult.Failure -> return LoadedXtreamAccessResult.Failure(loaded.reason)
+        }
         val credentialRefValue = source.credentialRef
-            ?: return failure(PlaybackResolutionFailureReason.CREDENTIAL_REFERENCE_MISSING)
+            ?: return LoadedXtreamAccessResult.Failure(
+                PlaybackResolutionFailureReason.CREDENTIAL_REFERENCE_MISSING,
+            )
         val credentialRef = try {
             CredentialRef(credentialRefValue)
         } catch (_: IllegalArgumentException) {
-            return failure(PlaybackResolutionFailureReason.CREDENTIAL_REFERENCE_INVALID)
+            return LoadedXtreamAccessResult.Failure(
+                PlaybackResolutionFailureReason.CREDENTIAL_REFERENCE_INVALID,
+            )
         }
         val credentials = try {
             credentialStore.get(credentialRef)
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (_: Exception) {
-            return failure(PlaybackResolutionFailureReason.CREDENTIAL_STORE_FAILURE)
-        } ?: return failure(PlaybackResolutionFailureReason.CREDENTIALS_NOT_FOUND)
+            return LoadedXtreamAccessResult.Failure(
+                PlaybackResolutionFailureReason.CREDENTIAL_STORE_FAILURE,
+            )
+        } ?: return LoadedXtreamAccessResult.Failure(
+            PlaybackResolutionFailureReason.CREDENTIALS_NOT_FOUND,
+        )
 
         if (credentials.username.isBlank() || credentials.password.isBlank()) {
-            return failure(PlaybackResolutionFailureReason.CREDENTIALS_INVALID)
+            return LoadedXtreamAccessResult.Failure(
+                PlaybackResolutionFailureReason.CREDENTIALS_INVALID,
+            )
         }
 
-        val baseUrl = loadedSource.normalizedServerUrl.toHttpUrlOrNull()
-            ?: return failure(PlaybackResolutionFailureReason.SOURCE_LOCATOR_INVALID)
-        val resolved = baseUrl.newBuilder()
-            .addPathSegment("live")
-            .addPathSegment(credentials.username)
-            .addPathSegment(credentials.password)
-            .addPathSegment("$streamId.ts")
-            .build()
-            .toString()
-
-        return success(resolved, ResolvedPlaybackOrigin.XTREAM_LIVE)
+        return LoadedXtreamAccessResult.Success(
+            LoadedXtreamAccess(
+                source = loadedSource,
+                credentials = credentials,
+            ),
+        )
     }
 
     private suspend fun loadXtreamSource(
