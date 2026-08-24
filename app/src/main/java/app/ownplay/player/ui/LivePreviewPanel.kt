@@ -2,6 +2,12 @@ package app.ownplay.player.ui
 
 import android.graphics.Color as AndroidColor
 import androidx.annotation.OptIn
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -171,10 +177,22 @@ internal fun LivePreviewPanel(
                 }
             }
 
-            if (controlsVisible || state !is PlaybackState.Playing) {
+            AnimatedVisibility(
+                visible = controlsVisible || state !is PlaybackState.Playing,
+                modifier = Modifier.align(Alignment.BottomCenter),
+                enter = fadeIn(tween(160)) +
+                    slideInVertically(
+                        animationSpec = tween(180),
+                        initialOffsetY = { fullHeight -> fullHeight / 4 },
+                    ),
+                exit = fadeOut(tween(130)) +
+                    slideOutVertically(
+                        animationSpec = tween(150),
+                        targetOffsetY = { fullHeight -> fullHeight / 5 },
+                    ),
+            ) {
                 Column(
                     modifier = Modifier
-                        .align(Alignment.BottomCenter)
                         .fillMaxWidth()
                         .background(Color.Black.copy(alpha = 0.72f))
                         .padding(horizontal = 12.dp, vertical = 8.dp),
