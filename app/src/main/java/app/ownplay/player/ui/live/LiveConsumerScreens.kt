@@ -6,6 +6,7 @@ import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
+import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -446,11 +447,14 @@ private fun CategoryRowCompact(
         )
         Text(
             text = title,
-            modifier = Modifier.weight(1f),
+            modifier = Modifier
+                .weight(1f)
+                .basicMarquee(iterations = Int.MAX_VALUE),
             style = MaterialTheme.typography.bodySmall,
             fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
             maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
+            softWrap = false,
+            overflow = TextOverflow.Clip,
         )
         if (countLabel != null) {
             Text(
