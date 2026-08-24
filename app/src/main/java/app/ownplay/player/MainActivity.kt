@@ -46,7 +46,10 @@ class MainActivity : ComponentActivity() {
                 } else {
                     OwnPlayRoot(
                         runtime = runtime,
-                        onPlaybackFullscreenChanged = playbackWindowController::updateFullscreenState,
+                        onPlaybackFullscreenChanged = { isFullscreen ->
+                            playbackWindowController.updateFullscreenState(isFullscreen)
+                            if (!isFullscreen) hideStatusBar()
+                        },
                         onPlaybackSurfaceActiveChanged = playbackWindowController::updatePlaybackSurfaceState,
                     )
                 }
@@ -63,6 +66,11 @@ class MainActivity : ComponentActivity() {
                 playbackWindowController.updatePlaybackState(state is PlaybackState.Playing)
             }
         }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        hideStatusBar()
     }
 
     override fun onWindowFocusChanged(hasFocus: Boolean) {
