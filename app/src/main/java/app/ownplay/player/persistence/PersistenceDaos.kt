@@ -3,6 +3,7 @@ package app.ownplay.player.persistence
 import androidx.room.Dao
 import androidx.room.Query
 import androidx.room.Upsert
+import app.ownplay.player.persistence.vod.ProviderMovieEntity
 import kotlinx.coroutines.flow.Flow
 
 @Dao
@@ -66,6 +67,9 @@ interface ProviderCatalogDao {
 
     @Query("SELECT * FROM provider_channels WHERE channelId = :channelId LIMIT 1")
     suspend fun channelById(channelId: String): ProviderChannelEntity?
+
+    @Query("SELECT * FROM provider_movies WHERE movieId = :movieId LIMIT 1")
+    suspend fun movieById(movieId: String): ProviderMovieEntity?
 
     @Query(
         """
