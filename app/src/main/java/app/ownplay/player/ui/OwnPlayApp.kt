@@ -2,7 +2,6 @@ package app.ownplay.player.ui
 
 import android.content.res.Configuration
 import androidx.compose.animation.AnimatedContent
-import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -13,9 +12,11 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -54,11 +55,10 @@ import androidx.compose.ui.unit.dp
 import app.ownplay.player.OwnPlayAppRuntime
 import app.ownplay.player.persistence.PlaylistSourceSummary
 import app.ownplay.player.playback.LivePlaybackSelection
-import app.ownplay.player.playback.PlaybackNavigationDirection
 import app.ownplay.player.source.SourceSyncStage
 import app.ownplay.player.source.SourceSyncState
 
-private const val SECTION_MOTION_MILLIS = 220
+private const val SECTION_MOTION_MILLIS = 200
 
 private enum class OwnPlaySection {
     LIVE,
@@ -89,7 +89,6 @@ fun OwnPlayApp(
             summaries.isNotEmpty() -> summaries.first().sourceId
             else -> null
         }
-
         val selectionSourceId = activeSelection?.request?.sourceId
         if (selectionSourceId != null && selectionSourceId !in ids) {
             activeSelection = null
@@ -98,7 +97,11 @@ fun OwnPlayApp(
         }
     }
 
-    val playbackSurfaceActive = section == OwnPlaySection.LIVE || fullscreenSelection != null
+    val previewActive =
+        section == OwnPlaySection.LIVE &&
+            activeSelection != null &&
+            fullscreenSelection == null
+    val playbackSurfaceActive = previewActive || fullscreenSelection != null
     val compactLiveLandscape =
         section == OwnPlaySection.LIVE &&
             configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
@@ -163,28 +166,18 @@ fun OwnPlayApp(
                 NavigationBar(
                     modifier = Modifier.navigationBarsPadding(),
                     containerColor = MaterialTheme.colorScheme.surface,
-                    tonalElevation = 4.dp,
+                    tonalElevation = 3.dp,
                 ) {
                     NavigationBarItem(
                         selected = section == OwnPlaySection.LIVE,
                         onClick = { section = OwnPlaySection.LIVE },
-                        icon = {
-                            Icon(
-                                Icons.Filled.LiveTv,
-                                contentDescription = "Live",
-                            )
-                        },
+                        icon = { Icon(Icons.Filled.LiveTv, contentDescription = "Live") },
                         label = { Text("Live") },
                     )
                     NavigationBarItem(
                         selected = section == OwnPlaySection.SETTINGS,
                         onClick = { section = OwnPlaySection.SETTINGS },
-                        icon = {
-                            Icon(
-                                Icons.Filled.Settings,
-                                contentDescription = "Settings",
-                            )
-                        },
+                        icon = { Icon(Icons.Filled.Settings, contentDescription = "Settings") },
                         label = { Text("Settings") },
                     )
                 }
@@ -201,21 +194,21 @@ fun OwnPlayApp(
                 if (targetState.ordinal > initialState.ordinal) {
                     (slideInHorizontally(
                         animationSpec = tween(SECTION_MOTION_MILLIS),
-                        initialOffsetX = { width -> width / 16 },
+                        initialOffsetX = { width -> width / 18 },
                     ) + fadeIn(tween(SECTION_MOTION_MILLIS))) togetherWith
                         (slideOutHorizontally(
                             animationSpec = tween(SECTION_MOTION_MILLIS),
-                            targetOffsetX = { width -> -width / 24 },
-                        ) + fadeOut(tween(150)))
+                            targetOffsetX = { width -> -width / 28 },
+                        ) + fadeOut(tween(130)))
                 } else {
                     (slideInHorizontally(
                         animationSpec = tween(SECTION_MOTION_MILLIS),
-                        initialOffsetX = { width -> -width / 16 },
+                        initialOffsetX = { width -> -width / 18 },
                     ) + fadeIn(tween(SECTION_MOTION_MILLIS))) togetherWith
                         (slideOutHorizontally(
                             animationSpec = tween(SECTION_MOTION_MILLIS),
-                            targetOffsetX = { width -> width / 24 },
-                        ) + fadeOut(tween(150)))
+                            targetOffsetX = { width -> width / 28 },
+                        ) + fadeOut(tween(130)))
                 }
             },
             label = "ownPlaySection",
@@ -248,9 +241,7 @@ fun OwnPlayApp(
                                 activeSelection = null
                                 runtime.playbackController.stop()
                             },
-                            onOpenFullscreen = { selection ->
-                                fullscreenSelection = selection
-                            },
+                            onOpenFullscreen = { selection -> fullscreenSelection = selection },
                             onNavigatePreview = { direction ->
                                 activeSelection
                                     ?.navigate(direction)
@@ -301,31 +292,31 @@ private fun OwnPlayHeader(
 ) {
     Surface(
         color = MaterialTheme.colorScheme.surface,
-        tonalElevation = 2.dp,
+        tonalElevation = if (compact) 1.dp else 2.dp,
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .statusBarsPadding()
                 .padding(
-                    horizontal = if (compact) 10.dp else 18.dp,
-                    vertical = if (compact) 4.dp else 10.dp,
+                    horizontal = if (compact) 8.dp else 16.dp,
+                    vertical = if (compact) 0.dp else 7.dp,
                 ),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(if (compact) 8.dp else 12.dp),
+            horizontalArrangement = Arrangement.spacedBy(if (compact) 6.dp else 10.dp),
         ) {
             Surface(
-                shape = RoundedCornerShape(if (compact) 10.dp else 12.dp),
+                shape = RoundedCornerShape(if (compact) 8.dp else 11.dp),
                 color = MaterialTheme.colorScheme.primary,
             ) {
                 Text(
                     text = "OP",
                     modifier = Modifier.padding(
-                        horizontal = if (compact) 8.dp else 10.dp,
-                        vertical = if (compact) 5.dp else 7.dp,
+                        horizontal = if (compact) 7.dp else 9.dp,
+                        vertical = if (compact) 3.dp else 6.dp,
                     ),
                     color = MaterialTheme.colorScheme.onPrimary,
-                    style = MaterialTheme.typography.labelLarge,
+                    style = if (compact) MaterialTheme.typography.labelMedium else MaterialTheme.typography.labelLarge,
                     fontWeight = FontWeight.Black,
                 )
             }
@@ -336,31 +327,25 @@ private fun OwnPlayHeader(
                         LiveSourceSelector(
                             activeSourceId = activeSourceId,
                             summaries = summaries,
+                            compact = true,
                             onSourceSelected = onSourceSelected,
                         )
                     } else {
-                        Text(
-                            text = "Live",
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.SemiBold,
-                        )
+                        Text("Live", style = MaterialTheme.typography.labelLarge)
                     }
                 }
             } else {
-                Column(
-                    modifier = Modifier
-                        .weight(1f)
-                        .animateContentSize(animationSpec = tween(180)),
-                ) {
+                Column(modifier = Modifier.weight(1f)) {
                     Text(
                         text = "OwnPlay",
-                        style = MaterialTheme.typography.titleLarge,
+                        style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold,
                     )
                     when {
                         section == OwnPlaySection.LIVE && summaries.isNotEmpty() -> LiveSourceSelector(
                             activeSourceId = activeSourceId,
                             summaries = summaries,
+                            compact = false,
                             onSourceSelected = onSourceSelected,
                         )
                         section == OwnPlaySection.SETTINGS -> Text(
@@ -368,11 +353,7 @@ private fun OwnPlayHeader(
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
-                        else -> Text(
-                            text = "Live media hub",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
+                        else -> Unit
                     }
                 }
             }
@@ -381,17 +362,21 @@ private fun OwnPlayHeader(
                 SourceSyncStage.LoadingChannels,
                 SourceSyncStage.LoadingEpg,
                 -> CircularProgressIndicator(
-                    modifier = Modifier.size(if (compact) 18.dp else 22.dp),
+                    modifier = Modifier.size(if (compact) 15.dp else 20.dp),
                     strokeWidth = 2.dp,
                 )
                 else -> Unit
             }
 
             if (compact && section == OwnPlaySection.LIVE) {
-                IconButton(onClick = onSettingsRequested) {
+                IconButton(
+                    onClick = onSettingsRequested,
+                    modifier = Modifier.size(34.dp),
+                ) {
                     Icon(
                         Icons.Filled.Settings,
                         contentDescription = "Settings",
+                        modifier = Modifier.size(20.dp),
                     )
                 }
             }
@@ -403,6 +388,7 @@ private fun OwnPlayHeader(
 private fun LiveSourceSelector(
     activeSourceId: String?,
     summaries: List<PlaylistSourceSummary>,
+    compact: Boolean,
     onSourceSelected: (String) -> Unit,
 ) {
     var expanded by remember { mutableStateOf(false) }
@@ -411,16 +397,23 @@ private fun LiveSourceSelector(
     Box {
         TextButton(
             onClick = { expanded = true },
-            modifier = Modifier.padding(start = 0.dp),
+            modifier = if (compact) Modifier.height(32.dp) else Modifier,
+            contentPadding = if (compact) {
+                PaddingValues(horizontal = 6.dp, vertical = 0.dp)
+            } else {
+                PaddingValues(horizontal = 8.dp, vertical = 2.dp)
+            },
         ) {
             Text(
                 text = active.name,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
+                style = if (compact) MaterialTheme.typography.labelLarge else MaterialTheme.typography.bodyMedium,
             )
             Icon(
                 Icons.Filled.KeyboardArrowDown,
                 contentDescription = "Choose playlist",
+                modifier = Modifier.size(if (compact) 18.dp else 22.dp),
             )
         }
         DropdownMenu(
@@ -464,47 +457,29 @@ private fun LiveNoSourceScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .padding(horizontal = 20.dp, vertical = 24.dp),
-        verticalArrangement = Arrangement.spacedBy(18.dp),
+            .padding(horizontal = 20.dp, vertical = 20.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
-        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Text(
-                text = "Live TV",
-                style = MaterialTheme.typography.headlineMedium,
-                fontWeight = FontWeight.Bold,
-            )
-            Text(
-                text = "0 channels",
-                style = MaterialTheme.typography.bodyLarge,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-
+        Text(
+            text = "Live TV",
+            style = MaterialTheme.typography.headlineMedium,
+            fontWeight = FontWeight.Bold,
+        )
         Surface(
             modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(24.dp),
+            shape = RoundedCornerShape(20.dp),
             color = MaterialTheme.colorScheme.surface,
             tonalElevation = 2.dp,
         ) {
             Column(
-                modifier = Modifier.padding(20.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp),
+                modifier = Modifier.padding(18.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
                 if (syncState.stage == SourceSyncStage.LoadingChannels) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(12.dp),
-                    ) {
-                        CircularProgressIndicator(strokeWidth = 2.dp)
-                        Text(
-                            text = "Loading channels…",
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.SemiBold,
-                        )
-                    }
                     Text(
-                        text = "The playlist will appear automatically when the channel catalog is ready.",
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        text = "Loading channels…",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold,
                     )
                 } else {
                     Text(
@@ -513,12 +488,10 @@ private fun LiveNoSourceScreen(
                         fontWeight = FontWeight.SemiBold,
                     )
                     Text(
-                        text = "Add a playlist from Settings. Live remains your home screen even when no source is configured.",
+                        text = "Add a playlist from Settings to start watching Live TV.",
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
-                    Button(onClick = onAddPlaylist) {
-                        Text("Add playlist")
-                    }
+                    Button(onClick = onAddPlaylist) { Text("Add playlist") }
                 }
             }
         }
