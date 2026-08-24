@@ -52,11 +52,24 @@ internal fun SettingsScreen(
     onStopPlayback: () -> Unit,
 ) {
     var showLiveManagement by remember { mutableStateOf(false) }
+    var showPlaylistManagement by remember { mutableStateOf(false) }
+
     if (showLiveManagement) {
         LiveManagementScreen(
             runtime = runtime,
             summaries = summaries,
             onBack = { showLiveManagement = false },
+        )
+        return
+    }
+
+    if (showPlaylistManagement) {
+        PlaylistManagementSubscreen(
+            runtime = runtime,
+            summaries = summaries,
+            syncState = syncState,
+            onBack = { showPlaylistManagement = false },
+            onOpenInLive = onOpenSourceInLive,
         )
         return
     }
@@ -141,14 +154,21 @@ internal fun SettingsScreen(
             }
 
             CompactSettingsSection(
-                title = "Live management",
-                subtitle = "Keep the Live screen focused on watching",
+                title = "Content",
+                subtitle = "Manage what appears in OwnPlay",
             ) {
                 SettingsActionRow(
-                    title = "Categories, channels & groups",
-                    detail = "Reorder · hide · rename · customize",
+                    title = "Live management",
+                    detail = "Categories · channels · groups",
                     actionLabel = "Manage",
                     onClick = { showLiveManagement = true },
+                )
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                SettingsActionRow(
+                    title = "Playlists",
+                    detail = "${summaries.size} configured · sources & refresh",
+                    actionLabel = "Manage",
+                    onClick = { showPlaylistManagement = true },
                 )
             }
 
@@ -184,13 +204,6 @@ internal fun SettingsScreen(
                 }
             }
 
-            PlaylistSettingsScreen(
-                runtime = runtime,
-                summaries = summaries,
-                syncState = syncState,
-                onOpenInLive = onOpenSourceInLive,
-            )
-
             CompactSettingsSection(
                 title = "Refresh",
                 subtitle = "Automatic source update when OwnPlay opens",
@@ -213,6 +226,49 @@ internal fun SettingsScreen(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
+        }
+    }
+}
+
+@Composable
+private fun PlaylistManagementSubscreen(
+    runtime: OwnPlayAppRuntime,
+    summaries: List<PlaylistSourceSummary>,
+    syncState: SourceSyncState,
+    onBack: () -> Unit,
+    onOpenInLive: (String) -> Unit,
+) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .navigationBarsPadding(),
+    ) {
+        Column(
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .fillMaxWidth()
+                .widthIn(max = 760.dp)
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 12.dp, vertical = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                TextButton(onClick = onBack) { Text("‹ Settings") }
+                Text(
+                    text = "Playlists",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                )
+            }
+            PlaylistSettingsScreen(
+                runtime = runtime,
+                summaries = summaries,
+                syncState = syncState,
+                onOpenInLive = onOpenInLive,
+            )
         }
     }
 }
