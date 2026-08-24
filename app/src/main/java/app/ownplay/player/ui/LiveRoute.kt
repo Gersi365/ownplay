@@ -2,18 +2,12 @@ package app.ownplay.player.ui
 
 import android.content.res.Configuration
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -148,43 +142,29 @@ internal fun LiveRoute(
     }
 
     if (isLandscape) {
-        Box(modifier = Modifier.fillMaxSize()) {
-            LandscapeLiveWorkspaceSimple(
-                state = browseState,
-                preview = preview,
-                playbackState = playbackState,
-                videoOutput = videoOutput,
-                epgSnapshot = epgSnapshot,
-                epgLoading = loadingEpg || epgLookupLoading,
-                epgFailed = epgRefreshFailed || epgLookupFailed,
-                onSearchChange = browseSession::updateSearch,
-                onCategorySelected = browseSession::selectCategory,
-                onFavoritesOnlyChanged = browseSession::setFavoritesOnly,
-                onOrderChanged = browseSession::setOrder,
-                onCustomGroupSelected = browseSession::selectCustomGroup,
-                onChannelSelected = ::selectChannel,
-                onPlay = onPlay,
-                onPause = onPause,
-                onRetry = onRetry,
-                onNavigatePreview = onNavigatePreview,
-                onOpenFullscreen = onOpenFullscreen,
-                onPreviewClosed = onPreviewClosed,
-                onOpenEpgGuide = { showEpgGuide = true },
-            )
-            IconButton(
-                onClick = onOpenSettings,
-                modifier = Modifier
-                    .align(Alignment.BottomEnd)
-                    .padding(8.dp)
-                    .size(36.dp),
-            ) {
-                Icon(
-                    imageVector = Icons.Filled.Settings,
-                    contentDescription = "Settings",
-                    modifier = Modifier.size(19.dp),
-                )
-            }
-        }
+        LandscapeLiveWorkspaceSimple(
+            state = browseState,
+            preview = preview,
+            playbackState = playbackState,
+            videoOutput = videoOutput,
+            epgSnapshot = epgSnapshot,
+            epgLoading = loadingEpg || epgLookupLoading,
+            epgFailed = epgRefreshFailed || epgLookupFailed,
+            onSearchChange = browseSession::updateSearch,
+            onCategorySelected = browseSession::selectCategory,
+            onFavoritesOnlyChanged = browseSession::setFavoritesOnly,
+            onOrderChanged = browseSession::setOrder,
+            onCustomGroupSelected = browseSession::selectCustomGroup,
+            onChannelSelected = ::selectChannel,
+            onPlay = onPlay,
+            onPause = onPause,
+            onRetry = onRetry,
+            onNavigatePreview = onNavigatePreview,
+            onOpenFullscreen = onOpenFullscreen,
+            onPreviewClosed = onPreviewClosed,
+            onOpenEpgGuide = { showEpgGuide = true },
+            onOpenSettings = onOpenSettings,
+        )
     } else {
         Column(modifier = Modifier.fillMaxSize()) {
             if (preview != null) {
