@@ -9,6 +9,11 @@ import app.ownplay.player.persistence.download.MediaDownloadEntity
 import app.ownplay.player.persistence.live.LiveBrowseDao
 import app.ownplay.player.persistence.recent.RecentChannelDao
 import app.ownplay.player.persistence.recent.RecentChannelEntity
+import app.ownplay.player.persistence.series.ProviderSeriesCategoryEntity
+import app.ownplay.player.persistence.series.ProviderSeriesEntity
+import app.ownplay.player.persistence.series.ProviderSeriesEpisodeEntity
+import app.ownplay.player.persistence.series.ProviderSeriesSeasonEntity
+import app.ownplay.player.persistence.series.SeriesCatalogDao
 import app.ownplay.player.persistence.vod.MediaFavoriteEntity
 import app.ownplay.player.persistence.vod.PlaybackProgressEntity
 import app.ownplay.player.persistence.vod.ProviderMovieEntity
@@ -32,8 +37,12 @@ import app.ownplay.player.persistence.vod.VodCatalogDao
         MediaFavoriteEntity::class,
         PlaybackProgressEntity::class,
         MediaDownloadEntity::class,
+        ProviderSeriesCategoryEntity::class,
+        ProviderSeriesEntity::class,
+        ProviderSeriesSeasonEntity::class,
+        ProviderSeriesEpisodeEntity::class,
     ],
-    version = 4,
+    version = 5,
     exportSchema = true,
 )
 abstract class OwnPlayDatabase : RoomDatabase() {
@@ -45,6 +54,7 @@ abstract class OwnPlayDatabase : RoomDatabase() {
     abstract fun recentChannelDao(): RecentChannelDao
     abstract fun vodCatalogDao(): VodCatalogDao
     abstract fun mediaDownloadDao(): MediaDownloadDao
+    abstract fun seriesCatalogDao(): SeriesCatalogDao
 
     companion object {
         const val DATABASE_NAME = "ownplay.db"
@@ -55,7 +65,7 @@ abstract class OwnPlayDatabase : RoomDatabase() {
                 OwnPlayDatabase::class.java,
                 DATABASE_NAME,
             )
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
                 .build()
     }
 }
