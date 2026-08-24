@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.LiveTv
 import androidx.compose.material.icons.filled.Movie
 import androidx.compose.material.icons.filled.Settings
@@ -49,6 +50,7 @@ import app.ownplay.player.OwnPlayAppRuntime
 import app.ownplay.player.playback.LivePlaybackSelection
 import app.ownplay.player.source.SourceSyncStage
 import app.ownplay.player.source.SourceSyncState
+import app.ownplay.player.ui.local.LocalVideoRoute
 import app.ownplay.player.ui.series.SeriesRoute
 import app.ownplay.player.ui.vod.VodRoute
 
@@ -58,6 +60,7 @@ private enum class OwnPlaySection {
     LIVE,
     MOVIES,
     SERIES,
+    LOCAL,
     SETTINGS,
 }
 
@@ -79,6 +82,7 @@ fun OwnPlayApp(
     var fullscreenSelection by remember { mutableStateOf<LivePlaybackSelection?>(null) }
     var vodFullscreen by remember { mutableStateOf(false) }
     var seriesFullscreen by remember { mutableStateOf(false) }
+    var localFullscreen by remember { mutableStateOf(false) }
 
     LaunchedEffect(summaries) {
         val ids = summaries.map { it.sourceId }.toSet()
@@ -109,7 +113,7 @@ fun OwnPlayApp(
             activeSelection != null &&
             fullscreenSelection == null
     val playbackSurfaceActive =
-        previewActive || fullscreenSelection != null || vodFullscreen || seriesFullscreen
+        previewActive || fullscreenSelection != null || vodFullscreen || seriesFullscreen || localFullscreen
     val contentLandscape =
         configuration.orientation == Configuration.ORIENTATION_LANDSCAPE &&
             (section == OwnPlaySection.LIVE || section == OwnPlaySection.MOVIES)
@@ -160,7 +164,7 @@ fun OwnPlayApp(
             }
         },
         bottomBar = {
-            if (!contentLandscape && !vodFullscreen && !seriesFullscreen) {
+            if (!contentLandscape && !vodFullscreen && !seriesFullscreen && !localFullscreen) {
                 NavigationBar(
                     modifier = Modifier.navigationBarsPadding(),
                     containerColor = MaterialTheme.colorScheme.surface,
@@ -183,6 +187,12 @@ fun OwnPlayApp(
                         onClick = { openContentSection(OwnPlaySection.SERIES) },
                         icon = { Icon(Icons.Filled.VideoLibrary, contentDescription = "Series") },
                         label = { Text("Series") },
+                    )
+                    NavigationBarItem(
+                        selected = section == OwnPlaySection.LOCAL,
+                        onClick = { openContentSection(OwnPlaySection.LOCAL) },
+                        icon = { Icon(Icons.Filled.FolderOpen, contentDescription = "Local") },
+                        label = { Text("Local") },
                     )
                     NavigationBarItem(
                         selected = section == OwnPlaySection.SETTINGS,
@@ -290,13 +300,21 @@ fun OwnPlayApp(
                     },
                 )
 
+                OwnPlaySection.LOCAL -> LocalVideoRoute(
+                    runtime = runtime,
+                    onFullscreenStateChanged = { fullscreen ->
+                        localFullscreen = fullscreen
+                        onPlaybackFullscreenChanged(fullscreen)
+                    },
+                )
+
                 OwnPlaySection.SETTINGS -> SettingsScreen(
                     runtime = runtime,
                     summaries = summaries,
                     syncState = syncState,
                     activeSourceName = activeSummary?.name,
                     hasActivePlayback =
-                        activeSelection != null || vodFullscreen || seriesFullscreen,
+                        activeSelection != null || vodFullscreen || seriesFullscreen || localFullscreen,
                     onOpenLive = { section = OwnPlaySection.LIVE },
                     onOpenSourceInLive = { sourceId ->
                         if (sourceId != activeSourceId) {
