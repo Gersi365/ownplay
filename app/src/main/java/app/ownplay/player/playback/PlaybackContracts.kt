@@ -3,6 +3,7 @@ package app.ownplay.player.playback
 enum class PlaybackMediaKind {
     LIVE,
     MOVIE,
+    SERIES_EPISODE,
 }
 
 enum class PlaybackNavigationDirection {
@@ -40,6 +41,8 @@ data class PlaybackRequest(
     val channelId: String,
     val mediaKind: PlaybackMediaKind = PlaybackMediaKind.LIVE,
     val navigationContext: PlaybackNavigationContext? = null,
+    val providerStreamId: Int? = null,
+    val containerExtension: String? = null,
 ) {
     init {
         require(sourceId.isNotBlank()) { "Source ID must not be blank" }
@@ -50,6 +53,15 @@ data class PlaybackRequest(
         require(navigationContext?.nextChannelId != channelId) {
             "Next content item must differ from the current content item"
         }
+        if (mediaKind == PlaybackMediaKind.SERIES_EPISODE) {
+            require((providerStreamId ?: 0) > 0) {
+                "Series episode provider stream ID must be positive"
+            }
+        }
+        require(
+            containerExtension == null ||
+                containerExtension.trim().lowercase().matches(Regex("[a-z0-9]{1,8}")),
+        ) { "Container extension is invalid" }
     }
 
     fun navigationTarget(direction: PlaybackNavigationDirection): String? =
@@ -57,7 +69,8 @@ data class PlaybackRequest(
 
     override fun toString(): String =
         "PlaybackRequest(sourceId=<opaque>, channelId=<opaque>, mediaKind=$mediaKind, " +
-            "navigationContext=$navigationContext)"
+            "navigationContext=$navigationContext, providerStreamId=$providerStreamId, " +
+            "containerExtension=$containerExtension)"
 }
 
 enum class PlaybackFailureCategory(
