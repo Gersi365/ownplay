@@ -65,7 +65,15 @@ class OfflineDownloadWorker(
                 }
             }
 
-            val usePublicDownloads = OfflineDownloadStorage.supportsPublicDownloads()
+            val partFile = OfflineDownloadStorage.partialFile(applicationContext, downloadId)
+            val legacyPartialExists = partFile.isFile && partFile.length() > 0L
+            val legacyPrivateLocation = initialRow.localRelativePath?.let { location ->
+                !OfflineDownloadStorage.isPublicDownloadsLocation(location)
+            } == true
+            val usePublicDownloads =
+                OfflineDownloadStorage.supportsPublicDownloads() &&
+                    !legacyPartialExists &&
+                    !legacyPrivateLocation
             val destinationLocation = if (usePublicDownloads) {
                 initialRow.localRelativePath
                     ?.takeIf(OfflineDownloadStorage::isPublicDownloadsLocation)
@@ -79,7 +87,6 @@ class OfflineDownloadWorker(
             } else {
                 null
             }
-            val partFile = OfflineDownloadStorage.partialFile(applicationContext, downloadId)
             val existingBytes = if (usePublicDownloads) {
                 OfflineDownloadStorage.locationSize(applicationContext, destinationLocation) ?: 0L
             } else {
