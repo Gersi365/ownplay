@@ -53,6 +53,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import app.ownplay.player.epg.EpgProgram
 import app.ownplay.player.epg.EpgSnapshot
 import app.ownplay.player.epg.EpgTimelineProjector
 import app.ownplay.player.live.LiveBrowseOrder
@@ -71,6 +72,7 @@ private const val LIVE_MOTION_FAST = 140
 internal fun PortraitLiveBrowse(
     state: LiveBrowseState,
     playingChannelId: String?,
+    currentEpgByChannelId: Map<String, EpgProgram>,
     onSearchChange: (String) -> Unit,
     onCategorySelected: (String?) -> Unit,
     onFavoritesOnlyChanged: (Boolean) -> Unit,
@@ -127,6 +129,7 @@ internal fun PortraitLiveBrowse(
         ChannelListCompact(
             channels = state.channels,
             playingChannelId = playingChannelId,
+            currentEpgByChannelId = currentEpgByChannelId,
             onChannelSelected = onChannelSelected,
             modifier = Modifier.weight(1f),
         )
@@ -140,6 +143,7 @@ internal fun LandscapeLiveWorkspaceSimple(
     playbackState: PlaybackState,
     videoOutput: PlaybackVideoOutput,
     epgSnapshot: EpgSnapshot?,
+    currentEpgByChannelId: Map<String, EpgProgram>,
     epgLoading: Boolean,
     epgFailed: Boolean,
     onSearchChange: (String) -> Unit,
@@ -182,6 +186,7 @@ internal fun LandscapeLiveWorkspaceSimple(
         ChannelColumn(
             state = state,
             playingChannelId = preview?.request?.channelId,
+            currentEpgByChannelId = currentEpgByChannelId,
             onSearchChange = onSearchChange,
             onFavoritesOnlyChanged = onFavoritesOnlyChanged,
             onOrderChanged = onOrderChanged,
@@ -549,6 +554,7 @@ private fun CategoryRowCompact(
 private fun ChannelColumn(
     state: LiveBrowseState,
     playingChannelId: String?,
+    currentEpgByChannelId: Map<String, EpgProgram>,
     onSearchChange: (String) -> Unit,
     onFavoritesOnlyChanged: (Boolean) -> Unit,
     onOrderChanged: (LiveBrowseOrder) -> Unit,
@@ -601,6 +607,7 @@ private fun ChannelColumn(
             ChannelListCompact(
                 channels = state.channels,
                 playingChannelId = playingChannelId,
+                currentEpgByChannelId = currentEpgByChannelId,
                 onChannelSelected = onChannelSelected,
                 modifier = Modifier.weight(1f),
             )
@@ -612,6 +619,7 @@ private fun ChannelColumn(
 private fun ChannelListCompact(
     channels: List<LiveChannelItem>,
     playingChannelId: String?,
+    currentEpgByChannelId: Map<String, EpgProgram>,
     onChannelSelected: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -637,6 +645,7 @@ private fun ChannelListCompact(
             CompactChannelRow(
                 channel = channel,
                 playing = channel.channelId == playingChannelId,
+                currentProgram = currentEpgByChannelId[channel.channelId],
                 onClick = { onChannelSelected(channel.channelId) },
             )
             HorizontalDivider(modifier = Modifier.padding(start = 48.dp))
@@ -648,6 +657,7 @@ private fun ChannelListCompact(
 private fun CompactChannelRow(
     channel: LiveChannelItem,
     playing: Boolean,
+    currentProgram: EpgProgram?,
     onClick: () -> Unit,
 ) {
     val background by animateColorAsState(
@@ -689,9 +699,20 @@ private fun CompactChannelRow(
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
-            channel.categoryName?.takeIf(String::isNotBlank)?.let { category ->
+            val secondaryLabel = currentProgram?.let { program ->
+                buildString {
+                    append("Now")
+                    program.startLabel?.let { start ->
+                        append(" · ")
+                        append(start)
+                    }
+                    append(" · ")
+                    append(program.title)
+                }
+            } ?: channel.categoryName
+            secondaryLabel?.takeIf(String::isNotBlank)?.let { label ->
                 Text(
-                    text = category,
+                    text = label,
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1,

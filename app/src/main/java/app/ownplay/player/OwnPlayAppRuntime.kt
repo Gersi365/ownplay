@@ -2,6 +2,7 @@ package app.ownplay.player
 
 import android.content.Context
 import app.ownplay.player.download.OfflineDownloadRepository
+import app.ownplay.player.epg.EpgProgram
 import app.ownplay.player.epg.EpgSnapshot
 import app.ownplay.player.epg.XtreamEpgRepository
 import app.ownplay.player.live.LiveCatalogRepository
@@ -400,6 +401,9 @@ class OwnPlayAppRuntime(
         sourceId: String,
         channelId: String,
     ): EpgSnapshot? = epgRepository.snapshot(sourceId, channelId)
+
+    fun currentEpgPrograms(sourceId: String): Map<String, EpgProgram> =
+        epgRepository.currentPrograms(sourceId)
 
     suspend fun loadSourceEditSnapshot(sourceId: String): SourceEditSnapshot? =
         sourceManagementService.load(sourceId)
