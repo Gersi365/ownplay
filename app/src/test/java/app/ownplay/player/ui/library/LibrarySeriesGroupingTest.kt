@@ -4,6 +4,7 @@ import app.ownplay.player.download.OfflineDownload
 import app.ownplay.player.persistence.download.DownloadMediaKinds
 import app.ownplay.player.persistence.download.DownloadStates
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Test
 
 class LibrarySeriesGroupingTest {
@@ -51,6 +52,50 @@ class LibrarySeriesGroupingTest {
 
         assertEquals(2, groups.size)
         assertEquals(setOf("source-1", "source-2"), groups.map { it.key.sourceId }.toSet())
+    }
+
+    @Test
+    fun exactSeriesIdsPreventSameTitleSeriesFromMerging() {
+        val groups = groupLibrarySeries(
+            listOf(
+                episode(
+                    "a",
+                    "source-1",
+                    "source-1:series:10:episode:101",
+                    "One",
+                    "Atlas",
+                    1,
+                    1,
+                    100L,
+                ),
+                episode(
+                    "b",
+                    "source-1",
+                    "source-1:series:20:episode:201",
+                    "Two",
+                    "Atlas",
+                    1,
+                    1,
+                    200L,
+                ),
+            ),
+        )
+
+        assertEquals(2, groups.size)
+        assertEquals(
+            setOf("source-1:series:10", "source-1:series:20"),
+            groups.mapNotNull { it.seriesId }.toSet(),
+        )
+    }
+
+    @Test
+    fun extractsSeriesIdFromStableEpisodeContentId() {
+        assertEquals(
+            "source-1:series:42",
+            seriesIdFromEpisodeContentId("source-1:series:42:episode:777"),
+        )
+        assertNull(seriesIdFromEpisodeContentId("episode-777"))
+        assertNull(seriesIdFromEpisodeContentId("source-1:series:42:episode:"))
     }
 
     @Test
