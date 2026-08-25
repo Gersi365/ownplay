@@ -236,18 +236,15 @@ internal fun VodRoute(
         loading = false
     }
 
-    LaunchedEffect(sourceId, requestedMovieId, catalog.movies, loading) {
+    LaunchedEffect(sourceId, requestedMovieId, catalog.movies) {
         val targetMovieId = requestedMovieId ?: return@LaunchedEffect
         val target = catalog.movies.firstOrNull { movie -> movie.movieId == targetMovieId }
-        if (target != null) {
-            query = ""
-            selectedCategoryKey = null
-            favoritesOnly = false
-            selectedMovie = target
-            onRequestedMovieConsumed()
-        } else if (!loading && catalog.movies.isNotEmpty()) {
-            onRequestedMovieConsumed()
-        }
+            ?: return@LaunchedEffect
+        query = ""
+        selectedCategoryKey = null
+        favoritesOnly = false
+        selectedMovie = target
+        onRequestedMovieConsumed()
     }
 
     LaunchedEffect(selectedMovie?.movieId) {
