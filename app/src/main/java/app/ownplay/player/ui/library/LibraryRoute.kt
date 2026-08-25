@@ -408,7 +408,7 @@ private fun LibraryMediaCard(
                         )
                         Spacer(Modifier.width(5.dp))
                         Text(
-                            text = "Play Offline",
+                            text = "Play",
                             maxLines = 1,
                             softWrap = false,
                         )
