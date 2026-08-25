@@ -16,6 +16,7 @@ import app.ownplay.player.source.credential.AndroidKeystoreCredentialStore
 import java.io.BufferedInputStream
 import java.io.BufferedOutputStream
 import java.io.FileOutputStream
+import java.io.IOException
 import java.util.concurrent.CancellationException
 import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.currentCoroutineContext
@@ -138,6 +139,13 @@ class OfflineDownloadWorker(
                             }
                         }
                     }
+                }
+
+                if (dao.getById(downloadId)?.state == DownloadStates.PAUSED) {
+                    throw CancellationException("Download paused before finalization")
+                }
+                if (totalBytes != null && downloaded < totalBytes) {
+                    throw IOException("Download ended before the expected content length")
                 }
 
                 val finalFile = OfflineDownloadFiles.finalFile(
