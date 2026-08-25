@@ -1,8 +1,5 @@
 package app.ownplay.player.ui.library
 
-import android.graphics.Color as AndroidColor
-import androidx.annotation.OptIn
-import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -21,17 +18,13 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.DownloadDone
 import androidx.compose.material.icons.filled.ErrorOutline
-import androidx.compose.material.icons.filled.Movie
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material.icons.filled.VideoLibrary
 import androidx.compose.material3.Button
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
@@ -51,26 +44,17 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.viewinterop.AndroidView
-import androidx.media3.common.util.UnstableApi
-import androidx.media3.ui.AspectRatioFrameLayout
-import androidx.media3.ui.PlayerView
 import app.ownplay.player.OwnPlayAppRuntime
 import app.ownplay.player.download.OfflineDownload
 import app.ownplay.player.download.OfflineDownloadFeatureRuntime
 import app.ownplay.player.persistence.download.DownloadMediaKinds
 import app.ownplay.player.persistence.download.DownloadStates
 import app.ownplay.player.playback.PlaybackInteractionBridge
-import app.ownplay.player.playback.PlaybackState
 import app.ownplay.player.ui.vod.RemotePoster
-import kotlinx.coroutines.currentCoroutineContext
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
 private enum class LibraryFilter {
@@ -78,11 +62,6 @@ private enum class LibraryFilter {
     MOVIES,
     SERIES,
 }
-
-private data class LibraryPlaybackSession(
-    val download: OfflineDownload,
-    val initialPositionMs: Long,
-)
 
 @Composable
 internal fun LibraryRoute(
@@ -103,6 +82,7 @@ internal fun LibraryRoute(
     var filter by remember { mutableStateOf(LibraryFilter.ALL) }
     var playbackSession by remember { mutableStateOf<LibraryPlaybackSession?>(null) }
     var playbackRequestError by remember { mutableStateOf<String?>(null) }
+    var selectedSeriesKey by remember { mutableStateOf<LibrarySeriesKey?>(null) }
 
     val session = playbackSession
     if (session != null) {
@@ -127,12 +107,80 @@ internal fun LibraryRoute(
         return
     }
 
-    val filtered = downloads.filter { download ->
-        when (filter) {
-            LibraryFilter.ALL -> true
-            LibraryFilter.MOVIES -> download.mediaKind == DownloadMediaKinds.MOVIE
-            LibraryFilter.SERIES -> download.mediaKind == DownloadMediaKinds.SERIES_EPISODE
+    val movieDownloads = remember(downloads) {
+        downloads.filter { it.mediaKind == DownloadMediaKinds.MOVIE }
+    }
+    val seriesGroups = remember(downloads) { groupLibrarySeries(downloads) }
+    val selectedSeriesGroup = selectedSeriesKey?.let { key ->
+        seriesGroups.firstOrNull { it.key == key }
+    }
+
+    LaunchedEffect(selectedSeriesKey, seriesGroups) {
+        if (selectedSeriesKey != null && selectedSeriesGroup == null) {
+            selectedSeriesKey = null
         }
+    }
+
+    val seriesBackOwner = remember { Any() }
+    DisposableEffect(selectedSeriesKey, seriesBackOwner) {
+        if (selectedSeriesKey != null) {
+            PlaybackInteractionBridge.registerBackAction(seriesBackOwner) {
+                selectedSeriesKey = null
+            }
+        }
+        onDispose {
+            PlaybackInteractionBridge.clearBackAction(seriesBackOwner)
+        }
+    }
+
+    fun playDownload(download: OfflineDownload) {
+        scope.launch {
+            val request = downloadRuntime.playbackRequest(download.downloadId)
+            if (request == null) {
+                playbackRequestError =
+                    "The downloaded file is unavailable. Remove it or download it again."
+                return@launch
+            }
+            val progress = downloadRuntime.playbackProgress(download.downloadId)
+            playbackRequestError = null
+            runtime.playbackController.start(request)
+            playbackSession = LibraryPlaybackSession(
+                download = download,
+                initialPositionMs = progress
+                    ?.takeIf { !it.completed }
+                    ?.positionMs
+                    ?.coerceAtLeast(0L)
+                    ?: 0L,
+            )
+        }
+    }
+
+    if (selectedSeriesGroup != null) {
+        LibrarySeriesDetailScreen(
+            group = selectedSeriesGroup,
+            playbackError = playbackRequestError,
+            onBack = { selectedSeriesKey = null },
+            onPlay = ::playDownload,
+            onPause = { download ->
+                scope.launch { downloadRuntime.pause(download.downloadId) }
+            },
+            onResume = { download ->
+                scope.launch { downloadRuntime.resume(download.downloadId) }
+            },
+            onRetry = { download ->
+                scope.launch { downloadRuntime.retry(download.downloadId) }
+            },
+            onRemove = { download ->
+                scope.launch { downloadRuntime.remove(download.downloadId) }
+            },
+        )
+        return
+    }
+
+    val hasVisibleItems = when (filter) {
+        LibraryFilter.ALL -> movieDownloads.isNotEmpty() || seriesGroups.isNotEmpty()
+        LibraryFilter.MOVIES -> movieDownloads.isNotEmpty()
+        LibraryFilter.SERIES -> seriesGroups.isNotEmpty()
     }
 
     Column(
@@ -203,7 +251,7 @@ internal fun LibraryRoute(
             }
         }
 
-        if (filtered.isEmpty()) {
+        if (!hasVisibleItems) {
             Box(
                 modifier = Modifier.fillMaxSize(),
                 contentAlignment = Alignment.Center,
@@ -224,7 +272,7 @@ internal fun LibraryRoute(
                         fontWeight = FontWeight.SemiBold,
                     )
                     Text(
-                        text = "Downloaded movies and episodes appear here automatically.",
+                        text = "Downloaded movies and series appear here automatically.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -240,50 +288,40 @@ internal fun LibraryRoute(
             horizontalArrangement = Arrangement.spacedBy(10.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            items(filtered, key = { it.downloadId }) { download ->
-                LibraryMediaCard(
-                    download = download,
-                    onOpenDetails = if (download.mediaKind == DownloadMediaKinds.MOVIE) {
-                        {
+            if (filter != LibraryFilter.SERIES) {
+                items(movieDownloads, key = { "movie:${it.downloadId}" }) { download ->
+                    LibraryMediaCard(
+                        download = download,
+                        onOpenDetails = {
                             onOpenMovieDetails(download.sourceId, download.contentId)
-                        }
-                    } else {
-                        null
-                    },
-                    onPlayOffline = {
-                        scope.launch {
-                            val request = downloadRuntime.playbackRequest(download.downloadId)
-                            if (request == null) {
-                                playbackRequestError =
-                                    "The downloaded file is unavailable. Remove it or download it again."
-                                return@launch
-                            }
-                            val progress = downloadRuntime.playbackProgress(download.downloadId)
+                        },
+                        onPlayOffline = { playDownload(download) },
+                        onPause = {
+                            scope.launch { downloadRuntime.pause(download.downloadId) }
+                        },
+                        onResume = {
+                            scope.launch { downloadRuntime.resume(download.downloadId) }
+                        },
+                        onRetry = {
+                            scope.launch { downloadRuntime.retry(download.downloadId) }
+                        },
+                        onRemove = {
+                            scope.launch { downloadRuntime.remove(download.downloadId) }
+                        },
+                    )
+                }
+            }
+
+            if (filter != LibraryFilter.MOVIES) {
+                items(seriesGroups, key = { it.key }) { group ->
+                    LibrarySeriesCard(
+                        group = group,
+                        onOpen = {
                             playbackRequestError = null
-                            runtime.playbackController.start(request)
-                            playbackSession = LibraryPlaybackSession(
-                                download = download,
-                                initialPositionMs = progress
-                                    ?.takeIf { !it.completed }
-                                    ?.positionMs
-                                    ?.coerceAtLeast(0L)
-                                    ?: 0L,
-                            )
-                        }
-                    },
-                    onPause = {
-                        scope.launch { downloadRuntime.pause(download.downloadId) }
-                    },
-                    onResume = {
-                        scope.launch { downloadRuntime.resume(download.downloadId) }
-                    },
-                    onRetry = {
-                        scope.launch { downloadRuntime.retry(download.downloadId) }
-                    },
-                    onRemove = {
-                        scope.launch { downloadRuntime.remove(download.downloadId) }
-                    },
-                )
+                            selectedSeriesKey = group.key
+                        },
+                    )
+                }
             }
         }
     }
@@ -292,18 +330,14 @@ internal fun LibraryRoute(
 @Composable
 private fun LibraryMediaCard(
     download: OfflineDownload,
-    onOpenDetails: (() -> Unit)?,
+    onOpenDetails: () -> Unit,
     onPlayOffline: () -> Unit,
     onPause: () -> Unit,
     onResume: () -> Unit,
     onRetry: () -> Unit,
     onRemove: () -> Unit,
 ) {
-    val detailsModifier = if (onOpenDetails == null) {
-        Modifier
-    } else {
-        Modifier.clickable(onClick = onOpenDetails)
-    }
+    val detailsModifier = Modifier.clickable(onClick = onOpenDetails)
 
     Surface(
         modifier = Modifier.fillMaxWidth(),
@@ -332,11 +366,9 @@ private fun LibraryMediaCard(
                 overflow = TextOverflow.Ellipsis,
             )
             Text(
-                text = librarySecondaryLabel(download),
+                text = "Movie",
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
             )
 
             when (download.state) {
@@ -451,180 +483,6 @@ private fun LibraryMediaCard(
             }
         }
     }
-}
-
-@OptIn(UnstableApi::class)
-@Composable
-private fun LibraryPlaybackScreen(
-    runtime: OwnPlayAppRuntime,
-    session: LibraryPlaybackSession,
-    onExit: () -> Unit,
-    onProgress: (positionMs: Long, durationMs: Long?) -> Unit,
-    onFullscreenStateChanged: (Boolean) -> Unit,
-) {
-    val playbackState by runtime.playbackController.state.collectAsState()
-    val backOwner = remember(session.download.downloadId) { Any() }
-    var playerView by remember(session.download.downloadId) { mutableStateOf<PlayerView?>(null) }
-    var currentPosition by remember(session.download.downloadId) {
-        mutableStateOf(session.initialPositionMs)
-    }
-    var duration by remember(session.download.downloadId) { mutableStateOf(0L) }
-    var resumeApplied by remember(session.download.downloadId) { mutableStateOf(false) }
-
-    DisposableEffect(session.download.downloadId, backOwner) {
-        onFullscreenStateChanged(true)
-        PlaybackInteractionBridge.registerBackAction(backOwner, onExit)
-        onDispose {
-            if (currentPosition > 0L) {
-                onProgress(currentPosition, duration.takeIf { it > 0L })
-            }
-            PlaybackInteractionBridge.clearBackAction(backOwner)
-            onFullscreenStateChanged(false)
-        }
-    }
-
-    LaunchedEffect(playbackState, playerView, session.download.downloadId) {
-        val request = when (val state = playbackState) {
-            is PlaybackState.Playing -> state.request
-            is PlaybackState.Paused -> state.request
-            else -> null
-        }
-        if (
-            !resumeApplied &&
-            request != null &&
-            request.sourceId == session.download.sourceId &&
-            request.channelId == session.download.contentId
-        ) {
-            session.initialPositionMs.takeIf { it > 5_000L }?.let { position ->
-                playerView?.player?.seekTo(position)
-                currentPosition = position
-            }
-            resumeApplied = true
-        }
-    }
-
-    LaunchedEffect(playerView, session.download.downloadId) {
-        var saveTick = 0
-        while (currentCoroutineContext().isActive) {
-            delay(1_000L)
-            val player = playerView?.player ?: continue
-            currentPosition = player.currentPosition.coerceAtLeast(0L)
-            duration = player.duration.takeIf { it > 0L } ?: duration
-            saveTick += 1
-            if (saveTick >= 5 && currentPosition > 0L) {
-                saveTick = 0
-                onProgress(currentPosition, duration.takeIf { it > 0L })
-            }
-        }
-    }
-
-    Surface(
-        modifier = Modifier.fillMaxSize(),
-        color = Color.Black,
-    ) {
-        Box(modifier = Modifier.fillMaxSize()) {
-            AndroidView(
-                factory = { context ->
-                    PlayerView(context).apply {
-                        useController = true
-                        resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
-                        setShutterBackgroundColor(AndroidColor.BLACK)
-                        runtime.playbackVideoOutput.bind(this)
-                        playerView = this
-                    }
-                },
-                modifier = Modifier.fillMaxSize(),
-                update = { view ->
-                    view.useController = true
-                    view.resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
-                    playerView = view
-                },
-                onRelease = { view ->
-                    runtime.playbackVideoOutput.unbind(view)
-                    if (playerView === view) playerView = null
-                },
-            )
-
-            Row(
-                modifier = Modifier
-                    .align(Alignment.TopStart)
-                    .fillMaxWidth()
-                    .background(Color.Black.copy(alpha = 0.66f))
-                    .padding(horizontal = 6.dp, vertical = 4.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                IconButton(onClick = onExit) {
-                    Icon(Icons.Filled.ArrowBack, contentDescription = "Back to Library", tint = Color.White)
-                }
-                Icon(
-                    imageVector = if (session.download.mediaKind == DownloadMediaKinds.SERIES_EPISODE) {
-                        Icons.Filled.VideoLibrary
-                    } else {
-                        Icons.Filled.Movie
-                    },
-                    contentDescription = null,
-                    tint = Color.White.copy(alpha = 0.8f),
-                    modifier = Modifier.size(18.dp),
-                )
-                Spacer(Modifier.width(6.dp))
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = session.download.title,
-                        color = Color.White,
-                        style = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.SemiBold,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                    Text(
-                        text = "Library · offline copy",
-                        color = Color.White.copy(alpha = 0.72f),
-                        style = MaterialTheme.typography.labelSmall,
-                    )
-                }
-                Spacer(Modifier.width(82.dp))
-            }
-
-            when (playbackState) {
-                is PlaybackState.Loading -> CircularProgressIndicator(
-                    modifier = Modifier.align(Alignment.Center),
-                )
-
-                is PlaybackState.Failed -> Surface(
-                    modifier = Modifier.align(Alignment.Center),
-                    shape = RoundedCornerShape(14.dp),
-                    color = Color.Black.copy(alpha = 0.80f),
-                ) {
-                    Column(
-                        modifier = Modifier.padding(16.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.spacedBy(8.dp),
-                    ) {
-                        Text("Playback failed", color = Color.White)
-                        FilledTonalButton(onClick = runtime.playbackController::retry) {
-                            Icon(Icons.Filled.Refresh, contentDescription = null)
-                            Spacer(Modifier.width(4.dp))
-                            Text("Retry")
-                        }
-                    }
-                }
-
-                else -> Unit
-            }
-        }
-    }
-}
-
-private fun librarySecondaryLabel(download: OfflineDownload): String {
-    if (download.mediaKind != DownloadMediaKinds.SERIES_EPISODE) return "Movie"
-    val episode = listOfNotNull(
-        download.seasonNumber?.let { "S$it" },
-        download.episodeNumber?.let { "E$it" },
-    ).joinToString(" · ")
-    return listOfNotNull(
-        download.seriesTitle?.takeIf(String::isNotBlank),
-        episode.takeIf(String::isNotBlank),
-    ).joinToString(" · ").ifBlank { "Series episode" }
 }
 
 private fun downloadProgressLabel(download: OfflineDownload): String {
