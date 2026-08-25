@@ -12,7 +12,7 @@ class SeriesFeatureRuntime(
     context: Context,
 ) : AutoCloseable {
     private val applicationContext = context.applicationContext
-    private val database = OwnPlayDatabase.create(applicationContext)
+    private val database = sharedDatabase(applicationContext)
     private val repository = SeriesRepository(
         database = database,
         sensitiveValueStore = AndroidKeystoreSensitiveValueStore(applicationContext),
@@ -41,6 +41,20 @@ class SeriesFeatureRuntime(
         repository.clearEpisodeProgress(sourceId, episodeId)
 
     override fun close() {
-        database.close()
+        // Series routes are screen-scoped, but their Room database must outlive route disposal.
+        // Animated section transitions and active WorkManager episode-download writes can overlap
+        // the outgoing Series composition, so the shared instance intentionally lives for the process.
+    }
+
+    private companion object {
+        @Volatile
+        private var processDatabase: OwnPlayDatabase? = null
+
+        fun sharedDatabase(context: Context): OwnPlayDatabase =
+            processDatabase ?: synchronized(this) {
+                processDatabase ?: OwnPlayDatabase.create(context).also { database ->
+                    processDatabase = database
+                }
+            }
     }
 }
