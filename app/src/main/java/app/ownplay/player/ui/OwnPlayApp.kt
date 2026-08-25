@@ -162,11 +162,47 @@ fun OwnPlayApp(
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
         topBar = {
-            if (section == OwnPlaySection.SETTINGS) {
-                SettingsHeader(
+            when {
+                section == OwnPlaySection.SETTINGS -> SettingsHeader(
                     activeSourceName = activeSummary?.name,
                     syncState = syncState,
                 )
+                contentLandscape && !vodFullscreen -> NavigationBar(
+                    modifier = Modifier.statusBarsPadding(),
+                    containerColor = MaterialTheme.colorScheme.surface,
+                    tonalElevation = 2.dp,
+                ) {
+                    NavigationBarItem(
+                        selected = section == OwnPlaySection.LIVE,
+                        onClick = { openContentSection(OwnPlaySection.LIVE) },
+                        icon = { Icon(Icons.Filled.LiveTv, contentDescription = "Live") },
+                        label = { Text("Live") },
+                    )
+                    NavigationBarItem(
+                        selected = section == OwnPlaySection.MOVIES,
+                        onClick = { openContentSection(OwnPlaySection.MOVIES) },
+                        icon = { Icon(Icons.Filled.Movie, contentDescription = "Movies") },
+                        label = { Text("Movies") },
+                    )
+                    NavigationBarItem(
+                        selected = section == OwnPlaySection.SERIES,
+                        onClick = { openContentSection(OwnPlaySection.SERIES) },
+                        icon = { Icon(Icons.Filled.VideoLibrary, contentDescription = "Series") },
+                        label = { Text("Series") },
+                    )
+                    NavigationBarItem(
+                        selected = section == OwnPlaySection.LIBRARY,
+                        onClick = { openContentSection(OwnPlaySection.LIBRARY) },
+                        icon = { Icon(Icons.Filled.DownloadDone, contentDescription = "Library") },
+                        label = { Text("Library") },
+                    )
+                    NavigationBarItem(
+                        selected = section == OwnPlaySection.SETTINGS,
+                        onClick = { openContentSection(OwnPlaySection.SETTINGS) },
+                        icon = { Icon(Icons.Filled.Settings, contentDescription = "Settings") },
+                        label = { Text("Settings") },
+                    )
+                }
             }
         },
         bottomBar = {
