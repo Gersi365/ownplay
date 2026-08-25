@@ -261,12 +261,14 @@ private fun PlatformLocalVideoFallback(
     var preparationError by remember(videoUri) { mutableStateOf<String?>(null) }
     var platformReady by remember(videoUri) { mutableStateOf(false) }
     var platformError by remember(videoUri) { mutableStateOf<String?>(null) }
+    var libVlcFallbackActive by remember(videoUri) { mutableStateOf(false) }
 
     LaunchedEffect(videoUri, title) {
         stagedFile = null
         preparationError = null
         platformReady = false
         platformError = null
+        libVlcFallbackActive = false
         when (val result = stageLocalVideoForPlatform(context, videoUri, title)) {
             is PlatformStagingResult.Ready -> stagedFile = result.file
             PlatformStagingResult.InsufficientSpace -> {
@@ -293,26 +295,46 @@ private fun PlatformLocalVideoFallback(
     ) {
         val file = stagedFile
         if (file != null) {
-            AndroidView(
-                modifier = Modifier.fillMaxSize(),
-                factory = { viewContext ->
-                    PlatformFallbackVideoView(viewContext).also { view ->
-                        view.onPlaybackReady = {
-                            platformReady = true
-                            platformError = null
+            if (libVlcFallbackActive) {
+                AndroidView(
+                    modifier = Modifier.fillMaxSize(),
+                    factory = { viewContext ->
+                        LibVlcFallbackVideoView(viewContext).also { view ->
+                            view.onPlaybackReady = {
+                                platformReady = true
+                                platformError = null
+                            }
+                            view.onPlaybackError = { message ->
+                                platformReady = true
+                                platformError = message
+                            }
+                            view.openFile(file.absolutePath)
                         }
-                        view.onPlaybackError = { what, extra ->
-                            platformReady = true
-                            platformError =
-                                "Android platform playback failed from a local cache copy. " +
-                                "(what=$what, extra=$extra)"
+                    },
+                    update = { view -> view.openFile(file.absolutePath) },
+                    onRelease = LibVlcFallbackVideoView::releasePlayer,
+                )
+            } else {
+                AndroidView(
+                    modifier = Modifier.fillMaxSize(),
+                    factory = { viewContext ->
+                        PlatformFallbackVideoView(viewContext).also { view ->
+                            view.onPlaybackReady = {
+                                platformReady = true
+                                platformError = null
+                            }
+                            view.onPlaybackError = { _, _ ->
+                                libVlcFallbackActive = true
+                                platformReady = false
+                                platformError = null
+                            }
+                            view.openFile(file.absolutePath)
                         }
-                        view.openFile(file.absolutePath)
-                    }
-                },
-                update = { view -> view.openFile(file.absolutePath) },
-                onRelease = PlatformFallbackVideoView::releasePlayer,
-            )
+                    },
+                    update = { view -> view.openFile(file.absolutePath) },
+                    onRelease = PlatformFallbackVideoView::releasePlayer,
+                )
+            }
         }
 
         if (!platformReady) {
@@ -321,8 +343,9 @@ private fun PlatformLocalVideoFallback(
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 CircularProgressIndicator(modifier = Modifier.size(42.dp))
-                if (file == null) {
-                    Text("Preparing local platform fallback…")
+                when {
+                    file == null -> Text("Preparing local platform fallback…")
+                    libVlcFallbackActive -> Text("Trying LibVLC compatibility fallback…")
                 }
             }
         }
