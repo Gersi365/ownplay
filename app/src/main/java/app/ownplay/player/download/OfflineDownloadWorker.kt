@@ -33,6 +33,9 @@ class OfflineDownloadWorker(
         val dao = database.mediaDownloadDao()
         try {
             val row = dao.getById(downloadId) ?: return Result.success()
+            if (row.state == DownloadStates.PAUSED) {
+                return Result.success()
+            }
             if (row.state == DownloadStates.COMPLETED &&
                 row.localRelativePath
                     ?.let { OfflineDownloadFiles.resolveRelativePath(applicationContext, it) }
@@ -146,9 +149,14 @@ class OfflineDownloadWorker(
             val row = dao.getById(downloadId)
             if (row != null) {
                 val partial = OfflineDownloadFiles.partialFile(applicationContext, downloadId)
+                val cancellationState = if (row.state == DownloadStates.PAUSED) {
+                    DownloadStates.PAUSED
+                } else {
+                    DownloadStates.QUEUED
+                }
                 dao.updateTransfer(
                     downloadId = downloadId,
-                    state = DownloadStates.QUEUED,
+                    state = cancellationState,
                     bytesDownloaded = partial.takeIf { it.isFile }?.length() ?: row.bytesDownloaded,
                     totalBytes = row.totalBytes,
                     localRelativePath = null,
