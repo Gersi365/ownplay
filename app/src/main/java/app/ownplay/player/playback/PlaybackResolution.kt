@@ -154,7 +154,6 @@ class LivePlaybackResolver(
             PlaybackMediaKind.LIVE -> resolveLiveRequest(source, request)
             PlaybackMediaKind.MOVIE -> resolveMovieRequest(source, request)
             PlaybackMediaKind.SERIES_EPISODE -> resolveSeriesEpisodeRequest(source, request)
-            PlaybackMediaKind.LOCAL_VIDEO -> failure(PlaybackResolutionFailureReason.UNSUPPORTED_SOURCE_KIND)
         }
     }
 
