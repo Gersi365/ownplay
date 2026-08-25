@@ -846,6 +846,8 @@ private fun MovieDetailsPane(
     onPlay: (VodMovie) -> Unit,
     modifier: Modifier,
 ) {
+    val offlineCopyAvailable = download?.state == DownloadStates.COMPLETED
+
     Surface(
         modifier = modifier,
         color = MaterialTheme.colorScheme.background,
@@ -929,7 +931,14 @@ private fun MovieDetailsPane(
                 ) {
                     Icon(Icons.Filled.PlayArrow, contentDescription = null)
                     Spacer(Modifier.width(6.dp))
-                    Text(if (movie.resumeAvailable) "Resume" else "Play")
+                    Text(
+                        when {
+                            offlineCopyAvailable && movie.resumeAvailable -> "Resume Offline"
+                            offlineCopyAvailable -> "Play Offline"
+                            movie.resumeAvailable -> "Resume"
+                            else -> "Play"
+                        },
+                    )
                 }
                 FilledTonalButton(
                     onClick = { onFavoriteChanged(!movie.isFavorite) },
@@ -942,41 +951,66 @@ private fun MovieDetailsPane(
             }
 
             val target = details?.movie ?: movie
-            val downloadLabel = when (download?.state) {
-                DownloadStates.QUEUED -> "Pause download"
-                DownloadStates.DOWNLOADING -> "Pause download"
-                DownloadStates.PAUSED -> "Resume download"
-                DownloadStates.COMPLETED -> "Downloaded"
-                DownloadStates.FAILED -> "Retry download"
-                else -> "Download"
-            }
-            FilledTonalButton(
-                onClick = {
-                    when (download?.state) {
-                        DownloadStates.QUEUED,
-                        DownloadStates.DOWNLOADING,
-                        -> onPauseDownload(download)
-                        DownloadStates.PAUSED -> onResumeDownload(download)
-                        DownloadStates.COMPLETED -> Unit
-                        DownloadStates.FAILED, null -> onDownload(target)
+            if (offlineCopyAvailable) {
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp),
+                    color = MaterialTheme.colorScheme.primaryContainer,
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        Icon(Icons.Filled.DownloadDone, contentDescription = null)
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "Downloaded · Offline copy",
+                                style = MaterialTheme.typography.labelLarge,
+                                fontWeight = FontWeight.SemiBold,
+                            )
+                            Text(
+                                text = "Play uses the local download first.",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
                     }
-                },
-                enabled = download?.state != DownloadStates.COMPLETED,
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                Icon(
-                    imageVector = when (download?.state) {
-                        DownloadStates.QUEUED,
-                        DownloadStates.DOWNLOADING,
-                        -> Icons.Filled.Pause
-                        DownloadStates.PAUSED -> Icons.Filled.PlayArrow
-                        DownloadStates.COMPLETED -> Icons.Filled.DownloadDone
-                        else -> Icons.Filled.Download
+                }
+            } else {
+                val downloadLabel = when (download?.state) {
+                    DownloadStates.QUEUED -> "Pause download"
+                    DownloadStates.DOWNLOADING -> "Pause download"
+                    DownloadStates.PAUSED -> "Resume download"
+                    DownloadStates.FAILED -> "Retry download"
+                    else -> "Download"
+                }
+                FilledTonalButton(
+                    onClick = {
+                        when (download?.state) {
+                            DownloadStates.QUEUED,
+                            DownloadStates.DOWNLOADING,
+                            -> onPauseDownload(download)
+                            DownloadStates.PAUSED -> onResumeDownload(download)
+                            DownloadStates.FAILED, null -> onDownload(target)
+                            DownloadStates.COMPLETED -> Unit
+                        }
                     },
-                    contentDescription = null,
-                )
-                Spacer(Modifier.width(6.dp))
-                Text(downloadLabel)
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Icon(
+                        imageVector = when (download?.state) {
+                            DownloadStates.QUEUED,
+                            DownloadStates.DOWNLOADING,
+                            -> Icons.Filled.Pause
+                            DownloadStates.PAUSED -> Icons.Filled.PlayArrow
+                            else -> Icons.Filled.Download
+                        },
+                        contentDescription = null,
+                    )
+                    Spacer(Modifier.width(6.dp))
+                    Text(downloadLabel)
+                }
             }
 
             if (
