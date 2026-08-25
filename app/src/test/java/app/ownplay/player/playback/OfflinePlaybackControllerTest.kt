@@ -4,6 +4,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -44,6 +45,7 @@ class OfflinePlaybackControllerTest {
 
         assertEquals(0, remoteResolveCount)
         assertEquals(localLocator, engine.preparedLocator)
+        assertEquals(ResolvedPlaybackOrigin.LOCAL_DOWNLOAD, controller.resolvedOrigin.value)
         engine.emitReady()
         assertTrue(controller.state.value is PlaybackState.Playing)
 
@@ -52,6 +54,40 @@ class OfflinePlaybackControllerTest {
 
         assertTrue(controller.state.value is PlaybackState.Playing)
         assertEquals(localLocator, engine.preparedLocator)
+        assertEquals(ResolvedPlaybackOrigin.LOCAL_DOWNLOAD, controller.resolvedOrigin.value)
+        controller.close()
+        assertNull(controller.resolvedOrigin.value)
+    }
+
+    @Test
+    fun remoteVodExposesProviderOrigin() = runBlocking {
+        val remoteLocator = ResolvedPlaybackLocator(
+            value = "https://stream.example.test/movie.mp4",
+            origin = ResolvedPlaybackOrigin.XTREAM_VOD,
+        )
+        val engine = FakeEngine()
+        val network = MutableStateFlow(PlaybackNetworkState.AVAILABLE)
+        val controller = PlaybackController(
+            resolveLocator = { PlaybackResolutionResult.Success(remoteLocator) },
+            engine = engine,
+            resolveOfflineLocator = { null },
+            mainDispatcher = Dispatchers.Unconfined,
+            ioDispatcher = Dispatchers.Unconfined,
+            networkState = network,
+        )
+
+        controller.start(
+            PlaybackRequest(
+                sourceId = "source",
+                channelId = "movie",
+                mediaKind = PlaybackMediaKind.MOVIE,
+            ),
+        )
+
+        assertEquals(remoteLocator, engine.preparedLocator)
+        assertEquals(ResolvedPlaybackOrigin.XTREAM_VOD, controller.resolvedOrigin.value)
+        controller.stop()
+        assertNull(controller.resolvedOrigin.value)
         controller.close()
     }
 

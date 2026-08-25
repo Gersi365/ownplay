@@ -223,6 +223,21 @@ interface VodCatalogDao {
     @Query("SELECT * FROM provider_movies WHERE sourceId = :sourceId AND movieId = :movieId LIMIT 1")
     suspend fun movie(sourceId: String, movieId: String): ProviderMovieEntity?
 
+    @Query(
+        """
+        SELECT * FROM playback_progress
+        WHERE sourceId = :sourceId
+            AND mediaKind = :mediaKind
+            AND contentId = :contentId
+        LIMIT 1
+        """,
+    )
+    suspend fun progress(
+        sourceId: String,
+        mediaKind: String,
+        contentId: String,
+    ): PlaybackProgressEntity?
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsertCategories(categories: List<ProviderVodCategoryEntity>)
 
