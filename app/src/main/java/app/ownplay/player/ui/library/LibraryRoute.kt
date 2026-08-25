@@ -150,7 +150,7 @@ internal fun LibraryRoute(
                     fontWeight = FontWeight.Bold,
                 )
                 Text(
-                    text = "OwnPlay downloads stored privately on this device.",
+                    text = "New downloads are saved to your phone Downloads folder by default.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -329,7 +329,11 @@ private fun LibraryMediaCard(
                         color = MaterialTheme.colorScheme.primary,
                     )
                     Text(
-                        text = "OwnPlay private storage · available offline",
+                        text = if (download.savedToDownloads) {
+                            "Phone Downloads · available offline"
+                        } else {
+                            "OwnPlay private storage · available offline"
+                        },
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -353,6 +357,13 @@ private fun LibraryMediaCard(
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
+                    if (download.savedToDownloads) {
+                        Text(
+                            text = "Saving to phone Downloads",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
                 }
 
                 DownloadStates.FAILED -> Text(
@@ -381,32 +392,35 @@ private fun LibraryMediaCard(
                     DownloadStates.QUEUED,
                     -> FilledTonalButton(
                         onClick = onPause,
-                        modifier = Modifier.weight(1f),
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
                     ) {
-                        Icon(Icons.Filled.Pause, contentDescription = null)
+                        Icon(Icons.Filled.Pause, contentDescription = null, modifier = Modifier.size(18.dp))
                         Spacer(Modifier.width(4.dp))
                         Text("Pause")
                     }
 
                     DownloadStates.PAUSED -> FilledTonalButton(
                         onClick = onResume,
-                        modifier = Modifier.weight(1f),
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
                     ) {
-                        Icon(Icons.Filled.PlayArrow, contentDescription = null)
+                        Icon(Icons.Filled.PlayArrow, contentDescription = null, modifier = Modifier.size(18.dp))
                         Spacer(Modifier.width(4.dp))
                         Text("Resume")
                     }
 
                     DownloadStates.FAILED -> FilledTonalButton(
                         onClick = onRetry,
-                        modifier = Modifier.weight(1f),
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
                     ) {
-                        Icon(Icons.Filled.Refresh, contentDescription = null)
+                        Icon(Icons.Filled.Refresh, contentDescription = null, modifier = Modifier.size(18.dp))
                         Spacer(Modifier.width(4.dp))
                         Text("Retry")
                     }
                 }
 
+                if (download.state != DownloadStates.COMPLETED) {
+                    Spacer(Modifier.weight(1f))
+                }
                 IconButton(onClick = onRemove) {
                     Icon(Icons.Filled.Delete, contentDescription = "Remove download")
                 }
