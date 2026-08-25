@@ -8,23 +8,33 @@ import org.junit.Test
 
 class PlaybackWindowPolicyTest {
     @Test
-    fun pipEligibilityRequiresSupportAndActivePlayback() {
+    fun pipEligibilityRequiresSupportPlayingAndVisiblePlaybackSurface() {
         assertTrue(
             PlaybackWindowPolicy.isPipEligible(
                 pipSupported = true,
                 isPlaying = true,
+                playbackSurfaceActive = true,
             ),
         )
         assertFalse(
             PlaybackWindowPolicy.isPipEligible(
                 pipSupported = false,
                 isPlaying = true,
+                playbackSurfaceActive = true,
             ),
         )
         assertFalse(
             PlaybackWindowPolicy.isPipEligible(
                 pipSupported = true,
                 isPlaying = false,
+                playbackSurfaceActive = true,
+            ),
+        )
+        assertFalse(
+            PlaybackWindowPolicy.isPipEligible(
+                pipSupported = true,
+                isPlaying = true,
+                playbackSurfaceActive = false,
             ),
         )
     }
