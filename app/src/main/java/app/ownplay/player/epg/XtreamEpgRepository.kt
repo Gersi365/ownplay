@@ -44,6 +44,7 @@ class XtreamEpgRepository(
     private val xmlTvClient: XtreamXmlTvClient = XtreamXmlTvClient(),
 ) {
     private data class SourceCache(
+        val channelIdsByEpgChannelId: Map<String, List<String>>,
         val programsByEpgChannelId: Map<String, List<EpgProgram>>,
     )
 
@@ -56,11 +57,21 @@ class XtreamEpgRepository(
             return@withContext EpgRefreshResult(0, 0)
         }
         val channels = database.providerCatalogDao().channelsForSource(sourceId)
-        val epgIds = channels.asSequence()
-            .mapNotNull { channel -> channel.tvgId?.trim()?.takeIf(String::isNotBlank) }
-            .toSet()
+        val channelIdsByEpgChannelId = channels.asSequence()
+            .mapNotNull { channel ->
+                val epgId = channel.tvgId?.trim()?.takeIf(String::isNotBlank)
+                epgId?.let { it to channel.channelId }
+            }
+            .groupBy(
+                keySelector = Pair<String, String>::first,
+                valueTransform = Pair<String, String>::second,
+            )
+        val epgIds = channelIdsByEpgChannelId.keys
         if (epgIds.isEmpty()) {
-            cache[sourceId] = SourceCache(emptyMap())
+            cache[sourceId] = SourceCache(
+                channelIdsByEpgChannelId = emptyMap(),
+                programsByEpgChannelId = emptyMap(),
+            )
             return@withContext EpgRefreshResult(0, 0)
         }
 
@@ -87,7 +98,10 @@ class XtreamEpgRepository(
         val mapped = snapshot.programsByChannelId.mapValues { (_, entries) ->
             EpgTimelineProjector.normalize(entries.map(::toProgram))
         }
-        cache[sourceId] = SourceCache(mapped)
+        cache[sourceId] = SourceCache(
+            channelIdsByEpgChannelId = channelIdsByEpgChannelId,
+            programsByEpgChannelId = mapped,
+        )
         EpgRefreshResult(
             matchedChannelCount = snapshot.matchedChannelCount,
             programCount = mapped.values.sumOf(List<EpgProgram>::size),
@@ -115,6 +129,21 @@ class XtreamEpgRepository(
         )
     }
 
+    fun currentPrograms(
+        sourceId: String,
+        nowEpochSeconds: Long = System.currentTimeMillis() / 1_000L,
+    ): Map<String, EpgProgram> {
+        val sourceCache = cache[sourceId] ?: return emptyMap()
+        return buildMap {
+            sourceCache.channelIdsByEpgChannelId.forEach { (epgChannelId, channelIds) ->
+                val current = sourceCache.programsByEpgChannelId[epgChannelId]
+                    ?.firstOrNull { program -> program.isCurrentAt(nowEpochSeconds) }
+                    ?: return@forEach
+                channelIds.forEach { channelId -> put(channelId, current) }
+            }
+        }
+    }
+
     fun invalidateSource(sourceId: String) {
         cache.remove(sourceId)
     }
@@ -130,6 +159,12 @@ class XtreamEpgRepository(
 
     private fun formatTime(epochSeconds: Long): String =
         TIME_FORMATTER.format(Instant.ofEpochSecond(epochSeconds).atZone(ZoneId.systemDefault()))
+
+    private fun EpgProgram.isCurrentAt(nowEpochSeconds: Long): Boolean {
+        val start = startEpochSeconds ?: return false
+        val end = endEpochSeconds ?: return false
+        return nowEpochSeconds >= start && nowEpochSeconds < end
+    }
 
     private companion object {
         val TIME_FORMATTER: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm")
