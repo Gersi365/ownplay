@@ -44,6 +44,7 @@ class XtreamEpgRepository(
     private val xmlTvClient: XtreamXmlTvClient = XtreamXmlTvClient(),
 ) {
     private data class SourceCache(
+        val channelIdsByEpgChannelId: Map<String, List<String>>,
         val programsByEpgChannelId: Map<String, List<EpgProgram>>,
     )
 
@@ -56,11 +57,21 @@ class XtreamEpgRepository(
             return@withContext EpgRefreshResult(0, 0)
         }
         val channels = database.providerCatalogDao().channelsForSource(sourceId)
-        val epgIds = channels.asSequence()
-            .mapNotNull { channel -> channel.tvgId?.trim()?.takeIf(String::isNotBlank) }
-            .toSet()
+        val channelIdsByEpgChannelId = channels.asSequence()
+            .mapNotNull { channel ->
+                val epgId = channel.tvgId?.trim()?.takeIf(String::isNotBlank)
+                epgId?.let { it to channel.channelId }
+            }
+            .groupBy(
+                keySelector = { it.first },
+                valueTransform = { it.second },
+            )
+        val epgIds = channelIdsByEpgChannelId.keys
         if (epgIds.isEmpty()) {
-            cache[sourceId] = SourceCache(emptyMap())
+            cache[sourceId] = SourceCache(
+                channelIdsByEpgChannelId = emptyMap(),
+                programsByEpgChannelId = emptyMap(),
+            )
             return@withContext EpgRefreshResult(0, 0)
         }
 
@@ -87,7 +98,10 @@ class XtreamEpgRepository(
         val mapped = snapshot.programsByChannelId.mapValues { (_, entries) ->
             EpgTimelineProjector.normalize(entries.map(::toProgram))
         }
-        cache[sourceId] = SourceCache(mapped)
+        cache[sourceId] = SourceCache(
+            channelIdsByEpgChannelId = channelIdsByEpgChannelId,
+            programsByEpgChannelId = mapped,
+        )
         EpgRefreshResult(
             matchedChannelCount = snapshot.matchedChannelCount,
             programCount = mapped.values.sumOf(List<EpgProgram>::size),
@@ -112,6 +126,18 @@ class XtreamEpgRepository(
             current = timeline.current,
             next = timeline.future.firstOrNull(),
             programs = timeline.programs,
+        )
+    }
+
+    fun currentPrograms(
+        sourceId: String,
+        nowEpochSeconds: Long = System.currentTimeMillis() / 1_000L,
+    ): Map<String, EpgProgram> {
+        val sourceCache = cache[sourceId] ?: return emptyMap()
+        return EpgCurrentProgramIndex.currentByChannel(
+            channelIdsByEpgChannelId = sourceCache.channelIdsByEpgChannelId,
+            programsByEpgChannelId = sourceCache.programsByEpgChannelId,
+            nowEpochSeconds = nowEpochSeconds,
         )
     }
 

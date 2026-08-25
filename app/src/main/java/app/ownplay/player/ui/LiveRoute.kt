@@ -25,6 +25,7 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import app.ownplay.player.OwnPlayAppRuntime
+import app.ownplay.player.epg.EpgProgram
 import app.ownplay.player.epg.EpgSnapshot
 import app.ownplay.player.live.LiveBrowseSession
 import app.ownplay.player.live.LiveBrowseState
@@ -40,6 +41,7 @@ import app.ownplay.player.source.SourceSyncState
 import app.ownplay.player.ui.live.LandscapeLiveWorkspaceSimple
 import app.ownplay.player.ui.live.PortraitLiveBrowse
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 @Composable
@@ -76,6 +78,9 @@ internal fun LiveRoute(
     var epgSnapshot by remember(sourceId, preview?.request?.channelId) {
         mutableStateOf<EpgSnapshot?>(null)
     }
+    var currentEpgByChannelId by remember(sourceId) {
+        mutableStateOf<Map<String, EpgProgram>>(emptyMap())
+    }
     var epgLookupLoading by remember(sourceId, preview?.request?.channelId) {
         mutableStateOf(false)
     }
@@ -92,6 +97,19 @@ internal fun LiveRoute(
 
     LaunchedEffect(preview?.request?.channelId) {
         showEpgGuide = false
+    }
+
+    LaunchedEffect(sourceId, syncState.sourceId, syncState.stage) {
+        if (epgRefreshFailed) {
+            currentEpgByChannelId = emptyMap()
+            return@LaunchedEffect
+        }
+        if (loadingEpg) return@LaunchedEffect
+
+        while (true) {
+            currentEpgByChannelId = runtime.currentEpgPrograms(sourceId)
+            delay(30_000L)
+        }
     }
 
     LaunchedEffect(preview?.request?.channelId, syncState.sourceId, syncState.stage) {
@@ -150,6 +168,7 @@ internal fun LiveRoute(
             playbackState = playbackState,
             videoOutput = videoOutput,
             epgSnapshot = epgSnapshot,
+            currentEpgByChannelId = currentEpgByChannelId,
             epgLoading = loadingEpg || epgLookupLoading,
             epgFailed = epgRefreshFailed || epgLookupFailed,
             onSearchChange = browseSession::updateSearch,
@@ -230,6 +249,7 @@ internal fun LiveRoute(
                 PortraitLiveBrowse(
                     state = browseState,
                     playingChannelId = preview?.request?.channelId,
+                    currentEpgByChannelId = currentEpgByChannelId,
                     onSearchChange = browseSession::updateSearch,
                     onCategorySelected = browseSession::selectCategory,
                     onFavoritesOnlyChanged = browseSession::setFavoritesOnly,
