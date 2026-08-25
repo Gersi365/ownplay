@@ -19,6 +19,7 @@ object DownloadMediaKinds {
 object DownloadStates {
     const val QUEUED = "QUEUED"
     const val DOWNLOADING = "DOWNLOADING"
+    const val PAUSED = "PAUSED"
     const val COMPLETED = "COMPLETED"
     const val FAILED = "FAILED"
 }
@@ -70,8 +71,9 @@ interface MediaDownloadDao {
             CASE state
                 WHEN 'DOWNLOADING' THEN 0
                 WHEN 'QUEUED' THEN 1
-                WHEN 'FAILED' THEN 2
-                ELSE 3
+                WHEN 'PAUSED' THEN 2
+                WHEN 'FAILED' THEN 3
+                ELSE 4
             END,
             updatedAtEpochMillis DESC
         """,
