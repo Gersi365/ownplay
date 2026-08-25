@@ -80,6 +80,8 @@ internal fun SeriesRoute(
     runtime: OwnPlayAppRuntime,
     sourceId: String?,
     sourceKind: String?,
+    requestedSeriesId: String? = null,
+    onRequestedSeriesConsumed: () -> Unit = {},
     onOpenSettings: () -> Unit,
     onFullscreenStateChanged: (Boolean) -> Unit,
 ) {
@@ -202,6 +204,17 @@ internal fun SeriesRoute(
             is SourceResult.Failure -> refreshError = result.error
         }
         loading = false
+    }
+
+    LaunchedEffect(sourceId, requestedSeriesId, catalog.series) {
+        val targetSeriesId = requestedSeriesId ?: return@LaunchedEffect
+        val target = catalog.series.firstOrNull { item -> item.seriesId == targetSeriesId }
+            ?: return@LaunchedEffect
+        query = ""
+        categoryKey = null
+        favoritesOnly = false
+        selectedSeries = target
+        onRequestedSeriesConsumed()
     }
 
     LaunchedEffect(selectedSeries?.seriesId) {
@@ -488,6 +501,15 @@ private fun SeriesCatalogPane(
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
                             }
+                            item.description?.takeIf(String::isNotBlank)?.let { description ->
+                                Text(
+                                    text = description,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    maxLines = 2,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                            }
                             if (item.isFavorite) {
                                 Text("Favorite", style = MaterialTheme.typography.labelSmall)
                             }
@@ -553,17 +575,14 @@ private fun SeriesDetailsPane(
                 Text("Series details failed to load.", color = MaterialTheme.colorScheme.error)
             }
             details?.let { loaded ->
-                loaded.description?.takeIf(String::isNotBlank)?.let { description ->
-                    Text(
-                        description,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 5,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.padding(vertical = 6.dp),
-                    )
-                }
-                LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                SeriesInfoSummary(
+                    selected = selected,
+                    details = loaded,
+                )
+                LazyRow(
+                    modifier = Modifier.padding(top = 8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
                     items(loaded.seasons, key = { it.seasonId }) { season ->
                         FilterChip(
                             selected = selectedSeasonNumber == season.seasonNumber,
