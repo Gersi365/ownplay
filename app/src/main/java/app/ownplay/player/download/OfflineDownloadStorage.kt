@@ -1,5 +1,6 @@
 package app.ownplay.player.download
 
+import android.annotation.TargetApi
 import android.content.ContentValues
 import android.content.Context
 import android.net.Uri
@@ -11,7 +12,6 @@ import android.webkit.MimeTypeMap
 import app.ownplay.player.persistence.download.MediaDownloadEntity
 import java.io.BufferedOutputStream
 import java.io.File
-import java.io.FileOutputStream
 import java.io.IOException
 
 internal object OfflineDownloadStorage {
@@ -40,6 +40,7 @@ internal object OfflineDownloadStorage {
         }
     }
 
+    @TargetApi(Build.VERSION_CODES.Q)
     fun createPublicDownloadsDestination(
         context: Context,
         row: MediaDownloadEntity,
@@ -77,6 +78,7 @@ internal object OfflineDownloadStorage {
         return BufferedOutputStream(output)
     }
 
+    @TargetApi(Build.VERSION_CODES.Q)
     fun publishPublicDownload(context: Context, location: String) {
         if (!isPublicDownloadsLocation(location)) return
         val values = ContentValues().apply {
