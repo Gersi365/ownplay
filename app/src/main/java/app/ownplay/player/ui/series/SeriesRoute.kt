@@ -618,6 +618,8 @@ private fun EpisodeRow(
     onResumeDownload: (OfflineDownload) -> Unit,
     onClearProgress: () -> Unit,
 ) {
+    val offlineCopyAvailable = download?.state == DownloadStates.COMPLETED
+
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -639,36 +641,52 @@ private fun EpisodeRow(
             horizontalArrangement = Arrangement.spacedBy(6.dp),
         ) {
             Button(onClick = onPlay) {
-                Text(if (episode.resumeAvailable) "Resume" else "Play")
-            }
-            Button(
-                onClick = {
-                    when (download?.state) {
-                        DownloadStates.QUEUED,
-                        DownloadStates.DOWNLOADING,
-                        -> onPauseDownload(download)
-                        DownloadStates.PAUSED -> onResumeDownload(download)
-                        DownloadStates.COMPLETED -> Unit
-                        DownloadStates.FAILED, null -> onDownload()
-                    }
-                },
-                enabled = download?.state != DownloadStates.COMPLETED,
-            ) {
                 Text(
-                    when (download?.state) {
-                        DownloadStates.QUEUED,
-                        DownloadStates.DOWNLOADING,
-                        -> "Pause"
-                        DownloadStates.PAUSED -> "Resume DL"
-                        DownloadStates.COMPLETED -> "Downloaded"
-                        DownloadStates.FAILED -> "Retry"
-                        else -> "Download"
+                    when {
+                        offlineCopyAvailable && episode.resumeAvailable -> "Resume Offline"
+                        offlineCopyAvailable -> "Play Offline"
+                        episode.resumeAvailable -> "Resume"
+                        else -> "Play"
                     },
                 )
+            }
+            if (!offlineCopyAvailable) {
+                Button(
+                    onClick = {
+                        when (download?.state) {
+                            DownloadStates.QUEUED,
+                            DownloadStates.DOWNLOADING,
+                            -> onPauseDownload(download)
+                            DownloadStates.PAUSED -> onResumeDownload(download)
+                            DownloadStates.FAILED, null -> onDownload()
+                            DownloadStates.COMPLETED -> Unit
+                        }
+                    },
+                ) {
+                    Text(
+                        when (download?.state) {
+                            DownloadStates.QUEUED,
+                            DownloadStates.DOWNLOADING,
+                            -> "Pause"
+                            DownloadStates.PAUSED -> "Resume DL"
+                            DownloadStates.FAILED -> "Retry"
+                            else -> "Download"
+                        },
+                    )
+                }
             }
             if ((episode.positionMs ?: 0L) > 0L) {
                 TextButton(onClick = onClearProgress) { Text("Clear") }
             }
+        }
+        if (offlineCopyAvailable) {
+            Text(
+                text = "Downloaded · Offline copy",
+                modifier = Modifier.padding(top = 5.dp),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.primary,
+                fontWeight = FontWeight.SemiBold,
+            )
         }
         if (
             download?.state == DownloadStates.DOWNLOADING ||
