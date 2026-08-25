@@ -63,8 +63,8 @@ class XtreamEpgRepository(
                 epgId?.let { it to channel.channelId }
             }
             .groupBy(
-                keySelector = Pair<String, String>::first,
-                valueTransform = Pair<String, String>::second,
+                keySelector = { it.first },
+                valueTransform = { it.second },
             )
         val epgIds = channelIdsByEpgChannelId.keys
         if (epgIds.isEmpty()) {
@@ -134,14 +134,11 @@ class XtreamEpgRepository(
         nowEpochSeconds: Long = System.currentTimeMillis() / 1_000L,
     ): Map<String, EpgProgram> {
         val sourceCache = cache[sourceId] ?: return emptyMap()
-        return buildMap {
-            sourceCache.channelIdsByEpgChannelId.forEach { (epgChannelId, channelIds) ->
-                val current = sourceCache.programsByEpgChannelId[epgChannelId]
-                    ?.firstOrNull { program -> program.isCurrentAt(nowEpochSeconds) }
-                    ?: return@forEach
-                channelIds.forEach { channelId -> put(channelId, current) }
-            }
-        }
+        return EpgCurrentProgramIndex.currentByChannel(
+            channelIdsByEpgChannelId = sourceCache.channelIdsByEpgChannelId,
+            programsByEpgChannelId = sourceCache.programsByEpgChannelId,
+            nowEpochSeconds = nowEpochSeconds,
+        )
     }
 
     fun invalidateSource(sourceId: String) {
@@ -159,12 +156,6 @@ class XtreamEpgRepository(
 
     private fun formatTime(epochSeconds: Long): String =
         TIME_FORMATTER.format(Instant.ofEpochSecond(epochSeconds).atZone(ZoneId.systemDefault()))
-
-    private fun EpgProgram.isCurrentAt(nowEpochSeconds: Long): Boolean {
-        val start = startEpochSeconds ?: return false
-        val end = endEpochSeconds ?: return false
-        return nowEpochSeconds >= start && nowEpochSeconds < end
-    }
 
     private companion object {
         val TIME_FORMATTER: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm")
