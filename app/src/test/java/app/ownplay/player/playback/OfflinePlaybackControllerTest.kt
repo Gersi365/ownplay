@@ -59,6 +59,38 @@ class OfflinePlaybackControllerTest {
         assertNull(controller.resolvedOrigin.value)
     }
 
+    @Test
+    fun remoteVodExposesProviderOrigin() = runBlocking {
+        val remoteLocator = ResolvedPlaybackLocator(
+            value = "https://stream.example.test/movie.mp4",
+            origin = ResolvedPlaybackOrigin.XTREAM_VOD,
+        )
+        val engine = FakeEngine()
+        val network = MutableStateFlow(PlaybackNetworkState.AVAILABLE)
+        val controller = PlaybackController(
+            resolveLocator = { PlaybackResolutionResult.Success(remoteLocator) },
+            engine = engine,
+            resolveOfflineLocator = { null },
+            mainDispatcher = Dispatchers.Unconfined,
+            ioDispatcher = Dispatchers.Unconfined,
+            networkState = network,
+        )
+
+        controller.start(
+            PlaybackRequest(
+                sourceId = "source",
+                channelId = "movie",
+                mediaKind = PlaybackMediaKind.MOVIE,
+            ),
+        )
+
+        assertEquals(remoteLocator, engine.preparedLocator)
+        assertEquals(ResolvedPlaybackOrigin.XTREAM_VOD, controller.resolvedOrigin.value)
+        controller.stop()
+        assertNull(controller.resolvedOrigin.value)
+        controller.close()
+    }
+
     private class FakeEngine : PlaybackEngine {
         private var listener: PlaybackEngine.Listener? = null
         var preparedLocator: ResolvedPlaybackLocator? = null
