@@ -9,14 +9,13 @@ class LocalVideoPlaybackTest {
     @Test
     fun requestAcceptsContentUriAndKeepsItOpaque() {
         val request = LocalVideoPlayback.request("content://media/external/video/media/42")
+        val resolved = LocalVideoPlayback.resolve(request)
 
         assertEquals(PlaybackMediaKind.LOCAL_VIDEO, request.mediaKind)
         assertEquals("local-video", request.sourceId)
         assertEquals("content://media/external/video/media/42", request.channelId)
-        assertEquals(
-            "content://media/external/video/media/42",
-            LocalVideoPlayback.resolve(request)?.value,
-        )
+        assertEquals("content://media/external/video/media/42", resolved?.value)
+        assertEquals(ResolvedPlaybackOrigin.LOCAL_DOWNLOAD, resolved?.origin)
     }
 
     @Test
