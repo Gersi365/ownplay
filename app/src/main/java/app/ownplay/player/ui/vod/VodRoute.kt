@@ -965,7 +965,11 @@ private fun MovieDetailsPane(
                         Icon(Icons.Filled.DownloadDone, contentDescription = null)
                         Column(modifier = Modifier.weight(1f)) {
                             Text(
-                                text = "Downloaded · Offline copy",
+                                text = if (download?.savedToDownloads == true) {
+                                    "Downloaded · Phone Downloads"
+                                } else {
+                                    "Downloaded · Offline copy"
+                                },
                                 style = MaterialTheme.typography.labelLarge,
                                 fontWeight = FontWeight.SemiBold,
                             )
@@ -979,9 +983,9 @@ private fun MovieDetailsPane(
                 }
             } else {
                 val downloadLabel = when (download?.state) {
-                    DownloadStates.QUEUED -> "Pause download"
-                    DownloadStates.DOWNLOADING -> "Pause download"
-                    DownloadStates.PAUSED -> "Resume download"
+                    DownloadStates.QUEUED -> "Pause"
+                    DownloadStates.DOWNLOADING -> "Pause"
+                    DownloadStates.PAUSED -> "Resume"
                     DownloadStates.FAILED -> "Retry download"
                     else -> "Download"
                 }
@@ -996,7 +1000,8 @@ private fun MovieDetailsPane(
                             DownloadStates.COMPLETED -> Unit
                         }
                     },
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier.align(Alignment.Start),
+                    contentPadding = PaddingValues(horizontal = 14.dp, vertical = 4.dp),
                 ) {
                     Icon(
                         imageVector = when (download?.state) {
@@ -1007,6 +1012,7 @@ private fun MovieDetailsPane(
                             else -> Icons.Filled.Download
                         },
                         contentDescription = null,
+                        modifier = Modifier.size(18.dp),
                     )
                     Spacer(Modifier.width(6.dp))
                     Text(downloadLabel)
@@ -1032,6 +1038,13 @@ private fun MovieDetailsPane(
                     style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
+                if (download.savedToDownloads) {
+                    Text(
+                        text = "Saving to phone Downloads",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
             }
 
             if (download?.state == DownloadStates.FAILED) {
