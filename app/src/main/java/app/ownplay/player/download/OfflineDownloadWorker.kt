@@ -88,6 +88,19 @@ class OfflineDownloadWorker(
                 }
                 val bodyLength = body.contentLength().takeIf { it >= 0L }
                 val totalBytes = bodyLength?.plus(startBytes)
+                if (bodyLength != null) {
+                    val storageRoot = partFile.parentFile ?: applicationContext.filesDir
+                    if (!hasEnoughOfflineDownloadSpace(storageRoot.usableSpace, bodyLength)) {
+                        markFailed(
+                            dao = dao,
+                            row = row,
+                            reason = "Not enough free storage for this download. Free up space and retry.",
+                            bytesDownloaded = startBytes,
+                            totalBytes = totalBytes,
+                        )
+                        return Result.failure()
+                    }
+                }
                 var downloaded = startBytes
                 var lastReportedBytes = downloaded
                 var lastReportedAt = System.currentTimeMillis()
@@ -190,12 +203,13 @@ class OfflineDownloadWorker(
         row: MediaDownloadEntity,
         reason: String,
         bytesDownloaded: Long = row.bytesDownloaded,
+        totalBytes: Long? = row.totalBytes,
     ) {
         dao.updateTransfer(
             downloadId = row.downloadId,
             state = DownloadStates.FAILED,
             bytesDownloaded = bytesDownloaded,
-            totalBytes = row.totalBytes,
+            totalBytes = totalBytes,
             localRelativePath = null,
             failureReason = reason,
             updatedAtEpochMillis = System.currentTimeMillis(),
