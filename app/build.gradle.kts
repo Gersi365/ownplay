@@ -13,8 +13,8 @@ android {
         applicationId = "app.ownplay.player"
         minSdk = 26
         targetSdk = 36
-        versionCode = 2
-        versionName = "0.1.0-dev-qa2"
+        versionCode = 3
+        versionName = "0.1.0-dev-qa3-libvlc"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -78,6 +78,7 @@ dependencies {
     implementation("androidx.media3:media3-exoplayer-hls:$media3Version")
     implementation("androidx.media3:media3-ui:$media3Version")
     implementation("app.ownplay.ffmpeg:lib-decoder-ffmpeg-release:1.11.0@aar")
+    implementation("org.videolan.android:libvlc-all:3.7.0")
 
     implementation("androidx.room:room-runtime:$roomVersion")
     implementation("androidx.room:room-ktx:$roomVersion")
