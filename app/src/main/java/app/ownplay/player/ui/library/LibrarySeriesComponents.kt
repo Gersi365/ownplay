@@ -34,6 +34,7 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -51,7 +52,8 @@ import app.ownplay.player.ui.vod.RemotePoster
 @Composable
 internal fun LibrarySeriesCard(
     group: LibrarySeriesGroup,
-    onOpen: () -> Unit,
+    onOpenSeries: () -> Unit,
+    onOpenOfflineEpisodes: () -> Unit,
 ) {
     val completed = group.episodes.count { it.state == DownloadStates.COMPLETED }
     val active = group.episodes.count {
@@ -63,7 +65,7 @@ internal fun LibrarySeriesCard(
     Surface(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(onClick = onOpen),
+            .clickable(onClick = onOpenSeries),
         shape = RoundedCornerShape(14.dp),
         tonalElevation = 1.dp,
     ) {
@@ -141,6 +143,12 @@ internal fun LibrarySeriesCard(
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
             )
+            TextButton(
+                onClick = onOpenOfflineEpisodes,
+                contentPadding = PaddingValues(horizontal = 4.dp, vertical = 0.dp),
+            ) {
+                Text("Offline episodes")
+            }
         }
     }
 }

@@ -83,6 +83,7 @@ fun OwnPlayApp(
     var activeSelection by remember { mutableStateOf<LivePlaybackSelection?>(null) }
     var fullscreenSelection by remember { mutableStateOf<LivePlaybackSelection?>(null) }
     var requestedVodMovieId by remember { mutableStateOf<String?>(null) }
+    var requestedSeriesId by remember { mutableStateOf<String?>(null) }
     var vodFullscreen by remember { mutableStateOf(false) }
     var seriesFullscreen by remember { mutableStateOf(false) }
     var libraryFullscreen by remember { mutableStateOf(false) }
@@ -102,6 +103,7 @@ fun OwnPlayApp(
         }
         if (activeSourceId !in ids) {
             requestedVodMovieId = null
+            requestedSeriesId = null
         }
     }
 
@@ -113,6 +115,9 @@ fun OwnPlayApp(
         }
         if (target != OwnPlaySection.MOVIES) {
             requestedVodMovieId = null
+        }
+        if (target != OwnPlaySection.SERIES) {
+            requestedSeriesId = null
         }
         section = target
     }
@@ -352,6 +357,8 @@ fun OwnPlayApp(
                         runtime = runtime,
                         sourceId = activeSourceId,
                         sourceKind = activeSummary?.sourceKind,
+                        requestedSeriesId = requestedSeriesId,
+                        onRequestedSeriesConsumed = { requestedSeriesId = null },
                         onOpenSettings = { openContentSection(OwnPlaySection.SETTINGS) },
                         onFullscreenStateChanged = { fullscreen ->
                             seriesFullscreen = fullscreen
@@ -365,6 +372,11 @@ fun OwnPlayApp(
                             activeSourceId = sourceId
                             requestedVodMovieId = movieId
                             openContentSection(OwnPlaySection.MOVIES)
+                        },
+                        onOpenSeriesDetails = { sourceId, seriesId ->
+                            activeSourceId = sourceId
+                            requestedSeriesId = seriesId
+                            openContentSection(OwnPlaySection.SERIES)
                         },
                         onFullscreenStateChanged = { fullscreen ->
                             libraryFullscreen = fullscreen

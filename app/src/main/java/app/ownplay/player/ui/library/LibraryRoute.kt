@@ -67,6 +67,7 @@ private enum class LibraryFilter {
 internal fun LibraryRoute(
     runtime: OwnPlayAppRuntime,
     onOpenMovieDetails: (sourceId: String, movieId: String) -> Unit,
+    onOpenSeriesDetails: (sourceId: String, seriesId: String) -> Unit,
     onFullscreenStateChanged: (Boolean) -> Unit,
 ) {
     val context = LocalContext.current
@@ -316,7 +317,16 @@ internal fun LibraryRoute(
                 items(seriesGroups, key = { it.key }) { group ->
                     LibrarySeriesCard(
                         group = group,
-                        onOpen = {
+                        onOpenSeries = {
+                            playbackRequestError = null
+                            val seriesId = group.seriesId
+                            if (seriesId != null) {
+                                onOpenSeriesDetails(group.key.sourceId, seriesId)
+                            } else {
+                                selectedSeriesKey = group.key
+                            }
+                        },
+                        onOpenOfflineEpisodes = {
                             playbackRequestError = null
                             selectedSeriesKey = group.key
                         },
