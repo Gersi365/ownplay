@@ -12,7 +12,6 @@ import app.ownplay.player.persistence.OwnPlayDatabase
 import app.ownplay.player.persistence.download.DownloadMediaKinds
 import app.ownplay.player.persistence.download.DownloadStates
 import app.ownplay.player.persistence.download.MediaDownloadEntity
-import app.ownplay.player.playback.LocalVideoPlayback
 import app.ownplay.player.playback.PlaybackMediaKind
 import app.ownplay.player.playback.PlaybackRequest
 import app.ownplay.player.playback.ResolvedPlaybackLocator
@@ -172,11 +171,8 @@ class OfflineDownloadRepository(
     }
 
     suspend fun localPlaybackLocator(request: PlaybackRequest): ResolvedPlaybackLocator? {
-        LocalVideoPlayback.resolve(request)?.let { return it }
         val mediaKind = when (request.mediaKind) {
-            PlaybackMediaKind.LIVE,
-            PlaybackMediaKind.LOCAL_VIDEO,
-            -> return null
+            PlaybackMediaKind.LIVE -> return null
             PlaybackMediaKind.MOVIE -> DownloadMediaKinds.MOVIE
             PlaybackMediaKind.SERIES_EPISODE -> DownloadMediaKinds.SERIES_EPISODE
         }

@@ -4,7 +4,6 @@ enum class PlaybackMediaKind {
     LIVE,
     MOVIE,
     SERIES_EPISODE,
-    LOCAL_VIDEO,
 }
 
 enum class PlaybackNavigationDirection {
