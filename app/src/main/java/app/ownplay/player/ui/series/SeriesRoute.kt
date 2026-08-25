@@ -167,12 +167,6 @@ internal fun SeriesRoute(
         playingEpisode = episode
     }
 
-    fun downloadFor(episode: SeriesEpisode): OfflineDownload? = downloads.firstOrNull { download ->
-        download.sourceId == sourceId &&
-            download.mediaKind == DownloadMediaKinds.SERIES_EPISODE &&
-            download.contentId == episode.episodeId
-    }
-
     fun downloadEpisode(episode: SeriesEpisode) {
         scope.launch {
             downloadRuntime.enqueue(
@@ -190,6 +184,14 @@ internal fun SeriesRoute(
                 ),
             )
         }
+    }
+
+    fun pauseDownload(download: OfflineDownload) {
+        scope.launch { downloadRuntime.pause(download.downloadId) }
+    }
+
+    fun resumeDownload(download: OfflineDownload) {
+        scope.launch { downloadRuntime.resume(download.downloadId) }
     }
 
     LaunchedEffect(sourceId) {
@@ -264,15 +266,15 @@ internal fun SeriesRoute(
             },
             onPlay = ::playEpisode,
             onDownload = ::downloadEpisode,
+            onPauseDownload = ::pauseDownload,
+            onResumeDownload = ::resumeDownload,
             onClearProgress = { episode ->
                 scope.launch {
                     featureRuntime.clearEpisodeProgress(sourceId, episode.episodeId)
                 }
             },
             onClose = { selectedSeries = null },
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(8.dp),
+            modifier = Modifier.fillMaxSize(),
         )
         return
     }
@@ -317,6 +319,8 @@ internal fun SeriesRoute(
                 },
                 onPlay = ::playEpisode,
                 onDownload = ::downloadEpisode,
+                onPauseDownload = ::pauseDownload,
+                onResumeDownload = ::resumeDownload,
                 onClearProgress = { episode ->
                     scope.launch {
                         featureRuntime.clearEpisodeProgress(sourceId, episode.episodeId)
@@ -449,15 +453,19 @@ private fun SeriesCatalogPane(
             modifier = Modifier
                 .fillMaxWidth()
                 .weight(1f),
-            verticalArrangement = Arrangement.spacedBy(6.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
             items(series, key = { it.seriesId }) { item ->
                 Surface(
                     modifier = Modifier
                         .fillMaxWidth()
                         .clickable { onSeriesSelected(item) },
-                    shape = RoundedCornerShape(12.dp),
-                    tonalElevation = if (selectedSeriesId == item.seriesId) 3.dp else 1.dp,
+                    shape = RoundedCornerShape(8.dp),
+                    color = if (selectedSeriesId == item.seriesId) {
+                        MaterialTheme.colorScheme.surfaceVariant
+                    } else {
+                        MaterialTheme.colorScheme.background
+                    },
                 ) {
                     Row(
                         modifier = Modifier.padding(8.dp),
@@ -503,20 +511,35 @@ private fun SeriesDetailsPane(
     onFavoriteChanged: (Boolean) -> Unit,
     onPlay: (SeriesEpisode) -> Unit,
     onDownload: (SeriesEpisode) -> Unit,
+    onPauseDownload: (OfflineDownload) -> Unit,
+    onResumeDownload: (OfflineDownload) -> Unit,
     onClearProgress: (SeriesEpisode) -> Unit,
     onClose: () -> Unit,
     modifier: Modifier,
 ) {
-    Surface(modifier = modifier, shape = RoundedCornerShape(16.dp), tonalElevation = 2.dp) {
-        Column(modifier = Modifier.padding(12.dp)) {
+    Surface(
+        modifier = modifier,
+        color = MaterialTheme.colorScheme.background,
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = 12.dp, vertical = 8.dp),
+        ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    selected.name,
-                    style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.Bold,
-                    modifier = Modifier.weight(1f),
-                )
-                TextButton(onClick = onClose) { Text("Close") }
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        selected.name,
+                        style = MaterialTheme.typography.headlineSmall,
+                        fontWeight = FontWeight.Bold,
+                    )
+                    Text(
+                        "Series",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                TextButton(onClick = onClose) { Text("Back") }
             }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Button(onClick = { onFavoriteChanged(!selected.isFavorite) }) {
@@ -552,12 +575,17 @@ private fun SeriesDetailsPane(
                 val selectedSeason = loaded.seasons.firstOrNull {
                     it.seasonNumber == selectedSeasonNumber
                 } ?: loaded.seasons.firstOrNull()
-                HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+                HorizontalDivider(modifier = Modifier.padding(top = 8.dp, bottom = 6.dp))
+                Text(
+                    "Episodes",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.padding(bottom = 4.dp),
+                )
                 LazyColumn(
                     modifier = Modifier
                         .fillMaxWidth()
                         .weight(1f),
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     items(selectedSeason?.episodes.orEmpty(), key = { it.episodeId }) { episode ->
                         val download = downloads.firstOrNull { item ->
@@ -569,6 +597,8 @@ private fun SeriesDetailsPane(
                             download = download,
                             onPlay = { onPlay(episode) },
                             onDownload = { onDownload(episode) },
+                            onPauseDownload = { item -> onPauseDownload(item) },
+                            onResumeDownload = { item -> onResumeDownload(item) },
                             onClearProgress = { onClearProgress(episode) },
                         )
                     }
@@ -584,61 +614,86 @@ private fun EpisodeRow(
     download: OfflineDownload?,
     onPlay: () -> Unit,
     onDownload: () -> Unit,
+    onPauseDownload: (OfflineDownload) -> Unit,
+    onResumeDownload: (OfflineDownload) -> Unit,
     onClearProgress: () -> Unit,
 ) {
-    Surface(shape = RoundedCornerShape(12.dp), tonalElevation = 1.dp) {
-        Column(modifier = Modifier.padding(10.dp)) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 9.dp),
+    ) {
+        Text(
+            "E${episode.episodeNumber} · ${episode.title}",
+            fontWeight = FontWeight.SemiBold,
+        )
+        episode.positionMs?.takeIf { it > 0L }?.let {
             Text(
-                "E${episode.episodeNumber} · ${episode.title}",
-                fontWeight = FontWeight.SemiBold,
+                if (episode.resumeAvailable) "Resume available" else "Watched",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            episode.positionMs?.takeIf { it > 0L }?.let {
+        }
+        Row(
+            modifier = Modifier.padding(top = 6.dp),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            Button(onClick = onPlay) {
+                Text(if (episode.resumeAvailable) "Resume" else "Play")
+            }
+            Button(
+                onClick = {
+                    when (download?.state) {
+                        DownloadStates.QUEUED,
+                        DownloadStates.DOWNLOADING,
+                        -> onPauseDownload(download)
+                        DownloadStates.PAUSED -> onResumeDownload(download)
+                        DownloadStates.COMPLETED -> Unit
+                        DownloadStates.FAILED, null -> onDownload()
+                    }
+                },
+                enabled = download?.state != DownloadStates.COMPLETED,
+            ) {
                 Text(
-                    if (episode.resumeAvailable) "Resume available" else "Watched",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    when (download?.state) {
+                        DownloadStates.QUEUED,
+                        DownloadStates.DOWNLOADING,
+                        -> "Pause"
+                        DownloadStates.PAUSED -> "Resume DL"
+                        DownloadStates.COMPLETED -> "Downloaded"
+                        DownloadStates.FAILED -> "Retry"
+                        else -> "Download"
+                    },
                 )
             }
-            Row(
-                modifier = Modifier.padding(top = 6.dp),
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
-            ) {
-                Button(onClick = onPlay) {
-                    Text(if (episode.resumeAvailable) "Resume" else "Play")
-                }
-                Button(
-                    onClick = onDownload,
-                    enabled = download == null || download.state == DownloadStates.FAILED,
-                ) {
-                    Text(
-                        when (download?.state) {
-                            DownloadStates.QUEUED -> "Queued"
-                            DownloadStates.DOWNLOADING -> "Downloading"
-                            DownloadStates.COMPLETED -> "Downloaded"
-                            DownloadStates.FAILED -> "Retry"
-                            else -> "Download"
-                        },
-                    )
-                }
-                if ((episode.positionMs ?: 0L) > 0L) {
-                    TextButton(onClick = onClearProgress) { Text("Clear") }
-                }
-            }
-            if (download?.state == DownloadStates.DOWNLOADING) {
-                val fraction = download.progressFraction
-                if (fraction == null) {
-                    LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
-                } else {
-                    LinearProgressIndicator(
-                        progress = { fraction },
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-                }
-            }
-            download?.failureReason?.takeIf { download.state == DownloadStates.FAILED }?.let {
-                Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.labelSmall)
+            if ((episode.positionMs ?: 0L) > 0L) {
+                TextButton(onClick = onClearProgress) { Text("Clear") }
             }
         }
+        if (
+            download?.state == DownloadStates.DOWNLOADING ||
+            download?.state == DownloadStates.QUEUED ||
+            download?.state == DownloadStates.PAUSED
+        ) {
+            val fraction = download.progressFraction
+            if (fraction == null) {
+                LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+            } else {
+                LinearProgressIndicator(
+                    progress = { fraction },
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+            Text(
+                downloadProgressLabel(download),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        download?.failureReason?.takeIf { download.state == DownloadStates.FAILED }?.let {
+            Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.labelSmall)
+        }
+        HorizontalDivider(modifier = Modifier.padding(top = 8.dp))
     }
 }
 
@@ -783,5 +838,31 @@ private fun SeriesUnavailableState(
                 Button(onClick = onOpenSettings) { Text("Open Settings") }
             }
         }
+    }
+}
+
+private fun downloadProgressLabel(download: OfflineDownload): String {
+    val downloaded = humanBytes(download.bytesDownloaded)
+    val totalBytes = download.totalBytes?.takeIf { it > 0L }
+    val total = totalBytes?.let(::humanBytes)
+    val prefix = when (download.state) {
+        DownloadStates.PAUSED -> "Paused · "
+        DownloadStates.QUEUED -> "Queued · "
+        else -> ""
+    }
+    if (totalBytes == null || total == null) return "$prefix$downloaded"
+    val percent = ((download.bytesDownloaded.toDouble() / totalBytes.toDouble()) * 100.0)
+        .toInt()
+        .coerceIn(0, 100)
+    return "$prefix$downloaded / $total · $percent%"
+}
+
+private fun humanBytes(bytes: Long): String {
+    val safe = bytes.coerceAtLeast(0L)
+    return when {
+        safe >= 1_073_741_824L -> "%.1f GB".format(safe / 1_073_741_824.0)
+        safe >= 1_048_576L -> "%.1f MB".format(safe / 1_048_576.0)
+        safe >= 1_024L -> "%.1f KB".format(safe / 1_024.0)
+        else -> "$safe B"
     }
 }
