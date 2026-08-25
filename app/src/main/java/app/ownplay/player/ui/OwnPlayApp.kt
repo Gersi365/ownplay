@@ -82,6 +82,7 @@ fun OwnPlayApp(
     var activeSourceId by remember { mutableStateOf<String?>(null) }
     var activeSelection by remember { mutableStateOf<LivePlaybackSelection?>(null) }
     var fullscreenSelection by remember { mutableStateOf<LivePlaybackSelection?>(null) }
+    var requestedVodMovieId by remember { mutableStateOf<String?>(null) }
     var vodFullscreen by remember { mutableStateOf(false) }
     var seriesFullscreen by remember { mutableStateOf(false) }
     var libraryFullscreen by remember { mutableStateOf(false) }
@@ -99,6 +100,9 @@ fun OwnPlayApp(
             fullscreenSelection = null
             runtime.playbackController.stop()
         }
+        if (activeSourceId !in ids) {
+            requestedVodMovieId = null
+        }
     }
 
     fun openContentSection(target: OwnPlaySection) {
@@ -106,6 +110,9 @@ fun OwnPlayApp(
             activeSelection = null
             fullscreenSelection = null
             runtime.playbackController.stop()
+        }
+        if (target != OwnPlaySection.MOVIES) {
+            requestedVodMovieId = null
         }
         section = target
     }
@@ -330,6 +337,8 @@ fun OwnPlayApp(
                         runtime = runtime,
                         sourceId = activeSourceId,
                         sourceKind = activeSummary?.sourceKind,
+                        requestedMovieId = requestedVodMovieId,
+                        onRequestedMovieConsumed = { requestedVodMovieId = null },
                         onOpenLive = { openContentSection(OwnPlaySection.LIVE) },
                         onOpenSeries = { openContentSection(OwnPlaySection.SERIES) },
                         onOpenSettings = { openContentSection(OwnPlaySection.SETTINGS) },
@@ -352,6 +361,11 @@ fun OwnPlayApp(
 
                     OwnPlaySection.LIBRARY -> LibraryRoute(
                         runtime = runtime,
+                        onOpenMovieDetails = { sourceId, movieId ->
+                            activeSourceId = sourceId
+                            requestedVodMovieId = movieId
+                            openContentSection(OwnPlaySection.MOVIES)
+                        },
                         onFullscreenStateChanged = { fullscreen ->
                             libraryFullscreen = fullscreen
                             onPlaybackFullscreenChanged(fullscreen)
