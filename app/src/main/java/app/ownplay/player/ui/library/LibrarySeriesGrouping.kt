@@ -2,11 +2,12 @@ package app.ownplay.player.ui.library
 
 import app.ownplay.player.download.OfflineDownload
 import app.ownplay.player.persistence.download.DownloadMediaKinds
+import java.io.Serializable
 
 internal data class LibrarySeriesKey(
     val sourceId: String,
     val identity: String,
-)
+) : Serializable
 
 internal data class LibrarySeriesGroup(
     val key: LibrarySeriesKey,
