@@ -4,6 +4,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -44,6 +45,7 @@ class OfflinePlaybackControllerTest {
 
         assertEquals(0, remoteResolveCount)
         assertEquals(localLocator, engine.preparedLocator)
+        assertEquals(ResolvedPlaybackOrigin.LOCAL_DOWNLOAD, controller.resolvedOrigin.value)
         engine.emitReady()
         assertTrue(controller.state.value is PlaybackState.Playing)
 
@@ -52,7 +54,9 @@ class OfflinePlaybackControllerTest {
 
         assertTrue(controller.state.value is PlaybackState.Playing)
         assertEquals(localLocator, engine.preparedLocator)
+        assertEquals(ResolvedPlaybackOrigin.LOCAL_DOWNLOAD, controller.resolvedOrigin.value)
         controller.close()
+        assertNull(controller.resolvedOrigin.value)
     }
 
     private class FakeEngine : PlaybackEngine {
