@@ -77,7 +77,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
-import androidx.compose.ui.window.Dialog
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.ui.AspectRatioFrameLayout
@@ -170,6 +169,18 @@ internal fun VodRoute(
     var detailsLoading by remember(sourceId) { mutableStateOf(false) }
     var detailsError by remember(sourceId) { mutableStateOf<SourceError?>(null) }
     var playingMovie by remember(sourceId) { mutableStateOf<VodMovie?>(null) }
+    val detailsBackOwner = remember(sourceId) { Any() }
+
+    DisposableEffect(selectedMovie?.movieId, playingMovie?.movieId, detailsBackOwner) {
+        if (selectedMovie != null && playingMovie == null) {
+            PlaybackInteractionBridge.registerBackAction(detailsBackOwner) {
+                selectedMovie = null
+            }
+        }
+        onDispose {
+            PlaybackInteractionBridge.clearBackAction(detailsBackOwner)
+        }
+    }
 
     fun downloadFor(movie: VodMovie): OfflineDownload? = downloads.firstOrNull { download ->
         download.sourceId == sourceId &&
@@ -191,6 +202,14 @@ internal fun VodRoute(
                 ),
             )
         }
+    }
+
+    fun pauseDownload(download: OfflineDownload) {
+        scope.launch { downloadRuntime.pause(download.downloadId) }
+    }
+
+    fun resumeDownload(download: OfflineDownload) {
+        scope.launch { downloadRuntime.resume(download.downloadId) }
     }
 
     fun refresh() {
@@ -283,6 +302,37 @@ internal fun VodRoute(
         return
     }
 
+    if (!isLandscape) {
+        selectedMovie?.let { movie ->
+            MovieDetailsPane(
+                movie = movie,
+                details = details,
+                loading = detailsLoading,
+                error = detailsError,
+                download = downloadFor(movie),
+                onDismiss = { selectedMovie = null },
+                onFavoriteChanged = { favorite ->
+                    scope.launch { featureRuntime.setFavorite(sourceId, movie.movieId, favorite) }
+                },
+                onDownload = ::enqueueMovieDownload,
+                onPauseDownload = ::pauseDownload,
+                onResumeDownload = ::resumeDownload,
+                onPlay = { target ->
+                    runtime.playbackController.start(
+                        PlaybackRequest(
+                            sourceId = sourceId,
+                            channelId = target.movieId,
+                            mediaKind = PlaybackMediaKind.MOVIE,
+                        ),
+                    )
+                    playingMovie = target
+                },
+                modifier = Modifier.fillMaxSize(),
+            )
+            return
+        }
+    }
+
     if (isLandscape) {
         Row(
             modifier = Modifier
@@ -333,6 +383,8 @@ internal fun VodRoute(
                         }
                     },
                     onDownload = ::enqueueMovieDownload,
+                    onPauseDownload = ::pauseDownload,
+                    onResumeDownload = ::resumeDownload,
                     onPlay = { target ->
                         runtime.playbackController.start(
                             PlaybackRequest(
@@ -368,37 +420,6 @@ internal fun VodRoute(
             onCategorySelected = { selectedCategoryKey = it },
             modifier = Modifier.fillMaxSize(),
         )
-
-        selectedMovie?.let { movie ->
-            Dialog(onDismissRequest = { selectedMovie = null }) {
-                MovieDetailsPane(
-                    movie = movie,
-                    details = details,
-                    loading = detailsLoading,
-                    error = detailsError,
-                    download = downloadFor(movie),
-                    onDismiss = { selectedMovie = null },
-                    onFavoriteChanged = { favorite ->
-                        scope.launch { featureRuntime.setFavorite(sourceId, movie.movieId, favorite) }
-                    },
-                    onDownload = ::enqueueMovieDownload,
-                    onPlay = { target ->
-                        runtime.playbackController.start(
-                            PlaybackRequest(
-                                sourceId = sourceId,
-                                channelId = target.movieId,
-                                mediaKind = PlaybackMediaKind.MOVIE,
-                            ),
-                        )
-                        selectedMovie = null
-                        playingMovie = target
-                    },
-                    modifier = Modifier
-                        .fillMaxWidth(0.94f)
-                        .fillMaxHeight(0.90f),
-                )
-            }
-        }
     }
 }
 
@@ -820,42 +841,51 @@ private fun MovieDetailsPane(
     onDismiss: () -> Unit,
     onFavoriteChanged: (Boolean) -> Unit,
     onDownload: (VodMovie) -> Unit,
+    onPauseDownload: (OfflineDownload) -> Unit,
+    onResumeDownload: (OfflineDownload) -> Unit,
     onPlay: (VodMovie) -> Unit,
     modifier: Modifier,
 ) {
     Surface(
         modifier = modifier,
-        shape = RoundedCornerShape(18.dp),
-        tonalElevation = 3.dp,
+        color = MaterialTheme.colorScheme.background,
     ) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .verticalScroll(rememberScrollState())
-                .padding(14.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
+                .padding(horizontal = 16.dp, vertical = 10.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    text = details?.movie?.name ?: movie.name,
-                    modifier = Modifier.weight(1f),
-                    style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.Bold,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                )
                 IconButton(onClick = onDismiss) {
-                    Icon(Icons.Filled.ArrowBack, contentDescription = "Close details")
+                    Icon(Icons.Filled.ArrowBack, contentDescription = "Back to Movies")
+                }
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = details?.movie?.name ?: movie.name,
+                        style = MaterialTheme.typography.headlineSmall,
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    Text(
+                        text = "Movie",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
                 }
             }
+
             RemotePoster(
                 url = details?.posterUrl ?: movie.posterUrl,
                 title = movie.name,
                 modifier = Modifier
-                    .width(150.dp)
+                    .width(168.dp)
                     .aspectRatio(2f / 3f)
                     .align(Alignment.CenterHorizontally),
             )
+
             if (loading) {
                 CircularProgressIndicator(
                     modifier = Modifier
@@ -871,6 +901,7 @@ private fun MovieDetailsPane(
                     color = MaterialTheme.colorScheme.error,
                 )
             }
+
             details?.let { info ->
                 val meta = listOfNotNull(
                     info.releaseDate,
@@ -886,16 +917,8 @@ private fun MovieDetailsPane(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
-                info.description?.takeIf(String::isNotBlank)?.let { description ->
-                    Text(text = description, style = MaterialTheme.typography.bodyMedium)
-                }
-                info.director?.takeIf(String::isNotBlank)?.let { director ->
-                    Text("Director: $director", style = MaterialTheme.typography.bodySmall)
-                }
-                info.cast?.takeIf(String::isNotBlank)?.let { cast ->
-                    Text("Cast: $cast", style = MaterialTheme.typography.bodySmall)
-                }
             }
+
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -919,31 +942,48 @@ private fun MovieDetailsPane(
             }
 
             val target = details?.movie ?: movie
-            val downloadEnabled = download == null || download.state == DownloadStates.FAILED
             val downloadLabel = when (download?.state) {
-                DownloadStates.QUEUED -> "Queued"
-                DownloadStates.DOWNLOADING -> "Downloading"
+                DownloadStates.QUEUED -> "Pause download"
+                DownloadStates.DOWNLOADING -> "Pause download"
+                DownloadStates.PAUSED -> "Resume download"
                 DownloadStates.COMPLETED -> "Downloaded"
                 DownloadStates.FAILED -> "Retry download"
                 else -> "Download"
             }
             FilledTonalButton(
-                onClick = { onDownload(target) },
-                enabled = downloadEnabled,
+                onClick = {
+                    when (download?.state) {
+                        DownloadStates.QUEUED,
+                        DownloadStates.DOWNLOADING,
+                        -> onPauseDownload(download)
+                        DownloadStates.PAUSED -> onResumeDownload(download)
+                        DownloadStates.COMPLETED -> Unit
+                        DownloadStates.FAILED, null -> onDownload(target)
+                    }
+                },
+                enabled = download?.state != DownloadStates.COMPLETED,
                 modifier = Modifier.fillMaxWidth(),
             ) {
                 Icon(
-                    imageVector = if (download?.state == DownloadStates.COMPLETED) {
-                        Icons.Filled.DownloadDone
-                    } else {
-                        Icons.Filled.Download
+                    imageVector = when (download?.state) {
+                        DownloadStates.QUEUED,
+                        DownloadStates.DOWNLOADING,
+                        -> Icons.Filled.Pause
+                        DownloadStates.PAUSED -> Icons.Filled.PlayArrow
+                        DownloadStates.COMPLETED -> Icons.Filled.DownloadDone
+                        else -> Icons.Filled.Download
                     },
                     contentDescription = null,
                 )
                 Spacer(Modifier.width(6.dp))
                 Text(downloadLabel)
             }
-            if (download?.state == DownloadStates.DOWNLOADING) {
+
+            if (
+                download?.state == DownloadStates.DOWNLOADING ||
+                download?.state == DownloadStates.QUEUED ||
+                download?.state == DownloadStates.PAUSED
+            ) {
                 val progress = download.progressFraction
                 if (progress == null) {
                     LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
@@ -953,13 +993,37 @@ private fun MovieDetailsPane(
                         modifier = Modifier.fillMaxWidth(),
                     )
                 }
+                Text(
+                    text = downloadProgressLabel(download),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
+
             if (download?.state == DownloadStates.FAILED) {
                 Text(
                     text = download.failureReason ?: "Download failed. Retry when the source is available.",
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.error,
                 )
+            }
+
+            details?.let { info ->
+                HorizontalDivider()
+                Text(
+                    text = "About",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                info.description?.takeIf(String::isNotBlank)?.let { description ->
+                    Text(text = description, style = MaterialTheme.typography.bodyMedium)
+                }
+                info.director?.takeIf(String::isNotBlank)?.let { director ->
+                    Text("Director: $director", style = MaterialTheme.typography.bodySmall)
+                }
+                info.cast?.takeIf(String::isNotBlank)?.let { cast ->
+                    Text("Cast: $cast", style = MaterialTheme.typography.bodySmall)
+                }
             }
         }
     }
@@ -1242,6 +1306,32 @@ private fun movieProgressFraction(movie: VodMovie): Float? {
     val duration = movie.durationMs ?: return null
     if (position <= 0L || duration <= 0L || movie.progressCompleted) return null
     return (position.toDouble() / duration.toDouble()).coerceIn(0.0, 1.0).toFloat()
+}
+
+private fun downloadProgressLabel(download: OfflineDownload): String {
+    val downloaded = humanBytes(download.bytesDownloaded)
+    val totalBytes = download.totalBytes?.takeIf { it > 0L }
+    val total = totalBytes?.let(::humanBytes)
+    val prefix = when (download.state) {
+        DownloadStates.PAUSED -> "Paused · "
+        DownloadStates.QUEUED -> "Queued · "
+        else -> ""
+    }
+    if (totalBytes == null || total == null) return "$prefix$downloaded"
+    val percent = ((download.bytesDownloaded.toDouble() / totalBytes.toDouble()) * 100.0)
+        .toInt()
+        .coerceIn(0, 100)
+    return "$prefix$downloaded / $total · $percent%"
+}
+
+private fun humanBytes(bytes: Long): String {
+    val safe = bytes.coerceAtLeast(0L)
+    return when {
+        safe >= 1_073_741_824L -> "%.1f GB".format(safe / 1_073_741_824.0)
+        safe >= 1_048_576L -> "%.1f MB".format(safe / 1_048_576.0)
+        safe >= 1_024L -> "%.1f KB".format(safe / 1_024.0)
+        else -> "$safe B"
+    }
 }
 
 private fun sourceErrorLabel(error: SourceError): String = when (error) {
