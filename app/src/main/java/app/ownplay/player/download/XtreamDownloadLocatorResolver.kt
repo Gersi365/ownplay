@@ -96,7 +96,7 @@ internal class XtreamDownloadLocatorResolver(
             DownloadMediaKinds.SERIES_EPISODE -> "series"
             else -> return DownloadLocatorResult.Failure("Unsupported download media kind")
         }
-        val extension = OfflineDownloadFiles.normalizeExtension(download.containerExtension)
+        val extension = OfflineDownloadStorage.normalizeExtension(download.containerExtension)
         val baseUrl = server.normalizedUrl.toHttpUrlOrNull()
             ?: return DownloadLocatorResult.Failure("Source server is invalid")
         val resolved = baseUrl.newBuilder()
