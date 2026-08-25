@@ -89,6 +89,7 @@ import app.ownplay.player.download.OfflineDownloadSpec
 import app.ownplay.player.persistence.SourceKinds
 import app.ownplay.player.persistence.download.DownloadMediaKinds
 import app.ownplay.player.persistence.download.DownloadStates
+import app.ownplay.player.playback.PlaybackInteractionBridge
 import app.ownplay.player.playback.PlaybackMediaKind
 import app.ownplay.player.playback.PlaybackRequest
 import app.ownplay.player.playback.PlaybackState
@@ -976,6 +977,7 @@ private fun VodPlaybackScreen(
 ) {
     val playbackState by runtime.playbackController.state.collectAsState()
     val scope = rememberCoroutineScope()
+    val backOwner = remember(movie.movieId) { Any() }
     var playerView by remember(movie.movieId) { mutableStateOf<PlayerView?>(null) }
     var currentPosition by remember(movie.movieId) { mutableStateOf(movie.positionMs ?: 0L) }
     var duration by remember(movie.movieId) { mutableStateOf(movie.durationMs ?: 0L) }
@@ -988,14 +990,16 @@ private fun VodPlaybackScreen(
         controlsInteractionToken += 1
     }
 
-    DisposableEffect(movie.movieId) {
+    DisposableEffect(movie.movieId, backOwner) {
         onFullscreenStateChanged(true)
+        PlaybackInteractionBridge.registerBackAction(backOwner, onExit)
         onDispose {
             val lastPosition = currentPosition
             val lastDuration = duration.takeIf { it > 0L }
             scope.launch {
                 featureRuntime.saveProgress(sourceId, movie.movieId, lastPosition, lastDuration)
             }
+            PlaybackInteractionBridge.clearBackAction(backOwner)
             onFullscreenStateChanged(false)
         }
     }
