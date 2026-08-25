@@ -3,6 +3,7 @@ package app.ownplay.player.ui.library
 import android.graphics.Color as AndroidColor
 import androidx.annotation.OptIn
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -86,6 +87,7 @@ private data class LibraryPlaybackSession(
 @Composable
 internal fun LibraryRoute(
     runtime: OwnPlayAppRuntime,
+    onOpenMovieDetails: (sourceId: String, movieId: String) -> Unit,
     onFullscreenStateChanged: (Boolean) -> Unit,
 ) {
     val context = LocalContext.current
@@ -241,6 +243,13 @@ internal fun LibraryRoute(
             items(filtered, key = { it.downloadId }) { download ->
                 LibraryMediaCard(
                     download = download,
+                    onOpenDetails = if (download.mediaKind == DownloadMediaKinds.MOVIE) {
+                        {
+                            onOpenMovieDetails(download.sourceId, download.contentId)
+                        }
+                    } else {
+                        null
+                    },
                     onPlayOffline = {
                         scope.launch {
                             val request = downloadRuntime.playbackRequest(download.downloadId)
@@ -283,12 +292,19 @@ internal fun LibraryRoute(
 @Composable
 private fun LibraryMediaCard(
     download: OfflineDownload,
+    onOpenDetails: (() -> Unit)?,
     onPlayOffline: () -> Unit,
     onPause: () -> Unit,
     onResume: () -> Unit,
     onRetry: () -> Unit,
     onRemove: () -> Unit,
 ) {
+    val detailsModifier = if (onOpenDetails == null) {
+        Modifier
+    } else {
+        Modifier.clickable(onClick = onOpenDetails)
+    }
+
     Surface(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(14.dp),
@@ -303,11 +319,13 @@ private fun LibraryMediaCard(
                 title = download.title,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .aspectRatio(2f / 3f),
+                    .aspectRatio(2f / 3f)
+                    .then(detailsModifier),
             )
 
             Text(
                 text = download.title,
+                modifier = detailsModifier,
                 style = MaterialTheme.typography.bodyMedium,
                 fontWeight = FontWeight.SemiBold,
                 maxLines = 2,
@@ -381,11 +399,19 @@ private fun LibraryMediaCard(
                 when (download.state) {
                     DownloadStates.COMPLETED -> Button(
                         onClick = onPlayOffline,
-                        modifier = Modifier.weight(1f),
+                        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp),
                     ) {
-                        Icon(Icons.Filled.PlayArrow, contentDescription = null)
-                        Spacer(Modifier.width(4.dp))
-                        Text("Play Offline")
+                        Icon(
+                            Icons.Filled.PlayArrow,
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp),
+                        )
+                        Spacer(Modifier.width(5.dp))
+                        Text(
+                            text = "Play Offline",
+                            maxLines = 1,
+                            softWrap = false,
+                        )
                     }
 
                     DownloadStates.DOWNLOADING,
@@ -418,9 +444,7 @@ private fun LibraryMediaCard(
                     }
                 }
 
-                if (download.state != DownloadStates.COMPLETED) {
-                    Spacer(Modifier.weight(1f))
-                }
+                Spacer(Modifier.weight(1f))
                 IconButton(onClick = onRemove) {
                     Icon(Icons.Filled.Delete, contentDescription = "Remove download")
                 }
