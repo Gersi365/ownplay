@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -157,7 +158,7 @@ internal fun LibrarySeriesDetailScreen(
 ) {
     val seasons = group.seasonNumbers
     var selectedSeason by remember(group.key, seasons) {
-        mutableStateOf(seasons.firstOrNull())
+        mutableStateOf<Int?>(null)
     }
     val visibleEpisodes = remember(group.episodes, selectedSeason) {
         if (selectedSeason == null) {
@@ -190,7 +191,7 @@ internal fun LibrarySeriesDetailScreen(
                     overflow = TextOverflow.Ellipsis,
                 )
                 Text(
-                    text = "${group.episodeCount} downloaded episode${if (group.episodeCount == 1) "" else "s"}",
+                    text = "${group.episodeCount} episode${if (group.episodeCount == 1) "" else "s"} in Library",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -203,8 +204,15 @@ internal fun LibrarySeriesDetailScreen(
         }
 
         if (seasons.isNotEmpty()) {
-            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                seasons.forEach { season ->
+            LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                item(key = "all") {
+                    FilterChip(
+                        selected = selectedSeason == null,
+                        onClick = { selectedSeason = null },
+                        label = { Text("All") },
+                    )
+                }
+                items(seasons, key = { it }) { season ->
                     FilterChip(
                         selected = selectedSeason == season,
                         onClick = { selectedSeason = season },
