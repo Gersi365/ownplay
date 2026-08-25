@@ -57,6 +57,9 @@ data class OfflineDownload(
     val active: Boolean
         get() = state == DownloadStates.QUEUED || state == DownloadStates.DOWNLOADING
 
+    val paused: Boolean
+        get() = state == DownloadStates.PAUSED
+
     val progressFraction: Float?
         get() {
             val total = totalBytes ?: return null
@@ -140,6 +143,40 @@ class OfflineDownloadRepository(
         )
         enqueueWork(downloadId)
         return downloadId
+    }
+
+    suspend fun pause(downloadId: String) {
+        val existing = dao.getById(downloadId) ?: return
+        if (existing.state != DownloadStates.QUEUED && existing.state != DownloadStates.DOWNLOADING) {
+            return
+        }
+        val partial = OfflineDownloadFiles.partialFile(applicationContext, downloadId)
+        dao.updateTransfer(
+            downloadId = downloadId,
+            state = DownloadStates.PAUSED,
+            bytesDownloaded = partial.takeIf(File::isFile)?.length() ?: existing.bytesDownloaded,
+            totalBytes = existing.totalBytes,
+            localRelativePath = null,
+            failureReason = null,
+            updatedAtEpochMillis = System.currentTimeMillis(),
+        )
+        workManager.cancelUniqueWork(workName(downloadId))
+    }
+
+    suspend fun resume(downloadId: String) {
+        val existing = dao.getById(downloadId) ?: return
+        if (existing.state != DownloadStates.PAUSED) return
+        val partial = OfflineDownloadFiles.partialFile(applicationContext, downloadId)
+        dao.updateTransfer(
+            downloadId = downloadId,
+            state = DownloadStates.QUEUED,
+            bytesDownloaded = partial.takeIf(File::isFile)?.length() ?: existing.bytesDownloaded,
+            totalBytes = existing.totalBytes,
+            localRelativePath = null,
+            failureReason = null,
+            updatedAtEpochMillis = System.currentTimeMillis(),
+        )
+        enqueueWork(downloadId)
     }
 
     suspend fun retry(downloadId: String) {
