@@ -15,6 +15,12 @@ internal data class LibrarySeriesGroup(
     val posterUrl: String?,
     val episodes: List<OfflineDownload>,
 ) {
+    val seriesId: String?
+        get() = episodes
+            .mapNotNull { seriesIdFromEpisodeContentId(it.contentId) }
+            .distinct()
+            .singleOrNull()
+
     val episodeCount: Int
         get() = episodes.size
 
@@ -65,10 +71,18 @@ internal fun groupLibrarySeries(downloads: List<OfflineDownload>): List<LibraryS
         )
 }
 
+internal fun seriesIdFromEpisodeContentId(contentId: String): String? {
+    val marker = ":episode:"
+    val markerIndex = contentId.lastIndexOf(marker)
+    if (markerIndex <= 0 || markerIndex + marker.length >= contentId.length) return null
+    return contentId.substring(0, markerIndex)
+}
+
 private fun seriesKey(download: OfflineDownload): LibrarySeriesKey {
+    val exactSeriesId = seriesIdFromEpisodeContentId(download.contentId)
     val seriesTitle = download.seriesTitle?.trim()?.takeIf(String::isNotBlank)
     return LibrarySeriesKey(
         sourceId = download.sourceId,
-        identity = seriesTitle?.lowercase() ?: "episode:${download.contentId}",
+        identity = exactSeriesId ?: seriesTitle?.lowercase() ?: "episode:${download.contentId}",
     )
 }
