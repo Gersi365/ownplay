@@ -23,7 +23,8 @@ internal object PlaybackWindowPolicy {
     fun isPipEligible(
         pipSupported: Boolean,
         isPlaying: Boolean,
-    ): Boolean = pipSupported && isPlaying
+        playbackSurfaceActive: Boolean,
+    ): Boolean = pipSupported && isPlaying && playbackSurfaceActive
 
     fun orientationIntent(
         fullscreen: Boolean,
@@ -88,7 +89,9 @@ class PlaybackWindowController(
     }
 
     fun updatePlaybackSurfaceState(active: Boolean) {
+        if (playbackSurfaceActive == active) return
         playbackSurfaceActive = active
+        updatePictureInPictureParams()
     }
 
     fun updateAppOrientation(mode: AppOrientationMode) {
@@ -139,6 +142,7 @@ class PlaybackWindowController(
     private fun pipEligible(): Boolean = PlaybackWindowPolicy.isPipEligible(
         pipSupported = pipSupported,
         isPlaying = isPlaying,
+        playbackSurfaceActive = playbackSurfaceActive,
     )
 
     private fun buildPictureInPictureParams(): PictureInPictureParams {

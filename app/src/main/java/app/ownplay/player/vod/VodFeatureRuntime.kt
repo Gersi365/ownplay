@@ -12,7 +12,7 @@ class VodFeatureRuntime(
     context: Context,
 ) : AutoCloseable {
     private val applicationContext = context.applicationContext
-    private val database = OwnPlayDatabase.create(applicationContext)
+    private val database = sharedDatabase(applicationContext)
     private val repository = VodRepository(
         database = database,
         sensitiveValueStore = AndroidKeystoreSensitiveValueStore(applicationContext),
@@ -41,6 +41,21 @@ class VodFeatureRuntime(
         repository.clearProgress(sourceId, movieId)
 
     override fun close() {
-        database.close()
+        // VOD routes are screen-scoped, but their Room database must outlive route disposal.
+        // Animated section transitions and active WorkManager download writes can overlap the
+        // outgoing VOD composition, so closing this database from onDispose creates an unsafe
+        // lifecycle boundary. The shared instance intentionally lives for the process.
+    }
+
+    private companion object {
+        @Volatile
+        private var processDatabase: OwnPlayDatabase? = null
+
+        fun sharedDatabase(context: Context): OwnPlayDatabase =
+            processDatabase ?: synchronized(this) {
+                processDatabase ?: OwnPlayDatabase.create(context).also { database ->
+                    processDatabase = database
+                }
+            }
     }
 }
