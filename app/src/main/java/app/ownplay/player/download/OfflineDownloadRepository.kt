@@ -1,7 +1,6 @@
 package app.ownplay.player.download
 
 import android.content.Context
-import android.net.Uri
 import androidx.work.Constraints
 import androidx.work.ExistingWorkPolicy
 import androidx.work.NetworkType
@@ -50,6 +49,7 @@ data class OfflineDownload(
     val failureReason: String?,
     val createdAtEpochMillis: Long,
     val updatedAtEpochMillis: Long,
+    val savedToDownloads: Boolean = false,
 ) {
     val completed: Boolean
         get() = state == DownloadStates.COMPLETED
@@ -91,11 +91,15 @@ class OfflineDownloadRepository(
 
         val existing = dao.getForContent(spec.sourceId, spec.mediaKind, spec.contentId)
         if (existing != null) {
-            val completedFile = existing.localRelativePath?.let(::resolveRelativePath)
-            if (existing.state == DownloadStates.COMPLETED && completedFile?.isFile == true) {
+            if (
+                existing.state == DownloadStates.COMPLETED &&
+                OfflineDownloadStorage.locationExists(applicationContext, existing.localRelativePath)
+            ) {
                 return existing.downloadId
             }
-            val partial = OfflineDownloadFiles.partialFile(applicationContext, existing.downloadId)
+            val existingLocation = existing.localRelativePath
+                ?.takeIf { OfflineDownloadStorage.locationExists(applicationContext, it) }
+            val existingBytes = transferBytes(existing.downloadId, existingLocation)
             dao.upsert(
                 existing.copy(
                     providerStreamId = spec.providerStreamId,
@@ -106,9 +110,9 @@ class OfflineDownloadRepository(
                     posterUrl = spec.posterUrl,
                     containerExtension = spec.containerExtension,
                     state = DownloadStates.QUEUED,
-                    bytesDownloaded = partial.takeIf(File::isFile)?.length() ?: 0L,
+                    bytesDownloaded = existingBytes,
                     totalBytes = null,
-                    localRelativePath = null,
+                    localRelativePath = existingLocation,
                     failureReason = null,
                     updatedAtEpochMillis = System.currentTimeMillis(),
                 ),
@@ -150,13 +154,14 @@ class OfflineDownloadRepository(
         if (existing.state != DownloadStates.QUEUED && existing.state != DownloadStates.DOWNLOADING) {
             return
         }
-        val partial = OfflineDownloadFiles.partialFile(applicationContext, downloadId)
         dao.updateTransfer(
             downloadId = downloadId,
             state = DownloadStates.PAUSED,
-            bytesDownloaded = partial.takeIf(File::isFile)?.length() ?: existing.bytesDownloaded,
+            bytesDownloaded = transferBytes(downloadId, existing.localRelativePath)
+                .takeIf { it > 0L }
+                ?: existing.bytesDownloaded,
             totalBytes = existing.totalBytes,
-            localRelativePath = null,
+            localRelativePath = existing.localRelativePath,
             failureReason = null,
             updatedAtEpochMillis = System.currentTimeMillis(),
         )
@@ -166,13 +171,14 @@ class OfflineDownloadRepository(
     suspend fun resume(downloadId: String) {
         val existing = dao.getById(downloadId) ?: return
         if (existing.state != DownloadStates.PAUSED) return
-        val partial = OfflineDownloadFiles.partialFile(applicationContext, downloadId)
         dao.updateTransfer(
             downloadId = downloadId,
             state = DownloadStates.QUEUED,
-            bytesDownloaded = partial.takeIf(File::isFile)?.length() ?: existing.bytesDownloaded,
+            bytesDownloaded = transferBytes(downloadId, existing.localRelativePath)
+                .takeIf { it > 0L }
+                ?: existing.bytesDownloaded,
             totalBytes = existing.totalBytes,
-            localRelativePath = null,
+            localRelativePath = existing.localRelativePath,
             failureReason = null,
             updatedAtEpochMillis = System.currentTimeMillis(),
         )
@@ -181,18 +187,20 @@ class OfflineDownloadRepository(
 
     suspend fun retry(downloadId: String) {
         val existing = dao.getById(downloadId) ?: return
-        if (existing.state == DownloadStates.COMPLETED &&
-            existing.localRelativePath?.let(::resolveRelativePath)?.isFile == true
+        if (
+            existing.state == DownloadStates.COMPLETED &&
+            OfflineDownloadStorage.locationExists(applicationContext, existing.localRelativePath)
         ) {
             return
         }
-        val partial = OfflineDownloadFiles.partialFile(applicationContext, downloadId)
+        val existingLocation = existing.localRelativePath
+            ?.takeIf { OfflineDownloadStorage.locationExists(applicationContext, it) }
         dao.upsert(
             existing.copy(
                 state = DownloadStates.QUEUED,
-                bytesDownloaded = partial.takeIf(File::isFile)?.length() ?: 0L,
+                bytesDownloaded = transferBytes(downloadId, existingLocation),
                 totalBytes = null,
-                localRelativePath = null,
+                localRelativePath = existingLocation,
                 failureReason = null,
                 updatedAtEpochMillis = System.currentTimeMillis(),
             ),
@@ -202,8 +210,9 @@ class OfflineDownloadRepository(
 
     suspend fun remove(downloadId: String) {
         workManager.cancelUniqueWork(workName(downloadId))
-        dao.getById(downloadId)?.localRelativePath?.let(::resolveRelativePath)?.delete()
-        OfflineDownloadFiles.partialFile(applicationContext, downloadId).delete()
+        val existing = dao.getById(downloadId)
+        OfflineDownloadStorage.deleteLocation(applicationContext, existing?.localRelativePath)
+        OfflineDownloadStorage.partialFile(applicationContext, downloadId).delete()
         dao.delete(downloadId)
     }
 
@@ -219,8 +228,11 @@ class OfflineDownloadRepository(
             contentId = request.channelId,
         ) ?: return null
         if (row.state != DownloadStates.COMPLETED) return null
-        val file = row.localRelativePath?.let(::resolveRelativePath) ?: return null
-        if (!file.isFile) {
+        val playbackUri = OfflineDownloadStorage.playbackUri(
+            applicationContext,
+            row.localRelativePath,
+        )
+        if (playbackUri == null) {
             dao.updateTransfer(
                 downloadId = row.downloadId,
                 state = DownloadStates.FAILED,
@@ -233,7 +245,7 @@ class OfflineDownloadRepository(
             return null
         }
         return ResolvedPlaybackLocator(
-            value = Uri.fromFile(file).toString(),
+            value = playbackUri,
             origin = ResolvedPlaybackOrigin.LOCAL_DOWNLOAD,
         )
     }
@@ -253,8 +265,15 @@ class OfflineDownloadRepository(
         )
     }
 
-    private fun resolveRelativePath(relativePath: String): File? =
-        OfflineDownloadFiles.resolveRelativePath(applicationContext, relativePath)
+    private fun transferBytes(downloadId: String, location: String?): Long {
+        if (OfflineDownloadStorage.isPublicDownloadsLocation(location)) {
+            return OfflineDownloadStorage.locationSize(applicationContext, location) ?: 0L
+        }
+        return OfflineDownloadStorage.partialFile(applicationContext, downloadId)
+            .takeIf(File::isFile)
+            ?.length()
+            ?: 0L
+    }
 
     private fun mapDownload(row: MediaDownloadEntity): OfflineDownload = OfflineDownload(
         downloadId = row.downloadId,
@@ -272,38 +291,10 @@ class OfflineDownloadRepository(
         failureReason = row.failureReason,
         createdAtEpochMillis = row.createdAtEpochMillis,
         updatedAtEpochMillis = row.updatedAtEpochMillis,
+        savedToDownloads = OfflineDownloadStorage.isPublicDownloadsLocation(row.localRelativePath),
     )
 
     companion object {
         fun workName(downloadId: String): String = "ownplay-offline-download-$downloadId"
     }
-}
-
-internal object OfflineDownloadFiles {
-    private const val DIRECTORY = "offline"
-
-    fun directory(context: Context): File = File(context.filesDir, DIRECTORY).apply { mkdirs() }
-
-    fun partialFile(context: Context, downloadId: String): File =
-        File(directory(context), "$downloadId.part")
-
-    fun finalFile(context: Context, downloadId: String, extension: String): File =
-        File(directory(context), "$downloadId.${normalizeExtension(extension)}")
-
-    fun relativePath(file: File): String = "$DIRECTORY/${file.name}"
-
-    fun resolveRelativePath(context: Context, relativePath: String): File? {
-        if (!relativePath.startsWith("$DIRECTORY/")) return null
-        val base = directory(context).canonicalFile
-        val candidate = File(context.filesDir, relativePath).canonicalFile
-        return candidate.takeIf { file ->
-            file.path == base.path || file.path.startsWith(base.path + File.separator)
-        }
-    }
-
-    fun normalizeExtension(extension: String?): String = extension
-        ?.trim()
-        ?.lowercase()
-        ?.takeIf { it.matches(Regex("[a-z0-9]{1,8}")) }
-        ?: "mp4"
 }
