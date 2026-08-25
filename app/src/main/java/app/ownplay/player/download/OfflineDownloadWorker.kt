@@ -238,8 +238,13 @@ class OfflineDownloadWorker(
 
     private fun progressLabel(bytesDownloaded: Long, totalBytes: Long?): String {
         val downloaded = humanBytes(bytesDownloaded)
-        val total = totalBytes?.takeIf { it > 0L }?.let(::humanBytes)
-        return if (total == null) downloaded else "$downloaded / $total"
+        val knownTotal = totalBytes?.takeIf { it > 0L }
+        val total = knownTotal?.let(::humanBytes)
+        if (knownTotal == null || total == null) return downloaded
+        val percent = ((bytesDownloaded.coerceAtLeast(0L).toDouble() / knownTotal.toDouble()) * 100.0)
+            .toInt()
+            .coerceIn(0, 100)
+        return "$downloaded / $total · $percent%"
     }
 
     private fun humanBytes(bytes: Long): String {
