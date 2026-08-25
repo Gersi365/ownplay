@@ -118,6 +118,8 @@ internal fun VodRoute(
     runtime: OwnPlayAppRuntime,
     sourceId: String?,
     sourceKind: String?,
+    requestedMovieId: String? = null,
+    onRequestedMovieConsumed: () -> Unit = {},
     onOpenLive: () -> Unit,
     onOpenSeries: () -> Unit,
     onOpenSettings: () -> Unit,
@@ -232,6 +234,20 @@ internal fun VodRoute(
             is SourceResult.Failure -> refreshError = result.error
         }
         loading = false
+    }
+
+    LaunchedEffect(sourceId, requestedMovieId, catalog.movies, loading) {
+        val targetMovieId = requestedMovieId ?: return@LaunchedEffect
+        val target = catalog.movies.firstOrNull { movie -> movie.movieId == targetMovieId }
+        if (target != null) {
+            query = ""
+            selectedCategoryKey = null
+            favoritesOnly = false
+            selectedMovie = target
+            onRequestedMovieConsumed()
+        } else if (!loading && catalog.movies.isNotEmpty()) {
+            onRequestedMovieConsumed()
+        }
     }
 
     LaunchedEffect(selectedMovie?.movieId) {
