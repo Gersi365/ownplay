@@ -9,10 +9,10 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -46,8 +46,10 @@ class PlaybackController(
     private val controllerJob = SupervisorJob()
     private val scope = CoroutineScope(controllerJob + mainDispatcher)
     private val mutableState = MutableStateFlow<PlaybackState>(PlaybackState.Idle)
+    private val mutableResolvedOrigin = MutableStateFlow<ResolvedPlaybackOrigin?>(null)
 
     val state: StateFlow<PlaybackState> = mutableState.asStateFlow()
+    val resolvedOrigin: StateFlow<ResolvedPlaybackOrigin?> = mutableResolvedOrigin.asStateFlow()
 
     private var resolutionJob: Job? = null
     private var timeoutJob: Job? = null
@@ -175,6 +177,7 @@ class PlaybackController(
         generation += 1
         preparedGeneration = null
         currentPlaybackUsesNetwork = null
+        mutableResolvedOrigin.value = null
         resolutionJob?.cancel()
         timeoutJob?.cancel()
         retryJob?.cancel()
@@ -199,6 +202,7 @@ class PlaybackController(
         retryJob = null
         preparedGeneration = null
         currentPlaybackUsesNetwork = null
+        mutableResolvedOrigin.value = null
         engine.stop()
 
         if (resetRetryBudget) {
@@ -298,6 +302,7 @@ class PlaybackController(
             )
             return
         }
+        mutableResolvedOrigin.value = locator.origin
         preparedGeneration = requestGeneration
         engine.prepare(locator)
         engine.play()
@@ -307,6 +312,7 @@ class PlaybackController(
         generation += 1
         preparedGeneration = null
         currentPlaybackUsesNetwork = null
+        mutableResolvedOrigin.value = null
         resolutionJob?.cancel()
         timeoutJob?.cancel()
         retryJob?.cancel()
@@ -323,6 +329,8 @@ class PlaybackController(
         retryJob = null
         generation += 1
         preparedGeneration = null
+        currentPlaybackUsesNetwork = null
+        mutableResolvedOrigin.value = null
         resolutionJob?.cancel()
         timeoutJob?.cancel()
         engine.stop()
