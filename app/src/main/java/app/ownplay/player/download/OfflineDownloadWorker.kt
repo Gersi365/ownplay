@@ -107,6 +107,9 @@ class OfflineDownloadWorker(
                                 now - lastReportedAt >= PROGRESS_REPORT_MILLIS
                             ) {
                                 output.flush()
+                                if (dao.getById(downloadId)?.state == DownloadStates.PAUSED) {
+                                    throw CancellationException("Download paused")
+                                }
                                 dao.updateTransfer(
                                     downloadId = downloadId,
                                     state = DownloadStates.DOWNLOADING,
