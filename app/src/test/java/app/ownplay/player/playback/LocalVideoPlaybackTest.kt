@@ -1,8 +1,10 @@
 package app.ownplay.player.playback
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertThrows
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class LocalVideoPlaybackTest {
@@ -37,5 +39,29 @@ class LocalVideoPlaybackTest {
         )
 
         assertNull(LocalVideoPlayback.resolve(request))
+    }
+
+    @Test
+    fun platformFallbackIsLimitedToUnsupportedMedia() {
+        assertTrue(
+            LocalVideoPlayback.shouldUsePlatformFallback(
+                PlaybackFailure(PlaybackFailureCategory.UNSUPPORTED_MEDIA),
+            ),
+        )
+        assertFalse(
+            LocalVideoPlayback.shouldUsePlatformFallback(
+                PlaybackFailure(PlaybackFailureCategory.STREAM_UNAVAILABLE),
+            ),
+        )
+        assertFalse(
+            LocalVideoPlayback.shouldUsePlatformFallback(
+                PlaybackFailure(PlaybackFailureCategory.NETWORK_UNAVAILABLE),
+            ),
+        )
+        assertFalse(
+            LocalVideoPlayback.shouldUsePlatformFallback(
+                PlaybackFailure(PlaybackFailureCategory.AUTHENTICATION_FAILURE),
+            ),
+        )
     }
 }
