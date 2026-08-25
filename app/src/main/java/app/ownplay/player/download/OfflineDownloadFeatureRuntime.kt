@@ -86,8 +86,14 @@ class OfflineDownloadFeatureRuntime(
     ): Boolean = try {
         val row = database.mediaDownloadDao().getById(downloadId) ?: return false
         val mediaKind = row.progressMediaKind() ?: return false
+        val existing = database.vodCatalogDao().progress(
+            row.sourceId,
+            mediaKind,
+            row.contentId,
+        )
         val normalizedPosition = positionMs.coerceAtLeast(0L)
         val normalizedDuration = durationMs?.takeIf { it > 0L }
+            ?: existing?.durationMs?.takeIf { it > 0L }
         val completed = normalizedDuration?.let { duration ->
             normalizedPosition >= (duration * 0.95).toLong()
         } ?: false
