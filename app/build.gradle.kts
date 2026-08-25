@@ -13,8 +13,8 @@ android {
         applicationId = "app.ownplay.player"
         minSdk = 26
         targetSdk = 36
-        versionCode = 3
-        versionName = "0.1.0-dev-qa3-libvlc"
+        versionCode = 4
+        versionName = "0.1.0-dev-qa4-libvlc-sw"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
