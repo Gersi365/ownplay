@@ -18,6 +18,10 @@ class OfflineDownloadFeatureRuntime(
 
     suspend fun enqueue(spec: OfflineDownloadSpec): String = repository.enqueue(spec)
 
+    suspend fun pause(downloadId: String) = repository.pause(downloadId)
+
+    suspend fun resume(downloadId: String) = repository.resume(downloadId)
+
     suspend fun retry(downloadId: String) = repository.retry(downloadId)
 
     suspend fun remove(downloadId: String) = repository.remove(downloadId)
