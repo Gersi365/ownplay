@@ -10,6 +10,7 @@ import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -20,6 +21,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.DownloadDone
 import androidx.compose.material.icons.filled.LiveTv
 import androidx.compose.material.icons.filled.Movie
 import androidx.compose.material.icons.filled.Settings
@@ -49,6 +51,7 @@ import app.ownplay.player.OwnPlayAppRuntime
 import app.ownplay.player.playback.LivePlaybackSelection
 import app.ownplay.player.source.SourceSyncStage
 import app.ownplay.player.source.SourceSyncState
+import app.ownplay.player.ui.library.LibraryRoute
 import app.ownplay.player.ui.series.SeriesRoute
 import app.ownplay.player.ui.vod.VodRoute
 
@@ -58,6 +61,7 @@ private enum class OwnPlaySection {
     LIVE,
     MOVIES,
     SERIES,
+    LIBRARY,
     SETTINGS,
 }
 
@@ -71,6 +75,7 @@ fun OwnPlayApp(
     val summaries by runtime.observeSourceSummaries().collectAsState(initial = emptyList())
     val syncState by runtime.sourceSyncState.collectAsState()
     val playbackState by runtime.playbackController.state.collectAsState()
+    val playbackOrigin by runtime.playbackController.resolvedOrigin.collectAsState()
     val playbackTrackState by runtime.playbackTrackController.state.collectAsState()
 
     var section by remember { mutableStateOf(OwnPlaySection.LIVE) }
@@ -79,6 +84,7 @@ fun OwnPlayApp(
     var fullscreenSelection by remember { mutableStateOf<LivePlaybackSelection?>(null) }
     var vodFullscreen by remember { mutableStateOf(false) }
     var seriesFullscreen by remember { mutableStateOf(false) }
+    var libraryFullscreen by remember { mutableStateOf(false) }
 
     LaunchedEffect(summaries) {
         val ids = summaries.map { it.sourceId }.toSet()
@@ -109,7 +115,11 @@ fun OwnPlayApp(
             activeSelection != null &&
             fullscreenSelection == null
     val playbackSurfaceActive =
-        previewActive || fullscreenSelection != null || vodFullscreen || seriesFullscreen
+        previewActive ||
+            fullscreenSelection != null ||
+            vodFullscreen ||
+            seriesFullscreen ||
+            libraryFullscreen
     val contentLandscape =
         configuration.orientation == Configuration.ORIENTATION_LANDSCAPE &&
             (section == OwnPlaySection.LIVE || section == OwnPlaySection.MOVIES)
@@ -160,7 +170,12 @@ fun OwnPlayApp(
             }
         },
         bottomBar = {
-            if (!contentLandscape && !vodFullscreen && !seriesFullscreen) {
+            if (
+                !contentLandscape &&
+                !vodFullscreen &&
+                !seriesFullscreen &&
+                !libraryFullscreen
+            ) {
                 NavigationBar(
                     modifier = Modifier.navigationBarsPadding(),
                     containerColor = MaterialTheme.colorScheme.surface,
@@ -185,6 +200,12 @@ fun OwnPlayApp(
                         label = { Text("Series") },
                     )
                     NavigationBarItem(
+                        selected = section == OwnPlaySection.LIBRARY,
+                        onClick = { openContentSection(OwnPlaySection.LIBRARY) },
+                        icon = { Icon(Icons.Filled.DownloadDone, contentDescription = "Library") },
+                        label = { Text("Library") },
+                    )
+                    NavigationBarItem(
                         selected = section == OwnPlaySection.SETTINGS,
                         onClick = { openContentSection(OwnPlaySection.SETTINGS) },
                         icon = { Icon(Icons.Filled.Settings, contentDescription = "Settings") },
@@ -194,123 +215,151 @@ fun OwnPlayApp(
             }
         },
     ) { innerPadding ->
-        AnimatedContent(
-            targetState = section,
+        Box(
             modifier = Modifier
                 .fillMaxSize()
                 .background(MaterialTheme.colorScheme.background)
                 .padding(innerPadding),
-            transitionSpec = {
-                if (targetState.ordinal > initialState.ordinal) {
-                    (slideInHorizontally(
-                        animationSpec = tween(SECTION_MOTION_MILLIS),
-                        initialOffsetX = { width -> width / 18 },
-                    ) + fadeIn(tween(SECTION_MOTION_MILLIS))) togetherWith
-                        (slideOutHorizontally(
+        ) {
+            AnimatedContent(
+                targetState = section,
+                modifier = Modifier.fillMaxSize(),
+                transitionSpec = {
+                    if (targetState.ordinal > initialState.ordinal) {
+                        (slideInHorizontally(
                             animationSpec = tween(SECTION_MOTION_MILLIS),
-                            targetOffsetX = { width -> -width / 28 },
-                        ) + fadeOut(tween(130)))
-                } else {
-                    (slideInHorizontally(
-                        animationSpec = tween(SECTION_MOTION_MILLIS),
-                        initialOffsetX = { width -> -width / 18 },
-                    ) + fadeIn(tween(SECTION_MOTION_MILLIS))) togetherWith
-                        (slideOutHorizontally(
-                            animationSpec = tween(SECTION_MOTION_MILLIS),
-                            targetOffsetX = { width -> width / 28 },
-                        ) + fadeOut(tween(130)))
-                }
-            },
-            label = "ownPlaySection",
-        ) { targetSection ->
-            when (targetSection) {
-                OwnPlaySection.LIVE -> {
-                    val sourceId = activeSourceId
-                    if (sourceId == null) {
-                        LiveNoSourceScreen(
-                            syncState = syncState,
-                            onAddPlaylist = { section = OwnPlaySection.SETTINGS },
-                        )
+                            initialOffsetX = { width -> width / 18 },
+                        ) + fadeIn(tween(SECTION_MOTION_MILLIS))) togetherWith
+                            (slideOutHorizontally(
+                                animationSpec = tween(SECTION_MOTION_MILLIS),
+                                targetOffsetX = { width -> -width / 28 },
+                            ) + fadeOut(tween(130)))
                     } else {
-                        LiveRoute(
-                            runtime = runtime,
-                            sourceId = sourceId,
-                            activeSelection = activeSelection,
-                            playbackState = playbackState,
-                            videoOutput = runtime.playbackVideoOutput,
-                            syncState = syncState,
-                            onPlay = runtime.playbackController::play,
-                            onPause = runtime.playbackController::pause,
-                            onRetry = runtime.playbackController::retry,
-                            onOpenMovies = { openContentSection(OwnPlaySection.MOVIES) },
-                            onOpenSeries = { openContentSection(OwnPlaySection.SERIES) },
-                            onOpenSettings = { section = OwnPlaySection.SETTINGS },
-                            onPreviewRequested = { selection ->
-                                activeSelection = selection
-                                runtime.playbackController.start(selection.request)
-                            },
-                            onPreviewClosed = {
-                                activeSelection = null
-                                runtime.playbackController.stop()
-                            },
-                            onOpenFullscreen = { selection -> fullscreenSelection = selection },
-                            onNavigatePreview = { direction ->
-                                activeSelection
-                                    ?.navigate(direction)
-                                    ?.let { target ->
-                                        activeSelection = target
-                                        runtime.playbackController.start(target.request)
-                                    }
-                            },
-                        )
+                        (slideInHorizontally(
+                            animationSpec = tween(SECTION_MOTION_MILLIS),
+                            initialOffsetX = { width -> -width / 18 },
+                        ) + fadeIn(tween(SECTION_MOTION_MILLIS))) togetherWith
+                            (slideOutHorizontally(
+                                animationSpec = tween(SECTION_MOTION_MILLIS),
+                                targetOffsetX = { width -> width / 28 },
+                            ) + fadeOut(tween(130)))
                     }
-                }
-
-                OwnPlaySection.MOVIES -> VodRoute(
-                    runtime = runtime,
-                    sourceId = activeSourceId,
-                    sourceKind = activeSummary?.sourceKind,
-                    onOpenLive = { openContentSection(OwnPlaySection.LIVE) },
-                    onOpenSeries = { openContentSection(OwnPlaySection.SERIES) },
-                    onOpenSettings = { openContentSection(OwnPlaySection.SETTINGS) },
-                    onFullscreenStateChanged = { fullscreen ->
-                        vodFullscreen = fullscreen
-                        onPlaybackFullscreenChanged(fullscreen)
-                    },
-                )
-
-                OwnPlaySection.SERIES -> SeriesRoute(
-                    runtime = runtime,
-                    sourceId = activeSourceId,
-                    sourceKind = activeSummary?.sourceKind,
-                    onOpenSettings = { openContentSection(OwnPlaySection.SETTINGS) },
-                    onFullscreenStateChanged = { fullscreen ->
-                        seriesFullscreen = fullscreen
-                        onPlaybackFullscreenChanged(fullscreen)
-                    },
-                )
-
-                OwnPlaySection.SETTINGS -> SettingsScreen(
-                    runtime = runtime,
-                    summaries = summaries,
-                    syncState = syncState,
-                    activeSourceName = activeSummary?.name,
-                    hasActivePlayback =
-                        activeSelection != null || vodFullscreen || seriesFullscreen,
-                    onOpenLive = { section = OwnPlaySection.LIVE },
-                    onOpenSourceInLive = { sourceId ->
-                        if (sourceId != activeSourceId) {
-                            activeSelection = null
-                            fullscreenSelection = null
-                            runtime.playbackController.stop()
+                },
+                label = "ownPlaySection",
+            ) { targetSection ->
+                when (targetSection) {
+                    OwnPlaySection.LIVE -> {
+                        val sourceId = activeSourceId
+                        if (sourceId == null) {
+                            LiveNoSourceScreen(
+                                syncState = syncState,
+                                onAddPlaylist = { section = OwnPlaySection.SETTINGS },
+                            )
+                        } else {
+                            LiveRoute(
+                                runtime = runtime,
+                                sourceId = sourceId,
+                                activeSelection = activeSelection,
+                                playbackState = playbackState,
+                                videoOutput = runtime.playbackVideoOutput,
+                                syncState = syncState,
+                                onPlay = runtime.playbackController::play,
+                                onPause = runtime.playbackController::pause,
+                                onRetry = runtime.playbackController::retry,
+                                onOpenMovies = { openContentSection(OwnPlaySection.MOVIES) },
+                                onOpenSeries = { openContentSection(OwnPlaySection.SERIES) },
+                                onOpenSettings = { section = OwnPlaySection.SETTINGS },
+                                onPreviewRequested = { selection ->
+                                    activeSelection = selection
+                                    runtime.playbackController.start(selection.request)
+                                },
+                                onPreviewClosed = {
+                                    activeSelection = null
+                                    runtime.playbackController.stop()
+                                },
+                                onOpenFullscreen = { selection -> fullscreenSelection = selection },
+                                onNavigatePreview = { direction ->
+                                    activeSelection
+                                        ?.navigate(direction)
+                                        ?.let { target ->
+                                            activeSelection = target
+                                            runtime.playbackController.start(target.request)
+                                        }
+                                },
+                            )
                         }
-                        activeSourceId = sourceId
-                        section = OwnPlaySection.LIVE
-                    },
-                    onStopPlayback = {
-                        activeSelection = null
-                        runtime.playbackController.stop()
-                    },
+                    }
+
+                    OwnPlaySection.MOVIES -> VodRoute(
+                        runtime = runtime,
+                        sourceId = activeSourceId,
+                        sourceKind = activeSummary?.sourceKind,
+                        onOpenLive = { openContentSection(OwnPlaySection.LIVE) },
+                        onOpenSeries = { openContentSection(OwnPlaySection.SERIES) },
+                        onOpenSettings = { openContentSection(OwnPlaySection.SETTINGS) },
+                        onFullscreenStateChanged = { fullscreen ->
+                            vodFullscreen = fullscreen
+                            onPlaybackFullscreenChanged(fullscreen)
+                        },
+                    )
+
+                    OwnPlaySection.SERIES -> SeriesRoute(
+                        runtime = runtime,
+                        sourceId = activeSourceId,
+                        sourceKind = activeSummary?.sourceKind,
+                        onOpenSettings = { openContentSection(OwnPlaySection.SETTINGS) },
+                        onFullscreenStateChanged = { fullscreen ->
+                            seriesFullscreen = fullscreen
+                            onPlaybackFullscreenChanged(fullscreen)
+                        },
+                    )
+
+                    OwnPlaySection.LIBRARY -> LibraryRoute(
+                        runtime = runtime,
+                        onFullscreenStateChanged = { fullscreen ->
+                            libraryFullscreen = fullscreen
+                            onPlaybackFullscreenChanged(fullscreen)
+                        },
+                    )
+
+                    OwnPlaySection.SETTINGS -> SettingsScreen(
+                        runtime = runtime,
+                        summaries = summaries,
+                        syncState = syncState,
+                        activeSourceName = activeSummary?.name,
+                        hasActivePlayback =
+                            activeSelection != null ||
+                                vodFullscreen ||
+                                seriesFullscreen ||
+                                libraryFullscreen,
+                        onOpenLive = { section = OwnPlaySection.LIVE },
+                        onOpenSourceInLive = { sourceId ->
+                            if (sourceId != activeSourceId) {
+                                activeSelection = null
+                                fullscreenSelection = null
+                                runtime.playbackController.stop()
+                            }
+                            activeSourceId = sourceId
+                            section = OwnPlaySection.LIVE
+                        },
+                        onStopPlayback = {
+                            activeSelection = null
+                            runtime.playbackController.stop()
+                        },
+                    )
+                }
+            }
+
+            val resolvedOrigin = playbackOrigin
+            if (
+                resolvedOrigin != null &&
+                (vodFullscreen || seriesFullscreen || libraryFullscreen)
+            ) {
+                PlaybackOriginBadge(
+                    origin = resolvedOrigin,
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(top = 10.dp, end = 12.dp),
                 )
             }
         }
@@ -365,6 +414,7 @@ private fun SettingsHeader(
                     modifier = Modifier.size(20.dp),
                     strokeWidth = 2.dp,
                 )
+
                 else -> Unit
             }
         }
