@@ -22,6 +22,9 @@ object LocalVideoPlayback {
         )
     }
 
+    fun shouldUsePlatformFallback(failure: PlaybackFailure): Boolean =
+        failure.category == PlaybackFailureCategory.UNSUPPORTED_MEDIA
+
     internal fun normalizeContentUri(raw: String): String? {
         val normalized = raw.trim()
         if (normalized.isBlank()) return null
