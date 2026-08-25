@@ -22,7 +22,7 @@ class OfflineDownloadFeatureRuntime(
     context: Context,
 ) : AutoCloseable {
     private val applicationContext = context.applicationContext
-    private val database = OwnPlayDatabase.create(applicationContext)
+    private val database = sharedDatabase(applicationContext)
     private val repository = OfflineDownloadRepository(
         context = applicationContext,
         database = database,
@@ -118,7 +118,9 @@ class OfflineDownloadFeatureRuntime(
     }
 
     override fun close() {
-        database.close()
+        // Screen-scoped runtimes share a process-scoped Room instance. Closing the database
+        // while another route is collecting download progress can race with navigation and
+        // active WorkManager writes, so the shared database intentionally lives for the process.
     }
 
     private fun MediaDownloadEntity.progressMediaKind(): String? =
@@ -127,4 +129,16 @@ class OfflineDownloadFeatureRuntime(
             DownloadMediaKinds.SERIES_EPISODE -> MediaKinds.EPISODE
             else -> null
         }
+
+    private companion object {
+        @Volatile
+        private var processDatabase: OwnPlayDatabase? = null
+
+        fun sharedDatabase(context: Context): OwnPlayDatabase =
+            processDatabase ?: synchronized(this) {
+                processDatabase ?: OwnPlayDatabase.create(context).also { database ->
+                    processDatabase = database
+                }
+            }
+    }
 }
