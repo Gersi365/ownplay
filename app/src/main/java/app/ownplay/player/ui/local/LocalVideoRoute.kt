@@ -49,6 +49,9 @@ import app.ownplay.player.playback.LocalVideoPlayback
 import app.ownplay.player.playback.PlaybackFailureCategory
 import app.ownplay.player.playback.PlaybackInteractionBridge
 import app.ownplay.player.playback.PlaybackState
+import java.io.File
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 @Composable
 internal fun LocalVideoRoute(
@@ -192,7 +195,10 @@ private fun LocalVideoPlaybackScreen(
             contentAlignment = Alignment.Center,
         ) {
             if (platformFallbackActive) {
-                PlatformLocalVideoFallback(videoUri = videoUri)
+                PlatformLocalVideoFallback(
+                    videoUri = videoUri,
+                    title = title,
+                )
             } else {
                 AndroidView(
                     modifier = Modifier.fillMaxSize(),
@@ -246,50 +252,158 @@ private fun LocalVideoPlaybackScreen(
 }
 
 @Composable
-private fun PlatformLocalVideoFallback(videoUri: String) {
+private fun PlatformLocalVideoFallback(
+    videoUri: String,
+    title: String,
+) {
+    val context = LocalContext.current.applicationContext
+    var stagedFile by remember(videoUri) { mutableStateOf<File?>(null) }
+    var preparationError by remember(videoUri) { mutableStateOf<String?>(null) }
     var platformReady by remember(videoUri) { mutableStateOf(false) }
     var platformError by remember(videoUri) { mutableStateOf<String?>(null) }
+
+    LaunchedEffect(videoUri, title) {
+        stagedFile = null
+        preparationError = null
+        platformReady = false
+        platformError = null
+        when (val result = stageLocalVideoForPlatform(context, videoUri, title)) {
+            is PlatformStagingResult.Ready -> stagedFile = result.file
+            PlatformStagingResult.InsufficientSpace -> {
+                platformReady = true
+                preparationError = "Not enough free cache space to prepare this video for Android platform playback."
+            }
+            PlatformStagingResult.Unreadable -> {
+                platformReady = true
+                preparationError = "OwnPlay could not create a temporary local copy of this video."
+            }
+        }
+    }
+
+    DisposableEffect(stagedFile) {
+        val file = stagedFile
+        onDispose {
+            if (file != null) runCatching { file.delete() }
+        }
+    }
 
     Box(
         modifier = Modifier.fillMaxSize(),
         contentAlignment = Alignment.Center,
     ) {
-        AndroidView(
-            modifier = Modifier.fillMaxSize(),
-            factory = { viewContext ->
-                PlatformFallbackVideoView(viewContext).also { view ->
-                    view.onPlaybackReady = {
-                        platformReady = true
-                        platformError = null
+        val file = stagedFile
+        if (file != null) {
+            AndroidView(
+                modifier = Modifier.fillMaxSize(),
+                factory = { viewContext ->
+                    PlatformFallbackVideoView(viewContext).also { view ->
+                        view.onPlaybackReady = {
+                            platformReady = true
+                            platformError = null
+                        }
+                        view.onPlaybackError = { what, extra ->
+                            platformReady = true
+                            platformError =
+                                "Android platform playback failed from a local cache copy. " +
+                                "(what=$what, extra=$extra)"
+                        }
+                        view.openFile(file.absolutePath)
                     }
-                    view.onPlaybackError = { what, extra ->
-                        platformReady = true
-                        platformError =
-                            "Android platform playback also failed. (what=$what, extra=$extra)"
-                    }
-                    view.open(videoUri)
-                }
-            },
-            update = { view -> view.open(videoUri) },
-            onRelease = PlatformFallbackVideoView::releasePlayer,
-        )
-
-        if (!platformReady) {
-            CircularProgressIndicator(modifier = Modifier.size(42.dp))
+                },
+                update = { view -> view.openFile(file.absolutePath) },
+                onRelease = PlatformFallbackVideoView::releasePlayer,
+            )
         }
 
-        platformError?.let { message ->
+        if (!platformReady) {
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                CircularProgressIndicator(modifier = Modifier.size(42.dp))
+                if (file == null) {
+                    Text("Preparing local platform fallback…")
+                }
+            }
+        }
+
+        val error = preparationError ?: platformError
+        if (error != null) {
             Surface(
                 shape = RoundedCornerShape(14.dp),
                 tonalElevation = 4.dp,
             ) {
                 Text(
-                    text = message,
+                    text = error,
                     modifier = Modifier.padding(14.dp),
                     color = MaterialTheme.colorScheme.error,
                 )
             }
         }
+    }
+}
+
+private sealed interface PlatformStagingResult {
+    data class Ready(val file: File) : PlatformStagingResult
+    data object InsufficientSpace : PlatformStagingResult
+    data object Unreadable : PlatformStagingResult
+}
+
+private suspend fun stageLocalVideoForPlatform(
+    context: Context,
+    contentUri: String,
+    title: String,
+): PlatformStagingResult = withContext(Dispatchers.IO) {
+    val cacheDirectory = File(context.cacheDir, "local-video-platform")
+    if (!cacheDirectory.exists() && !cacheDirectory.mkdirs()) {
+        return@withContext PlatformStagingResult.Unreadable
+    }
+
+    cacheDirectory.listFiles()?.forEach { stale -> runCatching { stale.delete() } }
+
+    val byteBudget = LocalVideoPlayback.platformCacheBudget(cacheDirectory.usableSpace)
+    if (byteBudget <= 0L) {
+        return@withContext PlatformStagingResult.InsufficientSpace
+    }
+
+    val staged = runCatching {
+        File.createTempFile(
+            "ownplay-local-",
+            LocalVideoPlayback.platformCacheSuffix(title),
+            cacheDirectory,
+        )
+    }.getOrNull() ?: return@withContext PlatformStagingResult.Unreadable
+
+    try {
+        val input = context.contentResolver.openInputStream(Uri.parse(contentUri))
+            ?: return@withContext PlatformStagingResult.Unreadable.also { staged.delete() }
+        var copied = 0L
+        input.use { source ->
+            staged.outputStream().buffered().use { destination ->
+                val buffer = ByteArray(COPY_BUFFER_BYTES)
+                while (true) {
+                    val read = source.read(buffer)
+                    if (read < 0) break
+                    copied += read.toLong()
+                    if (copied > byteBudget) {
+                        return@withContext PlatformStagingResult.InsufficientSpace.also {
+                            staged.delete()
+                        }
+                    }
+                    destination.write(buffer, 0, read)
+                }
+            }
+        }
+        if (copied <= 0L) {
+            staged.delete()
+            PlatformStagingResult.Unreadable
+        } else {
+            staged.setReadOnly()
+            PlatformStagingResult.Ready(staged)
+        }
+    } catch (_: Exception) {
+        staged.delete()
+        PlatformStagingResult.Unreadable
     }
 }
 
@@ -300,7 +414,7 @@ private class PlatformFallbackVideoView(
     var onPlaybackError: ((what: Int, extra: Int) -> Unit)? = null
 
     private val controller = MediaController(context)
-    private var openedUri: String? = null
+    private var openedPath: String? = null
     private val gestures = GestureDetector(
         context,
         object : GestureDetector.SimpleOnGestureListener() {
@@ -335,10 +449,10 @@ private class PlatformFallbackVideoView(
         }
     }
 
-    fun open(contentUri: String) {
-        if (openedUri == contentUri) return
-        openedUri = contentUri
-        setVideoURI(Uri.parse(contentUri))
+    fun openFile(path: String) {
+        if (openedPath == path) return
+        openedPath = path
+        setVideoPath(path)
         requestFocus()
     }
 
@@ -358,7 +472,7 @@ private class PlatformFallbackVideoView(
 
     fun releasePlayer() {
         runCatching { stopPlayback() }
-        openedUri = null
+        openedPath = null
         onPlaybackReady = null
         onPlaybackError = null
     }
@@ -409,3 +523,5 @@ private fun localVideoDisplayName(
         if (index < 0) null else cursor.getString(index)?.trim()?.takeIf(String::isNotBlank)
     }
 }.getOrNull()
+
+private const val COPY_BUFFER_BYTES = 1024 * 1024

@@ -64,4 +64,14 @@ class LocalVideoPlaybackTest {
             ),
         )
     }
+
+    @Test
+    fun platformCacheKeepsReserveAndPreservesSafeExtension() {
+        val oneGiB = 1024L * 1024L * 1024L
+        assertEquals(oneGiB - 64L * 1024L * 1024L, LocalVideoPlayback.platformCacheBudget(oneGiB))
+        assertEquals(0L, LocalVideoPlayback.platformCacheBudget(32L * 1024L * 1024L))
+        assertEquals(".mpg", LocalVideoPlayback.platformCacheSuffix("Gersi.MPG"))
+        assertEquals(".video", LocalVideoPlayback.platformCacheSuffix("movie"))
+        assertEquals(".video", LocalVideoPlayback.platformCacheSuffix("movie.bad-extension-too-long"))
+    }
 }
