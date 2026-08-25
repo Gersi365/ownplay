@@ -40,6 +40,7 @@ import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
 import app.ownplay.player.OwnPlayAppRuntime
 import app.ownplay.player.playback.LocalVideoPlayback
+import app.ownplay.player.playback.PlaybackFailureCategory
 import app.ownplay.player.playback.PlaybackInteractionBridge
 import app.ownplay.player.playback.PlaybackState
 
@@ -194,7 +195,8 @@ private fun LocalVideoPlaybackScreen(
             if (playbackState is PlaybackState.Loading) {
                 CircularProgressIndicator(modifier = Modifier.size(42.dp))
             }
-            if (playbackState is PlaybackState.Failed) {
+            val failed = playbackState as? PlaybackState.Failed
+            if (failed != null) {
                 Surface(
                     shape = RoundedCornerShape(14.dp),
                     tonalElevation = 4.dp,
@@ -204,13 +206,29 @@ private fun LocalVideoPlaybackScreen(
                         horizontalAlignment = Alignment.CenterHorizontally,
                         verticalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
-                        Text("Unable to play this video.")
-                        Button(onClick = runtime.playbackController::retry) { Text("Retry") }
+                        Text(localPlaybackFailureLabel(failed.failure.category))
+                        if (failed.failure.retryable) {
+                            Button(onClick = runtime.playbackController::retry) { Text("Retry") }
+                        }
                     }
                 }
             }
         }
     }
+}
+
+private fun localPlaybackFailureLabel(category: PlaybackFailureCategory): String = when (category) {
+    PlaybackFailureCategory.UNSUPPORTED_MEDIA ->
+        "Unsupported video container or codec on this device."
+    PlaybackFailureCategory.STREAM_UNAVAILABLE ->
+        "The selected file could not be read or parsed."
+    PlaybackFailureCategory.TIMEOUT ->
+        "The selected file took too long to open."
+    PlaybackFailureCategory.NETWORK_UNAVAILABLE ->
+        "The selected document provider is temporarily unavailable."
+    PlaybackFailureCategory.AUTHENTICATION_FAILURE,
+    PlaybackFailureCategory.UNKNOWN,
+    -> "Unable to play this local video."
 }
 
 private fun localVideoDisplayName(
