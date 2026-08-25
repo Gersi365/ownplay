@@ -10,11 +10,13 @@ import androidx.work.ForegroundInfo
 import androidx.work.WorkerParameters
 import app.ownplay.player.persistence.OwnPlayDatabase
 import app.ownplay.player.persistence.download.DownloadStates
+import app.ownplay.player.persistence.download.MediaDownloadDao
 import app.ownplay.player.persistence.download.MediaDownloadEntity
 import app.ownplay.player.persistence.secure.AndroidKeystoreSensitiveValueStore
 import app.ownplay.player.source.credential.AndroidKeystoreCredentialStore
 import java.io.BufferedInputStream
 import java.io.BufferedOutputStream
+import java.io.File
 import java.io.FileOutputStream
 import java.io.IOException
 import java.util.concurrent.CancellationException
@@ -33,40 +35,63 @@ class OfflineDownloadWorker(
         val database = OwnPlayDatabase.create(applicationContext)
         val dao = database.mediaDownloadDao()
         try {
-            val row = dao.getById(downloadId) ?: return Result.success()
-            if (row.state == DownloadStates.PAUSED) {
+            val initialRow = dao.getById(downloadId) ?: return Result.success()
+            if (initialRow.state == DownloadStates.PAUSED) {
                 return Result.success()
             }
-            if (row.state == DownloadStates.COMPLETED &&
-                row.localRelativePath
-                    ?.let { OfflineDownloadFiles.resolveRelativePath(applicationContext, it) }
-                    ?.isFile == true
+            if (
+                initialRow.state == DownloadStates.COMPLETED &&
+                OfflineDownloadStorage.locationExists(applicationContext, initialRow.localRelativePath)
             ) {
                 return Result.success()
             }
 
-            setForeground(createForegroundInfo(row, row.bytesDownloaded, row.totalBytes))
+            setForeground(createForegroundInfo(initialRow, initialRow.bytesDownloaded, initialRow.totalBytes))
             val resolver = XtreamDownloadLocatorResolver(
                 database = database,
                 sensitiveValueStore = AndroidKeystoreSensitiveValueStore(applicationContext),
                 credentialStore = AndroidKeystoreCredentialStore(applicationContext),
             )
-            val locator = when (val resolved = resolver.resolve(row)) {
+            val locator = when (val resolved = resolver.resolve(initialRow)) {
                 is DownloadLocatorResult.Success -> resolved.locator
                 is DownloadLocatorResult.Failure -> {
-                    markFailed(dao, row, resolved.reason)
+                    markFailed(
+                        dao = dao,
+                        row = initialRow,
+                        reason = resolved.reason,
+                        localLocation = initialRow.localRelativePath,
+                    )
                     return Result.failure()
                 }
             }
 
-            val partFile = OfflineDownloadFiles.partialFile(applicationContext, downloadId)
-            val existingBytes = partFile.takeIf { it.isFile }?.length() ?: 0L
+            val usePublicDownloads = OfflineDownloadStorage.supportsPublicDownloads()
+            val destinationLocation = if (usePublicDownloads) {
+                initialRow.localRelativePath
+                    ?.takeIf(OfflineDownloadStorage::isPublicDownloadsLocation)
+                    ?.takeIf {
+                        OfflineDownloadStorage.locationExists(applicationContext, it)
+                    }
+                    ?: OfflineDownloadStorage.createPublicDownloadsDestination(
+                        applicationContext,
+                        initialRow,
+                    )
+            } else {
+                null
+            }
+            val partFile = OfflineDownloadStorage.partialFile(applicationContext, downloadId)
+            val existingBytes = if (usePublicDownloads) {
+                OfflineDownloadStorage.locationSize(applicationContext, destinationLocation) ?: 0L
+            } else {
+                partFile.takeIf(File::isFile)?.length() ?: 0L
+            }
+
             dao.updateTransfer(
                 downloadId = downloadId,
                 state = DownloadStates.DOWNLOADING,
                 bytesDownloaded = existingBytes,
                 totalBytes = null,
-                localRelativePath = null,
+                localRelativePath = destinationLocation,
                 failureReason = null,
                 updatedAtEpochMillis = System.currentTimeMillis(),
             )
@@ -78,13 +103,19 @@ class OfflineDownloadWorker(
             val response = httpClient.newCall(requestBuilder.build()).execute()
             response.use { opened ->
                 if (!opened.isSuccessful) {
-                    markFailed(dao, row, "Provider returned HTTP ${opened.code}", existingBytes)
+                    markFailed(
+                        dao = dao,
+                        row = initialRow,
+                        reason = "Provider returned HTTP ${opened.code}",
+                        bytesDownloaded = existingBytes,
+                        localLocation = destinationLocation,
+                    )
                     return Result.retry()
                 }
                 val body = opened.body
                 val append = existingBytes > 0L && opened.code == 206
                 val startBytes = if (append) existingBytes else 0L
-                if (!append && partFile.exists()) {
+                if (!usePublicDownloads && !append && partFile.exists()) {
                     partFile.delete()
                 }
                 val bodyLength = body.contentLength().takeIf { it >= 0L }
@@ -94,10 +125,11 @@ class OfflineDownloadWorker(
                     if (!hasEnoughOfflineDownloadSpace(storageRoot.usableSpace, bodyLength)) {
                         markFailed(
                             dao = dao,
-                            row = row,
+                            row = initialRow,
                             reason = "Not enough free storage for this download. Free up space and retry.",
                             bytesDownloaded = startBytes,
                             totalBytes = totalBytes,
+                            localLocation = destinationLocation,
                         )
                         return Result.failure()
                     }
@@ -106,21 +138,32 @@ class OfflineDownloadWorker(
                 var lastReportedBytes = downloaded
                 var lastReportedAt = System.currentTimeMillis()
 
+                val output = if (usePublicDownloads) {
+                    OfflineDownloadStorage.openPublicOutput(
+                        context = applicationContext,
+                        location = requireNotNull(destinationLocation),
+                        append = append,
+                        startBytes = startBytes,
+                    )
+                } else {
+                    BufferedOutputStream(FileOutputStream(partFile, append))
+                }
+
                 BufferedInputStream(body.byteStream()).use { input ->
-                    BufferedOutputStream(FileOutputStream(partFile, append)).use { output ->
+                    output.use { openedOutput ->
                         val buffer = ByteArray(BUFFER_SIZE_BYTES)
                         while (true) {
                             currentCoroutineContext().ensureActive()
                             val read = input.read(buffer)
                             if (read < 0) break
-                            output.write(buffer, 0, read)
+                            openedOutput.write(buffer, 0, read)
                             downloaded += read
                             val now = System.currentTimeMillis()
                             if (
                                 downloaded - lastReportedBytes >= PROGRESS_REPORT_BYTES ||
                                 now - lastReportedAt >= PROGRESS_REPORT_MILLIS
                             ) {
-                                output.flush()
+                                openedOutput.flush()
                                 if (dao.getById(downloadId)?.state == DownloadStates.PAUSED) {
                                     throw CancellationException("Download paused")
                                 }
@@ -129,11 +172,11 @@ class OfflineDownloadWorker(
                                     state = DownloadStates.DOWNLOADING,
                                     bytesDownloaded = downloaded,
                                     totalBytes = totalBytes,
-                                    localRelativePath = null,
+                                    localRelativePath = destinationLocation,
                                     failureReason = null,
                                     updatedAtEpochMillis = now,
                                 )
-                                setForeground(createForegroundInfo(row, downloaded, totalBytes))
+                                setForeground(createForegroundInfo(initialRow, downloaded, totalBytes))
                                 lastReportedBytes = downloaded
                                 lastReportedAt = now
                             }
@@ -148,22 +191,34 @@ class OfflineDownloadWorker(
                     throw IOException("Download ended before the expected content length")
                 }
 
-                val finalFile = OfflineDownloadFiles.finalFile(
-                    applicationContext,
-                    downloadId,
-                    row.containerExtension ?: "mp4",
-                )
-                if (finalFile.exists()) finalFile.delete()
-                if (!partFile.renameTo(finalFile)) {
-                    partFile.copyTo(finalFile, overwrite = true)
-                    partFile.delete()
+                val finalLocation: String
+                val finalBytes: Long
+                if (usePublicDownloads) {
+                    finalLocation = requireNotNull(destinationLocation)
+                    OfflineDownloadStorage.publishPublicDownload(applicationContext, finalLocation)
+                    finalBytes = OfflineDownloadStorage.locationSize(applicationContext, finalLocation)
+                        ?: downloaded
+                } else {
+                    val finalFile = OfflineDownloadStorage.privateFinalFile(
+                        applicationContext,
+                        downloadId,
+                        initialRow.containerExtension ?: "mp4",
+                    )
+                    if (finalFile.exists()) finalFile.delete()
+                    if (!partFile.renameTo(finalFile)) {
+                        partFile.copyTo(finalFile, overwrite = true)
+                        partFile.delete()
+                    }
+                    finalLocation = OfflineDownloadStorage.privateRelativePath(finalFile)
+                    finalBytes = finalFile.length()
                 }
+
                 dao.updateTransfer(
                     downloadId = downloadId,
                     state = DownloadStates.COMPLETED,
-                    bytesDownloaded = finalFile.length(),
-                    totalBytes = totalBytes ?: finalFile.length(),
-                    localRelativePath = OfflineDownloadFiles.relativePath(finalFile),
+                    bytesDownloaded = finalBytes,
+                    totalBytes = totalBytes ?: finalBytes,
+                    localRelativePath = finalLocation,
                     failureReason = null,
                     updatedAtEpochMillis = System.currentTimeMillis(),
                 )
@@ -172,7 +227,6 @@ class OfflineDownloadWorker(
         } catch (cancelled: CancellationException) {
             val row = dao.getById(downloadId)
             if (row != null) {
-                val partial = OfflineDownloadFiles.partialFile(applicationContext, downloadId)
                 val cancellationState = if (row.state == DownloadStates.PAUSED) {
                     DownloadStates.PAUSED
                 } else {
@@ -181,9 +235,9 @@ class OfflineDownloadWorker(
                 dao.updateTransfer(
                     downloadId = downloadId,
                     state = cancellationState,
-                    bytesDownloaded = partial.takeIf { it.isFile }?.length() ?: row.bytesDownloaded,
+                    bytesDownloaded = currentTransferBytes(row),
                     totalBytes = row.totalBytes,
-                    localRelativePath = null,
+                    localRelativePath = row.localRelativePath,
                     failureReason = null,
                     updatedAtEpochMillis = System.currentTimeMillis(),
                 )
@@ -192,12 +246,12 @@ class OfflineDownloadWorker(
         } catch (_: Exception) {
             val row = dao.getById(downloadId)
             if (row != null) {
-                val partial = OfflineDownloadFiles.partialFile(applicationContext, downloadId)
                 markFailed(
                     dao = dao,
                     row = row,
                     reason = "Download interrupted",
-                    bytesDownloaded = partial.takeIf { it.isFile }?.length() ?: row.bytesDownloaded,
+                    bytesDownloaded = currentTransferBytes(row),
+                    localLocation = row.localRelativePath,
                 )
             }
             return Result.retry()
@@ -206,19 +260,31 @@ class OfflineDownloadWorker(
         }
     }
 
+    private fun currentTransferBytes(row: MediaDownloadEntity): Long {
+        if (OfflineDownloadStorage.isPublicDownloadsLocation(row.localRelativePath)) {
+            return OfflineDownloadStorage.locationSize(applicationContext, row.localRelativePath)
+                ?: row.bytesDownloaded
+        }
+        return OfflineDownloadStorage.partialFile(applicationContext, row.downloadId)
+            .takeIf(File::isFile)
+            ?.length()
+            ?: row.bytesDownloaded
+    }
+
     private suspend fun markFailed(
-        dao: app.ownplay.player.persistence.download.MediaDownloadDao,
+        dao: MediaDownloadDao,
         row: MediaDownloadEntity,
         reason: String,
         bytesDownloaded: Long = row.bytesDownloaded,
         totalBytes: Long? = row.totalBytes,
+        localLocation: String? = row.localRelativePath,
     ) {
         dao.updateTransfer(
             downloadId = row.downloadId,
             state = DownloadStates.FAILED,
             bytesDownloaded = bytesDownloaded,
             totalBytes = totalBytes,
-            localRelativePath = null,
+            localRelativePath = localLocation,
             failureReason = reason,
             updatedAtEpochMillis = System.currentTimeMillis(),
         )
