@@ -20,15 +20,20 @@ import androidx.compose.foundation.lazy.grid.items as gridItems
 import androidx.compose.foundation.lazy.items as listItems
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.DownloadDone
 import androidx.compose.material.icons.filled.ErrorOutline
+import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
@@ -463,9 +468,10 @@ internal fun UnifiedLibraryRoute(
                 selectedSeriesKey = group.key
             },
             onPlayOfflineMovie = ::playDownload,
-            onRetryOfflineMovie = { download ->
-                scope.launch { downloadRuntime.retry(download.downloadId) }
-            },
+            onPauseMovie = { download -> scope.launch { downloadRuntime.pause(download.downloadId) } },
+            onResumeMovie = { download -> scope.launch { downloadRuntime.resume(download.downloadId) } },
+            onRetryMovie = { download -> scope.launch { downloadRuntime.retry(download.downloadId) } },
+            onRemoveMovie = { download -> scope.launch { downloadRuntime.remove(download.downloadId) } },
             modifier = Modifier.weight(1f),
         )
     }
@@ -524,7 +530,10 @@ private fun LibraryCatalogView(
     onOpenCatalogSeries: (sourceId: String, seriesId: String, group: LibrarySeriesGroup?) -> Unit,
     onOpenOfflineSeries: (LibrarySeriesGroup) -> Unit,
     onPlayOfflineMovie: (OfflineDownload) -> Unit,
-    onRetryOfflineMovie: (OfflineDownload) -> Unit,
+    onPauseMovie: (OfflineDownload) -> Unit,
+    onResumeMovie: (OfflineDownload) -> Unit,
+    onRetryMovie: (OfflineDownload) -> Unit,
+    onRemoveMovie: (OfflineDownload) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     when (viewMode) {
@@ -543,13 +552,18 @@ private fun LibraryCatalogView(
                         download = movieDownloadsByKey["$movieSourceId:${movie.movieId}"],
                         onOpen = { onOpenMovie(movieSourceId, movie.movieId) },
                         onPlayOffline = onPlayOfflineMovie,
+                        onPause = onPauseMovie,
+                        onResume = onResumeMovie,
+                        onRetry = onRetryMovie,
+                        onRemove = onRemoveMovie,
                     )
                 }
                 gridItems(orphanedOfflineMovies, key = { "offline-movie:${it.downloadId}" }) { download ->
                     OfflineOnlyMovieCard(
                         download = download,
                         onPlay = { onPlayOfflineMovie(download) },
-                        onRetry = { onRetryOfflineMovie(download) },
+                        onRetry = { onRetryMovie(download) },
+                        onRemove = { onRemoveMovie(download) },
                     )
                 }
             }
@@ -590,12 +604,17 @@ private fun LibraryCatalogView(
                         download = movieDownloadsByKey["$movieSourceId:${movie.movieId}"],
                         onOpen = { onOpenMovie(movieSourceId, movie.movieId) },
                         onPlayOffline = onPlayOfflineMovie,
+                        onPause = onPauseMovie,
+                        onResume = onResumeMovie,
+                        onRetry = onRetryMovie,
+                        onRemove = onRemoveMovie,
                     )
                 }
                 gridItems(orphanedOfflineMovies, key = { "compact-offline-movie:${it.downloadId}" }) { download ->
                     CompactOfflineMovieCard(
                         download = download,
                         onPlay = { onPlayOfflineMovie(download) },
+                        onRemove = { onRemoveMovie(download) },
                     )
                 }
             }
@@ -632,6 +651,10 @@ private fun LibraryCatalogView(
                         download = movieDownloadsByKey["$movieSourceId:${movie.movieId}"],
                         onOpen = { onOpenMovie(movieSourceId, movie.movieId) },
                         onPlayOffline = onPlayOfflineMovie,
+                        onPause = onPauseMovie,
+                        onResume = onResumeMovie,
+                        onRetry = onRetryMovie,
+                        onRemove = onRemoveMovie,
                     )
                     HorizontalDivider(modifier = Modifier.padding(start = 70.dp))
                 }
@@ -639,6 +662,7 @@ private fun LibraryCatalogView(
                     OfflineMovieListRow(
                         download = download,
                         onPlay = { onPlayOfflineMovie(download) },
+                        onRemove = { onRemoveMovie(download) },
                     )
                     HorizontalDivider(modifier = Modifier.padding(start = 70.dp))
                 }
@@ -675,6 +699,10 @@ private fun UnifiedMovieCard(
     download: OfflineDownload?,
     onOpen: () -> Unit,
     onPlayOffline: (OfflineDownload) -> Unit,
+    onPause: (OfflineDownload) -> Unit,
+    onResume: (OfflineDownload) -> Unit,
+    onRetry: (OfflineDownload) -> Unit,
+    onRemove: (OfflineDownload) -> Unit,
 ) {
     Surface(
         modifier = Modifier
@@ -702,15 +730,16 @@ private fun UnifiedMovieCard(
                 overflow = TextOverflow.Ellipsis,
             )
             MovieStatusText(download = download)
-            download?.takeIf(OfflineDownload::countsForOfflineFilter)?.let { localDownload ->
-                Button(
-                    onClick = { onPlayOffline(localDownload) },
-                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
-                ) {
-                    Icon(Icons.Filled.PlayArrow, contentDescription = null, modifier = Modifier.size(18.dp))
-                    Spacer(Modifier.width(5.dp))
-                    Text("Play", maxLines = 1, softWrap = false)
-                }
+            download?.let { managedDownload ->
+                MovieDownloadActions(
+                    download = managedDownload,
+                    compact = false,
+                    onPlay = onPlayOffline,
+                    onPause = onPause,
+                    onResume = onResume,
+                    onRetry = onRetry,
+                    onRemove = onRemove,
+                )
             }
         }
     }
@@ -782,6 +811,7 @@ private fun OfflineOnlyMovieCard(
     download: OfflineDownload,
     onPlay: () -> Unit,
     onRetry: () -> Unit,
+    onRemove: () -> Unit,
 ) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
@@ -812,14 +842,23 @@ private fun OfflineOnlyMovieCard(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 2,
             )
-            when (download.state) {
-                DownloadStates.COMPLETED -> Button(onClick = onPlay) {
-                    Icon(Icons.Filled.PlayArrow, contentDescription = null, modifier = Modifier.size(18.dp))
-                    Spacer(Modifier.width(5.dp))
-                    Text("Play")
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                when (download.state) {
+                    DownloadStates.COMPLETED -> Button(onClick = onPlay) {
+                        Icon(Icons.Filled.PlayArrow, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(5.dp))
+                        Text("Play")
+                    }
+                    DownloadStates.FAILED -> Button(onClick = onRetry) { Text("Retry") }
+                    else -> MovieStatusText(download = download)
                 }
-                DownloadStates.FAILED -> Button(onClick = onRetry) { Text("Retry") }
-                else -> MovieStatusText(download = download)
+                Spacer(Modifier.weight(1f))
+                IconButton(onClick = onRemove) {
+                    Icon(Icons.Filled.Delete, contentDescription = "Remove download")
+                }
             }
         }
     }
@@ -831,6 +870,10 @@ private fun CompactMovieCard(
     download: OfflineDownload?,
     onOpen: () -> Unit,
     onPlayOffline: (OfflineDownload) -> Unit,
+    onPause: (OfflineDownload) -> Unit,
+    onResume: (OfflineDownload) -> Unit,
+    onRetry: (OfflineDownload) -> Unit,
+    onRemove: (OfflineDownload) -> Unit,
 ) {
     Surface(
         modifier = Modifier
@@ -864,13 +907,16 @@ private fun CompactMovieCard(
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
-            download?.takeIf(OfflineDownload::countsForOfflineFilter)?.let { localDownload ->
-                Button(
-                    onClick = { onPlayOffline(localDownload) },
-                    contentPadding = PaddingValues(horizontal = 9.dp, vertical = 2.dp),
-                ) {
-                    Text("Play", maxLines = 1, softWrap = false)
-                }
+            download?.let { managedDownload ->
+                MovieDownloadActions(
+                    download = managedDownload,
+                    compact = true,
+                    onPlay = onPlayOffline,
+                    onPause = onPause,
+                    onResume = onResume,
+                    onRetry = onRetry,
+                    onRemove = onRemove,
+                )
             }
         }
     }
@@ -880,6 +926,7 @@ private fun CompactMovieCard(
 private fun CompactOfflineMovieCard(
     download: OfflineDownload,
     onPlay: () -> Unit,
+    onRemove: () -> Unit,
 ) {
     Surface(
         modifier = Modifier
@@ -913,6 +960,15 @@ private fun CompactOfflineMovieCard(
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
+            Row(modifier = Modifier.fillMaxWidth()) {
+                IconButton(onClick = onPlay) {
+                    Icon(Icons.Filled.PlayArrow, contentDescription = "Play offline")
+                }
+                Spacer(Modifier.weight(1f))
+                IconButton(onClick = onRemove) {
+                    Icon(Icons.Filled.Delete, contentDescription = "Remove download")
+                }
+            }
         }
     }
 }
@@ -1021,6 +1077,10 @@ private fun MovieListRow(
     download: OfflineDownload?,
     onOpen: () -> Unit,
     onPlayOffline: (OfflineDownload) -> Unit,
+    onPause: (OfflineDownload) -> Unit,
+    onResume: (OfflineDownload) -> Unit,
+    onRetry: (OfflineDownload) -> Unit,
+    onRemove: (OfflineDownload) -> Unit,
 ) {
     Row(
         modifier = Modifier
@@ -1047,15 +1107,16 @@ private fun MovieListRow(
             )
             MovieStatusText(download = download)
         }
-        download?.takeIf(OfflineDownload::countsForOfflineFilter)?.let { localDownload ->
-            Button(
-                onClick = { onPlayOffline(localDownload) },
-                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
-            ) {
-                Icon(Icons.Filled.PlayArrow, contentDescription = null, modifier = Modifier.size(17.dp))
-                Spacer(Modifier.width(4.dp))
-                Text("Play", maxLines = 1, softWrap = false)
-            }
+        download?.let { managedDownload ->
+            MovieDownloadActions(
+                download = managedDownload,
+                compact = false,
+                onPlay = onPlayOffline,
+                onPause = onPause,
+                onResume = onResume,
+                onRetry = onRetry,
+                onRemove = onRemove,
+            )
         }
     }
 }
@@ -1064,6 +1125,7 @@ private fun MovieListRow(
 private fun OfflineMovieListRow(
     download: OfflineDownload,
     onPlay: () -> Unit,
+    onRemove: () -> Unit,
 ) {
     Row(
         modifier = Modifier
@@ -1097,6 +1159,9 @@ private fun OfflineMovieListRow(
             )
         }
         Icon(Icons.Filled.PlayArrow, contentDescription = "Play offline")
+        IconButton(onClick = onRemove) {
+            Icon(Icons.Filled.Delete, contentDescription = "Remove download")
+        }
     }
 }
 
@@ -1193,6 +1258,107 @@ private fun OfflineSeriesListRow(
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
             )
+        }
+    }
+}
+
+@Composable
+private fun MovieDownloadActions(
+    download: OfflineDownload,
+    compact: Boolean,
+    onPlay: (OfflineDownload) -> Unit,
+    onPause: (OfflineDownload) -> Unit,
+    onResume: (OfflineDownload) -> Unit,
+    onRetry: (OfflineDownload) -> Unit,
+    onRemove: (OfflineDownload) -> Unit,
+) {
+    if (compact) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            IconButton(
+                onClick = {
+                    when (download.state) {
+                        DownloadStates.COMPLETED -> onPlay(download)
+                        DownloadStates.DOWNLOADING,
+                        DownloadStates.QUEUED,
+                        -> onPause(download)
+                        DownloadStates.PAUSED -> onResume(download)
+                        DownloadStates.FAILED -> onRetry(download)
+                    }
+                },
+            ) {
+                Icon(
+                    imageVector = when (download.state) {
+                        DownloadStates.DOWNLOADING,
+                        DownloadStates.QUEUED,
+                        -> Icons.Filled.Pause
+                        DownloadStates.FAILED -> Icons.Filled.Refresh
+                        else -> Icons.Filled.PlayArrow
+                    },
+                    contentDescription = when (download.state) {
+                        DownloadStates.COMPLETED -> "Play offline"
+                        DownloadStates.DOWNLOADING,
+                        DownloadStates.QUEUED,
+                        -> "Pause download"
+                        DownloadStates.PAUSED -> "Resume download"
+                        DownloadStates.FAILED -> "Retry download"
+                    },
+                )
+            }
+            Spacer(Modifier.weight(1f))
+            IconButton(onClick = { onRemove(download) }) {
+                Icon(Icons.Filled.Delete, contentDescription = "Remove download")
+            }
+        }
+        return
+    }
+
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        when (download.state) {
+            DownloadStates.COMPLETED -> Button(
+                onClick = { onPlay(download) },
+                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
+            ) {
+                Icon(Icons.Filled.PlayArrow, contentDescription = null, modifier = Modifier.size(17.dp))
+                Spacer(Modifier.width(4.dp))
+                Text("Play", maxLines = 1, softWrap = false)
+            }
+            DownloadStates.DOWNLOADING,
+            DownloadStates.QUEUED,
+            -> FilledTonalButton(
+                onClick = { onPause(download) },
+                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+            ) {
+                Icon(Icons.Filled.Pause, contentDescription = null, modifier = Modifier.size(17.dp))
+                Spacer(Modifier.width(4.dp))
+                Text("Pause", maxLines = 1, softWrap = false)
+            }
+            DownloadStates.PAUSED -> FilledTonalButton(
+                onClick = { onResume(download) },
+                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+            ) {
+                Icon(Icons.Filled.PlayArrow, contentDescription = null, modifier = Modifier.size(17.dp))
+                Spacer(Modifier.width(4.dp))
+                Text("Resume", maxLines = 1, softWrap = false)
+            }
+            DownloadStates.FAILED -> FilledTonalButton(
+                onClick = { onRetry(download) },
+                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+            ) {
+                Icon(Icons.Filled.Refresh, contentDescription = null, modifier = Modifier.size(17.dp))
+                Spacer(Modifier.width(4.dp))
+                Text("Retry", maxLines = 1, softWrap = false)
+            }
+        }
+        Spacer(Modifier.weight(1f))
+        IconButton(onClick = { onRemove(download) }) {
+            Icon(Icons.Filled.Delete, contentDescription = "Remove download")
         }
     }
 }
