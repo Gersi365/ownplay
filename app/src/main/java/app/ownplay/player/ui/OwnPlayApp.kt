@@ -23,9 +23,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.DownloadDone
 import androidx.compose.material.icons.filled.LiveTv
-import androidx.compose.material.icons.filled.Movie
 import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.filled.VideoLibrary
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
@@ -51,7 +49,7 @@ import app.ownplay.player.OwnPlayAppRuntime
 import app.ownplay.player.playback.LivePlaybackSelection
 import app.ownplay.player.source.SourceSyncStage
 import app.ownplay.player.source.SourceSyncState
-import app.ownplay.player.ui.library.LibraryRoute
+import app.ownplay.player.ui.library.UnifiedLibraryRoute
 import app.ownplay.player.ui.series.SeriesRoute
 import app.ownplay.player.ui.vod.VodRoute
 
@@ -122,6 +120,10 @@ fun OwnPlayApp(
         section = target
     }
 
+    val librarySectionActive =
+        section == OwnPlaySection.LIBRARY ||
+            section == OwnPlaySection.MOVIES ||
+            section == OwnPlaySection.SERIES
     val previewActive =
         section == OwnPlaySection.LIVE &&
             activeSelection != null &&
@@ -191,19 +193,7 @@ fun OwnPlayApp(
                         label = { Text("Live") },
                     )
                     NavigationBarItem(
-                        selected = section == OwnPlaySection.MOVIES,
-                        onClick = { openContentSection(OwnPlaySection.MOVIES) },
-                        icon = { Icon(Icons.Filled.Movie, contentDescription = "Movies") },
-                        label = { Text("Movies") },
-                    )
-                    NavigationBarItem(
-                        selected = section == OwnPlaySection.SERIES,
-                        onClick = { openContentSection(OwnPlaySection.SERIES) },
-                        icon = { Icon(Icons.Filled.VideoLibrary, contentDescription = "Series") },
-                        label = { Text("Series") },
-                    )
-                    NavigationBarItem(
-                        selected = section == OwnPlaySection.LIBRARY,
+                        selected = librarySectionActive,
                         onClick = { openContentSection(OwnPlaySection.LIBRARY) },
                         icon = { Icon(Icons.Filled.DownloadDone, contentDescription = "Library") },
                         label = { Text("Library") },
@@ -236,19 +226,7 @@ fun OwnPlayApp(
                         label = { Text("Live") },
                     )
                     NavigationBarItem(
-                        selected = section == OwnPlaySection.MOVIES,
-                        onClick = { openContentSection(OwnPlaySection.MOVIES) },
-                        icon = { Icon(Icons.Filled.Movie, contentDescription = "Movies") },
-                        label = { Text("Movies") },
-                    )
-                    NavigationBarItem(
-                        selected = section == OwnPlaySection.SERIES,
-                        onClick = { openContentSection(OwnPlaySection.SERIES) },
-                        icon = { Icon(Icons.Filled.VideoLibrary, contentDescription = "Series") },
-                        label = { Text("Series") },
-                    )
-                    NavigationBarItem(
-                        selected = section == OwnPlaySection.LIBRARY,
+                        selected = librarySectionActive,
                         onClick = { openContentSection(OwnPlaySection.LIBRARY) },
                         icon = { Icon(Icons.Filled.DownloadDone, contentDescription = "Library") },
                         label = { Text("Library") },
@@ -366,8 +344,10 @@ fun OwnPlayApp(
                         },
                     )
 
-                    OwnPlaySection.LIBRARY -> LibraryRoute(
+                    OwnPlaySection.LIBRARY -> UnifiedLibraryRoute(
                         runtime = runtime,
+                        sourceId = activeSourceId,
+                        sourceKind = activeSummary?.sourceKind,
                         onOpenMovieDetails = { sourceId, movieId ->
                             activeSourceId = sourceId
                             requestedVodMovieId = movieId
