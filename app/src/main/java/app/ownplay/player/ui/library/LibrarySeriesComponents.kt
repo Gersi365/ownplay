@@ -1,5 +1,6 @@
 package app.ownplay.player.ui.library
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -308,6 +309,8 @@ internal fun LibrarySeriesDetailScreen(
             else -> onBack()
         }
     }
+
+    BackHandler(onBack = ::navigateBack)
 
     Column(
         modifier = Modifier
