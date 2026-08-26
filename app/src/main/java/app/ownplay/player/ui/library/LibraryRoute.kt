@@ -51,9 +51,11 @@ import androidx.compose.ui.unit.dp
 import app.ownplay.player.OwnPlayAppRuntime
 import app.ownplay.player.download.OfflineDownload
 import app.ownplay.player.download.OfflineDownloadFeatureRuntime
+import app.ownplay.player.download.OfflineDownloadSpec
 import app.ownplay.player.persistence.download.DownloadMediaKinds
 import app.ownplay.player.persistence.download.DownloadStates
 import app.ownplay.player.playback.PlaybackInteractionBridge
+import app.ownplay.player.series.SeriesEpisode
 import app.ownplay.player.ui.vod.RemotePoster
 import kotlinx.coroutines.launch
 
@@ -161,6 +163,21 @@ internal fun LibraryRoute(
             group = selectedSeriesGroup,
             playbackError = playbackRequestError,
             onBack = { selectedSeriesKey = null },
+            onOpenFullSeries = selectedSeriesGroup.seriesId?.let { seriesId ->
+                {
+                    playbackRequestError = null
+                    onOpenSeriesDetails(selectedSeriesGroup.key.sourceId, seriesId)
+                }
+            },
+            onDownloadEpisode = { episode ->
+                scope.launch {
+                    enqueueSeriesEpisode(
+                        downloadRuntime = downloadRuntime,
+                        sourceId = selectedSeriesGroup.key.sourceId,
+                        episode = episode,
+                    )
+                }
+            },
             onPlay = ::playDownload,
             onPause = { download ->
                 scope.launch { downloadRuntime.pause(download.downloadId) }
@@ -317,16 +334,7 @@ internal fun LibraryRoute(
                 items(seriesGroups, key = { it.key }) { group ->
                     LibrarySeriesCard(
                         group = group,
-                        onOpenSeries = {
-                            playbackRequestError = null
-                            val seriesId = group.seriesId
-                            if (seriesId != null) {
-                                onOpenSeriesDetails(group.key.sourceId, seriesId)
-                            } else {
-                                selectedSeriesKey = group.key
-                            }
-                        },
-                        onOpenOfflineEpisodes = {
+                        onOpenOfflineSeries = {
                             playbackRequestError = null
                             selectedSeriesKey = group.key
                         },
@@ -335,6 +343,27 @@ internal fun LibraryRoute(
             }
         }
     }
+}
+
+private suspend fun enqueueSeriesEpisode(
+    downloadRuntime: OfflineDownloadFeatureRuntime,
+    sourceId: String,
+    episode: SeriesEpisode,
+) {
+    downloadRuntime.enqueue(
+        OfflineDownloadSpec(
+            sourceId = sourceId,
+            mediaKind = DownloadMediaKinds.SERIES_EPISODE,
+            contentId = episode.episodeId,
+            providerStreamId = episode.providerEpisodeId,
+            title = episode.title,
+            seriesTitle = episode.seriesTitle,
+            seasonNumber = episode.seasonNumber,
+            episodeNumber = episode.episodeNumber,
+            posterUrl = episode.posterUrl,
+            containerExtension = episode.containerExtension,
+        ),
+    )
 }
 
 @Composable
