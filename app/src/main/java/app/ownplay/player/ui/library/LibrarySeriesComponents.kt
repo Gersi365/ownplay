@@ -20,12 +20,14 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.VideoLibrary
 import androidx.compose.material3.Button
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
@@ -36,18 +38,32 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import app.ownplay.player.download.OfflineDownload
+import app.ownplay.player.download.OfflineDownloadFeatureRuntime
+import app.ownplay.player.download.OfflineDownloadSpec
+import app.ownplay.player.persistence.download.DownloadMediaKinds
 import app.ownplay.player.persistence.download.DownloadStates
+import app.ownplay.player.series.SeriesDetails
+import app.ownplay.player.series.SeriesEpisode
+import app.ownplay.player.series.SeriesFeatureRuntime
+import app.ownplay.player.source.SourceResult
 import app.ownplay.player.ui.vod.RemotePoster
+import kotlinx.coroutines.launch
 
 @Composable
 internal fun LibrarySeriesCard(
@@ -164,17 +180,95 @@ internal fun LibrarySeriesDetailScreen(
     onRetry: (OfflineDownload) -> Unit,
     onRemove: (OfflineDownload) -> Unit,
 ) {
-    val seasons = group.seasonNumbers
-    var selectedSeason by remember(group.key, seasons) {
-        mutableStateOf<Int?>(null)
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val seriesRuntime = remember(context) {
+        SeriesFeatureRuntime(context.applicationContext)
     }
-    val visibleEpisodes = remember(group.episodes, selectedSeason) {
+    val directDownloadRuntime = remember(context) {
+        OfflineDownloadFeatureRuntime(context.applicationContext)
+    }
+    DisposableEffect(seriesRuntime) {
+        onDispose { seriesRuntime.close() }
+    }
+    DisposableEffect(directDownloadRuntime) {
+        onDispose { directDownloadRuntime.close() }
+    }
+
+    val seriesId = group.seriesId
+    var showAll by remember(group.key) { mutableStateOf(false) }
+    var fullDetails by remember(group.key) { mutableStateOf<SeriesDetails?>(null) }
+    var catalogLoading by remember(group.key) { mutableStateOf(false) }
+    var catalogLoadFailed by remember(group.key) { mutableStateOf(false) }
+    var retryNonce by remember(group.key) { mutableIntStateOf(0) }
+    var selectedSeason by remember(group.key) { mutableStateOf<Int?>(null) }
+
+    LaunchedEffect(showAll, seriesId, retryNonce) {
+        if (!showAll || seriesId == null || fullDetails != null) return@LaunchedEffect
+        catalogLoading = true
+        catalogLoadFailed = false
+        when (val result = seriesRuntime.details(group.key.sourceId, seriesId)) {
+            is SourceResult.Success -> fullDetails = result.value
+            is SourceResult.Failure -> catalogLoadFailed = true
+        }
+        catalogLoading = false
+    }
+
+    val managedByEpisodeId = remember(group.episodes) {
+        group.episodes.associateBy { it.contentId }
+    }
+    val seasonStatuses = remember(showAll, fullDetails, group.episodes) {
+        if (showAll && fullDetails != null) {
+            fullDetails.orEmptySeasons().map { season ->
+                LibrarySeasonStatus(
+                    seasonNumber = season.seasonNumber,
+                    managedCount = season.episodes.count { episode ->
+                        managedByEpisodeId.containsKey(episode.episodeId)
+                    },
+                    totalCount = season.episodes.size,
+                )
+            }
+        } else {
+            group.seasonNumbers.map { seasonNumber ->
+                val count = group.episodes.count { it.seasonNumber == seasonNumber }
+                LibrarySeasonStatus(
+                    seasonNumber = seasonNumber,
+                    managedCount = count,
+                    totalCount = count,
+                )
+            }
+        }
+    }
+
+    LaunchedEffect(showAll, seasonStatuses) {
+        val currentSeason = selectedSeason
+        if (currentSeason != null && seasonStatuses.none { it.seasonNumber == currentSeason }) {
+            selectedSeason = null
+        }
+    }
+
+    val visibleManagedEpisodes = remember(group.episodes, selectedSeason) {
         if (selectedSeason == null) {
             group.episodes
         } else {
             group.episodes.filter { it.seasonNumber == selectedSeason }
         }
     }
+    val visibleCatalogEpisodes = remember(showAll, fullDetails, selectedSeason) {
+        if (!showAll || fullDetails == null) {
+            emptyList()
+        } else {
+            fullDetails.orEmptySeasons()
+                .asSequence()
+                .filter { season -> selectedSeason == null || season.seasonNumber == selectedSeason }
+                .flatMap { it.episodes.asSequence() }
+                .sortedWith(compareBy<SeriesEpisode>({ it.seasonNumber }, { it.episodeNumber }, { it.title.lowercase() }))
+                .toList()
+        }
+    }
+    val totalCatalogEpisodes = fullDetails
+        ?.orEmptySeasons()
+        ?.sumOf { it.episodes.size }
 
     Column(
         modifier = Modifier
@@ -199,10 +293,24 @@ internal fun LibrarySeriesDetailScreen(
                     overflow = TextOverflow.Ellipsis,
                 )
                 Text(
-                    text = "${group.episodeCount} episode${if (group.episodeCount == 1) "" else "s"} in Library",
+                    text = if (showAll && totalCatalogEpisodes != null) {
+                        "${group.episodeCount} in Library · $totalCatalogEpisodes total"
+                    } else {
+                        "${group.episodeCount} episode${if (group.episodeCount == 1) "" else "s"} in Library"
+                    },
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
+            }
+            if (seriesId != null) {
+                TextButton(
+                    onClick = {
+                        showAll = !showAll
+                        selectedSeason = null
+                    },
+                ) {
+                    Text(if (showAll) "Downloaded only" else "Show all")
+                }
             }
             Icon(
                 Icons.Filled.VideoLibrary,
@@ -211,7 +319,51 @@ internal fun LibrarySeriesDetailScreen(
             )
         }
 
-        if (seasons.isNotEmpty()) {
+        if (catalogLoading) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
+                Text(
+                    text = "Loading complete series catalog…",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+
+        if (showAll && catalogLoadFailed) {
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(10.dp),
+                color = MaterialTheme.colorScheme.errorContainer,
+            ) {
+                Row(
+                    modifier = Modifier.padding(10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(7.dp),
+                ) {
+                    Icon(Icons.Filled.ErrorOutline, contentDescription = null)
+                    Text(
+                        text = "The full Series catalog could not be loaded. Downloads remain available.",
+                        style = MaterialTheme.typography.bodySmall,
+                        modifier = Modifier.weight(1f),
+                    )
+                    TextButton(
+                        onClick = {
+                            catalogLoadFailed = false
+                            retryNonce += 1
+                        },
+                    ) {
+                        Text("Retry")
+                    }
+                }
+            }
+        }
+
+        if (seasonStatuses.isNotEmpty()) {
             LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 item(key = "all") {
                     FilterChip(
@@ -220,11 +372,24 @@ internal fun LibrarySeriesDetailScreen(
                         label = { Text("All") },
                     )
                 }
-                items(seasons, key = { it }) { season ->
+                items(seasonStatuses, key = { it.seasonNumber }) { season ->
                     FilterChip(
-                        selected = selectedSeason == season,
-                        onClick = { selectedSeason = season },
-                        label = { Text("Season $season") },
+                        selected = selectedSeason == season.seasonNumber,
+                        onClick = { selectedSeason = season.seasonNumber },
+                        label = {
+                            Text(
+                                if (showAll && fullDetails != null) {
+                                    "Season ${season.seasonNumber} · ${season.managedCount}/${season.totalCount}"
+                                } else {
+                                    "Season ${season.seasonNumber}"
+                                },
+                            )
+                        },
+                        modifier = if (showAll && season.managedCount == 0) {
+                            Modifier.alpha(0.55f)
+                        } else {
+                            Modifier
+                        },
                     )
                 }
             }
@@ -256,15 +421,104 @@ internal fun LibrarySeriesDetailScreen(
             contentPadding = PaddingValues(bottom = 12.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            items(visibleEpisodes, key = { it.downloadId }) { download ->
-                LibraryEpisodeRow(
-                    download = download,
-                    onPlay = { onPlay(download) },
-                    onPause = { onPause(download) },
-                    onResume = { onResume(download) },
-                    onRetry = { onRetry(download) },
-                    onRemove = { onRemove(download) },
+            if (showAll && fullDetails != null) {
+                items(visibleCatalogEpisodes, key = { it.episodeId }) { episode ->
+                    val managed = managedByEpisodeId[episode.episodeId]
+                    if (managed != null) {
+                        LibraryEpisodeRow(
+                            download = managed,
+                            onPlay = { onPlay(managed) },
+                            onPause = { onPause(managed) },
+                            onResume = { onResume(managed) },
+                            onRetry = { onRetry(managed) },
+                            onRemove = { onRemove(managed) },
+                        )
+                    } else {
+                        LibraryMissingEpisodeRow(
+                            episode = episode,
+                            onDownload = {
+                                scope.launch {
+                                    directDownloadRuntime.enqueue(
+                                        OfflineDownloadSpec(
+                                            sourceId = group.key.sourceId,
+                                            mediaKind = DownloadMediaKinds.SERIES_EPISODE,
+                                            contentId = episode.episodeId,
+                                            providerStreamId = episode.providerEpisodeId,
+                                            title = episode.title,
+                                            seriesTitle = episode.seriesTitle,
+                                            seasonNumber = episode.seasonNumber,
+                                            episodeNumber = episode.episodeNumber,
+                                            posterUrl = episode.posterUrl,
+                                            containerExtension = episode.containerExtension,
+                                        ),
+                                    )
+                                }
+                            },
+                        )
+                    }
+                }
+            } else {
+                items(visibleManagedEpisodes, key = { it.downloadId }) { download ->
+                    LibraryEpisodeRow(
+                        download = download,
+                        onPlay = { onPlay(download) },
+                        onPause = { onPause(download) },
+                        onResume = { onResume(download) },
+                        onRetry = { onRetry(download) },
+                        onRemove = { onRemove(download) },
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun LibraryMissingEpisodeRow(
+    episode: SeriesEpisode,
+    onDownload: () -> Unit,
+) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(12.dp),
+        tonalElevation = 0.dp,
+    ) {
+        Row(
+            modifier = Modifier.padding(10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(9.dp),
+        ) {
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .alpha(0.58f),
+                verticalArrangement = Arrangement.spacedBy(3.dp),
+            ) {
+                Text(
+                    text = episode.title,
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
                 )
+                Text(
+                    text = "S${episode.seasonNumber} · E${episode.episodeNumber}",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Text(
+                    text = "Not downloaded",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            FilledTonalButton(
+                onClick = onDownload,
+                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
+            ) {
+                Icon(Icons.Filled.Download, contentDescription = null, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(4.dp))
+                Text("Download")
             }
         }
     }
@@ -405,6 +659,14 @@ private fun LibraryEpisodeRow(
         }
     }
 }
+
+private data class LibrarySeasonStatus(
+    val seasonNumber: Int,
+    val managedCount: Int,
+    val totalCount: Int,
+)
+
+private fun SeriesDetails?.orEmptySeasons() = this?.seasons.orEmpty()
 
 private fun episodeLabel(download: OfflineDownload): String {
     return listOfNotNull(
