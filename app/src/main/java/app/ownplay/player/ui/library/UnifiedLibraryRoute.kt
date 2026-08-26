@@ -840,7 +840,7 @@ private fun OfflineOnlyMovieCard(
                 overflow = TextOverflow.Ellipsis,
             )
             Text(
-                text = "Offline copy · no longer in the active catalog",
+                text = "${movieOfflineLabel(download)} · no longer in the active catalog",
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 2,
@@ -958,7 +958,7 @@ private fun CompactOfflineMovieCard(
                 overflow = TextOverflow.Ellipsis,
             )
             Text(
-                text = "Offline copy · Play",
+                text = "${movieOfflineLabel(download)} · Play",
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.primary,
                 maxLines = 1,
@@ -1156,7 +1156,7 @@ private fun OfflineMovieListRow(
                 overflow = TextOverflow.Ellipsis,
             )
             Text(
-                text = "Offline copy · no longer in active catalog · Play",
+                text = "${movieOfflineLabel(download)} · no longer in active catalog · Play",
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.primary,
                 maxLines = 2,
