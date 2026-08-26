@@ -25,8 +25,19 @@ enum class AppOrientationMode(
 
     companion object {
         fun fromStored(value: String?): AppOrientationMode =
-            entries.firstOrNull { mode -> mode.storedValue == value } ?: PORTRAIT
+            fromStoredOrNull(value) ?: PORTRAIT
+
+        fun fromStoredOrNull(value: String?): AppOrientationMode? =
+            entries.firstOrNull { mode -> mode.storedValue == value }
     }
+}
+
+sealed interface AppOrientationSelection {
+    data object Loading : AppOrientationSelection
+    data object Unconfigured : AppOrientationSelection
+    data class Configured(
+        val mode: AppOrientationMode,
+    ) : AppOrientationSelection
 }
 
 class AppOrientationStore(
@@ -34,16 +45,19 @@ class AppOrientationStore(
 ) {
     private val dataStore = context.applicationContext.ownPlayAppPreferences
 
-    fun observe(): Flow<AppOrientationMode> = dataStore.data
-        .catch { error ->
-            if (error is IOException) {
-                emit(emptyPreferences())
-            } else {
-                throw error
-            }
-        }
+    fun observe(): Flow<AppOrientationMode> = observePreferences()
         .map { preferences ->
             AppOrientationMode.fromStored(preferences[ORIENTATION_KEY])
+        }
+
+    fun observeSelection(): Flow<AppOrientationSelection> = observePreferences()
+        .map { preferences ->
+            val mode = AppOrientationMode.fromStoredOrNull(preferences[ORIENTATION_KEY])
+            if (mode == null) {
+                AppOrientationSelection.Unconfigured
+            } else {
+                AppOrientationSelection.Configured(mode)
+            }
         }
 
     suspend fun set(mode: AppOrientationMode): Boolean = try {
@@ -56,6 +70,15 @@ class AppOrientationStore(
     } catch (_: Exception) {
         false
     }
+
+    private fun observePreferences(): Flow<Preferences> = dataStore.data
+        .catch { error ->
+            if (error is IOException) {
+                emit(emptyPreferences())
+            } else {
+                throw error
+            }
+        }
 
     private companion object {
         val ORIENTATION_KEY = stringPreferencesKey("app_orientation")

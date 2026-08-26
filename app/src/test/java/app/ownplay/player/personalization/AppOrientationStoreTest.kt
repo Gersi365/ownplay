@@ -1,6 +1,7 @@
 package app.ownplay.player.personalization
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Test
 
 class AppOrientationStoreTest {
@@ -16,6 +17,25 @@ class AppOrientationStoreTest {
         assertEquals(
             AppOrientationMode.LANDSCAPE,
             AppOrientationMode.fromStored("landscape"),
+        )
+    }
+
+    @Test
+    fun missingOrUnknownPreferenceRemainsUnconfiguredForFirstRunSetup() {
+        assertNull(AppOrientationMode.fromStoredOrNull(null))
+        assertNull(AppOrientationMode.fromStoredOrNull(""))
+        assertNull(AppOrientationMode.fromStoredOrNull("sensor"))
+    }
+
+    @Test
+    fun explicitOrientationCanBeDetectedForFirstRunSetup() {
+        assertEquals(
+            AppOrientationMode.PORTRAIT,
+            AppOrientationMode.fromStoredOrNull("portrait"),
+        )
+        assertEquals(
+            AppOrientationMode.LANDSCAPE,
+            AppOrientationMode.fromStoredOrNull("landscape"),
         )
     }
 }

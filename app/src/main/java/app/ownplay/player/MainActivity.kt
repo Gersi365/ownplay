@@ -14,10 +14,13 @@ import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import app.ownplay.player.download.OfflineDownloadFeatureRuntime
+import app.ownplay.player.personalization.AppOrientationSelection
 import app.ownplay.player.personalization.AppOrientationStore
 import app.ownplay.player.playback.PlaybackInteractionBridge
 import app.ownplay.player.playback.PlaybackMediaKind
 import app.ownplay.player.playback.PlaybackState
+import app.ownplay.player.ui.OrientationSetupLoadingSurface
+import app.ownplay.player.ui.OrientationSetupScreen
 import app.ownplay.player.ui.OwnPlayRoot
 import app.ownplay.player.ui.PictureInPicturePlaybackSurface
 import app.ownplay.player.ui.PlaybackWindowController
@@ -92,19 +95,39 @@ class MainActivity : ComponentActivity() {
         setContent {
             val isInPictureInPictureMode by
                 playbackWindowController.isInPictureInPictureMode.collectAsState()
+            val orientationSelection by appOrientationStore.observeSelection().collectAsState(
+                initial = AppOrientationSelection.Loading,
+            )
             OwnPlayTheme {
-                if (isInPictureInPictureMode) {
-                    PictureInPicturePlaybackSurface(runtime.playbackVideoOutput)
-                } else {
-                    OwnPlayRoot(
-                        runtime = runtime,
-                        onPlaybackFullscreenChanged = { isFullscreen ->
-                            playbackFullscreen = isFullscreen
-                            playbackWindowController.updateFullscreenState(isFullscreen)
-                            if (!isFullscreen) hideStatusBar()
-                        },
-                        onPlaybackSurfaceActiveChanged = playbackWindowController::updatePlaybackSurfaceState,
-                    )
+                when {
+                    isInPictureInPictureMode -> {
+                        PictureInPicturePlaybackSurface(runtime.playbackVideoOutput)
+                    }
+                    orientationSelection == AppOrientationSelection.Loading -> {
+                        OrientationSetupLoadingSurface()
+                    }
+                    orientationSelection == AppOrientationSelection.Unconfigured -> {
+                        OrientationSetupScreen(
+                            onOrientationSelected = { mode ->
+                                activityScope.launch {
+                                    if (appOrientationStore.set(mode)) {
+                                        playbackWindowController.updateAppOrientation(mode)
+                                    }
+                                }
+                            },
+                        )
+                    }
+                    else -> {
+                        OwnPlayRoot(
+                            runtime = runtime,
+                            onPlaybackFullscreenChanged = { isFullscreen ->
+                                playbackFullscreen = isFullscreen
+                                playbackWindowController.updateFullscreenState(isFullscreen)
+                                if (!isFullscreen) hideStatusBar()
+                            },
+                            onPlaybackSurfaceActiveChanged = playbackWindowController::updatePlaybackSurfaceState,
+                        )
+                    }
                 }
             }
         }
