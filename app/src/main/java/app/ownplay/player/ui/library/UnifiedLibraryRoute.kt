@@ -421,7 +421,7 @@ internal fun UnifiedLibraryRoute(
                     )
                     Text(
                         text = if (offlineOnly) {
-                            "Downloaded, downloading and paused media appears here when its local file is still present."
+                            "Only completed downloads whose local files are still present appear here."
                         } else if (sourceKind != SourceKinds.XTREAM) {
                             "Movies and Series require an Xtream-compatible source."
                         } else {
@@ -545,7 +545,7 @@ private fun UnifiedSeriesCard(
     offlineMode: Boolean,
     onOpen: () -> Unit,
 ) {
-    val managed = group?.episodes?.count(OfflineDownload::countsForOfflineFilter) ?: 0
+    val offlineEpisodes = group?.episodes?.count(OfflineDownload::countsForOfflineFilter) ?: 0
     Surface(
         modifier = Modifier
             .fillMaxWidth()
@@ -582,12 +582,12 @@ private fun UnifiedSeriesCard(
             }
             Text(
                 text = when {
-                    managed > 0 -> "$managed episode${if (managed == 1) "" else "s"} managed offline"
+                    offlineEpisodes > 0 -> "$offlineEpisodes episode${if (offlineEpisodes == 1) "" else "s"} offline"
                     offlineMode -> "Not available offline"
                     else -> "Series"
                 },
                 style = MaterialTheme.typography.labelSmall,
-                color = if (managed > 0) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                color = if (offlineEpisodes > 0) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
     }
@@ -646,15 +646,7 @@ private fun OfflineOnlyMovieCard(
 }
 
 private fun OfflineDownload.countsForOfflineFilter(): Boolean =
-    !isMissingFile() && when (state) {
-        DownloadStates.COMPLETED,
-        DownloadStates.DOWNLOADING,
-        DownloadStates.QUEUED,
-        DownloadStates.PAUSED,
-        DownloadStates.FAILED,
-        -> true
-        else -> false
-    }
+    state == DownloadStates.COMPLETED && !isMissingFile()
 
 private fun OfflineDownload.isMissingFile(): Boolean =
     state == DownloadStates.FAILED && failureReason == MISSING_FILE_REASON
