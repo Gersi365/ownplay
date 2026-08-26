@@ -1,6 +1,7 @@
 package app.ownplay.player.ui
 
 import android.content.res.Configuration
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
@@ -82,6 +83,7 @@ fun OwnPlayApp(
     var fullscreenSelection by remember { mutableStateOf<LivePlaybackSelection?>(null) }
     var requestedVodMovieId by remember { mutableStateOf<String?>(null) }
     var requestedSeriesId by remember { mutableStateOf<String?>(null) }
+    var seriesDetailReturnToLibrary by remember { mutableStateOf(false) }
     var vodFullscreen by remember { mutableStateOf(false) }
     var seriesFullscreen by remember { mutableStateOf(false) }
     var libraryFullscreen by remember { mutableStateOf(false) }
@@ -102,6 +104,7 @@ fun OwnPlayApp(
         if (activeSourceId !in ids) {
             requestedVodMovieId = null
             requestedSeriesId = null
+            seriesDetailReturnToLibrary = false
         }
     }
 
@@ -116,8 +119,18 @@ fun OwnPlayApp(
         }
         if (target != OwnPlaySection.SERIES) {
             requestedSeriesId = null
+            seriesDetailReturnToLibrary = false
         }
         section = target
+    }
+
+    BackHandler(
+        enabled =
+            section == OwnPlaySection.SERIES &&
+                seriesDetailReturnToLibrary &&
+                !seriesFullscreen,
+    ) {
+        openContentSection(OwnPlaySection.LIBRARY)
     }
 
     val librarySectionActive =
@@ -356,6 +369,7 @@ fun OwnPlayApp(
                         onOpenSeriesDetails = { sourceId, seriesId ->
                             activeSourceId = sourceId
                             requestedSeriesId = seriesId
+                            seriesDetailReturnToLibrary = true
                             openContentSection(OwnPlaySection.SERIES)
                         },
                         onFullscreenStateChanged = { fullscreen ->
