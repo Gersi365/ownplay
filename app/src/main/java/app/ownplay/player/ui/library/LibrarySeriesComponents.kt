@@ -22,6 +22,7 @@ import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.ErrorOutline
+import androidx.compose.material.icons.filled.OpenInNew
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
@@ -34,6 +35,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -44,7 +46,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -54,22 +55,17 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import app.ownplay.player.download.OfflineDownload
-import app.ownplay.player.download.OfflineDownloadFeatureRuntime
-import app.ownplay.player.download.OfflineDownloadSpec
-import app.ownplay.player.persistence.download.DownloadMediaKinds
 import app.ownplay.player.persistence.download.DownloadStates
 import app.ownplay.player.series.SeriesDetails
 import app.ownplay.player.series.SeriesEpisode
 import app.ownplay.player.series.SeriesFeatureRuntime
 import app.ownplay.player.source.SourceResult
 import app.ownplay.player.ui.vod.RemotePoster
-import kotlinx.coroutines.launch
 
 @Composable
 internal fun LibrarySeriesCard(
     group: LibrarySeriesGroup,
-    onOpenSeries: () -> Unit,
-    onOpenOfflineEpisodes: () -> Unit,
+    onOpenOfflineSeries: () -> Unit,
 ) {
     val completed = group.episodes.count { it.state == DownloadStates.COMPLETED }
     val active = group.episodes.count {
@@ -81,7 +77,7 @@ internal fun LibrarySeriesCard(
     Surface(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(onClick = onOpenSeries),
+            .clickable(onClick = onOpenOfflineSeries),
         shape = RoundedCornerShape(14.dp),
         tonalElevation = 1.dp,
     ) {
@@ -102,7 +98,7 @@ internal fun LibrarySeriesCard(
                         .align(Alignment.TopEnd)
                         .padding(6.dp),
                     shape = RoundedCornerShape(999.dp),
-                    color = MaterialTheme.colorScheme.surface.copy(alpha = 0.88f),
+                    color = MaterialTheme.colorScheme.surface.copy(alpha = 0.9f),
                 ) {
                     Row(
                         modifier = Modifier.padding(horizontal = 7.dp, vertical = 4.dp),
@@ -132,8 +128,7 @@ internal fun LibrarySeriesCard(
             )
             Text(
                 text = buildString {
-                    append("${group.episodeCount} episode")
-                    if (group.episodeCount != 1) append("s")
+                    append("${group.episodeCount} in Library")
                     if (group.seasonCount > 0) {
                         append(" · ${group.seasonCount} season")
                         if (group.seasonCount != 1) append("s")
@@ -159,12 +154,6 @@ internal fun LibrarySeriesCard(
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
             )
-            TextButton(
-                onClick = onOpenOfflineEpisodes,
-                contentPadding = PaddingValues(horizontal = 4.dp, vertical = 0.dp),
-            ) {
-                Text("Offline episodes")
-            }
         }
     }
 }
@@ -174,6 +163,8 @@ internal fun LibrarySeriesDetailScreen(
     group: LibrarySeriesGroup,
     playbackError: String?,
     onBack: () -> Unit,
+    onOpenFullSeries: (() -> Unit)?,
+    onDownloadEpisode: (SeriesEpisode) -> Unit,
     onPlay: (OfflineDownload) -> Unit,
     onPause: (OfflineDownload) -> Unit,
     onResume: (OfflineDownload) -> Unit,
@@ -181,18 +172,11 @@ internal fun LibrarySeriesDetailScreen(
     onRemove: (OfflineDownload) -> Unit,
 ) {
     val context = LocalContext.current
-    val scope = rememberCoroutineScope()
     val seriesRuntime = remember(context) {
         SeriesFeatureRuntime(context.applicationContext)
     }
-    val directDownloadRuntime = remember(context) {
-        OfflineDownloadFeatureRuntime(context.applicationContext)
-    }
     DisposableEffect(seriesRuntime) {
         onDispose { seriesRuntime.close() }
-    }
-    DisposableEffect(directDownloadRuntime) {
-        onDispose { directDownloadRuntime.close() }
     }
 
     val seriesId = group.seriesId
@@ -262,7 +246,13 @@ internal fun LibrarySeriesDetailScreen(
                 .asSequence()
                 .filter { season -> selectedSeason == null || season.seasonNumber == selectedSeason }
                 .flatMap { it.episodes.asSequence() }
-                .sortedWith(compareBy<SeriesEpisode>({ it.seasonNumber }, { it.episodeNumber }, { it.title.lowercase() }))
+                .sortedWith(
+                    compareBy<SeriesEpisode>(
+                        { it.seasonNumber },
+                        { it.episodeNumber },
+                        { it.title.lowercase() },
+                    ),
+                )
                 .toList()
         }
     }
@@ -279,24 +269,38 @@ internal fun LibrarySeriesDetailScreen(
         Row(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(4.dp),
         ) {
             IconButton(onClick = onBack) {
                 Icon(Icons.Filled.ArrowBack, contentDescription = "Back to Library")
             }
+            Text(
+                text = "Offline series",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
+            )
+        }
+
+        OfflineSeriesHero(
+            group = group,
+            totalCatalogEpisodes = totalCatalogEpisodes,
+            onOpenFullSeries = onOpenFullSeries,
+        )
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = group.title,
-                    style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.Bold,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
+                    text = "Episodes",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
                 )
                 Text(
                     text = if (showAll && totalCatalogEpisodes != null) {
-                        "${group.episodeCount} in Library · $totalCatalogEpisodes total"
+                        "${group.episodeCount} in Library · $totalCatalogEpisodes in full series"
                     } else {
-                        "${group.episodeCount} episode${if (group.episodeCount == 1) "" else "s"} in Library"
+                        "${group.episodeCount} managed by OwnPlay"
                     },
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -312,11 +316,6 @@ internal fun LibrarySeriesDetailScreen(
                     Text(if (showAll) "Downloaded only" else "Show all")
                 }
             }
-            Icon(
-                Icons.Filled.VideoLibrary,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.primary,
-            )
         }
 
         if (catalogLoading) {
@@ -327,7 +326,7 @@ internal fun LibrarySeriesDetailScreen(
             ) {
                 CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
                 Text(
-                    text = "Loading complete series catalog…",
+                    text = "Loading the complete series from your playlist…",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -347,7 +346,7 @@ internal fun LibrarySeriesDetailScreen(
                 ) {
                     Icon(Icons.Filled.ErrorOutline, contentDescription = null)
                     Text(
-                        text = "The full Series catalog could not be loaded. Downloads remain available.",
+                        text = "The full series could not be loaded. Your offline episodes remain available.",
                         style = MaterialTheme.typography.bodySmall,
                         modifier = Modifier.weight(1f),
                     )
@@ -381,12 +380,12 @@ internal fun LibrarySeriesDetailScreen(
                                 if (showAll && fullDetails != null) {
                                     "Season ${season.seasonNumber} · ${season.managedCount}/${season.totalCount}"
                                 } else {
-                                    "Season ${season.seasonNumber}"
+                                    "Season ${season.seasonNumber} · ${season.managedCount}"
                                 },
                             )
                         },
                         modifier = if (showAll && season.managedCount == 0) {
-                            Modifier.alpha(0.55f)
+                            Modifier.alpha(0.52f)
                         } else {
                             Modifier
                         },
@@ -418,14 +417,14 @@ internal fun LibrarySeriesDetailScreen(
 
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(bottom = 12.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
+            contentPadding = PaddingValues(bottom = 16.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             if (showAll && fullDetails != null) {
                 items(visibleCatalogEpisodes, key = { it.episodeId }) { episode ->
                     val managed = managedByEpisodeId[episode.episodeId]
                     if (managed != null) {
-                        LibraryEpisodeRow(
+                        LibraryManagedEpisodeCard(
                             download = managed,
                             onPlay = { onPlay(managed) },
                             onPause = { onPause(managed) },
@@ -434,32 +433,15 @@ internal fun LibrarySeriesDetailScreen(
                             onRemove = { onRemove(managed) },
                         )
                     } else {
-                        LibraryMissingEpisodeRow(
+                        LibraryMissingEpisodeCard(
                             episode = episode,
-                            onDownload = {
-                                scope.launch {
-                                    directDownloadRuntime.enqueue(
-                                        OfflineDownloadSpec(
-                                            sourceId = group.key.sourceId,
-                                            mediaKind = DownloadMediaKinds.SERIES_EPISODE,
-                                            contentId = episode.episodeId,
-                                            providerStreamId = episode.providerEpisodeId,
-                                            title = episode.title,
-                                            seriesTitle = episode.seriesTitle,
-                                            seasonNumber = episode.seasonNumber,
-                                            episodeNumber = episode.episodeNumber,
-                                            posterUrl = episode.posterUrl,
-                                            containerExtension = episode.containerExtension,
-                                        ),
-                                    )
-                                }
-                            },
+                            onDownload = { onDownloadEpisode(episode) },
                         )
                     }
                 }
             } else {
                 items(visibleManagedEpisodes, key = { it.downloadId }) { download ->
-                    LibraryEpisodeRow(
+                    LibraryManagedEpisodeCard(
                         download = download,
                         onPlay = { onPlay(download) },
                         onPause = { onPause(download) },
@@ -474,20 +456,109 @@ internal fun LibrarySeriesDetailScreen(
 }
 
 @Composable
-private fun LibraryMissingEpisodeRow(
+private fun OfflineSeriesHero(
+    group: LibrarySeriesGroup,
+    totalCatalogEpisodes: Int?,
+    onOpenFullSeries: (() -> Unit)?,
+) {
+    val completed = group.episodes.count { it.state == DownloadStates.COMPLETED }
+
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(16.dp),
+        tonalElevation = 2.dp,
+    ) {
+        Row(
+            modifier = Modifier.padding(12.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            RemotePoster(
+                url = group.posterUrl,
+                title = group.title,
+                modifier = Modifier
+                    .width(88.dp)
+                    .aspectRatio(2f / 3f),
+            )
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(5.dp),
+            ) {
+                Text(
+                    text = "OFFLINE SERIES",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.primary,
+                    fontWeight = FontWeight.Bold,
+                )
+                Text(
+                    text = group.title,
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    text = buildString {
+                        append("$completed downloaded")
+                        if (group.episodeCount != completed) {
+                            append(" · ${group.episodeCount} managed")
+                        }
+                        if (totalCatalogEpisodes != null) {
+                            append(" · $totalCatalogEpisodes total")
+                        }
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Text(
+                    text = "${group.seasonCount} offline season${if (group.seasonCount == 1) "" else "s"} · ${humanBytes(group.totalBytesDownloaded)}",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                if (onOpenFullSeries != null) {
+                    OutlinedButton(
+                        onClick = onOpenFullSeries,
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 5.dp),
+                    ) {
+                        Icon(Icons.Filled.OpenInNew, contentDescription = null, modifier = Modifier.size(17.dp))
+                        Spacer(Modifier.width(5.dp))
+                        Text("View full series")
+                    }
+                    Text(
+                        text = "Open the complete series from your playlist",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun LibraryMissingEpisodeCard(
     episode: SeriesEpisode,
     onDownload: () -> Unit,
 ) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(12.dp),
+        shape = RoundedCornerShape(14.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.42f),
         tonalElevation = 0.dp,
     ) {
         Row(
             modifier = Modifier.padding(10.dp),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(9.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
         ) {
+            RemotePoster(
+                url = episode.posterUrl,
+                title = episode.title,
+                modifier = Modifier
+                    .width(66.dp)
+                    .aspectRatio(2f / 3f)
+                    .alpha(0.48f),
+            )
             Column(
                 modifier = Modifier
                     .weight(1f)
@@ -502,7 +573,7 @@ private fun LibraryMissingEpisodeRow(
                     overflow = TextOverflow.Ellipsis,
                 )
                 Text(
-                    text = "S${episode.seasonNumber} · E${episode.episodeNumber}",
+                    text = "Season ${episode.seasonNumber} · Episode ${episode.episodeNumber}",
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -514,7 +585,7 @@ private fun LibraryMissingEpisodeRow(
             }
             FilledTonalButton(
                 onClick = onDownload,
-                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
+                contentPadding = PaddingValues(horizontal = 11.dp, vertical = 4.dp),
             ) {
                 Icon(Icons.Filled.Download, contentDescription = null, modifier = Modifier.size(18.dp))
                 Spacer(Modifier.width(4.dp))
@@ -525,7 +596,7 @@ private fun LibraryMissingEpisodeRow(
 }
 
 @Composable
-private fun LibraryEpisodeRow(
+private fun LibraryManagedEpisodeCard(
     download: OfflineDownload,
     onPlay: () -> Unit,
     onPause: () -> Unit,
@@ -535,91 +606,105 @@ private fun LibraryEpisodeRow(
 ) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(12.dp),
+        shape = RoundedCornerShape(14.dp),
         tonalElevation = 1.dp,
     ) {
-        Column(
+        Row(
             modifier = Modifier.padding(10.dp),
-            verticalArrangement = Arrangement.spacedBy(6.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            verticalAlignment = Alignment.Top,
         ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.Top,
-                horizontalArrangement = Arrangement.spacedBy(9.dp),
+            RemotePoster(
+                url = download.posterUrl,
+                title = download.title,
+                modifier = Modifier
+                    .width(66.dp)
+                    .aspectRatio(2f / 3f),
+            )
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(5.dp),
             ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = download.title,
-                        style = MaterialTheme.typography.bodyMedium,
-                        fontWeight = FontWeight.SemiBold,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                    Text(
-                        text = episodeLabel(download),
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-                IconButton(onClick = onRemove) {
-                    Icon(Icons.Filled.Delete, contentDescription = "Remove episode download")
-                }
-            }
-
-            when (download.state) {
-                DownloadStates.COMPLETED -> {
-                    Text(
-                        text = "Downloaded · ${humanBytes(download.bytesDownloaded)}",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.primary,
-                    )
-                    Text(
-                        text = if (download.savedToDownloads) {
-                            "Phone Downloads · available offline"
-                        } else {
-                            "OwnPlay private storage · available offline"
-                        },
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-
-                DownloadStates.DOWNLOADING,
-                DownloadStates.QUEUED,
-                DownloadStates.PAUSED,
-                -> {
-                    val progress = download.progressFraction
-                    if (progress == null) {
-                        LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
-                    } else {
-                        LinearProgressIndicator(
-                            progress = { progress },
-                            modifier = Modifier.fillMaxWidth(),
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.Top,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = download.title,
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.SemiBold,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        Text(
+                            text = episodeLabel(download),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
-                    Text(
-                        text = downloadProgressLabel(download),
+                    IconButton(
+                        onClick = onRemove,
+                        modifier = Modifier.size(32.dp),
+                    ) {
+                        Icon(
+                            Icons.Filled.Delete,
+                            contentDescription = "Remove episode download",
+                            modifier = Modifier.size(18.dp),
+                        )
+                    }
+                }
+
+                when (download.state) {
+                    DownloadStates.COMPLETED -> {
+                        Text(
+                            text = "Downloaded · ${humanBytes(download.bytesDownloaded)}",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.primary,
+                        )
+                        Text(
+                            text = if (download.savedToDownloads) {
+                                "Phone Downloads · available offline"
+                            } else {
+                                "OwnPlay private storage · available offline"
+                            },
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+
+                    DownloadStates.DOWNLOADING,
+                    DownloadStates.QUEUED,
+                    DownloadStates.PAUSED,
+                    -> {
+                        val progress = download.progressFraction
+                        if (progress == null) {
+                            LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                        } else {
+                            LinearProgressIndicator(
+                                progress = { progress },
+                                modifier = Modifier.fillMaxWidth(),
+                            )
+                        }
+                        Text(
+                            text = downloadProgressLabel(download),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+
+                    DownloadStates.FAILED -> Text(
+                        text = download.failureReason ?: "Download failed",
                         style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        color = MaterialTheme.colorScheme.error,
                     )
                 }
 
-                DownloadStates.FAILED -> Text(
-                    text = download.failureReason ?: "Download failed",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.error,
-                )
-            }
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(4.dp),
-            ) {
                 when (download.state) {
                     DownloadStates.COMPLETED -> Button(
                         onClick = onPlay,
-                        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp),
+                        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 5.dp),
                     ) {
                         Icon(Icons.Filled.PlayArrow, contentDescription = null, modifier = Modifier.size(18.dp))
                         Spacer(Modifier.width(5.dp))
@@ -670,8 +755,8 @@ private fun SeriesDetails?.orEmptySeasons() = this?.seasons.orEmpty()
 
 private fun episodeLabel(download: OfflineDownload): String {
     return listOfNotNull(
-        download.seasonNumber?.let { "S$it" },
-        download.episodeNumber?.let { "E$it" },
+        download.seasonNumber?.let { "Season $it" },
+        download.episodeNumber?.let { "Episode $it" },
     ).joinToString(" · ").ifBlank { "Episode" }
 }
 
