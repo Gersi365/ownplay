@@ -455,13 +455,8 @@ internal fun UnifiedLibraryRoute(
             onOpenMovie = { movieSourceId, movieId ->
                 onOpenMovieDetails(movieSourceId, movieId)
             },
-            onOpenCatalogSeries = { seriesSourceId, seriesId, group ->
-                if (offlineOnly && group != null) {
-                    playbackError = null
-                    selectedSeriesKey = group.key
-                } else {
-                    onOpenSeriesDetails(seriesSourceId, seriesId)
-                }
+            onOpenCatalogSeries = { seriesSourceId, seriesId, _ ->
+                onOpenSeriesDetails(seriesSourceId, seriesId)
             },
             onOpenOfflineSeries = { group ->
                 playbackError = null
@@ -547,6 +542,7 @@ private fun LibraryCatalogView(
                         movie = movie,
                         download = movieDownloadsByKey["$movieSourceId:${movie.movieId}"],
                         onOpen = { onOpenMovie(movieSourceId, movie.movieId) },
+                        onPlayOffline = onPlayOfflineMovie,
                     )
                 }
                 gridItems(orphanedOfflineMovies, key = { "offline-movie:${it.downloadId}" }) { download ->
@@ -567,6 +563,7 @@ private fun LibraryCatalogView(
                         group = group,
                         offlineMode = offlineOnly,
                         onOpen = { onOpenCatalogSeries(seriesSourceId, series.seriesId, group) },
+                        onOpenOfflineSeries = onOpenOfflineSeries,
                     )
                 }
                 gridItems(orphanedOfflineSeries, key = { "offline-series:${it.key}" }) { group ->
@@ -592,6 +589,7 @@ private fun LibraryCatalogView(
                         movie = movie,
                         download = movieDownloadsByKey["$movieSourceId:${movie.movieId}"],
                         onOpen = { onOpenMovie(movieSourceId, movie.movieId) },
+                        onPlayOffline = onPlayOfflineMovie,
                     )
                 }
                 gridItems(orphanedOfflineMovies, key = { "compact-offline-movie:${it.downloadId}" }) { download ->
@@ -610,6 +608,7 @@ private fun LibraryCatalogView(
                         series = series,
                         group = group,
                         onOpen = { onOpenCatalogSeries(seriesSourceId, series.seriesId, group) },
+                        onOpenOfflineSeries = onOpenOfflineSeries,
                     )
                 }
                 gridItems(orphanedOfflineSeries, key = { "compact-offline-series:${it.key}" }) { group ->
@@ -632,6 +631,7 @@ private fun LibraryCatalogView(
                         movie = movie,
                         download = movieDownloadsByKey["$movieSourceId:${movie.movieId}"],
                         onOpen = { onOpenMovie(movieSourceId, movie.movieId) },
+                        onPlayOffline = onPlayOfflineMovie,
                     )
                     HorizontalDivider(modifier = Modifier.padding(start = 70.dp))
                 }
@@ -653,6 +653,7 @@ private fun LibraryCatalogView(
                         group = group,
                         offlineMode = offlineOnly,
                         onOpen = { onOpenCatalogSeries(seriesSourceId, series.seriesId, group) },
+                        onOpenOfflineSeries = onOpenOfflineSeries,
                     )
                     HorizontalDivider(modifier = Modifier.padding(start = 70.dp))
                 }
@@ -673,6 +674,7 @@ private fun UnifiedMovieCard(
     movie: VodMovie,
     download: OfflineDownload?,
     onOpen: () -> Unit,
+    onPlayOffline: (OfflineDownload) -> Unit,
 ) {
     Surface(
         modifier = Modifier
@@ -700,6 +702,16 @@ private fun UnifiedMovieCard(
                 overflow = TextOverflow.Ellipsis,
             )
             MovieStatusText(download = download)
+            download?.takeIf(OfflineDownload::countsForOfflineFilter)?.let { localDownload ->
+                Button(
+                    onClick = { onPlayOffline(localDownload) },
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
+                ) {
+                    Icon(Icons.Filled.PlayArrow, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(5.dp))
+                    Text("Play", maxLines = 1, softWrap = false)
+                }
+            }
         }
     }
 }
@@ -710,6 +722,7 @@ private fun UnifiedSeriesCard(
     group: LibrarySeriesGroup?,
     offlineMode: Boolean,
     onOpen: () -> Unit,
+    onOpenOfflineSeries: (LibrarySeriesGroup) -> Unit,
 ) {
     val offlineEpisodes = group?.episodes?.count(OfflineDownload::countsForOfflineFilter) ?: 0
     Surface(
@@ -750,6 +763,16 @@ private fun UnifiedSeriesCard(
                 offlineEpisodes = offlineEpisodes,
                 offlineMode = offlineMode,
             )
+            group?.let { managedGroup ->
+                Button(
+                    onClick = { onOpenOfflineSeries(managedGroup) },
+                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                ) {
+                    Icon(Icons.Filled.DownloadDone, contentDescription = null, modifier = Modifier.size(17.dp))
+                    Spacer(Modifier.width(4.dp))
+                    Text("Offline episodes", maxLines = 1, softWrap = false)
+                }
+            }
         }
     }
 }
@@ -807,6 +830,7 @@ private fun CompactMovieCard(
     movie: VodMovie,
     download: OfflineDownload?,
     onOpen: () -> Unit,
+    onPlayOffline: (OfflineDownload) -> Unit,
 ) {
     Surface(
         modifier = Modifier
@@ -840,6 +864,14 @@ private fun CompactMovieCard(
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
+            download?.takeIf(OfflineDownload::countsForOfflineFilter)?.let { localDownload ->
+                Button(
+                    onClick = { onPlayOffline(localDownload) },
+                    contentPadding = PaddingValues(horizontal = 9.dp, vertical = 2.dp),
+                ) {
+                    Text("Play", maxLines = 1, softWrap = false)
+                }
+            }
         }
     }
 }
@@ -890,6 +922,7 @@ private fun CompactSeriesCard(
     series: SeriesSummary,
     group: LibrarySeriesGroup?,
     onOpen: () -> Unit,
+    onOpenOfflineSeries: (LibrarySeriesGroup) -> Unit,
 ) {
     val offlineEpisodes = group?.episodes?.count(OfflineDownload::countsForOfflineFilter) ?: 0
     Surface(
@@ -928,6 +961,14 @@ private fun CompactSeriesCard(
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
+            group?.let { managedGroup ->
+                Button(
+                    onClick = { onOpenOfflineSeries(managedGroup) },
+                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                ) {
+                    Text("Offline", maxLines = 1, softWrap = false)
+                }
+            }
         }
     }
 }
@@ -979,6 +1020,7 @@ private fun MovieListRow(
     movie: VodMovie,
     download: OfflineDownload?,
     onOpen: () -> Unit,
+    onPlayOffline: (OfflineDownload) -> Unit,
 ) {
     Row(
         modifier = Modifier
@@ -1004,6 +1046,16 @@ private fun MovieListRow(
                 overflow = TextOverflow.Ellipsis,
             )
             MovieStatusText(download = download)
+        }
+        download?.takeIf(OfflineDownload::countsForOfflineFilter)?.let { localDownload ->
+            Button(
+                onClick = { onPlayOffline(localDownload) },
+                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+            ) {
+                Icon(Icons.Filled.PlayArrow, contentDescription = null, modifier = Modifier.size(17.dp))
+                Spacer(Modifier.width(4.dp))
+                Text("Play", maxLines = 1, softWrap = false)
+            }
         }
     }
 }
@@ -1054,6 +1106,7 @@ private fun SeriesListRow(
     group: LibrarySeriesGroup?,
     offlineMode: Boolean,
     onOpen: () -> Unit,
+    onOpenOfflineSeries: (LibrarySeriesGroup) -> Unit,
 ) {
     val offlineEpisodes = group?.episodes?.count(OfflineDownload::countsForOfflineFilter) ?: 0
     Row(
@@ -1092,6 +1145,14 @@ private fun SeriesListRow(
                 offlineEpisodes = offlineEpisodes,
                 offlineMode = offlineMode,
             )
+        }
+        group?.let { managedGroup ->
+            Button(
+                onClick = { onOpenOfflineSeries(managedGroup) },
+                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+            ) {
+                Text("Offline episodes", maxLines = 1, softWrap = false)
+            }
         }
     }
 }
