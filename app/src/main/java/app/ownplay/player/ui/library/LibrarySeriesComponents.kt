@@ -336,8 +336,8 @@ internal fun LibrarySeriesDetailScreen(
                 )
                 Text(
                     text = when {
-                        selectedEpisode != null -> "Offline episode"
-                        selectedSeason != null -> "Offline season"
+                        selectedEpisode != null -> if (selectedEpisode.download != null) "Managed episode" else "Series episode"
+                        selectedSeason != null -> if (selectedSeason.managedCount > 0) "Managed season" else "Series season"
                         else -> "Offline series"
                     },
                     style = MaterialTheme.typography.labelSmall,
@@ -487,14 +487,14 @@ internal fun LibrarySeriesDetailScreen(
                             selectedEpisodeId = null
                         },
                     ) {
-                        Text(if (showAll) "Downloaded only" else "Show all")
+                        Text(if (showAll) "Managed only" else "Show all")
                     }
                 }
             }
 
             if (visibleEpisodes.isEmpty()) {
                 EmptyOfflineSection(
-                    if (showAll) "No episodes available" else "No downloaded episodes in this season",
+                    if (showAll) "No episodes available" else "No managed episodes in this season",
                 )
             } else {
                 LazyColumn(
@@ -540,7 +540,7 @@ private fun OfflineSeriesHero(
             if (group.episodeCount != completed) append(" · ${group.episodeCount} managed")
             if (totalCatalogEpisodes != null) append(" · $totalCatalogEpisodes total")
         },
-        secondary = "${group.seasonCount} offline season${if (group.seasonCount == 1) "" else "s"} · ${humanBytes(group.totalBytesDownloaded)}",
+        secondary = "${group.seasonCount} managed season${if (group.seasonCount == 1) "" else "s"} · ${humanBytes(group.totalBytesDownloaded)}",
     ) {
         if (onOpenFullSeries != null) {
             OutlinedButton(
@@ -554,7 +554,7 @@ private fun OfflineSeriesHero(
         }
         if (canShowAll) {
             TextButton(onClick = onToggleShowAll) {
-                Text(if (showAll) "Downloaded only" else "Show all")
+                Text(if (showAll) "Managed only" else "Show all")
             }
         }
     }
@@ -572,9 +572,9 @@ private fun OfflineSeasonHero(
         eyebrow = seriesTitle.uppercase(),
         meta = "${model.managedCount}/${model.totalCount} in Library",
         secondary = if (model.managedCount == 0) {
-            "No offline episodes yet"
+            "No managed episodes yet"
         } else {
-            "${model.managedCount} episode${if (model.managedCount == 1) "" else "s"} available or managed offline"
+            "${model.managedCount} managed episode${if (model.managedCount == 1) "" else "s"}"
         },
     ) {
         if (onOpenFullSeries != null) {
