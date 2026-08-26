@@ -48,6 +48,7 @@ internal fun OrientationSetupScreen(
                 .padding(20.dp),
             contentAlignment = Alignment.Center,
         ) {
+            val isWideLayout = maxWidth >= 600.dp
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -73,7 +74,7 @@ internal fun OrientationSetupScreen(
                     )
                 }
 
-                if (maxWidth >= 600.dp) {
+                if (isWideLayout) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(12.dp),
