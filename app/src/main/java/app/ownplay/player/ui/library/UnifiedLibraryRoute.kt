@@ -739,6 +739,7 @@ private fun UnifiedMovieCard(
                     onResume = onResume,
                     onRetry = onRetry,
                     onRemove = onRemove,
+                    modifier = Modifier.fillMaxWidth(),
                 )
             }
         }
@@ -916,6 +917,7 @@ private fun CompactMovieCard(
                     onResume = onResume,
                     onRetry = onRetry,
                     onRemove = onRemove,
+                    modifier = Modifier.fillMaxWidth(),
                 )
             }
         }
@@ -1116,6 +1118,7 @@ private fun MovieListRow(
                 onResume = onResume,
                 onRetry = onRetry,
                 onRemove = onRemove,
+                modifier = Modifier.width(144.dp),
             )
         }
     }
@@ -1271,10 +1274,11 @@ private fun MovieDownloadActions(
     onResume: (OfflineDownload) -> Unit,
     onRetry: (OfflineDownload) -> Unit,
     onRemove: (OfflineDownload) -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     if (compact) {
         Row(
-            modifier = Modifier.fillMaxWidth(),
+            modifier = modifier,
             verticalAlignment = Alignment.CenterVertically,
         ) {
             IconButton(
@@ -1304,6 +1308,7 @@ private fun MovieDownloadActions(
                         -> "Pause download"
                         DownloadStates.PAUSED -> "Resume download"
                         DownloadStates.FAILED -> "Retry download"
+                        else -> "Download action"
                     },
                 )
             }
@@ -1316,7 +1321,7 @@ private fun MovieDownloadActions(
     }
 
     Row(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = modifier,
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(4.dp),
     ) {
