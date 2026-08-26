@@ -287,12 +287,13 @@ internal fun UnifiedLibraryRoute(
     val catalogMovieKeys = remember(vodCatalog.movies, sourceId) {
         if (sourceId == null) emptySet() else vodCatalog.movies.map { "$sourceId:${it.movieId}" }.toSet()
     }
-    val orphanedOfflineMovies = remember(downloads, catalogMovieKeys, offlineOnly, normalizedQuery) {
-        if (!offlineOnly) {
+    val orphanedOfflineMovies = remember(downloads, catalogMovieKeys, sourceId, offlineOnly, normalizedQuery) {
+        if (!offlineOnly || sourceId == null) {
             emptyList()
         } else {
             downloads.filter { download ->
-                download.mediaKind == DownloadMediaKinds.MOVIE &&
+                download.sourceId == sourceId &&
+                    download.mediaKind == DownloadMediaKinds.MOVIE &&
                     download.countsForOfflineFilter() &&
                     "${download.sourceId}:${download.contentId}" !in catalogMovieKeys &&
                     (normalizedQuery.isBlank() || download.title.lowercase().contains(normalizedQuery))
@@ -302,13 +303,14 @@ internal fun UnifiedLibraryRoute(
     val catalogSeriesKeys = remember(seriesCatalog.series, sourceId) {
         if (sourceId == null) emptySet() else seriesCatalog.series.map { "$sourceId:${it.seriesId}" }.toSet()
     }
-    val orphanedOfflineSeries = remember(seriesGroups, catalogSeriesKeys, offlineOnly, normalizedQuery) {
-        if (!offlineOnly) {
+    val orphanedOfflineSeries = remember(seriesGroups, catalogSeriesKeys, sourceId, offlineOnly, normalizedQuery) {
+        if (!offlineOnly || sourceId == null) {
             emptyList()
         } else {
             seriesGroups.filter { group ->
                 val identity = group.seriesId?.let { "${group.key.sourceId}:$it" }
-                group.episodes.any(OfflineDownload::countsForOfflineFilter) &&
+                group.key.sourceId == sourceId &&
+                    group.episodes.any(OfflineDownload::countsForOfflineFilter) &&
                     (identity == null || identity !in catalogSeriesKeys) &&
                     (normalizedQuery.isBlank() || group.title.lowercase().contains(normalizedQuery))
             }
