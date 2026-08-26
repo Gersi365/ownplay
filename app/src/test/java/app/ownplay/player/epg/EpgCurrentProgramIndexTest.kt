@@ -44,6 +44,27 @@ class EpgCurrentProgramIndexTest {
         assertEquals("Active", result["channel-active"]?.title)
     }
 
+    @Test
+    fun directCurrentProgramLookupUsesTheSameHalfOpenBoundary() {
+        val current = program("Current", 100, 200)
+        val next = program("Next", 200, 300)
+
+        assertSame(
+            current,
+            EpgCurrentProgramIndex.currentProgram(
+                programs = listOf(current, next),
+                nowEpochSeconds = 199,
+            ),
+        )
+        assertSame(
+            next,
+            EpgCurrentProgramIndex.currentProgram(
+                programs = listOf(current, next),
+                nowEpochSeconds = 200,
+            ),
+        )
+    }
+
     private fun program(
         title: String,
         start: Long?,

@@ -94,16 +94,15 @@ internal fun LiveRoute(
     val loadingEpg = syncForThisSource && syncState.stage == SourceSyncStage.LoadingEpg
     val channelRefreshFailed = syncForThisSource && syncState.stage == SourceSyncStage.ChannelsFailed
     val epgRefreshFailed = syncForThisSource && syncState.stage == SourceSyncStage.EpgFailed
+    val selectedEpgFailed = epgLookupFailed || (
+        epgRefreshFailed && epgSnapshot?.programs.isNullOrEmpty()
+    )
 
     LaunchedEffect(preview?.request?.channelId) {
         showEpgGuide = false
     }
 
     LaunchedEffect(sourceId, syncState.sourceId, syncState.stage) {
-        if (epgRefreshFailed) {
-            currentEpgByChannelId = emptyMap()
-            return@LaunchedEffect
-        }
         if (loadingEpg) return@LaunchedEffect
 
         while (true) {
@@ -133,6 +132,7 @@ internal fun LiveRoute(
                 sourceId = sourceId,
                 channelId = selected.request.channelId,
             )
+            currentEpgByChannelId = runtime.currentEpgPrograms(sourceId)
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (_: Exception) {
@@ -170,7 +170,7 @@ internal fun LiveRoute(
             epgSnapshot = epgSnapshot,
             currentEpgByChannelId = currentEpgByChannelId,
             epgLoading = loadingEpg || epgLookupLoading,
-            epgFailed = epgRefreshFailed || epgLookupFailed,
+            epgFailed = selectedEpgFailed,
             onSearchChange = browseSession::updateSearch,
             onCategorySelected = browseSession::selectCategory,
             onFavoritesOnlyChanged = browseSession::setFavoritesOnly,
@@ -211,7 +211,7 @@ internal fun LiveRoute(
                     EpgPanel(
                         snapshot = epgSnapshot,
                         loading = loadingEpg || epgLookupLoading,
-                        failed = epgRefreshFailed || epgLookupFailed,
+                        failed = selectedEpgFailed,
                         onOpenGuide = { showEpgGuide = true },
                     )
                 }
@@ -232,7 +232,7 @@ internal fun LiveRoute(
                     onAction = { mutationScope.launch { runtime.refreshSource(sourceId) } },
                 )
                 epgRefreshFailed -> CompactRetryStatus(
-                    text = "EPG unavailable. Live remains usable.",
+                    text = "Full EPG unavailable. Trying EPG for the selected channel.",
                     actionLabel = "Retry EPG",
                     onAction = { mutationScope.launch { runtime.refreshSource(sourceId) } },
                 )
@@ -269,7 +269,7 @@ internal fun LiveRoute(
             channelName = preview.displayName,
             snapshot = epgSnapshot,
             loading = loadingEpg || epgLookupLoading,
-            failed = epgRefreshFailed || epgLookupFailed,
+            failed = selectedEpgFailed,
             onDismiss = { showEpgGuide = false },
         )
     }

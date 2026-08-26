@@ -124,6 +124,53 @@ class XtreamClientTest {
     }
 
     @Test
+    fun getShortEpg_requestsOnlyTheSelectedStreamAndParsesGuide() = runBlocking {
+        server.enqueue(
+            MockResponse.Builder()
+                .body(
+                    """
+                    {
+                      "epg_listings": [
+                        {
+                          "id": "epg-1",
+                          "title": "Morning News",
+                          "description": "Headlines",
+                          "start_timestamp": "100",
+                          "stop_timestamp": "200",
+                          "start": "1970-01-01 00:01:40",
+                          "end": "1970-01-01 00:03:20"
+                        }
+                      ]
+                    }
+                    """.trimIndent(),
+                )
+                .build(),
+        )
+        val client = XtreamClient(allowCleartext = true)
+
+        val result = client.getShortEpg(
+            serverUrl = server.url("/").toString(),
+            credentials = XtreamCredentials("fixture-user", "fixture-password"),
+            streamId = "42",
+            limit = 7,
+        )
+
+        assertTrue(result is SourceResult.Success)
+        val guide = (result as SourceResult.Success).value
+        assertEquals(1, guide.programs.size)
+        assertEquals("Morning News", guide.programs.single().title)
+        assertEquals("Headlines", guide.programs.single().description)
+        assertEquals(100L, guide.programs.single().startEpochSeconds)
+        assertEquals(200L, guide.programs.single().endEpochSeconds)
+
+        val request = server.takeRequest()
+        assertEquals("/player_api.php", request.url.encodedPath)
+        assertEquals("get_short_epg", request.url.queryParameter("action"))
+        assertEquals("42", request.url.queryParameter("stream_id"))
+        assertEquals("7", request.url.queryParameter("limit"))
+    }
+
+    @Test
     fun cleartextIsRejectedBeforeNetworkByDefault() = runBlocking {
         val client = XtreamClient()
 

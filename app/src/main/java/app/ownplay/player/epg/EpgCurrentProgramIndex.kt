@@ -7,12 +7,18 @@ internal object EpgCurrentProgramIndex {
         nowEpochSeconds: Long,
     ): Map<String, EpgProgram> = buildMap {
         channelIdsByEpgChannelId.forEach { (epgChannelId, channelIds) ->
-            val current = programsByEpgChannelId[epgChannelId]
-                ?.firstOrNull { program -> program.isCurrentAt(nowEpochSeconds) }
-                ?: return@forEach
+            val current = currentProgram(
+                programs = programsByEpgChannelId[epgChannelId].orEmpty(),
+                nowEpochSeconds = nowEpochSeconds,
+            ) ?: return@forEach
             channelIds.forEach { channelId -> put(channelId, current) }
         }
     }
+
+    fun currentProgram(
+        programs: List<EpgProgram>,
+        nowEpochSeconds: Long,
+    ): EpgProgram? = programs.firstOrNull { program -> program.isCurrentAt(nowEpochSeconds) }
 
     private fun EpgProgram.isCurrentAt(nowEpochSeconds: Long): Boolean {
         val start = startEpochSeconds ?: return false
