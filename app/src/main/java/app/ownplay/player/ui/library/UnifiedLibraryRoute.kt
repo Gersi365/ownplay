@@ -1418,7 +1418,8 @@ private fun OfflineDownload.isMissingFile(): Boolean =
 private fun movieOfflineLabel(download: OfflineDownload?): String = when {
     download == null -> "Movie"
     download.isMissingFile() -> "File missing · Download again"
-    download.state == DownloadStates.COMPLETED -> "Available offline"
+    download.state == DownloadStates.COMPLETED && download.savedToDownloads -> "Phone Downloads · Offline"
+    download.state == DownloadStates.COMPLETED -> "OwnPlay private storage · Offline"
     download.state == DownloadStates.DOWNLOADING -> "Downloading"
     download.state == DownloadStates.QUEUED -> "Queued for download"
     download.state == DownloadStates.PAUSED -> "Download paused"
