@@ -80,6 +80,9 @@ interface MediaDownloadDao {
     )
     fun observeAll(): Flow<List<MediaDownloadEntity>>
 
+    @Query("SELECT * FROM media_downloads WHERE state = 'COMPLETED'")
+    suspend fun completed(): List<MediaDownloadEntity>
+
     @Query("SELECT * FROM media_downloads WHERE downloadId = :downloadId LIMIT 1")
     suspend fun getById(downloadId: String): MediaDownloadEntity?
 

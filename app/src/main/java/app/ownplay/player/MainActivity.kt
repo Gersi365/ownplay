@@ -13,6 +13,7 @@ import androidx.compose.runtime.getValue
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
+import app.ownplay.player.download.OfflineDownloadFeatureRuntime
 import app.ownplay.player.personalization.AppOrientationStore
 import app.ownplay.player.playback.PlaybackInteractionBridge
 import app.ownplay.player.playback.PlaybackMediaKind
@@ -32,6 +33,7 @@ private const val DOUBLE_TAP_SEEK_MILLIS = 10_000L
 
 class MainActivity : ComponentActivity() {
     private lateinit var runtime: OwnPlayAppRuntime
+    private lateinit var offlineDownloadRuntime: OfflineDownloadFeatureRuntime
     private lateinit var playbackWindowController: PlaybackWindowController
     private lateinit var appOrientationStore: AppOrientationStore
     private lateinit var playbackGestureDetector: GestureDetector
@@ -41,6 +43,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         runtime = OwnPlayAppRuntime(applicationContext)
+        offlineDownloadRuntime = OfflineDownloadFeatureRuntime(applicationContext)
         appOrientationStore = AppOrientationStore(applicationContext)
         playbackWindowController = PlaybackWindowController(this)
         playbackGestureDetector = GestureDetector(
@@ -126,6 +129,11 @@ class MainActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         hideStatusBar()
+        if (::offlineDownloadRuntime.isInitialized) {
+            activityScope.launch {
+                offlineDownloadRuntime.reconcileCompletedFiles()
+            }
+        }
     }
 
     override fun onWindowFocusChanged(hasFocus: Boolean) {
@@ -154,6 +162,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onDestroy() {
         activityScope.cancel()
+        offlineDownloadRuntime.close()
         playbackWindowController.release()
         runtime.close()
         super.onDestroy()

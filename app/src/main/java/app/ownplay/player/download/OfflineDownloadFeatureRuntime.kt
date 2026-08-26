@@ -10,7 +10,9 @@ import app.ownplay.player.persistence.vod.PlaybackProgressEntity
 import app.ownplay.player.playback.PlaybackMediaKind
 import app.ownplay.player.playback.PlaybackRequest
 import java.util.concurrent.CancellationException
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.withContext
 
 data class OfflinePlaybackProgress(
     val positionMs: Long,
@@ -39,6 +41,26 @@ class OfflineDownloadFeatureRuntime(
     suspend fun retry(downloadId: String) = repository.retry(downloadId)
 
     suspend fun remove(downloadId: String) = repository.remove(downloadId)
+
+    suspend fun reconcileCompletedFiles(): Int = withContext(Dispatchers.IO) {
+        val dao = database.mediaDownloadDao()
+        var missingCount = 0
+        dao.completed().forEach { row ->
+            if (!OfflineDownloadStorage.locationExists(applicationContext, row.localRelativePath)) {
+                dao.updateTransfer(
+                    downloadId = row.downloadId,
+                    state = DownloadStates.FAILED,
+                    bytesDownloaded = 0L,
+                    totalBytes = null,
+                    localRelativePath = null,
+                    failureReason = MISSING_FILE_REASON,
+                    updatedAtEpochMillis = System.currentTimeMillis(),
+                )
+                missingCount += 1
+            }
+        }
+        missingCount
+    }
 
     suspend fun playbackRequest(downloadId: String): PlaybackRequest? {
         val row = database.mediaDownloadDao().getById(downloadId) ?: return null
@@ -131,6 +153,8 @@ class OfflineDownloadFeatureRuntime(
         }
 
     private companion object {
+        const val MISSING_FILE_REASON = "Downloaded file is missing"
+
         @Volatile
         private var processDatabase: OwnPlayDatabase? = null
 
