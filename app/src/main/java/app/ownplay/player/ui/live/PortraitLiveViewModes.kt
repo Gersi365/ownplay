@@ -52,6 +52,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -60,10 +61,12 @@ import app.ownplay.player.live.LiveBrowseOrder
 import app.ownplay.player.live.LiveBrowseState
 import app.ownplay.player.live.LiveCategory
 import app.ownplay.player.live.LiveChannelItem
+import app.ownplay.player.live.LiveChannelLogoResolver
 import app.ownplay.player.source.network.SourceHttpClient
 import app.ownplay.player.ui.view.ContentViewMode
 import app.ownplay.player.ui.view.ContentViewModeMenu
 import java.io.ByteArrayOutputStream
+import java.util.concurrent.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.Request
@@ -571,8 +574,12 @@ private fun RemoteChannelLogo(
     title: String,
     modifier: Modifier = Modifier,
 ) {
+    val context = LocalContext.current
+    val resolver = remember(context) {
+        LiveChannelLogoResolver(context.applicationContext)
+    }
     val image by produceState<ImageBitmap?>(initialValue = null, key1 = url) {
-        value = url
+        value = resolver.resolve(url)
             ?.takeIf(String::isNotBlank)
             ?.let { logoUrl -> loadChannelLogo(logoUrl) }
     }
@@ -602,7 +609,7 @@ private fun RemoteChannelLogo(
 }
 
 private suspend fun loadChannelLogo(url: String): ImageBitmap? = withContext(Dispatchers.IO) {
-    runCatching {
+    try {
         SourceHttpClient.shared.newCall(
             Request.Builder().url(url).get().build(),
         ).execute().use { response ->
@@ -613,7 +620,11 @@ private suspend fun loadChannelLogo(url: String): ImageBitmap? = withContext(Dis
             val bytes = readChannelLogoBytes(body.byteStream()) ?: return@use null
             decodeChannelLogo(bytes)
         }
-    }.getOrNull()
+    } catch (cancelled: CancellationException) {
+        throw cancelled
+    } catch (_: Exception) {
+        null
+    }
 }
 
 private fun readChannelLogoBytes(input: java.io.InputStream): ByteArray? {
