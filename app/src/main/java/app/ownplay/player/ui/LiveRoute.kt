@@ -22,6 +22,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import app.ownplay.player.OwnPlayAppRuntime
@@ -39,7 +40,9 @@ import app.ownplay.player.playback.PlaybackVideoOutput
 import app.ownplay.player.source.SourceSyncStage
 import app.ownplay.player.source.SourceSyncState
 import app.ownplay.player.ui.live.LandscapeLiveWorkspaceSimple
-import app.ownplay.player.ui.live.PortraitLiveBrowse
+import app.ownplay.player.ui.live.PortraitLiveBrowseWithViewModes
+import app.ownplay.player.ui.view.ContentViewMode
+import app.ownplay.player.ui.view.ContentViewModeStore
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -64,6 +67,7 @@ internal fun LiveRoute(
     onNavigatePreview: (PlaybackNavigationDirection) -> Unit,
 ) {
     val configuration = LocalConfiguration.current
+    val context = LocalContext.current
     val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
     val browseSession = remember(sourceId) { LiveBrowseSession() }
     val browseFlow = remember(sourceId) {
@@ -71,6 +75,10 @@ internal fun LiveRoute(
     }
     val browseState by browseFlow.collectAsState(initial = LiveBrowseState())
     val mutationScope = rememberCoroutineScope()
+    val viewModeStore = remember(context) {
+        ContentViewModeStore(context.applicationContext)
+    }
+    val liveViewMode by viewModeStore.liveMode.collectAsState(initial = ContentViewMode.COMPACT)
     val preview = activeSelection?.takeIf { selection ->
         selection.request.sourceId == sourceId
     }
@@ -246,10 +254,14 @@ internal fun LiveRoute(
                     modifier = Modifier.weight(1f),
                 )
             } else {
-                PortraitLiveBrowse(
+                PortraitLiveBrowseWithViewModes(
                     state = browseState,
                     playingChannelId = preview?.request?.channelId,
                     currentEpgByChannelId = currentEpgByChannelId,
+                    viewMode = liveViewMode,
+                    onViewModeSelected = { mode ->
+                        mutationScope.launch { viewModeStore.setLiveMode(mode) }
+                    },
                     onSearchChange = browseSession::updateSearch,
                     onCategorySelected = browseSession::selectCategory,
                     onFavoritesOnlyChanged = browseSession::setFavoritesOnly,
