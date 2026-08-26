@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items as gridItems
@@ -124,6 +125,8 @@ internal fun UnifiedLibraryRoute(
     val seriesCatalog by seriesFlow.collectAsState(initial = SeriesCatalog())
 
     var filter by remember { mutableStateOf(UnifiedLibraryFilter.ALL) }
+    var movieCategoryKey by remember(sourceId) { mutableStateOf<String?>(null) }
+    var seriesCategoryKey by remember(sourceId) { mutableStateOf<String?>(null) }
     var offlineOnly by remember { mutableStateOf(false) }
     var query by remember { mutableStateOf("") }
     var refreshing by remember(sourceId) { mutableStateOf(false) }
@@ -131,6 +134,20 @@ internal fun UnifiedLibraryRoute(
     var playbackSession by remember { mutableStateOf<LibraryPlaybackSession?>(null) }
     var playbackError by remember { mutableStateOf<String?>(null) }
     var selectedSeriesKey by remember { mutableStateOf<LibrarySeriesKey?>(null) }
+
+    LaunchedEffect(vodCatalog.categories, movieCategoryKey) {
+        val selected = movieCategoryKey
+        if (selected != null && vodCatalog.categories.none { it.providerCategoryKey == selected }) {
+            movieCategoryKey = null
+        }
+    }
+
+    LaunchedEffect(seriesCatalog.categories, seriesCategoryKey) {
+        val selected = seriesCategoryKey
+        if (selected != null && seriesCatalog.categories.none { it.providerCategoryKey == selected }) {
+            seriesCategoryKey = null
+        }
+    }
 
     LaunchedEffect(sourceId, sourceKind) {
         if (sourceId == null || sourceKind != SourceKinds.XTREAM) return@LaunchedEffect
@@ -250,6 +267,8 @@ internal fun UnifiedLibraryRoute(
     val visibleMovies = remember(
         vodCatalog.movies,
         sourceId,
+        filter,
+        movieCategoryKey,
         offlineOnly,
         normalizedQuery,
         movieDownloadsByKey,
@@ -260,14 +279,20 @@ internal fun UnifiedLibraryRoute(
             vodCatalog.movies.filter { movie ->
                 val download = movieDownloadsByKey["$sourceId:${movie.movieId}"]
                 val offlineMatch = !offlineOnly || download?.countsForOfflineFilter() == true
+                val categoryMatch =
+                    filter != UnifiedLibraryFilter.MOVIES ||
+                        movieCategoryKey == null ||
+                        movie.categoryKey == movieCategoryKey
                 val queryMatch = normalizedQuery.isBlank() || movie.name.lowercase().contains(normalizedQuery)
-                offlineMatch && queryMatch
+                offlineMatch && categoryMatch && queryMatch
             }
         }
     }
     val visibleSeries = remember(
         seriesCatalog.series,
         sourceId,
+        filter,
+        seriesCategoryKey,
         offlineOnly,
         normalizedQuery,
         seriesGroupByIdentity,
@@ -278,8 +303,12 @@ internal fun UnifiedLibraryRoute(
             seriesCatalog.series.filter { series ->
                 val group = seriesGroupByIdentity["$sourceId:${series.seriesId}"]
                 val offlineMatch = !offlineOnly || group?.episodes?.any(OfflineDownload::countsForOfflineFilter) == true
+                val categoryMatch =
+                    filter != UnifiedLibraryFilter.SERIES ||
+                        seriesCategoryKey == null ||
+                        series.categoryKey == seriesCategoryKey
                 val queryMatch = normalizedQuery.isBlank() || series.name.lowercase().contains(normalizedQuery)
-                offlineMatch && queryMatch
+                offlineMatch && categoryMatch && queryMatch
             }
         }
     }
@@ -287,8 +316,20 @@ internal fun UnifiedLibraryRoute(
     val catalogMovieKeys = remember(vodCatalog.movies, sourceId) {
         if (sourceId == null) emptySet() else vodCatalog.movies.map { "$sourceId:${it.movieId}" }.toSet()
     }
-    val orphanedOfflineMovies = remember(downloads, catalogMovieKeys, sourceId, offlineOnly, normalizedQuery) {
-        if (!offlineOnly || sourceId == null) {
+    val orphanedOfflineMovies = remember(
+        downloads,
+        catalogMovieKeys,
+        sourceId,
+        filter,
+        movieCategoryKey,
+        offlineOnly,
+        normalizedQuery,
+    ) {
+        if (
+            !offlineOnly ||
+            sourceId == null ||
+            (filter == UnifiedLibraryFilter.MOVIES && movieCategoryKey != null)
+        ) {
             emptyList()
         } else {
             downloads.filter { download ->
@@ -303,8 +344,20 @@ internal fun UnifiedLibraryRoute(
     val catalogSeriesKeys = remember(seriesCatalog.series, sourceId) {
         if (sourceId == null) emptySet() else seriesCatalog.series.map { "$sourceId:${it.seriesId}" }.toSet()
     }
-    val orphanedOfflineSeries = remember(seriesGroups, catalogSeriesKeys, sourceId, offlineOnly, normalizedQuery) {
-        if (!offlineOnly || sourceId == null) {
+    val orphanedOfflineSeries = remember(
+        seriesGroups,
+        catalogSeriesKeys,
+        sourceId,
+        filter,
+        seriesCategoryKey,
+        offlineOnly,
+        normalizedQuery,
+    ) {
+        if (
+            !offlineOnly ||
+            sourceId == null ||
+            (filter == UnifiedLibraryFilter.SERIES && seriesCategoryKey != null)
+        ) {
             emptyList()
         } else {
             seriesGroups.filter { group ->
@@ -391,6 +444,22 @@ internal fun UnifiedLibraryRoute(
                     Icon(Icons.Filled.DownloadDone, contentDescription = null, modifier = Modifier.size(16.dp))
                 },
             )
+        }
+
+        when (filter) {
+            UnifiedLibraryFilter.MOVIES -> LibraryCategoryStrip(
+                label = "Movie categories",
+                selectedCategoryKey = movieCategoryKey,
+                categories = vodCatalog.categories.map { it.providerCategoryKey to it.name },
+                onCategorySelected = { movieCategoryKey = it },
+            )
+            UnifiedLibraryFilter.SERIES -> LibraryCategoryStrip(
+                label = "Series categories",
+                selectedCategoryKey = seriesCategoryKey,
+                categories = seriesCatalog.categories.map { it.providerCategoryKey to it.name },
+                onCategorySelected = { seriesCategoryKey = it },
+            )
+            UnifiedLibraryFilter.ALL -> Unit
         }
 
         OutlinedTextField(
@@ -480,6 +549,48 @@ internal fun UnifiedLibraryRoute(
 }
 
 @Composable
+private fun LibraryCategoryStrip(
+    label: String,
+    selectedCategoryKey: String?,
+    categories: List<Pair<String, String>>,
+    onCategorySelected: (String?) -> Unit,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        LazyRow(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            contentPadding = PaddingValues(end = 12.dp),
+        ) {
+            item(key = "all-categories") {
+                FilterChip(
+                    selected = selectedCategoryKey == null,
+                    onClick = { onCategorySelected(null) },
+                    label = { Text("All categories") },
+                )
+            }
+            listItems(categories, key = { it.first }) { (categoryKey, categoryName) ->
+                FilterChip(
+                    selected = selectedCategoryKey == categoryKey,
+                    onClick = { onCategorySelected(categoryKey) },
+                    label = {
+                        Text(
+                            text = categoryName,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    },
+                )
+            }
+        }
+    }
+}
+
+@Composable
 private fun LibraryEmptyState(
     offlineOnly: Boolean,
     sourceKind: String?,
@@ -507,7 +618,7 @@ private fun LibraryEmptyState(
                 } else if (sourceKind != SourceKinds.XTREAM) {
                     "Movies and Series require an Xtream-compatible source."
                 } else {
-                    "Try another Library filter or search term."
+                    "Try another category, Library filter or search term."
                 },
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,

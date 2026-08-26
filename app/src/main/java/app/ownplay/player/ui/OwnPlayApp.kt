@@ -83,6 +83,7 @@ fun OwnPlayApp(
     var fullscreenSelection by remember { mutableStateOf<LivePlaybackSelection?>(null) }
     var requestedVodMovieId by remember { mutableStateOf<String?>(null) }
     var requestedSeriesId by remember { mutableStateOf<String?>(null) }
+    var movieDetailReturnToLibrary by remember { mutableStateOf(false) }
     var seriesDetailReturnToLibrary by remember { mutableStateOf(false) }
     var vodFullscreen by remember { mutableStateOf(false) }
     var seriesFullscreen by remember { mutableStateOf(false) }
@@ -104,6 +105,7 @@ fun OwnPlayApp(
         if (activeSourceId !in ids) {
             requestedVodMovieId = null
             requestedSeriesId = null
+            movieDetailReturnToLibrary = false
             seriesDetailReturnToLibrary = false
         }
     }
@@ -116,6 +118,7 @@ fun OwnPlayApp(
         }
         if (target != OwnPlaySection.MOVIES) {
             requestedVodMovieId = null
+            movieDetailReturnToLibrary = false
         }
         if (target != OwnPlaySection.SERIES) {
             requestedSeriesId = null
@@ -126,9 +129,9 @@ fun OwnPlayApp(
 
     BackHandler(
         enabled =
-            section == OwnPlaySection.SERIES &&
-                seriesDetailReturnToLibrary &&
-                !seriesFullscreen,
+            section == OwnPlaySection.MOVIES &&
+                movieDetailReturnToLibrary &&
+                !vodFullscreen,
     ) {
         openContentSection(OwnPlaySection.LIBRARY)
     }
@@ -350,6 +353,8 @@ fun OwnPlayApp(
                         sourceKind = activeSummary?.sourceKind,
                         requestedSeriesId = requestedSeriesId,
                         onRequestedSeriesConsumed = { requestedSeriesId = null },
+                        returnToLibraryOnDetailBack = seriesDetailReturnToLibrary,
+                        onReturnToLibrary = { openContentSection(OwnPlaySection.LIBRARY) },
                         onOpenSettings = { openContentSection(OwnPlaySection.SETTINGS) },
                         onFullscreenStateChanged = { fullscreen ->
                             seriesFullscreen = fullscreen
@@ -364,6 +369,7 @@ fun OwnPlayApp(
                         onOpenMovieDetails = { sourceId, movieId ->
                             activeSourceId = sourceId
                             requestedVodMovieId = movieId
+                            movieDetailReturnToLibrary = true
                             openContentSection(OwnPlaySection.MOVIES)
                         },
                         onOpenSeriesDetails = { sourceId, seriesId ->
