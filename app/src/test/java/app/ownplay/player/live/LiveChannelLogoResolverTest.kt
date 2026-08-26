@@ -10,6 +10,7 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
+// Provider channel logos are persisted as opaque secure-store references, not direct URLs.
 class LiveChannelLogoResolverTest {
     @Test
     fun opaqueLogoRefResolvesStoredValue() = runBlocking {
