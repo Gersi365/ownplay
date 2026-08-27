@@ -34,13 +34,7 @@ object PlaybackPresentationPolicy {
             canRetry = false,
         )
         is PlaybackState.Playing -> PlaybackControlAvailability(
-            showLoading = false,
-            canPlay = false,
-            canPause = true,
-            canRetry = false,
-        )
-        is PlaybackState.Buffering -> PlaybackControlAvailability(
-            showLoading = true,
+            showLoading = state.buffering,
             canPlay = false,
             canPause = true,
             canRetry = false,
