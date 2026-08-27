@@ -225,7 +225,7 @@ class Media3PlaybackEngine(
                         ?: return@runOnPlayerThread
                     player.trackSelectionParameters = player.trackSelectionParameters
                         .buildUpon()
-                        .setTrackTypeDisabled(C.TRACK_TYPE_SUBTITLE, false)
+                        .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
                         .setOverrideForType(
                             TrackSelectionOverride(
                                 handle.trackGroup,
