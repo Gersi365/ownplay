@@ -1,5 +1,6 @@
 package app.ownplay.player.ui.library
 
+import android.content.res.Configuration
 import android.graphics.Color as AndroidColor
 import androidx.annotation.OptIn
 import androidx.compose.foundation.background
@@ -37,6 +38,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -68,6 +70,9 @@ internal fun LibraryPlaybackScreen(
     onFullscreenStateChanged: (Boolean) -> Unit,
 ) {
     val playbackState by runtime.playbackController.state.collectAsState()
+    val configuration = LocalConfiguration.current
+    val isTelevision =
+        configuration.uiMode and Configuration.UI_MODE_TYPE_MASK == Configuration.UI_MODE_TYPE_TELEVISION
     val backOwner = remember(session.download.downloadId) { Any() }
     var playerView by remember(session.download.downloadId) { mutableStateOf<PlayerView?>(null) }
     var currentPosition by remember(session.download.downloadId) {
@@ -86,6 +91,14 @@ internal fun LibraryPlaybackScreen(
             PlaybackInteractionBridge.clearBackAction(backOwner)
             onFullscreenStateChanged(false)
         }
+    }
+
+    LaunchedEffect(isTelevision, playerView, session.download.downloadId) {
+        if (!isTelevision) return@LaunchedEffect
+        val view = playerView ?: return@LaunchedEffect
+        view.isFocusable = true
+        view.showController()
+        view.requestFocus()
     }
 
     LaunchedEffect(playbackState, playerView, session.download.downloadId) {
@@ -134,11 +147,7 @@ internal fun LibraryPlaybackScreen(
                         useController = true
                         resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
                         setShutterBackgroundColor(AndroidColor.BLACK)
-                        PlaybackInteractionBridge.bind(
-                            output = runtime.playbackVideoOutput,
-                            view = this,
-                            showNativeController = true,
-                        )
+                        runtime.playbackVideoOutput.bind(this)
                         playerView = this
                     }
                 },
@@ -146,15 +155,10 @@ internal fun LibraryPlaybackScreen(
                 update = { view ->
                     view.useController = true
                     view.resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
-                    PlaybackInteractionBridge.bind(
-                        output = runtime.playbackVideoOutput,
-                        view = view,
-                        showNativeController = true,
-                    )
                     playerView = view
                 },
                 onRelease = { view ->
-                    PlaybackInteractionBridge.unbind(runtime.playbackVideoOutput, view)
+                    runtime.playbackVideoOutput.unbind(view)
                     if (playerView === view) playerView = null
                 },
             )
