@@ -79,7 +79,13 @@ class PlaybackContractsTest {
         val playing = PlaybackReducer.reduce(loading, PlaybackEvent.Prepared)
         assertEquals(PlaybackState.Playing(request), playing)
 
-        val paused = PlaybackReducer.reduce(playing, PlaybackEvent.Pause)
+        val buffering = PlaybackReducer.reduce(playing, PlaybackEvent.Buffer)
+        assertEquals(PlaybackState.Buffering(request), buffering)
+
+        val recovered = PlaybackReducer.reduce(buffering, PlaybackEvent.Prepared)
+        assertEquals(PlaybackState.Playing(request), recovered)
+
+        val paused = PlaybackReducer.reduce(recovered, PlaybackEvent.Pause)
         assertEquals(PlaybackState.Paused(request), paused)
 
         val resumed = PlaybackReducer.reduce(paused, PlaybackEvent.Play)
@@ -93,6 +99,17 @@ class PlaybackContractsTest {
         assertEquals(PlaybackState.Loading(request), retrying)
 
         assertEquals(PlaybackState.Idle, PlaybackReducer.reduce(retrying, PlaybackEvent.Stop))
+    }
+
+    @Test
+    fun reducerAllowsPauseWhileBuffering() {
+        val request = PlaybackRequest(sourceId = "source", channelId = "channel")
+        val buffering = PlaybackState.Buffering(request)
+
+        assertEquals(
+            PlaybackState.Paused(request),
+            PlaybackReducer.reduce(buffering, PlaybackEvent.Pause),
+        )
     }
 
     @Test
