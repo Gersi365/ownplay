@@ -152,6 +152,7 @@ internal fun DownloadsSettingsScreen(
             items(downloads, key = { it.downloadId }) { download ->
                 DownloadRow(
                     download = download,
+                    onPlayOffline = { DownloadPlaybackBridge.request(download) },
                     onPause = {
                         scope.launch { runtime.pause(download.downloadId) }
                     },
@@ -173,6 +174,7 @@ internal fun DownloadsSettingsScreen(
 @Composable
 private fun DownloadRow(
     download: OfflineDownload,
+    onPlayOffline: () -> Unit,
     onPause: () -> Unit,
     onResume: () -> Unit,
     onRetry: () -> Unit,
@@ -224,6 +226,14 @@ private fun DownloadRow(
                     }
                     DownloadStates.PAUSED -> IconButton(onClick = onResume) {
                         Icon(Icons.Filled.PlayArrow, contentDescription = "Resume download")
+                    }
+                    DownloadStates.COMPLETED -> TextButton(onClick = onPlayOffline) {
+                        Icon(
+                            Icons.Filled.PlayArrow,
+                            contentDescription = null,
+                            modifier = Modifier.padding(end = 4.dp),
+                        )
+                        Text("Play Offline")
                     }
                     DownloadStates.FAILED -> IconButton(onClick = onRetry) {
                         Icon(Icons.Filled.Refresh, contentDescription = "Retry download")

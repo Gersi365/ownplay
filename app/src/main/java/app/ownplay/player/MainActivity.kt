@@ -4,12 +4,23 @@ import android.content.res.Configuration
 import android.os.Bundle
 import android.view.GestureDetector
 import android.view.MotionEvent
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
@@ -19,11 +30,15 @@ import app.ownplay.player.personalization.AppOrientationStore
 import app.ownplay.player.playback.PlaybackInteractionBridge
 import app.ownplay.player.playback.PlaybackMediaKind
 import app.ownplay.player.playback.PlaybackState
+import app.ownplay.player.ui.DownloadPlaybackBridge
 import app.ownplay.player.ui.OrientationSetupLoadingSurface
 import app.ownplay.player.ui.OrientationSetupScreen
 import app.ownplay.player.ui.OwnPlayRoot
 import app.ownplay.player.ui.PictureInPicturePlaybackSurface
+import app.ownplay.player.ui.PlaybackOriginBadge
 import app.ownplay.player.ui.PlaybackWindowController
+import app.ownplay.player.ui.library.LibraryPlaybackScreen
+import app.ownplay.player.ui.library.LibraryPlaybackSession
 import app.ownplay.player.ui.theme.OwnPlayTheme
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -92,10 +107,84 @@ class MainActivity : ComponentActivity() {
             val orientationSelection by appOrientationStore.observeSelection().collectAsState(
                 initial = AppOrientationSelection.Loading,
             )
+            val playbackOrigin by runtime.playbackController.resolvedOrigin.collectAsState()
+            var downloadPlaybackSession by remember {
+                mutableStateOf<LibraryPlaybackSession?>(null)
+            }
+            val downloadPlaybackOwner = remember { Any() }
+
+            DisposableEffect(downloadPlaybackOwner) {
+                DownloadPlaybackBridge.register(downloadPlaybackOwner) { download ->
+                    activityScope.launch {
+                        val request = offlineDownloadRuntime.playbackRequest(download.downloadId)
+                        if (request == null) {
+                            offlineDownloadRuntime.reconcileCompletedFiles()
+                            Toast.makeText(
+                                applicationContext,
+                                "The offline file is unavailable. Download it again to restore offline playback.",
+                                Toast.LENGTH_LONG,
+                            ).show()
+                            return@launch
+                        }
+                        val progress = offlineDownloadRuntime.playbackProgress(download.downloadId)
+                        runtime.playbackController.start(request)
+                        downloadPlaybackSession = LibraryPlaybackSession(
+                            download = download,
+                            initialPositionMs = progress
+                                ?.takeIf { !it.completed }
+                                ?.positionMs
+                                ?.coerceAtLeast(0L)
+                                ?: 0L,
+                        )
+                    }
+                }
+                onDispose {
+                    DownloadPlaybackBridge.clear(downloadPlaybackOwner)
+                }
+            }
+
             OwnPlayTheme {
                 when {
                     isInPictureInPictureMode -> {
                         PictureInPicturePlaybackSurface(runtime.playbackVideoOutput)
+                    }
+                    downloadPlaybackSession != null -> {
+                        val session = downloadPlaybackSession ?: return@OwnPlayTheme
+                        Box(modifier = Modifier.fillMaxSize()) {
+                            LibraryPlaybackScreen(
+                                runtime = runtime,
+                                session = session,
+                                onExit = {
+                                    runtime.playbackController.stop()
+                                    downloadPlaybackSession = null
+                                },
+                                onProgress = { positionMs, durationMs ->
+                                    activityScope.launch {
+                                        offlineDownloadRuntime.savePlaybackProgress(
+                                            downloadId = session.download.downloadId,
+                                            positionMs = positionMs,
+                                            durationMs = durationMs,
+                                        )
+                                    }
+                                },
+                                onFullscreenStateChanged = { isFullscreen ->
+                                    playbackFullscreen = isFullscreen
+                                    playbackWindowController.updateFullscreenState(isFullscreen)
+                                    playbackWindowController.updatePlaybackSurfaceState(isFullscreen)
+                                    if (!isFullscreen) hideStatusBar()
+                                },
+                                backContentDescription = "Back to Downloads",
+                                contextLabel = "Downloads · offline copy",
+                            )
+                            playbackOrigin?.let { origin ->
+                                PlaybackOriginBadge(
+                                    origin = origin,
+                                    modifier = Modifier
+                                        .align(Alignment.TopEnd)
+                                        .padding(top = 10.dp, end = 12.dp),
+                                )
+                            }
+                        }
                     }
                     orientationSelection == AppOrientationSelection.Loading -> {
                         OrientationSetupLoadingSurface()

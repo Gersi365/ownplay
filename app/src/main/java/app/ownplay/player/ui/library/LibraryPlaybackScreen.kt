@@ -68,6 +68,8 @@ internal fun LibraryPlaybackScreen(
     onExit: () -> Unit,
     onProgress: (positionMs: Long, durationMs: Long?) -> Unit,
     onFullscreenStateChanged: (Boolean) -> Unit,
+    backContentDescription: String = "Back to Library",
+    contextLabel: String = "Library · offline copy",
 ) {
     val playbackState by runtime.playbackController.state.collectAsState()
     val configuration = LocalConfiguration.current
@@ -172,7 +174,7 @@ internal fun LibraryPlaybackScreen(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 IconButton(onClick = onExit) {
-                    Icon(Icons.Filled.ArrowBack, contentDescription = "Back to Library", tint = Color.White)
+                    Icon(Icons.Filled.ArrowBack, contentDescription = backContentDescription, tint = Color.White)
                 }
                 Icon(
                     imageVector = if (session.download.mediaKind == DownloadMediaKinds.SERIES_EPISODE) {
@@ -195,7 +197,7 @@ internal fun LibraryPlaybackScreen(
                         overflow = TextOverflow.Ellipsis,
                     )
                     Text(
-                        text = "Library · offline copy",
+                        text = contextLabel,
                         color = Color.White.copy(alpha = 0.72f),
                         style = MaterialTheme.typography.labelSmall,
                     )
