@@ -245,7 +245,7 @@ private fun DownloadRow(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 DownloadStates.COMPLETED -> Text(
-                    text = "Downloaded · ${humanBytes(download.bytesDownloaded)}",
+                    text = "Downloaded · ${downloadStorageLabel(download)} · ${humanBytes(download.bytesDownloaded)}",
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.primary,
                 )
@@ -280,6 +280,9 @@ private fun downloadSecondaryLabel(download: OfflineDownload): String {
         episode.takeIf(String::isNotBlank),
     ).joinToString(" · ").ifBlank { "Series episode" }
 }
+
+private fun downloadStorageLabel(download: OfflineDownload): String =
+    if (download.savedToDownloads) "Phone Downloads" else "OwnPlay private storage"
 
 private fun humanBytes(bytes: Long): String {
     val safe = bytes.coerceAtLeast(0L)
