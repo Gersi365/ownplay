@@ -41,6 +41,8 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -596,8 +598,18 @@ private fun SeriesDetailsPane(
     onClose: () -> Unit,
     modifier: Modifier,
 ) {
+    val configuration = LocalConfiguration.current
+    val isTelevision =
+        configuration.uiMode and Configuration.UI_MODE_TYPE_MASK == Configuration.UI_MODE_TYPE_TELEVISION
+    val hierarchyBackFocusRequester = remember(selected.seriesId) { FocusRequester() }
     val selectedSeason = details?.seasons?.firstOrNull { it.seasonNumber == selectedSeasonNumber }
     val selectedEpisode = selectedSeason?.episodes?.firstOrNull { it.episodeId == selectedEpisodeId }
+
+    LaunchedEffect(isTelevision, selected.seriesId, selectedSeasonNumber, selectedEpisodeId) {
+        if (isTelevision && (selectedSeasonNumber != null || selectedEpisodeId != null)) {
+            hierarchyBackFocusRequester.requestFocus()
+        }
+    }
 
     Surface(
         modifier = modifier,
@@ -632,7 +644,10 @@ private fun SeriesDetailsPane(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
-                TextButton(onClick = onClose) { Text("Back") }
+                TextButton(
+                    onClick = onClose,
+                    modifier = Modifier.focusRequester(hierarchyBackFocusRequester),
+                ) { Text("Back") }
             }
 
             if (selectedSeason == null && selectedEpisode == null) {
