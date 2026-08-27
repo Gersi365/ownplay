@@ -43,6 +43,7 @@ import app.ownplay.player.playback.PlaybackMediaKind
 import app.ownplay.player.playback.PlaybackState
 import app.ownplay.player.playback.PlaybackTrackController
 import app.ownplay.player.playback.RoomPlaybackResolutionLookup
+import app.ownplay.player.series.SeriesRepository
 import app.ownplay.player.source.CredentialRef
 import app.ownplay.player.source.SourceError
 import app.ownplay.player.source.SourceResult
@@ -56,7 +57,9 @@ import app.ownplay.player.source.onboarding.SourceOnboardingFailure
 import app.ownplay.player.source.onboarding.SourceOnboardingResult
 import app.ownplay.player.source.onboarding.SourceOnboardingService
 import app.ownplay.player.source.xtream.XtreamClient
+import app.ownplay.player.source.xtream.XtreamSeriesClient
 import app.ownplay.player.source.xtream.XtreamSourceLocatorCodec
+import app.ownplay.player.vod.VodRepository
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -114,6 +117,7 @@ class OwnPlayAppRuntime(
         credentialStore = credentialStore,
     )
     private val xtreamClient = XtreamClient()
+    private val xtreamSeriesClient = XtreamSeriesClient()
     private val liveCatalogIngestor = InitialLiveCatalogIngestor(
         persistence = RoomLiveCatalogPersistence(database),
         sensitiveValueStore = sensitiveValueStore,
@@ -122,6 +126,18 @@ class OwnPlayAppRuntime(
         database = database,
         sensitiveValueStore = sensitiveValueStore,
         credentialStore = credentialStore,
+    )
+    private val vodRepository = VodRepository(
+        database = database,
+        sensitiveValueStore = sensitiveValueStore,
+        credentialStore = credentialStore,
+        xtreamClient = xtreamClient,
+    )
+    private val seriesRepository = SeriesRepository(
+        database = database,
+        sensitiveValueStore = sensitiveValueStore,
+        credentialStore = credentialStore,
+        xtreamSeriesClient = xtreamSeriesClient,
     )
 
     private val _sourceSyncState = MutableStateFlow(SourceSyncState())
@@ -230,6 +246,9 @@ class OwnPlayAppRuntime(
                     sourceName = name.trim(),
                     channelCount = result.channelCount,
                 )
+                runtimeScope.launch {
+                    refreshXtreamMediaCatalogs(result.sourceId)
+                }
             }
             is SourceOnboardingResult.Failure -> {
                 _sourceSyncState.value = SourceSyncState(
@@ -341,6 +360,9 @@ class OwnPlayAppRuntime(
                 stage = SourceSyncStage.ChannelsFailed,
                 channelCount = existingCount,
             )
+            if (source.sourceKind == SourceKinds.XTREAM) {
+                refreshXtreamMediaCatalogs(sourceId)
+            }
             return@withLock
         }
         channelResult as SourceOnboardingResult.Success
@@ -351,6 +373,7 @@ class OwnPlayAppRuntime(
                 sourceName = source.name,
                 channelCount = channelResult.channelCount,
             )
+            refreshXtreamMediaCatalogs(sourceId)
         } else {
             _sourceSyncState.value = SourceSyncState(
                 sourceId = sourceId,
@@ -358,6 +381,23 @@ class OwnPlayAppRuntime(
                 stage = SourceSyncStage.Ready,
                 channelCount = channelResult.channelCount,
             )
+        }
+    }
+
+    private suspend fun refreshXtreamMediaCatalogs(sourceId: String) {
+        try {
+            vodRepository.refresh(sourceId)
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            // Keep the persisted VOD snapshot and continue with Series.
+        }
+        try {
+            seriesRepository.refresh(sourceId)
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            // Keep the persisted Series snapshot. Startup refresh is best-effort and non-destructive.
         }
     }
 
