@@ -36,7 +36,10 @@ fun OwnPlayRoot(
     LaunchedEffect(isTelevision, contentVisible) {
         if (isTelevision && contentVisible) {
             withFrameNanos { }
-            focusManager.moveFocus(FocusDirection.Next)
+            if (!focusManager.moveFocus(FocusDirection.Next)) {
+                withFrameNanos { }
+                focusManager.moveFocus(FocusDirection.Next)
+            }
         }
     }
 
