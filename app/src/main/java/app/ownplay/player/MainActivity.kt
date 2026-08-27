@@ -174,7 +174,27 @@ class MainActivity : ComponentActivity() {
 
                             when {
                                 isInPictureInPictureMode -> {
-                                    PictureInPicturePlaybackSurface(runtime.playbackVideoOutput)
+                                    PictureInPicturePlaybackSurface(
+                                        videoOutput = runtime.playbackVideoOutput,
+                                        onProgress = { positionMs, durationMs ->
+                                            val request = when (
+                                                val state = runtime.playbackController.state.value
+                                            ) {
+                                                is PlaybackState.Playing -> state.request
+                                                is PlaybackState.Paused -> state.request
+                                                else -> null
+                                            }
+                                            if (request != null) {
+                                                activityScope.launch {
+                                                    offlineDownloadRuntime.savePlaybackProgress(
+                                                        request = request,
+                                                        positionMs = positionMs,
+                                                        durationMs = durationMs,
+                                                    )
+                                                }
+                                            }
+                                        },
+                                    )
                                 }
                                 downloadPlaybackSession != null -> {
                                     val session = downloadPlaybackSession ?: return@OwnPlayTheme

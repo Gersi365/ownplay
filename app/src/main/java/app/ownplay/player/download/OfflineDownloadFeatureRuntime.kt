@@ -102,6 +102,29 @@ class OfflineDownloadFeatureRuntime(
     }
 
     suspend fun savePlaybackProgress(
+        request: PlaybackRequest,
+        positionMs: Long,
+        durationMs: Long?,
+    ): Boolean {
+        val downloadMediaKind = when (request.mediaKind) {
+            PlaybackMediaKind.MOVIE -> DownloadMediaKinds.MOVIE
+            PlaybackMediaKind.SERIES_EPISODE -> DownloadMediaKinds.SERIES_EPISODE
+            else -> return false
+        }
+        val row = database.mediaDownloadDao().getForContent(
+            sourceId = request.sourceId,
+            mediaKind = downloadMediaKind,
+            contentId = request.channelId,
+        ) ?: return false
+        if (row.state != DownloadStates.COMPLETED) return false
+        return savePlaybackProgress(
+            downloadId = row.downloadId,
+            positionMs = positionMs,
+            durationMs = durationMs,
+        )
+    }
+
+    suspend fun savePlaybackProgress(
         downloadId: String,
         positionMs: Long,
         durationMs: Long?,
