@@ -314,6 +314,7 @@ internal fun SeriesRoute(
             selectedSeasonNumber = selectedSeasonNumber,
             selectedEpisodeId = selectedEpisodeId,
             downloads = downloads,
+            focusBackOnEntry = returnToLibraryOnDetailBack,
             onSeasonSelected = {
                 selectedSeasonNumber = it
                 selectedEpisodeId = null
@@ -376,6 +377,7 @@ internal fun SeriesRoute(
                 selectedSeasonNumber = selectedSeasonNumber,
                 selectedEpisodeId = selectedEpisodeId,
                 downloads = downloads,
+                focusBackOnEntry = returnToLibraryOnDetailBack,
                 onSeasonSelected = {
                     selectedSeasonNumber = it
                     selectedEpisodeId = null
@@ -587,6 +589,7 @@ private fun SeriesDetailsPane(
     selectedSeasonNumber: Int?,
     selectedEpisodeId: String?,
     downloads: List<OfflineDownload>,
+    focusBackOnEntry: Boolean,
     onSeasonSelected: (Int) -> Unit,
     onEpisodeSelected: (String) -> Unit,
     onFavoriteChanged: (Boolean) -> Unit,
@@ -605,8 +608,17 @@ private fun SeriesDetailsPane(
     val selectedSeason = details?.seasons?.firstOrNull { it.seasonNumber == selectedSeasonNumber }
     val selectedEpisode = selectedSeason?.episodes?.firstOrNull { it.episodeId == selectedEpisodeId }
 
-    LaunchedEffect(isTelevision, selected.seriesId, selectedSeasonNumber, selectedEpisodeId) {
-        if (isTelevision && (selectedSeasonNumber != null || selectedEpisodeId != null)) {
+    LaunchedEffect(
+        isTelevision,
+        focusBackOnEntry,
+        selected.seriesId,
+        selectedSeasonNumber,
+        selectedEpisodeId,
+    ) {
+        if (
+            isTelevision &&
+            (focusBackOnEntry || selectedSeasonNumber != null || selectedEpisodeId != null)
+        ) {
             hierarchyBackFocusRequester.requestFocus()
         }
     }
