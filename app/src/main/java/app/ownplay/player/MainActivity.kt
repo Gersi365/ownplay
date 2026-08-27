@@ -145,47 +145,6 @@ class MainActivity : ComponentActivity() {
 
             OwnPlayTheme {
                 when {
-                    isInPictureInPictureMode -> {
-                        PictureInPicturePlaybackSurface(runtime.playbackVideoOutput)
-                    }
-                    downloadPlaybackSession != null -> {
-                        val session = downloadPlaybackSession ?: return@OwnPlayTheme
-                        Box(modifier = Modifier.fillMaxSize()) {
-                            LibraryPlaybackScreen(
-                                runtime = runtime,
-                                session = session,
-                                onExit = {
-                                    runtime.playbackController.stop()
-                                    downloadPlaybackSession = null
-                                },
-                                onProgress = { positionMs, durationMs ->
-                                    activityScope.launch {
-                                        offlineDownloadRuntime.savePlaybackProgress(
-                                            downloadId = session.download.downloadId,
-                                            positionMs = positionMs,
-                                            durationMs = durationMs,
-                                        )
-                                    }
-                                },
-                                onFullscreenStateChanged = { isFullscreen ->
-                                    playbackFullscreen = isFullscreen
-                                    playbackWindowController.updateFullscreenState(isFullscreen)
-                                    playbackWindowController.updatePlaybackSurfaceState(isFullscreen)
-                                    if (!isFullscreen) hideStatusBar()
-                                },
-                                backContentDescription = "Back to Downloads",
-                                contextLabel = "Downloads · offline copy",
-                            )
-                            playbackOrigin?.let { origin ->
-                                PlaybackOriginBadge(
-                                    origin = origin,
-                                    modifier = Modifier
-                                        .align(Alignment.TopEnd)
-                                        .padding(top = 10.dp, end = 12.dp),
-                                )
-                            }
-                        }
-                    }
                     orientationSelection == AppOrientationSelection.Loading -> {
                         OrientationSetupLoadingSurface()
                     }
@@ -201,15 +160,60 @@ class MainActivity : ComponentActivity() {
                         )
                     }
                     else -> {
-                        OwnPlayRoot(
-                            runtime = runtime,
-                            onPlaybackFullscreenChanged = { isFullscreen ->
-                                playbackFullscreen = isFullscreen
-                                playbackWindowController.updateFullscreenState(isFullscreen)
-                                if (!isFullscreen) hideStatusBar()
-                            },
-                            onPlaybackSurfaceActiveChanged = playbackWindowController::updatePlaybackSurfaceState,
-                        )
+                        Box(modifier = Modifier.fillMaxSize()) {
+                            OwnPlayRoot(
+                                runtime = runtime,
+                                onPlaybackFullscreenChanged = { isFullscreen ->
+                                    playbackFullscreen = isFullscreen
+                                    playbackWindowController.updateFullscreenState(isFullscreen)
+                                    if (!isFullscreen) hideStatusBar()
+                                },
+                                onPlaybackSurfaceActiveChanged =
+                                    playbackWindowController::updatePlaybackSurfaceState,
+                            )
+
+                            when {
+                                isInPictureInPictureMode -> {
+                                    PictureInPicturePlaybackSurface(runtime.playbackVideoOutput)
+                                }
+                                downloadPlaybackSession != null -> {
+                                    val session = downloadPlaybackSession ?: return@OwnPlayTheme
+                                    LibraryPlaybackScreen(
+                                        runtime = runtime,
+                                        session = session,
+                                        onExit = {
+                                            runtime.playbackController.stop()
+                                            downloadPlaybackSession = null
+                                        },
+                                        onProgress = { positionMs, durationMs ->
+                                            activityScope.launch {
+                                                offlineDownloadRuntime.savePlaybackProgress(
+                                                    downloadId = session.download.downloadId,
+                                                    positionMs = positionMs,
+                                                    durationMs = durationMs,
+                                                )
+                                            }
+                                        },
+                                        onFullscreenStateChanged = { isFullscreen ->
+                                            playbackFullscreen = isFullscreen
+                                            playbackWindowController.updateFullscreenState(isFullscreen)
+                                            playbackWindowController.updatePlaybackSurfaceState(isFullscreen)
+                                            if (!isFullscreen) hideStatusBar()
+                                        },
+                                        backContentDescription = "Back to Downloads",
+                                        contextLabel = "Downloads · offline copy",
+                                    )
+                                    playbackOrigin?.let { origin ->
+                                        PlaybackOriginBadge(
+                                            origin = origin,
+                                            modifier = Modifier
+                                                .align(Alignment.TopEnd)
+                                                .padding(top = 10.dp, end = 12.dp),
+                                        )
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
             }

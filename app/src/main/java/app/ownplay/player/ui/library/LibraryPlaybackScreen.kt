@@ -2,6 +2,7 @@ package app.ownplay.player.ui.library
 
 import android.content.res.Configuration
 import android.graphics.Color as AndroidColor
+import androidx.activity.compose.BackHandler
 import androidx.annotation.OptIn
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -82,6 +83,8 @@ internal fun LibraryPlaybackScreen(
     }
     var duration by remember(session.download.downloadId) { mutableStateOf(0L) }
     var resumeApplied by remember(session.download.downloadId) { mutableStateOf(false) }
+
+    BackHandler(onBack = onExit)
 
     DisposableEffect(session.download.downloadId, backOwner) {
         onFullscreenStateChanged(true)
