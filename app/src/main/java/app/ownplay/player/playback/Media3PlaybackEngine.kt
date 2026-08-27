@@ -225,7 +225,7 @@ class Media3PlaybackEngine(
                         ?: return@runOnPlayerThread
                     player.trackSelectionParameters = player.trackSelectionParameters
                         .buildUpon()
-                        .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
+                        .setTrackTypeDisabled(C.TRACK_TYPE_SUBTITLE, false)
                         .setOverrideForType(
                             TrackSelectionOverride(
                                 handle.trackGroup,
@@ -249,9 +249,10 @@ class Media3PlaybackEngine(
                 PlaybackInteractionBridge.observeBoundView(view)
                 return@runOnPlayerThread
             }
-            boundVideoView?.player = null
+            val previousView = boundVideoView
+            previousView?.let(PlaybackInteractionBridge::observeUnboundView)
             view.useController = false
-            view.player = player
+            PlayerView.switchTargetView(player, previousView, view)
             boundVideoView = view
             PlaybackInteractionBridge.observeBoundView(view)
         }
