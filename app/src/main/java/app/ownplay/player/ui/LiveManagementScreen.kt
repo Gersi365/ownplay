@@ -1,5 +1,6 @@
 package app.ownplay.player.ui
 
+import android.content.res.Configuration
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -22,6 +23,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -46,6 +48,9 @@ internal fun LiveManagementScreen(
     summaries: List<PlaylistSourceSummary>,
     onBack: () -> Unit,
 ) {
+    val configuration = LocalConfiguration.current
+    val isTelevision =
+        configuration.uiMode and Configuration.UI_MODE_TYPE_MASK == Configuration.UI_MODE_TYPE_TELEVISION
     var sourceId by remember(summaries) {
         mutableStateOf(summaries.firstOrNull()?.sourceId)
     }
@@ -85,6 +90,12 @@ internal fun LiveManagementScreen(
     val selectedCategory = state.query.categoryKey?.let { key ->
         state.categories.firstOrNull { category -> category.providerCategoryKey == key }
     }
+    val selectedChannelId = editState.selectedChannelIds.singleOrNull()
+    val selectedChannelIndex = selectedChannelId?.let { channelId ->
+        state.channels.indexOfFirst { channel -> channel.channelId == channelId }
+    } ?: -1
+    val canMoveSelectedUp = selectedChannelIndex > 0
+    val canMoveSelectedDown = selectedChannelIndex >= 0 && selectedChannelIndex < state.channels.lastIndex
 
     LaunchedEffect(selectedSourceId) {
         browseSession.setIncludeHidden(true)
@@ -108,6 +119,71 @@ internal fun LiveManagementScreen(
                 action = action,
             )
         }
+    }
+
+    fun moveSelectedRelative(anchorChannelId: String, placement: ManualOrderPlacement) {
+        val channelId = selectedChannelId ?: return
+        val useFavoriteOrder =
+            state.query.favoritesOnly && state.query.order == LiveBrowseOrder.FAVORITE_ORDER
+        val useManualOrder = state.query.order == LiveBrowseOrder.MY_ORDER
+        if (!useFavoriteOrder && !useManualOrder) return
+
+        orderError = null
+        scope.launch {
+            try {
+                if (useFavoriteOrder) {
+                    runtime.moveFavoriteRelative(
+                        sourceId = selectedSourceId,
+                        channelId = channelId,
+                        anchorChannelId = anchorChannelId,
+                        placement = placement,
+                    )
+                } else {
+                    runtime.moveChannelRelative(
+                        sourceId = selectedSourceId,
+                        channelId = channelId,
+                        anchorChannelId = anchorChannelId,
+                        placement = placement,
+                    )
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                orderError = "Could not save channel order."
+            }
+        }
+    }
+
+    fun moveSelectedUp() {
+        if (!canMoveSelectedUp) return
+        moveSelectedRelative(
+            anchorChannelId = state.channels[selectedChannelIndex - 1].channelId,
+            placement = ManualOrderPlacement.BEFORE,
+        )
+    }
+
+    fun moveSelectedDown() {
+        if (!canMoveSelectedDown) return
+        moveSelectedRelative(
+            anchorChannelId = state.channels[selectedChannelIndex + 1].channelId,
+            placement = ManualOrderPlacement.AFTER,
+        )
+    }
+
+    fun moveSelectedToTop() {
+        if (!canMoveSelectedUp) return
+        moveSelectedRelative(
+            anchorChannelId = state.channels.first().channelId,
+            placement = ManualOrderPlacement.BEFORE,
+        )
+    }
+
+    fun moveSelectedToBottom() {
+        if (!canMoveSelectedDown) return
+        moveSelectedRelative(
+            anchorChannelId = state.channels.last().channelId,
+            placement = ManualOrderPlacement.AFTER,
+        )
     }
 
     fun toggleCategoryVisibility() {
@@ -203,6 +279,39 @@ internal fun LiveManagementScreen(
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.error,
             )
+        }
+
+        if (isTelevision && selectedChannelId != null) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 10.dp, vertical = 2.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(2.dp),
+            ) {
+                Text(
+                    text = "Remote order",
+                    modifier = Modifier.weight(1f),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                TextButton(
+                    onClick = ::moveSelectedToTop,
+                    enabled = canMoveSelectedUp,
+                ) { Text("Top") }
+                TextButton(
+                    onClick = ::moveSelectedUp,
+                    enabled = canMoveSelectedUp,
+                ) { Text("Move up") }
+                TextButton(
+                    onClick = ::moveSelectedDown,
+                    enabled = canMoveSelectedDown,
+                ) { Text("Move down") }
+                TextButton(
+                    onClick = ::moveSelectedToBottom,
+                    enabled = canMoveSelectedDown,
+                ) { Text("Bottom") }
+            }
         }
 
         LiveBrowseScreen(
