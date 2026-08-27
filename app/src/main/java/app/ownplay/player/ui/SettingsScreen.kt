@@ -26,6 +26,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -34,6 +35,8 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -164,11 +167,21 @@ private fun LandscapeSettingsShell(
     onOpenSourceInLive: (String) -> Unit,
     onStopPlayback: () -> Unit,
 ) {
+    val configuration = LocalConfiguration.current
+    val isTelevision =
+        configuration.uiMode and Configuration.UI_MODE_TYPE_MASK == Configuration.UI_MODE_TYPE_TELEVISION
+    val selectedRailFocusRequester = remember { FocusRequester() }
     val selectedRailDestination = when (destination) {
         SettingsDestination.LIVE_MANAGEMENT,
         SettingsDestination.PLAYLISTS,
         -> SettingsDestination.CONTENT
         else -> destination
+    }
+
+    LaunchedEffect(isTelevision, destination) {
+        if (isTelevision) {
+            selectedRailFocusRequester.requestFocus()
+        }
     }
 
     Row(
@@ -210,36 +223,42 @@ private fun LandscapeSettingsShell(
                     label = "Interface",
                     detail = "Orientation & layout",
                     selected = selectedRailDestination == SettingsDestination.INTERFACE,
+                    focusRequester = selectedRailFocusRequester,
                     onClick = { onDestinationChange(SettingsDestination.INTERFACE) },
                 )
                 SettingsRailItem(
                     label = "Content",
                     detail = "Live & playlists",
                     selected = selectedRailDestination == SettingsDestination.CONTENT,
+                    focusRequester = selectedRailFocusRequester,
                     onClick = { onDestinationChange(SettingsDestination.CONTENT) },
                 )
                 SettingsRailItem(
                     label = "Downloads",
                     detail = "Offline movies & episodes",
                     selected = selectedRailDestination == SettingsDestination.DOWNLOADS,
+                    focusRequester = selectedRailFocusRequester,
                     onClick = { onDestinationChange(SettingsDestination.DOWNLOADS) },
                 )
                 SettingsRailItem(
                     label = "Playback",
                     detail = "Preview & fullscreen",
                     selected = selectedRailDestination == SettingsDestination.PLAYBACK,
+                    focusRequester = selectedRailFocusRequester,
                     onClick = { onDestinationChange(SettingsDestination.PLAYBACK) },
                 )
                 SettingsRailItem(
                     label = "Refresh",
                     detail = "Source updates",
                     selected = selectedRailDestination == SettingsDestination.REFRESH,
+                    focusRequester = selectedRailFocusRequester,
                     onClick = { onDestinationChange(SettingsDestination.REFRESH) },
                 )
                 SettingsRailItem(
                     label = "About",
                     detail = "OwnPlay information",
                     selected = selectedRailDestination == SettingsDestination.ABOUT,
+                    focusRequester = selectedRailFocusRequester,
                     onClick = { onDestinationChange(SettingsDestination.ABOUT) },
                 )
             }
@@ -333,11 +352,15 @@ private fun SettingsRailItem(
     label: String,
     detail: String,
     selected: Boolean,
+    focusRequester: FocusRequester,
     onClick: () -> Unit,
 ) {
     Surface(
         modifier = Modifier
             .fillMaxWidth()
+            .then(
+                if (selected) Modifier.focusRequester(focusRequester) else Modifier,
+            )
             .clickable(onClick = onClick),
         shape = RoundedCornerShape(12.dp),
         color = if (selected) {
