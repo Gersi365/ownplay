@@ -1,6 +1,7 @@
 package app.ownplay.player.ui
 
 import android.content.res.Configuration
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -79,6 +80,14 @@ internal fun SettingsScreen(
         initial = AppOrientationMode.PORTRAIT,
     )
     val scope = rememberCoroutineScope()
+
+    val nestedDestinationBackEnabled =
+        destination == SettingsDestination.LIVE_MANAGEMENT ||
+            destination == SettingsDestination.PLAYLISTS ||
+            (!isLandscape && destination == SettingsDestination.DOWNLOADS)
+    BackHandler(enabled = nestedDestinationBackEnabled) {
+        destination = SettingsDestination.CONTENT
+    }
 
     if (isLandscape) {
         LandscapeSettingsShell(
