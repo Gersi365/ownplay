@@ -18,6 +18,7 @@ import androidx.media3.datasource.HttpDataSource
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.analytics.AnalyticsListener
+import androidx.media3.exoplayer.source.MediaLoadData
 import androidx.media3.ui.PlayerView
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -101,6 +102,17 @@ class Media3PlaybackEngine(
                 ) {
                     updateDiagnostics { diagnostics ->
                         diagnostics.copy(videoDecoder = safeDiagnosticValue(decoderName))
+                    }
+                }
+
+                override fun onDownstreamFormatChanged(
+                    eventTime: AnalyticsListener.EventTime,
+                    mediaLoadData: MediaLoadData,
+                ) {
+                    if (mediaLoadData.trackType != C.TRACK_TYPE_VIDEO) return
+                    val format = mediaLoadData.trackFormat ?: return
+                    updateDiagnostics { diagnostics ->
+                        diagnostics.withCurrentVideoFormat(format)
                     }
                 }
             },
@@ -345,12 +357,13 @@ class Media3PlaybackEngine(
         previous: PlaybackDiagnostics,
     ): PlaybackDiagnostics {
         val audio = selectedFormat(tracks, C.TRACK_TYPE_AUDIO)
-        val video = selectedFormat(tracks, C.TRACK_TYPE_VIDEO)
-        return previous.copy(
-            videoMimeType = safeDiagnosticValue(video?.sampleMimeType),
-            videoCodecs = safeDiagnosticValue(video?.codecs),
-            videoWidth = video?.width?.positiveOrNull(),
-            videoHeight = video?.height?.positiveOrNull(),
+        val currentVideo = player.videoFormat
+        val current = if (currentVideo != null) {
+            previous.withCurrentVideoFormat(currentVideo)
+        } else {
+            previous
+        }
+        return current.copy(
             audioMimeType = safeDiagnosticValue(audio?.sampleMimeType),
             audioCodecs = safeDiagnosticValue(audio?.codecs),
             audioSampleRate = audio?.sampleRate?.positiveOrNull(),
@@ -432,6 +445,13 @@ class Media3PlaybackEngine(
         }
     }
 }
+
+private fun PlaybackDiagnostics.withCurrentVideoFormat(format: Format): PlaybackDiagnostics = copy(
+    videoMimeType = safeDiagnosticValue(format.sampleMimeType),
+    videoCodecs = safeDiagnosticValue(format.codecs),
+    videoWidth = format.width.positiveOrNull(),
+    videoHeight = format.height.positiveOrNull(),
+)
 
 private fun Int.positiveOrNull(): Int? = takeIf { it > 0 }
 
