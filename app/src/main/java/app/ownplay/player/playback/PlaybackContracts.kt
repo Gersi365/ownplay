@@ -102,6 +102,10 @@ sealed interface PlaybackState {
         val request: PlaybackRequest,
     ) : PlaybackState
 
+    data class Buffering(
+        val request: PlaybackRequest,
+    ) : PlaybackState
+
     data class Paused(
         val request: PlaybackRequest,
     ) : PlaybackState
@@ -119,6 +123,7 @@ sealed interface PlaybackEvent {
 
     data object Prepared : PlaybackEvent
     data object Play : PlaybackEvent
+    data object Buffer : PlaybackEvent
     data object Pause : PlaybackEvent
 
     data class Fail(
@@ -137,14 +142,20 @@ object PlaybackReducer {
         is PlaybackEvent.Start -> PlaybackState.Loading(event.request)
         PlaybackEvent.Prepared -> when (state) {
             is PlaybackState.Loading -> PlaybackState.Playing(state.request)
+            is PlaybackState.Buffering -> PlaybackState.Playing(state.request)
             else -> state
         }
         PlaybackEvent.Play -> when (state) {
             is PlaybackState.Paused -> PlaybackState.Playing(state.request)
             else -> state
         }
+        PlaybackEvent.Buffer -> when (state) {
+            is PlaybackState.Playing -> PlaybackState.Buffering(state.request)
+            else -> state
+        }
         PlaybackEvent.Pause -> when (state) {
             is PlaybackState.Playing -> PlaybackState.Paused(state.request)
+            is PlaybackState.Buffering -> PlaybackState.Paused(state.request)
             else -> state
         }
         is PlaybackEvent.Fail -> state.requestOrNull()
@@ -165,6 +176,7 @@ object PlaybackReducer {
         PlaybackState.Idle -> null
         is PlaybackState.Loading -> request
         is PlaybackState.Playing -> request
+        is PlaybackState.Buffering -> request
         is PlaybackState.Paused -> request
         is PlaybackState.Failed -> request
     }
