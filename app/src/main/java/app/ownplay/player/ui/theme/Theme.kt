@@ -17,6 +17,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import app.ownplay.player.personalization.AppDeviceProfile
 import app.ownplay.player.ui.tv.TvRemoteIndication
 
 private val OwnPlayDarkColors = darkColorScheme(
@@ -133,10 +134,27 @@ private val OwnPlayTypography = Typography(
 )
 
 @Composable
-fun OwnPlayTheme(content: @Composable () -> Unit) {
-    val configuration = LocalConfiguration.current
-    val isTelevision =
-        configuration.uiMode and Configuration.UI_MODE_TYPE_MASK == Configuration.UI_MODE_TYPE_TELEVISION
+fun OwnPlayTheme(
+    deviceProfile: AppDeviceProfile? = null,
+    content: @Composable () -> Unit,
+) {
+    val actualConfiguration = LocalConfiguration.current
+    val profiledConfiguration = remember(actualConfiguration, deviceProfile) {
+        if (deviceProfile == null) {
+            actualConfiguration
+        } else {
+            Configuration(actualConfiguration).apply {
+                val requestedType = if (deviceProfile.usesDpad) {
+                    Configuration.UI_MODE_TYPE_TELEVISION
+                } else {
+                    Configuration.UI_MODE_TYPE_NORMAL
+                }
+                uiMode =
+                    (uiMode and Configuration.UI_MODE_TYPE_MASK.inv()) or requestedType
+            }
+        }
+    }
+    val usesDpad = deviceProfile?.usesDpad == true
     val tvIndication = remember {
         TvRemoteIndication(
             focusColor = OwnPlayDarkColors.primary,
@@ -149,12 +167,18 @@ fun OwnPlayTheme(content: @Composable () -> Unit) {
         typography = OwnPlayTypography,
         shapes = OwnPlayShapes,
     ) {
-        if (isTelevision) {
-            CompositionLocalProvider(LocalIndication provides tvIndication) {
-                content()
-            }
-        } else {
+        if (deviceProfile == null) {
             content()
+        } else {
+            CompositionLocalProvider(LocalConfiguration provides profiledConfiguration) {
+                if (usesDpad) {
+                    CompositionLocalProvider(LocalIndication provides tvIndication) {
+                        content()
+                    }
+                } else {
+                    content()
+                }
+            }
         }
     }
 }

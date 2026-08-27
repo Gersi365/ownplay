@@ -1,6 +1,5 @@
 package app.ownplay.player.playback
 
-import android.content.res.Configuration
 import androidx.annotation.OptIn
 import androidx.media3.common.C
 import androidx.media3.common.util.UnstableApi
@@ -20,6 +19,11 @@ object PlaybackInteractionBridge {
     private var boundView = WeakReference<PlayerView>(null)
     private var backOwner: Any? = null
     private var backAction: (() -> Unit)? = null
+    private var dpadMode = false
+
+    fun setDpadMode(enabled: Boolean) {
+        dpadMode = enabled
+    }
 
     fun bind(
         output: PlaybackVideoOutput,
@@ -36,7 +40,7 @@ object PlaybackInteractionBridge {
                 view.controllerShowTimeoutMs = DEFAULT_CONTROLLER_TIMEOUT_MILLIS
                 view.setControllerAutoShow(true)
                 view.showController()
-                if (newlyBound && view.resources.configuration.isTelevision()) {
+                if (newlyBound && dpadMode) {
                     view.isFocusable = true
                     view.requestFocus()
                 }
@@ -98,6 +102,3 @@ object PlaybackInteractionBridge {
         return true
     }
 }
-
-private fun Configuration.isTelevision(): Boolean =
-    uiMode and Configuration.UI_MODE_TYPE_MASK == Configuration.UI_MODE_TYPE_TELEVISION

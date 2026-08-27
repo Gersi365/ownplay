@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -109,11 +110,19 @@ class MainActivity : ComponentActivity() {
             val deviceProfileSelection by appDeviceProfileStore.observeSelection().collectAsState(
                 initial = AppDeviceProfileSelection.Loading,
             )
+            val configuredProfile =
+                (deviceProfileSelection as? AppDeviceProfileSelection.Configured)
+                    ?.settings
+                    ?.profile
             val playbackOrigin by runtime.playbackController.resolvedOrigin.collectAsState()
             var downloadPlaybackSession by remember {
                 mutableStateOf<LibraryPlaybackSession?>(null)
             }
             val downloadPlaybackOwner = remember { Any() }
+
+            SideEffect {
+                PlaybackInteractionBridge.setDpadMode(configuredProfile?.usesDpad == true)
+            }
 
             DisposableEffect(downloadPlaybackOwner) {
                 DownloadPlaybackBridge.register(downloadPlaybackOwner) { download ->
@@ -145,7 +154,7 @@ class MainActivity : ComponentActivity() {
                 }
             }
 
-            OwnPlayTheme {
+            OwnPlayTheme(deviceProfile = configuredProfile) {
                 when (deviceProfileSelection) {
                     AppDeviceProfileSelection.Loading -> {
                         OrientationSetupLoadingSurface()
