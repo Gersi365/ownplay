@@ -6,8 +6,7 @@ import app.ownplay.player.playback.PlaybackState
 internal fun playbackStatusLabel(state: PlaybackState): String = when (state) {
     PlaybackState.Idle -> "Idle"
     is PlaybackState.Loading -> "Starting playback…"
-    is PlaybackState.Playing -> "Playing"
-    is PlaybackState.Buffering -> "Buffering…"
+    is PlaybackState.Playing -> if (state.buffering) "Buffering…" else "Playing"
     is PlaybackState.Paused -> "Paused"
     is PlaybackState.Failed -> when (state.failure.category) {
         PlaybackFailureCategory.NETWORK_UNAVAILABLE -> "Network unavailable"
