@@ -1,5 +1,6 @@
 package app.ownplay.player.ui
 
+import android.content.res.Configuration
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.gestures.scrollBy
@@ -21,6 +22,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -32,6 +34,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -52,6 +55,9 @@ internal fun CategoryReorderSheet(
     onOrderChanged: (List<String>) -> Unit,
     onDismiss: () -> Unit,
 ) {
+    val configuration = LocalConfiguration.current
+    val isTelevision =
+        configuration.uiMode and Configuration.UI_MODE_TYPE_MASK == Configuration.UI_MODE_TYPE_TELEVISION
     var working by remember(categories) { mutableStateOf(categories) }
     var draggedKey by remember { mutableStateOf<String?>(null) }
     var pointerY by remember { mutableStateOf<Float?>(null) }
@@ -67,26 +73,64 @@ internal fun CategoryReorderSheet(
         dropTarget = null
     }
 
+    fun applyOrder(next: List<LiveCategory>) {
+        if (next == working) return
+        working = next
+        onOrderChanged(next.map(LiveCategory::providerCategoryKey))
+    }
+
+    fun moveWithRemote(index: Int, delta: Int) {
+        val category = working.getOrNull(index) ?: return
+        val anchor = working.getOrNull(index + delta) ?: return
+        applyOrder(
+            moveRelative(
+                categories = working,
+                draggedKey = category.providerCategoryKey,
+                anchorKey = anchor.providerCategoryKey,
+                placement = if (delta < 0) {
+                    ManualOrderPlacement.BEFORE
+                } else {
+                    ManualOrderPlacement.AFTER
+                },
+            ),
+        )
+    }
+
     ModalBottomSheet(onDismissRequest = onDismiss) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .heightIn(min = 360.dp),
         ) {
-            Column(
-                modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp),
-                verticalArrangement = Arrangement.spacedBy(2.dp),
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 20.dp, vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                Text(
-                    text = "Reorder categories",
-                    style = MaterialTheme.typography.headlineSmall,
-                    fontWeight = FontWeight.SemiBold,
-                )
-                Text(
-                    text = "Hold the handle, then move the category to its new position.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+                Column(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(2.dp),
+                ) {
+                    Text(
+                        text = "Reorder categories",
+                        style = MaterialTheme.typography.headlineSmall,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                    Text(
+                        text = if (isTelevision) {
+                            "Use Up / Down with the remote. Press Done when finished."
+                        } else {
+                            "Hold the handle, then move the category to its new position."
+                        },
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                if (isTelevision) {
+                    TextButton(onClick = onDismiss) { Text("Done") }
+                }
             }
 
             LazyColumn(
@@ -101,68 +145,70 @@ internal fun CategoryReorderSheet(
                 itemsIndexed(
                     items = working,
                     key = { _, category -> category.providerCategoryKey },
-                ) { _, category ->
+                ) { index, category ->
                     val key = category.providerCategoryKey
                     val isDragging = draggedKey == key
                     val isTarget = dropTarget?.anchorKey == key
-                    val handleModifier = Modifier.pointerInput(key, working) {
-                        detectDragGesturesAfterLongPress(
-                            onDragStart = {
-                                val itemInfo = listState.layoutInfo.visibleItemsInfo
-                                    .firstOrNull { info -> info.key == key }
-                                draggedKey = key
-                                dragVisualOffsetY = 0f
-                                pointerY = itemInfo?.let { info ->
-                                    info.offset + (info.size / 2f)
-                                }
-                                dropTarget = pointerY?.let { y ->
-                                    resolveCategoryTarget(y, key, listState.layoutInfo.visibleItemsInfo)
-                                }
-                            },
-                            onDrag = { change, dragAmount ->
-                                change.consume()
-                                val dragged = draggedKey ?: return@detectDragGesturesAfterLongPress
-                                val nextY = (pointerY ?: return@detectDragGesturesAfterLongPress) + dragAmount.y
-                                pointerY = nextY
-                                dragVisualOffsetY += dragAmount.y
-                                val layout = listState.layoutInfo
-                                val edge = 72f
-                                val scrollDelta = when {
-                                    nextY < layout.viewportStartOffset + edge -> -36f
-                                    nextY > layout.viewportEndOffset - edge -> 36f
-                                    else -> 0f
-                                }
-                                if (scrollDelta != 0f) {
-                                    scope.launch {
-                                        val consumed = listState.scrollBy(scrollDelta)
-                                        dragVisualOffsetY += consumed
+                    val handleModifier = if (isTelevision) {
+                        Modifier
+                    } else {
+                        Modifier.pointerInput(key, working) {
+                            detectDragGesturesAfterLongPress(
+                                onDragStart = {
+                                    val itemInfo = listState.layoutInfo.visibleItemsInfo
+                                        .firstOrNull { info -> info.key == key }
+                                    draggedKey = key
+                                    dragVisualOffsetY = 0f
+                                    pointerY = itemInfo?.let { info ->
+                                        info.offset + (info.size / 2f)
                                     }
-                                }
-                                dropTarget = resolveCategoryTarget(
-                                    pointerY = nextY,
-                                    draggedKey = dragged,
-                                    visibleItems = layout.visibleItemsInfo,
-                                )
-                            },
-                            onDragEnd = {
-                                val dragged = draggedKey
-                                val target = dropTarget
-                                if (dragged != null && target != null) {
-                                    val next = moveRelative(
-                                        categories = working,
+                                    dropTarget = pointerY?.let { y ->
+                                        resolveCategoryTarget(y, key, listState.layoutInfo.visibleItemsInfo)
+                                    }
+                                },
+                                onDrag = { change, dragAmount ->
+                                    change.consume()
+                                    val dragged = draggedKey ?: return@detectDragGesturesAfterLongPress
+                                    val nextY = (pointerY ?: return@detectDragGesturesAfterLongPress) + dragAmount.y
+                                    pointerY = nextY
+                                    dragVisualOffsetY += dragAmount.y
+                                    val layout = listState.layoutInfo
+                                    val edge = 72f
+                                    val scrollDelta = when {
+                                        nextY < layout.viewportStartOffset + edge -> -36f
+                                        nextY > layout.viewportEndOffset - edge -> 36f
+                                        else -> 0f
+                                    }
+                                    if (scrollDelta != 0f) {
+                                        scope.launch {
+                                            val consumed = listState.scrollBy(scrollDelta)
+                                            dragVisualOffsetY += consumed
+                                        }
+                                    }
+                                    dropTarget = resolveCategoryTarget(
+                                        pointerY = nextY,
                                         draggedKey = dragged,
-                                        anchorKey = target.anchorKey,
-                                        placement = target.placement,
+                                        visibleItems = layout.visibleItemsInfo,
                                     )
-                                    if (next != working) {
-                                        working = next
-                                        onOrderChanged(next.map(LiveCategory::providerCategoryKey))
+                                },
+                                onDragEnd = {
+                                    val dragged = draggedKey
+                                    val target = dropTarget
+                                    if (dragged != null && target != null) {
+                                        applyOrder(
+                                            moveRelative(
+                                                categories = working,
+                                                draggedKey = dragged,
+                                                anchorKey = target.anchorKey,
+                                                placement = target.placement,
+                                            ),
+                                        )
                                     }
-                                }
-                                clearDrag()
-                            },
-                            onDragCancel = ::clearDrag,
-                        )
+                                    clearDrag()
+                                },
+                                onDragCancel = ::clearDrag,
+                            )
+                        }
                     }
 
                     Box(modifier = Modifier.fillMaxWidth()) {
@@ -198,25 +244,27 @@ internal fun CategoryReorderSheet(
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.spacedBy(12.dp),
                             ) {
-                                Text(
-                                    text = "≡",
-                                    modifier = handleModifier
-                                        .background(
-                                            color = if (isDragging) {
-                                                MaterialTheme.colorScheme.primary
-                                            } else {
-                                                MaterialTheme.colorScheme.surfaceVariant
-                                            },
-                                            shape = RoundedCornerShape(8.dp),
-                                        )
-                                        .padding(horizontal = 12.dp, vertical = 8.dp),
-                                    style = MaterialTheme.typography.titleLarge,
-                                    color = if (isDragging) {
-                                        MaterialTheme.colorScheme.onPrimary
-                                    } else {
-                                        MaterialTheme.colorScheme.onSurfaceVariant
-                                    },
-                                )
+                                if (!isTelevision) {
+                                    Text(
+                                        text = "≡",
+                                        modifier = handleModifier
+                                            .background(
+                                                color = if (isDragging) {
+                                                    MaterialTheme.colorScheme.primary
+                                                } else {
+                                                    MaterialTheme.colorScheme.surfaceVariant
+                                                },
+                                                shape = RoundedCornerShape(8.dp),
+                                            )
+                                            .padding(horizontal = 12.dp, vertical = 8.dp),
+                                        style = MaterialTheme.typography.titleLarge,
+                                        color = if (isDragging) {
+                                            MaterialTheme.colorScheme.onPrimary
+                                        } else {
+                                            MaterialTheme.colorScheme.onSurfaceVariant
+                                        },
+                                    )
+                                }
                                 Column(modifier = Modifier.weight(1f)) {
                                     Text(
                                         text = category.name,
@@ -233,7 +281,14 @@ internal fun CategoryReorderSheet(
                                         )
                                     }
                                 }
-                                if (isDragging) {
+                                if (isTelevision) {
+                                    TextButton(onClick = { moveWithRemote(index, -1) }) {
+                                        Text("Up")
+                                    }
+                                    TextButton(onClick = { moveWithRemote(index, 1) }) {
+                                        Text("Down")
+                                    }
+                                } else if (isDragging) {
                                     Text(
                                         text = "MOVING",
                                         style = MaterialTheme.typography.labelSmall,
