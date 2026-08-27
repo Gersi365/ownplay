@@ -118,9 +118,12 @@ internal fun LibraryPlaybackScreen(
             request.sourceId == session.download.sourceId &&
             request.channelId == session.download.contentId
         ) {
-            session.initialPositionMs.takeIf { it > 5_000L }?.let { position ->
-                playerView?.player?.seekTo(position)
-                currentPosition = position
+            val player = playerView?.player ?: return@LaunchedEffect
+            if (player.currentPosition <= 5_000L) {
+                session.initialPositionMs.takeIf { it > 5_000L }?.let { position ->
+                    player.seekTo(position)
+                    currentPosition = position
+                }
             }
             resumeApplied = true
         }
