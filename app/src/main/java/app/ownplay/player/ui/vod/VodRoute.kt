@@ -342,6 +342,7 @@ internal fun VodRoute(
                 loading = detailsLoading,
                 error = detailsError,
                 download = downloadFor(movie),
+                focusBackOnEntry = returnToLibraryOnDetailBack,
                 onDismiss = ::closeMovieDetails,
                 onFavoriteChanged = { favorite ->
                     scope.launch { featureRuntime.setFavorite(sourceId, movie.movieId, favorite) }
@@ -408,6 +409,7 @@ internal fun VodRoute(
                     loading = detailsLoading,
                     error = detailsError,
                     download = downloadFor(movie),
+                    focusBackOnEntry = returnToLibraryOnDetailBack,
                     onDismiss = ::closeMovieDetails,
                     onFavoriteChanged = { favorite ->
                         scope.launch {
@@ -870,6 +872,7 @@ private fun MovieDetailsPane(
     loading: Boolean,
     error: SourceError?,
     download: OfflineDownload?,
+    focusBackOnEntry: Boolean,
     onDismiss: () -> Unit,
     onFavoriteChanged: (Boolean) -> Unit,
     onDownload: (VodMovie) -> Unit,
@@ -878,7 +881,18 @@ private fun MovieDetailsPane(
     onPlay: (VodMovie) -> Unit,
     modifier: Modifier,
 ) {
+    val configuration = LocalConfiguration.current
+    val isTelevision =
+        configuration.uiMode and android.content.res.Configuration.UI_MODE_TYPE_MASK ==
+            android.content.res.Configuration.UI_MODE_TYPE_TELEVISION
+    val detailBackFocusRequester = remember(movie.movieId) { FocusRequester() }
     val offlineCopyAvailable = download?.state == DownloadStates.COMPLETED
+
+    LaunchedEffect(isTelevision, focusBackOnEntry, movie.movieId) {
+        if (isTelevision && focusBackOnEntry) {
+            detailBackFocusRequester.requestFocus()
+        }
+    }
 
     Surface(
         modifier = modifier,
@@ -892,7 +906,10 @@ private fun MovieDetailsPane(
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                IconButton(onClick = onDismiss) {
+                IconButton(
+                    onClick = onDismiss,
+                    modifier = Modifier.focusRequester(detailBackFocusRequester),
+                ) {
                     Icon(Icons.Filled.ArrowBack, contentDescription = "Back")
                 }
                 Column(modifier = Modifier.weight(1f)) {
