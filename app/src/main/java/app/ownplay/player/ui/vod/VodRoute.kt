@@ -342,7 +342,7 @@ internal fun VodRoute(
                 loading = detailsLoading,
                 error = detailsError,
                 download = downloadFor(movie),
-                focusBackOnEntry = returnToLibraryOnDetailBack,
+                focusBackOnEntry = true,
                 onDismiss = ::closeMovieDetails,
                 onFavoriteChanged = { favorite ->
                     scope.launch { featureRuntime.setFavorite(sourceId, movie.movieId, favorite) }
