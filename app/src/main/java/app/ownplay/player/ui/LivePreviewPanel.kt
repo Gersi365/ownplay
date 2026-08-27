@@ -45,6 +45,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.font.FontWeight
@@ -81,6 +83,7 @@ internal fun LivePreviewPanel(
     val controls = PlaybackPresentationPolicy.controlsFor(state)
     var controlsVisible by remember(selection.request.channelId) { mutableStateOf(true) }
     var interactionToken by remember(selection.request.channelId) { mutableStateOf(0) }
+    val fullscreenFocusRequester = remember(selection.request.channelId) { FocusRequester() }
 
     fun revealControls() {
         controlsVisible = true
@@ -97,6 +100,12 @@ internal fun LivePreviewPanel(
             controlsVisible = false
         } else {
             controlsVisible = true
+        }
+    }
+
+    LaunchedEffect(selection.request.channelId, isTelevision) {
+        if (isTelevision) {
+            fullscreenFocusRequester.requestFocus()
         }
     }
 
@@ -306,7 +315,9 @@ internal fun LivePreviewPanel(
                         PreviewControlSlot {
                             IconButton(
                                 onClick = onOpenFullscreen,
-                                modifier = Modifier.size(38.dp),
+                                modifier = Modifier
+                                    .size(38.dp)
+                                    .focusRequester(fullscreenFocusRequester),
                             ) {
                                 Icon(
                                     Icons.Filled.Fullscreen,
