@@ -1,5 +1,6 @@
 package app.ownplay.player.ui
 
+import android.content.res.Configuration
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -26,6 +27,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -46,6 +50,10 @@ internal fun EpgGuideSheet(
     failed: Boolean,
     onDismiss: () -> Unit,
 ) {
+    val configuration = LocalConfiguration.current
+    val isTelevision =
+        configuration.uiMode and Configuration.UI_MODE_TYPE_MASK == Configuration.UI_MODE_TYPE_TELEVISION
+    val doneFocusRequester = remember { FocusRequester() }
     val nowEpochSeconds = System.currentTimeMillis() / 1_000L
     val timeline = remember(snapshot, nowEpochSeconds) {
         EpgTimelineProjector.project(
@@ -56,6 +64,12 @@ internal fun EpgGuideSheet(
     val currentIndex = timeline.current?.let(timeline.programs::indexOf)?.takeIf { it >= 0 }
     val listState = rememberLazyListState()
     var selectedProgram by remember { mutableStateOf<EpgProgram?>(null) }
+
+    LaunchedEffect(isTelevision) {
+        if (isTelevision) {
+            doneFocusRequester.requestFocus()
+        }
+    }
 
     LaunchedEffect(currentIndex) {
         if (currentIndex != null) {
@@ -87,6 +101,12 @@ internal fun EpgGuideSheet(
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
+                if (isTelevision) {
+                    TextButton(
+                        onClick = onDismiss,
+                        modifier = Modifier.focusRequester(doneFocusRequester),
+                    ) { Text("Done") }
+                }
             }
 
             when {
