@@ -21,6 +21,7 @@ data class BackupChannelIdentity(
     val providerKey: String,
     val sourceKind: String,
     val sourceName: String,
+    val sourceId: String? = null,
 )
 
 data class BackupChannelRecord(
@@ -144,6 +145,7 @@ object PersonalizationBackupCodec {
         put("providerKey", JsonPrimitive(identity.providerKey))
         put("sourceKind", JsonPrimitive(identity.sourceKind))
         put("sourceName", JsonPrimitive(identity.sourceName))
+        putNullableString("sourceId", identity.sourceId)
     }
 
     private fun decodeChannelRecord(value: JsonObject): BackupChannelRecord = BackupChannelRecord(
@@ -174,6 +176,7 @@ object PersonalizationBackupCodec {
         providerKey = value.requiredString("providerKey"),
         sourceKind = value.requiredString("sourceKind"),
         sourceName = value.requiredString("sourceName"),
+        sourceId = value.optionalString("sourceId"),
     )
 
     private fun validate(backup: PersonalizationBackupV1) {
@@ -219,6 +222,7 @@ object PersonalizationBackupCodec {
         require(identity.providerKey.isNotBlank())
         require(identity.sourceKind.isNotBlank())
         require(identity.sourceName.isNotBlank())
+        identity.sourceId?.let { require(it.isNotBlank()) }
     }
 }
 
@@ -251,6 +255,14 @@ object BackupChannelMatcher {
         }
         if (kindMatches.isEmpty()) return BackupChannelMatch.Unmatched
 
+        identity.sourceId?.let { sourceId ->
+            val sourceIdMatches = kindMatches.filter { candidate -> candidate.sourceId == sourceId }
+            when {
+                sourceIdMatches.size == 1 -> return BackupChannelMatch.Matched(sourceIdMatches.single())
+                sourceIdMatches.size > 1 -> return BackupChannelMatch.Ambiguous
+            }
+        }
+
         val nameMatches = kindMatches.filter { candidate ->
             candidate.sourceName.equals(identity.sourceName, ignoreCase = true)
         }
@@ -264,7 +276,7 @@ object BackupChannelMatcher {
 }
 
 internal fun BackupChannelIdentity.stableKey(): String =
-    "$sourceKind\u0000$sourceName\u0000$providerKey"
+    "${sourceId.orEmpty()}\u0000$sourceKind\u0000$sourceName\u0000$providerKey"
 
 private fun kotlinx.serialization.json.JsonObjectBuilder.putNullableString(
     key: String,
