@@ -18,6 +18,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.unit.dp
 import app.ownplay.player.backup.BackupExportResult
 import app.ownplay.player.backup.BackupRestoreFailureReason
 import app.ownplay.player.backup.BackupRestoreResult
@@ -88,7 +89,7 @@ internal fun BackupRestoreSettingsContent() {
 
     Column(
         modifier = Modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(androidx.compose.ui.unit.Dp(6f)),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
         SettingsActionRow(
             title = "Backup personalization",
