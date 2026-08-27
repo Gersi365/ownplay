@@ -20,6 +20,7 @@ data class PlaybackNetworkProfile(
     val downstreamBandwidthKbps: Int? = null,
     val upstreamBandwidthKbps: Int? = null,
     val transports: Set<PlaybackNetworkTransport> = emptySet(),
+    val measuredPlaybackBandwidthBps: Long? = null,
 ) {
     init {
         require(downstreamBandwidthKbps == null || downstreamBandwidthKbps > 0) {
@@ -27,6 +28,9 @@ data class PlaybackNetworkProfile(
         }
         require(upstreamBandwidthKbps == null || upstreamBandwidthKbps > 0) {
             "Upstream bandwidth must be null or positive"
+        }
+        require(measuredPlaybackBandwidthBps == null || measuredPlaybackBandwidthBps > 0L) {
+            "Measured playback bandwidth must be null or positive"
         }
         if (state == PlaybackNetworkState.UNAVAILABLE) {
             require(!validated) { "Unavailable network cannot be validated" }
@@ -38,6 +42,9 @@ data class PlaybackNetworkProfile(
                 "Unavailable network cannot report upstream bandwidth"
             }
             require(transports.isEmpty()) { "Unavailable network cannot report transports" }
+            require(measuredPlaybackBandwidthBps == null) {
+                "Unavailable network cannot retain measured playback bandwidth"
+            }
         }
     }
 

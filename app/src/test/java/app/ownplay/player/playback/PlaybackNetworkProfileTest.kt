@@ -16,6 +16,7 @@ class PlaybackNetworkProfileTest {
         assertNull(profile.metered)
         assertNull(profile.downstreamBandwidthKbps)
         assertNull(profile.upstreamBandwidthKbps)
+        assertNull(profile.measuredPlaybackBandwidthBps)
         assertTrue(profile.transports.isEmpty())
     }
 
@@ -28,12 +29,14 @@ class PlaybackNetworkProfileTest {
             downstreamBandwidthKbps = 3_000,
             upstreamBandwidthKbps = 700,
             transports = setOf(PlaybackNetworkTransport.CELLULAR),
+            measuredPlaybackBandwidthBps = 2_400_000L,
         )
 
         assertEquals(PlaybackNetworkState.AVAILABLE, profile.state)
         assertFalse(profile.validated)
         assertEquals(true, profile.metered)
         assertEquals(3_000, profile.downstreamBandwidthKbps)
+        assertEquals(2_400_000L, profile.measuredPlaybackBandwidthBps)
         assertEquals(setOf(PlaybackNetworkTransport.CELLULAR), profile.transports)
     }
 
@@ -46,10 +49,26 @@ class PlaybackNetworkProfileTest {
     }
 
     @Test(expected = IllegalArgumentException::class)
+    fun unavailableProfileRejectsMeasuredPlaybackBandwidth() {
+        PlaybackNetworkProfile(
+            state = PlaybackNetworkState.UNAVAILABLE,
+            measuredPlaybackBandwidthBps = 1_000_000L,
+        )
+    }
+
+    @Test(expected = IllegalArgumentException::class)
     fun profileRejectsNonPositiveBandwidth() {
         PlaybackNetworkProfile(
             state = PlaybackNetworkState.AVAILABLE,
             downstreamBandwidthKbps = 0,
+        )
+    }
+
+    @Test(expected = IllegalArgumentException::class)
+    fun profileRejectsNonPositiveMeasuredPlaybackBandwidth() {
+        PlaybackNetworkProfile(
+            state = PlaybackNetworkState.AVAILABLE,
+            measuredPlaybackBandwidthBps = 0L,
         )
     }
 }

@@ -6,6 +6,10 @@ import android.net.Network
 import android.net.NetworkCapabilities
 import android.os.Handler
 import android.os.Looper
+import androidx.annotation.OptIn
+import androidx.media3.common.util.UnstableApi
+import androidx.media3.exoplayer.upstream.BandwidthMeter
+import androidx.media3.exoplayer.upstream.DefaultBandwidthMeter
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -15,14 +19,19 @@ interface PlaybackConnectivityMonitor : AutoCloseable {
     val profile: StateFlow<PlaybackNetworkProfile>
 }
 
+@OptIn(UnstableApi::class)
 class AndroidPlaybackConnectivityMonitor(
     context: Context,
     private val networkLossGraceMillis: Long = DEFAULT_NETWORK_LOSS_GRACE_MILLIS,
     private val handler: Handler = Handler(Looper.getMainLooper()),
 ) : PlaybackConnectivityMonitor {
+    private val applicationContext = context.applicationContext
     private val connectivityManager = requireNotNull(
-        context.applicationContext.getSystemService(ConnectivityManager::class.java),
+        applicationContext.getSystemService(ConnectivityManager::class.java),
     )
+    private val bandwidthMeter = DefaultBandwidthMeter.getSingletonInstance(applicationContext)
+    private var activeNetwork: Network? = connectivityManager.activeNetwork
+    private var measuredPlaybackBandwidthBps: Long? = null
     private val mutableProfile = MutableStateFlow(currentProfile())
     private val mutableState = MutableStateFlow(mutableProfile.value.state)
     private var registered = false
@@ -30,6 +39,24 @@ class AndroidPlaybackConnectivityMonitor(
 
     override val state: StateFlow<PlaybackNetworkState> = mutableState.asStateFlow()
     override val profile: StateFlow<PlaybackNetworkProfile> = mutableProfile.asStateFlow()
+
+    private val bandwidthListener = object : BandwidthMeter.EventListener {
+        override fun onBandwidthSample(
+            elapsedMs: Int,
+            bytesTransferred: Long,
+            bitrateEstimate: Long,
+        ) {
+            if (bitrateEstimate <= 0L || mutableProfile.value.state != PlaybackNetworkState.AVAILABLE) {
+                return
+            }
+            measuredPlaybackBandwidthBps = bitrateEstimate
+            publish(
+                mutableProfile.value.copy(
+                    measuredPlaybackBandwidthBps = bitrateEstimate,
+                ),
+            )
+        }
+    }
 
     private val callback = object : ConnectivityManager.NetworkCallback() {
         override fun onAvailable(network: Network) {
@@ -41,6 +68,7 @@ class AndroidPlaybackConnectivityMonitor(
             networkCapabilities: NetworkCapabilities,
         ) {
             cancelPendingLossConfirmation()
+            observeNetwork(network)
             publish(connectedProfile(networkCapabilities))
         }
 
@@ -58,6 +86,7 @@ class AndroidPlaybackConnectivityMonitor(
         require(networkLossGraceMillis >= 0L) {
             "Network loss grace period must not be negative"
         }
+        bandwidthMeter.addEventListener(handler, bandwidthListener)
         connectivityManager.registerDefaultNetworkCallback(callback)
         registered = true
     }
@@ -66,6 +95,7 @@ class AndroidPlaybackConnectivityMonitor(
         if (!registered) return
         registered = false
         cancelPendingLossConfirmation()
+        bandwidthMeter.removeEventListener(bandwidthListener)
         runCatching {
             connectivityManager.unregisterNetworkCallback(callback)
         }
@@ -73,11 +103,19 @@ class AndroidPlaybackConnectivityMonitor(
 
     private fun publishNetwork(network: Network) {
         cancelPendingLossConfirmation()
+        observeNetwork(network)
         publish(
             connectedProfile(
                 connectivityManager.getNetworkCapabilities(network),
             ),
         )
+    }
+
+    private fun observeNetwork(network: Network) {
+        if (activeNetwork != network) {
+            activeNetwork = network
+            measuredPlaybackBandwidthBps = null
+        }
     }
 
     private fun publish(profile: PlaybackNetworkProfile) {
@@ -105,7 +143,12 @@ class AndroidPlaybackConnectivityMonitor(
     }
 
     private fun currentProfile(): PlaybackNetworkProfile {
-        val network = connectivityManager.activeNetwork ?: return PlaybackNetworkProfile.Unavailable
+        val network = connectivityManager.activeNetwork ?: run {
+            activeNetwork = null
+            measuredPlaybackBandwidthBps = null
+            return PlaybackNetworkProfile.Unavailable
+        }
+        observeNetwork(network)
         return connectedProfile(connectivityManager.getNetworkCapabilities(network))
     }
 
@@ -126,6 +169,7 @@ class AndroidPlaybackConnectivityMonitor(
             ?.linkUpstreamBandwidthKbps
             ?.takeIf { it > 0 },
         transports = capabilities?.playbackTransports().orEmpty(),
+        measuredPlaybackBandwidthBps = measuredPlaybackBandwidthBps,
     )
 
     private fun NetworkCapabilities.playbackTransports(): Set<PlaybackNetworkTransport> =
