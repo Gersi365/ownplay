@@ -1,5 +1,6 @@
 package app.ownplay.player.ui
 
+import android.content.res.Configuration
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -29,12 +30,16 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -48,8 +53,13 @@ import kotlinx.coroutines.launch
 @Composable
 internal fun DownloadsSettingsScreen(
     onBack: (() -> Unit)? = null,
+    focusBackOnEntry: Boolean = false,
 ) {
     val context = LocalContext.current
+    val configuration = LocalConfiguration.current
+    val isTelevision =
+        configuration.uiMode and Configuration.UI_MODE_TYPE_MASK == Configuration.UI_MODE_TYPE_TELEVISION
+    val backFocusRequester = remember { FocusRequester() }
     val runtime = remember(context) {
         OfflineDownloadFeatureRuntime(context.applicationContext)
     }
@@ -58,6 +68,12 @@ internal fun DownloadsSettingsScreen(
     }
     val downloads by runtime.observeAll().collectAsState(initial = emptyList())
     val scope = rememberCoroutineScope()
+
+    LaunchedEffect(isTelevision, focusBackOnEntry) {
+        if (isTelevision && focusBackOnEntry && onBack != null) {
+            backFocusRequester.requestFocus()
+        }
+    }
 
     Column(
         modifier = Modifier
@@ -74,7 +90,10 @@ internal fun DownloadsSettingsScreen(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             if (onBack != null) {
-                TextButton(onClick = onBack) { Text("‹ Settings") }
+                TextButton(
+                    onClick = onBack,
+                    modifier = Modifier.focusRequester(backFocusRequester),
+                ) { Text("‹ Settings") }
             }
             Column(modifier = Modifier.weight(1f)) {
                 Text(

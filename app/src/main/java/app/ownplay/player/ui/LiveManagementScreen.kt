@@ -23,6 +23,8 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -49,14 +51,22 @@ internal fun LiveManagementScreen(
     runtime: OwnPlayAppRuntime,
     summaries: List<PlaylistSourceSummary>,
     onBack: () -> Unit,
+    focusBackOnEntry: Boolean = false,
 ) {
     val configuration = LocalConfiguration.current
     val isTelevision =
         configuration.uiMode and Configuration.UI_MODE_TYPE_MASK == Configuration.UI_MODE_TYPE_TELEVISION
+    val backFocusRequester = remember { FocusRequester() }
     var sourceId by remember(summaries) {
         mutableStateOf(summaries.firstOrNull()?.sourceId)
     }
     val selectedSourceId = sourceId
+
+    LaunchedEffect(isTelevision, focusBackOnEntry, selectedSourceId) {
+        if (isTelevision && focusBackOnEntry) {
+            backFocusRequester.requestFocus()
+        }
+    }
 
     if (selectedSourceId == null) {
         Column(
@@ -70,7 +80,10 @@ internal fun LiveManagementScreen(
                 "Add a playlist before managing categories and channels.",
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            TextButton(onClick = onBack) { Text("Back") }
+            TextButton(
+                onClick = onBack,
+                modifier = Modifier.focusRequester(backFocusRequester),
+            ) { Text("Back") }
         }
         return
     }
@@ -255,7 +268,10 @@ internal fun LiveManagementScreen(
                     sourceId = nextSourceId
                 },
             )
-            TextButton(onClick = onBack) { Text("Done") }
+            TextButton(
+                onClick = onBack,
+                modifier = Modifier.focusRequester(backFocusRequester),
+            ) { Text("Done") }
         }
 
         if (selectedCategory != null) {

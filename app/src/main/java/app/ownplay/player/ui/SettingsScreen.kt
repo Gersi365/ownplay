@@ -116,6 +116,7 @@ internal fun SettingsScreen(
                 runtime = runtime,
                 summaries = summaries,
                 onBack = { destination = SettingsDestination.CONTENT },
+                focusBackOnEntry = true,
             )
             return
         }
@@ -126,12 +127,14 @@ internal fun SettingsScreen(
                 syncState = syncState,
                 onBack = { destination = SettingsDestination.CONTENT },
                 onOpenInLive = onOpenSourceInLive,
+                focusBackOnEntry = true,
             )
             return
         }
         SettingsDestination.DOWNLOADS -> {
             DownloadsSettingsScreen(
                 onBack = { destination = SettingsDestination.CONTENT },
+                focusBackOnEntry = true,
             )
             return
         }
@@ -660,7 +663,19 @@ private fun PlaylistManagementSubscreen(
     syncState: SourceSyncState,
     onBack: () -> Unit,
     onOpenInLive: (String) -> Unit,
+    focusBackOnEntry: Boolean = false,
 ) {
+    val configuration = LocalConfiguration.current
+    val isTelevision =
+        configuration.uiMode and Configuration.UI_MODE_TYPE_MASK == Configuration.UI_MODE_TYPE_TELEVISION
+    val backFocusRequester = remember { FocusRequester() }
+
+    LaunchedEffect(isTelevision, focusBackOnEntry) {
+        if (isTelevision && focusBackOnEntry) {
+            backFocusRequester.requestFocus()
+        }
+    }
+
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -679,7 +694,10 @@ private fun PlaylistManagementSubscreen(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                TextButton(onClick = onBack) { Text("‹ Settings") }
+                TextButton(
+                    onClick = onBack,
+                    modifier = Modifier.focusRequester(backFocusRequester),
+                ) { Text("‹ Settings") }
                 Text(
                     text = "Playlists",
                     style = MaterialTheme.typography.titleMedium,
