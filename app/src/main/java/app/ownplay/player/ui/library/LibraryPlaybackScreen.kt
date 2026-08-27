@@ -134,7 +134,11 @@ internal fun LibraryPlaybackScreen(
                         useController = true
                         resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
                         setShutterBackgroundColor(AndroidColor.BLACK)
-                        runtime.playbackVideoOutput.bind(this)
+                        PlaybackInteractionBridge.bind(
+                            output = runtime.playbackVideoOutput,
+                            view = this,
+                            showNativeController = true,
+                        )
                         playerView = this
                     }
                 },
@@ -142,10 +146,15 @@ internal fun LibraryPlaybackScreen(
                 update = { view ->
                     view.useController = true
                     view.resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
+                    PlaybackInteractionBridge.bind(
+                        output = runtime.playbackVideoOutput,
+                        view = view,
+                        showNativeController = true,
+                    )
                     playerView = view
                 },
                 onRelease = { view ->
-                    runtime.playbackVideoOutput.unbind(view)
+                    PlaybackInteractionBridge.unbind(runtime.playbackVideoOutput, view)
                     if (playerView === view) playerView = null
                 },
             )

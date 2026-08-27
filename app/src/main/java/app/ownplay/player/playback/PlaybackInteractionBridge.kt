@@ -1,5 +1,6 @@
 package app.ownplay.player.playback
 
+import android.content.res.Configuration
 import androidx.annotation.OptIn
 import androidx.media3.common.C
 import androidx.media3.common.util.UnstableApi
@@ -25,6 +26,7 @@ object PlaybackInteractionBridge {
         view: PlayerView,
         showNativeController: Boolean = false,
     ) {
+        val newlyBound = boundView.get() !== view
         output.bind(view)
         observeBoundView(view)
         if (showNativeController) {
@@ -34,6 +36,10 @@ object PlaybackInteractionBridge {
                 view.controllerShowTimeoutMs = DEFAULT_CONTROLLER_TIMEOUT_MILLIS
                 view.setControllerAutoShow(true)
                 view.showController()
+                if (newlyBound && view.resources.configuration.isTelevision()) {
+                    view.isFocusable = true
+                    view.requestFocus()
+                }
             }
         }
     }
@@ -92,3 +98,6 @@ object PlaybackInteractionBridge {
         return true
     }
 }
+
+private fun Configuration.isTelevision(): Boolean =
+    uiMode and Configuration.UI_MODE_TYPE_MASK == Configuration.UI_MODE_TYPE_TELEVISION
