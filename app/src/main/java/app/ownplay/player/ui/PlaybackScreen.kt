@@ -3,11 +3,14 @@ package app.ownplay.player.ui
 import android.app.Activity
 import android.content.Context
 import android.content.ContextWrapper
+import android.content.res.Configuration
 import android.graphics.Color as AndroidColor
+import android.view.KeyEvent
 import androidx.annotation.OptIn
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -52,7 +55,12 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.key.onKeyEvent
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -94,12 +102,23 @@ internal fun PlaybackScreen(
     onReturnToChannels: () -> Unit,
     onFullscreenStateChanged: (Boolean) -> Unit,
 ) {
+    val configuration = LocalConfiguration.current
+    val isTelevision =
+        configuration.uiMode and Configuration.UI_MODE_TYPE_MASK == Configuration.UI_MODE_TYPE_TELEVISION
+    val controlsFocusRequester = remember { FocusRequester() }
+    val wakeFocusRequester = remember { FocusRequester() }
     var isFullscreen by remember { mutableStateOf(false) }
     var resizeMode by remember { mutableStateOf(PlaybackResizeMode.FIT) }
     var controlsVisible by remember { mutableStateOf(true) }
     var showTracks by remember { mutableStateOf(false) }
     var showDiagnostics by remember { mutableStateOf(false) }
+    var controlsInteractionToken by remember { mutableStateOf(0) }
     val controls = PlaybackPresentationPolicy.controlsFor(state)
+
+    fun revealControls() {
+        controlsVisible = true
+        controlsInteractionToken += 1
+    }
 
     FullscreenSystemBarsEffect(enabled = isFullscreen)
 
@@ -110,7 +129,7 @@ internal fun PlaybackScreen(
         onDispose { onFullscreenStateChanged(false) }
     }
 
-    LaunchedEffect(state, controlsVisible, showTracks, showDiagnostics) {
+    LaunchedEffect(state, controlsVisible, showTracks, showDiagnostics, controlsInteractionToken) {
         if (
             state is PlaybackState.Playing &&
             controlsVisible &&
@@ -122,23 +141,72 @@ internal fun PlaybackScreen(
         }
     }
 
+    LaunchedEffect(
+        isTelevision,
+        state,
+        controlsVisible,
+        showTracks,
+        showDiagnostics,
+        selection.request.channelId,
+    ) {
+        if (!isTelevision || showTracks || showDiagnostics) return@LaunchedEffect
+        if (controlsVisible) {
+            if (controls.canPause || controls.canPlay) {
+                controlsFocusRequester.requestFocus()
+            }
+        } else {
+            wakeFocusRequester.requestFocus()
+        }
+    }
+
     BackHandler {
         when {
             showDiagnostics -> showDiagnostics = false
             showTracks -> showTracks = false
             isFullscreen -> {
                 isFullscreen = false
-                controlsVisible = true
+                revealControls()
             }
             else -> onReturnToChannels()
         }
+    }
+
+    val remoteWakeModifier = if (isTelevision && !controlsVisible) {
+        Modifier
+            .focusRequester(wakeFocusRequester)
+            .onKeyEvent { event ->
+                if (event.nativeKeyEvent.isRemoteNavigationKeyDown()) {
+                    revealControls()
+                    true
+                } else {
+                    false
+                }
+            }
+            .focusable()
+    } else {
+        Modifier
     }
 
     Surface(
         modifier = Modifier.fillMaxSize(),
         color = Color.Black,
     ) {
-        Box(modifier = Modifier.fillMaxSize()) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .onPreviewKeyEvent { event ->
+                    if (
+                        isTelevision &&
+                        controlsVisible &&
+                        !showTracks &&
+                        !showDiagnostics &&
+                        event.nativeKeyEvent.isRemoteNavigationKeyDown()
+                    ) {
+                        controlsInteractionToken += 1
+                    }
+                    false
+                },
+        ) {
             PlayerVideoSurface(
                 videoOutput = videoOutput,
                 resizeMode = resizeMode,
@@ -152,9 +220,11 @@ internal fun PlaybackScreen(
                         when {
                             showDiagnostics -> showDiagnostics = false
                             showTracks -> showTracks = false
-                            else -> controlsVisible = !controlsVisible
+                            controlsVisible -> controlsVisible = false
+                            else -> revealControls()
                         }
-                    },
+                    }
+                    .then(remoteWakeModifier),
             ) {}
 
             if (controls.showLoading) {
@@ -166,7 +236,7 @@ internal fun PlaybackScreen(
                     state = state,
                     canRetry = controls.canRetry,
                     onRetry = {
-                        controlsVisible = true
+                        revealControls()
                         onRetry()
                     },
                     modifier = Modifier.align(Alignment.Center),
@@ -180,37 +250,38 @@ internal fun PlaybackScreen(
                     controls = controls,
                     resizeMode = resizeMode,
                     isFullscreen = isFullscreen,
+                    controlsFocusRequester = controlsFocusRequester,
                     onPlay = {
-                        controlsVisible = true
+                        revealControls()
                         onPlay()
                     },
                     onPause = {
-                        controlsVisible = true
+                        revealControls()
                         onPause()
                     },
                     onNavigate = { direction ->
                         showTracks = false
                         showDiagnostics = false
-                        controlsVisible = true
+                        revealControls()
                         onNavigate(direction)
                     },
                     onResizeModeChanged = {
                         resizeMode = resizeMode.next()
-                        controlsVisible = true
+                        revealControls()
                     },
                     onFullscreenChanged = {
                         isFullscreen = !isFullscreen
-                        controlsVisible = true
+                        revealControls()
                     },
                     onTracksRequested = {
                         showDiagnostics = false
                         showTracks = true
-                        controlsVisible = true
+                        revealControls()
                     },
                     onDiagnosticsRequested = {
                         showTracks = false
                         showDiagnostics = true
-                        controlsVisible = true
+                        revealControls()
                     },
                     onReturnToChannels = onReturnToChannels,
                     modifier = Modifier
@@ -224,7 +295,10 @@ internal fun PlaybackScreen(
                     state = trackState,
                     onAudioSelection = onAudioSelection,
                     onSubtitleSelection = onSubtitleSelection,
-                    onClose = { showTracks = false },
+                    onClose = {
+                        showTracks = false
+                        revealControls()
+                    },
                     modifier = Modifier
                         .align(Alignment.Center)
                         .fillMaxWidth()
@@ -236,7 +310,10 @@ internal fun PlaybackScreen(
             if (showDiagnostics) {
                 PlaybackDiagnosticsPanel(
                     diagnostics = trackState.diagnostics,
-                    onClose = { showDiagnostics = false },
+                    onClose = {
+                        showDiagnostics = false
+                        revealControls()
+                    },
                     modifier = Modifier
                         .align(Alignment.Center)
                         .fillMaxWidth()
@@ -308,6 +385,7 @@ private fun PlaybackControlsOverlay(
     controls: PlaybackControlAvailability,
     resizeMode: PlaybackResizeMode,
     isFullscreen: Boolean,
+    controlsFocusRequester: FocusRequester,
     onPlay: () -> Unit,
     onPause: () -> Unit,
     onNavigate: (PlaybackNavigationDirection) -> Unit,
@@ -383,6 +461,7 @@ private fun PlaybackControlsOverlay(
             }
             PlaybackControlSlot {
                 FilledIconButton(
+                    modifier = Modifier.focusRequester(controlsFocusRequester),
                     onClick = if (controls.canPause) onPause else onPlay,
                     enabled = controls.canPause || controls.canPlay,
                 ) {
@@ -723,6 +802,18 @@ private tailrec fun Context.findActivity(): Activity? = when (this) {
     is ContextWrapper -> baseContext.findActivity()
     else -> null
 }
+
+private fun KeyEvent.isRemoteNavigationKeyDown(): Boolean =
+    action == KeyEvent.ACTION_DOWN &&
+        keyCode in setOf(
+            KeyEvent.KEYCODE_DPAD_UP,
+            KeyEvent.KEYCODE_DPAD_DOWN,
+            KeyEvent.KEYCODE_DPAD_LEFT,
+            KeyEvent.KEYCODE_DPAD_RIGHT,
+            KeyEvent.KEYCODE_DPAD_CENTER,
+            KeyEvent.KEYCODE_ENTER,
+            KeyEvent.KEYCODE_NUMPAD_ENTER,
+        )
 
 @OptIn(UnstableApi::class)
 private fun PlaybackResizeMode.toMedia3ResizeMode(): Int = when (this) {
