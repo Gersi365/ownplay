@@ -233,6 +233,33 @@ internal fun VodRoute(
         scope.launch { downloadRuntime.resume(download.downloadId) }
     }
 
+    fun clearMovieProgress(movie: VodMovie) {
+        scope.launch {
+            if (!featureRuntime.clearProgress(sourceId, movie.movieId)) return@launch
+            val clearedMovie = movie.copy(
+                positionMs = null,
+                progressCompleted = false,
+                progressUpdatedAtEpochMillis = null,
+            )
+            if (selectedMovie?.movieId == movie.movieId) {
+                selectedMovie = clearedMovie
+            }
+            details = details?.let { current ->
+                if (current.movie.movieId != movie.movieId) {
+                    current
+                } else {
+                    current.copy(
+                        movie = current.movie.copy(
+                            positionMs = null,
+                            progressCompleted = false,
+                            progressUpdatedAtEpochMillis = null,
+                        ),
+                    )
+                }
+            }
+        }
+    }
+
     fun refresh() {
         scope.launch {
             loading = true
@@ -350,6 +377,7 @@ internal fun VodRoute(
                 onDownload = ::enqueueMovieDownload,
                 onPauseDownload = ::pauseDownload,
                 onResumeDownload = ::resumeDownload,
+                onClearProgress = { clearMovieProgress(movie) },
                 onPlay = { target ->
                     runtime.playbackController.start(
                         PlaybackRequest(
@@ -419,6 +447,7 @@ internal fun VodRoute(
                     onDownload = ::enqueueMovieDownload,
                     onPauseDownload = ::pauseDownload,
                     onResumeDownload = ::resumeDownload,
+                    onClearProgress = { clearMovieProgress(movie) },
                     onPlay = { target ->
                         runtime.playbackController.start(
                             PlaybackRequest(
@@ -878,6 +907,7 @@ private fun MovieDetailsPane(
     onDownload: (VodMovie) -> Unit,
     onPauseDownload: (OfflineDownload) -> Unit,
     onResumeDownload: (OfflineDownload) -> Unit,
+    onClearProgress: () -> Unit,
     onPlay: (VodMovie) -> Unit,
     modifier: Modifier,
 ) {
@@ -996,6 +1026,12 @@ private fun MovieDetailsPane(
                         if (movie.isFavorite) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,
                         contentDescription = null,
                     )
+                }
+            }
+
+            if ((movie.positionMs ?: 0L) > 0L) {
+                TextButton(onClick = onClearProgress) {
+                    Text("Clear progress")
                 }
             }
 
