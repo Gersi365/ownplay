@@ -67,6 +67,7 @@ class PersonalizationBackupService(
                         providerKey = channel.providerKey,
                         sourceKind = source.sourceKind,
                         sourceName = source.name,
+                        sourceId = source.sourceId,
                     )
                 }
 
