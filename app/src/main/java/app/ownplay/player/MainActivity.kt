@@ -133,8 +133,10 @@ class MainActivity : ComponentActivity() {
         }
         playbackWindowController.attachWindowRoot(findViewById(android.R.id.content))
         activityScope.launch {
-            appOrientationStore.observe().collectLatest { mode ->
-                playbackWindowController.updateAppOrientation(mode)
+            appOrientationStore.observeSelection().collectLatest { selection ->
+                if (selection is AppOrientationSelection.Configured) {
+                    playbackWindowController.updateAppOrientation(selection.mode)
+                }
             }
         }
         activityScope.launch {
