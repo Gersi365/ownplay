@@ -338,6 +338,8 @@ fun OwnPlayApp(
                         sourceKind = activeSummary?.sourceKind,
                         requestedMovieId = requestedVodMovieId,
                         onRequestedMovieConsumed = { requestedVodMovieId = null },
+                        returnToLibraryOnDetailBack = movieDetailReturnToLibrary,
+                        onReturnToLibrary = { openContentSection(OwnPlaySection.LIBRARY) },
                         onOpenLive = { openContentSection(OwnPlaySection.LIVE) },
                         onOpenSeries = { openContentSection(OwnPlaySection.SERIES) },
                         onOpenSettings = { openContentSection(OwnPlaySection.SETTINGS) },

@@ -1,10 +1,12 @@
 package app.ownplay.player.ui.vod
 
 import android.graphics.Color as AndroidColor
+import android.view.KeyEvent
 import androidx.annotation.OptIn
 import androidx.compose.foundation.background
 import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.focusable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -69,7 +71,12 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.key.nativeKeyEvent
+import androidx.compose.ui.input.key.onKeyEvent
+import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
@@ -120,6 +127,8 @@ internal fun VodRoute(
     sourceKind: String?,
     requestedMovieId: String? = null,
     onRequestedMovieConsumed: () -> Unit = {},
+    returnToLibraryOnDetailBack: Boolean = false,
+    onReturnToLibrary: () -> Unit = {},
     onOpenLive: () -> Unit,
     onOpenSeries: () -> Unit,
     onOpenSettings: () -> Unit,
@@ -173,11 +182,22 @@ internal fun VodRoute(
     var playingMovie by remember(sourceId) { mutableStateOf<VodMovie?>(null) }
     val detailsBackOwner = remember(sourceId) { Any() }
 
-    DisposableEffect(selectedMovie?.movieId, playingMovie?.movieId, detailsBackOwner) {
+    fun closeMovieDetails() {
+        if (returnToLibraryOnDetailBack) {
+            onReturnToLibrary()
+        } else {
+            selectedMovie = null
+        }
+    }
+
+    DisposableEffect(
+        selectedMovie?.movieId,
+        playingMovie?.movieId,
+        detailsBackOwner,
+        returnToLibraryOnDetailBack,
+    ) {
         if (selectedMovie != null && playingMovie == null) {
-            PlaybackInteractionBridge.registerBackAction(detailsBackOwner) {
-                selectedMovie = null
-            }
+            PlaybackInteractionBridge.registerBackAction(detailsBackOwner, ::closeMovieDetails)
         }
         onDispose {
             PlaybackInteractionBridge.clearBackAction(detailsBackOwner)
@@ -323,7 +343,7 @@ internal fun VodRoute(
                 loading = detailsLoading,
                 error = detailsError,
                 download = downloadFor(movie),
-                onDismiss = { selectedMovie = null },
+                onDismiss = ::closeMovieDetails,
                 onFavoriteChanged = { favorite ->
                     scope.launch { featureRuntime.setFavorite(sourceId, movie.movieId, favorite) }
                 },
@@ -389,7 +409,7 @@ internal fun VodRoute(
                     loading = detailsLoading,
                     error = detailsError,
                     download = downloadFor(movie),
-                    onDismiss = { selectedMovie = null },
+                    onDismiss = ::closeMovieDetails,
                     onFavoriteChanged = { favorite ->
                         scope.launch {
                             featureRuntime.setFavorite(sourceId, movie.movieId, favorite)
@@ -874,7 +894,7 @@ private fun MovieDetailsPane(
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 IconButton(onClick = onDismiss) {
-                    Icon(Icons.Filled.ArrowBack, contentDescription = "Back to Movies")
+                    Icon(Icons.Filled.ArrowBack, contentDescription = "Back")
                 }
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
@@ -1100,8 +1120,14 @@ private fun VodPlaybackScreen(
     onFullscreenStateChanged: (Boolean) -> Unit,
 ) {
     val playbackState by runtime.playbackController.state.collectAsState()
+    val configuration = LocalConfiguration.current
+    val isTelevision =
+        configuration.uiMode and android.content.res.Configuration.UI_MODE_TYPE_MASK ==
+            android.content.res.Configuration.UI_MODE_TYPE_TELEVISION
     val scope = rememberCoroutineScope()
     val backOwner = remember(movie.movieId) { Any() }
+    val controlsFocusRequester = remember(movie.movieId) { FocusRequester() }
+    val wakeFocusRequester = remember(movie.movieId) { FocusRequester() }
     var playerView by remember(movie.movieId) { mutableStateOf<PlayerView?>(null) }
     var currentPosition by remember(movie.movieId) { mutableStateOf(movie.positionMs ?: 0L) }
     var duration by remember(movie.movieId) { mutableStateOf(movie.durationMs ?: 0L) }
@@ -1183,11 +1209,49 @@ private fun VodPlaybackScreen(
         }
     }
 
+    LaunchedEffect(isTelevision, controlsVisible, movie.movieId) {
+        if (!isTelevision) return@LaunchedEffect
+        if (controlsVisible) {
+            controlsFocusRequester.requestFocus()
+        } else {
+            wakeFocusRequester.requestFocus()
+        }
+    }
+
+    val remoteWakeModifier = if (isTelevision && !controlsVisible) {
+        Modifier
+            .focusRequester(wakeFocusRequester)
+            .onKeyEvent { event ->
+                if (event.nativeKeyEvent.isRemoteNavigationKeyDown()) {
+                    revealControls()
+                    true
+                } else {
+                    false
+                }
+            }
+            .focusable()
+    } else {
+        Modifier
+    }
+
     Surface(
         modifier = Modifier.fillMaxSize(),
         color = Color.Black,
     ) {
-        Box(modifier = Modifier.fillMaxSize()) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .onPreviewKeyEvent { event ->
+                    if (
+                        isTelevision &&
+                        controlsVisible &&
+                        event.nativeKeyEvent.isRemoteNavigationKeyDown()
+                    ) {
+                        controlsInteractionToken += 1
+                    }
+                    false
+                },
+        ) {
             AndroidView(
                 factory = { context ->
                     PlayerView(context).apply {
@@ -1221,7 +1285,8 @@ private fun VodPlaybackScreen(
                                 revealControls()
                             }
                         }
-                    },
+                    }
+                    .then(remoteWakeModifier),
             )
 
             if (controlsVisible) {
@@ -1270,6 +1335,7 @@ private fun VodPlaybackScreen(
                     )
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         IconButton(
+                            modifier = Modifier.focusRequester(controlsFocusRequester),
                             onClick = {
                                 when (playbackState) {
                                     is PlaybackState.Playing -> runtime.playbackController.pause()
@@ -1280,9 +1346,10 @@ private fun VodPlaybackScreen(
                                 revealControls()
                             },
                         ) {
+                            val playing = playbackState is PlaybackState.Playing
                             Icon(
-                                if (playbackState is PlaybackState.Playing) Icons.Filled.Pause else Icons.Filled.PlayArrow,
-                                contentDescription = null,
+                                if (playing) Icons.Filled.Pause else Icons.Filled.PlayArrow,
+                                contentDescription = if (playing) "Pause" else "Play",
                                 tint = Color.White,
                             )
                         }
@@ -1360,6 +1427,18 @@ private fun VodEmptyCatalog(
         }
     }
 }
+
+private fun KeyEvent.isRemoteNavigationKeyDown(): Boolean =
+    action == KeyEvent.ACTION_DOWN &&
+        keyCode in setOf(
+            KeyEvent.KEYCODE_DPAD_UP,
+            KeyEvent.KEYCODE_DPAD_DOWN,
+            KeyEvent.KEYCODE_DPAD_LEFT,
+            KeyEvent.KEYCODE_DPAD_RIGHT,
+            KeyEvent.KEYCODE_DPAD_CENTER,
+            KeyEvent.KEYCODE_ENTER,
+            KeyEvent.KEYCODE_NUMPAD_ENTER,
+        )
 
 private fun movieProgressFraction(movie: VodMovie): Float? {
     val position = movie.positionMs ?: return null
