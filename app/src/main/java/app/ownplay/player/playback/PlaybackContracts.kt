@@ -147,6 +147,7 @@ object PlaybackReducer {
         }
         PlaybackEvent.Play -> when (state) {
             is PlaybackState.Paused -> PlaybackState.Playing(state.request)
+            is PlaybackState.Buffering -> PlaybackState.Playing(state.request)
             else -> state
         }
         PlaybackEvent.Buffer -> when (state) {
