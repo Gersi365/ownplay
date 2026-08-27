@@ -12,6 +12,7 @@ class PersonalizationBackupContractTest {
             providerKey = "xtream:live:42",
             sourceKind = "xtream",
             sourceName = "Home",
+            sourceId = "source-home",
         )
         val backup = PersonalizationBackupV1(
             createdAtEpochMillis = 1234L,
@@ -45,6 +46,7 @@ class PersonalizationBackupContractTest {
         assertFalse(encoded.contains("locatorRef"))
         assertFalse(encoded.contains("logoOverrideRef"))
         assertTrue(encoded.contains("logoOverrideOmitted"))
+        assertTrue(encoded.contains("source-home"))
     }
 
     @Test
@@ -75,6 +77,7 @@ class PersonalizationBackupContractTest {
             providerKey = "xtream:live:7",
             sourceKind = "xtream",
             sourceName = "Living room",
+            sourceId = "old-source-id",
         )
         val candidates = listOf(
             RestoreChannelCandidate(
@@ -95,6 +98,25 @@ class PersonalizationBackupContractTest {
 
         assertEquals(
             BackupChannelMatch.Matched(candidates.first()),
+            BackupChannelMatcher.resolve(identity, candidates),
+        )
+    }
+
+    @Test
+    fun `matcher prefers exact source id when source names collide`() {
+        val identity = BackupChannelIdentity(
+            providerKey = "xtream:live:8",
+            sourceKind = "xtream",
+            sourceName = "Home",
+            sourceId = "source-b",
+        )
+        val candidates = listOf(
+            RestoreChannelCandidate("a", "source-a", "xtream:live:8", "xtream", "Home"),
+            RestoreChannelCandidate("b", "source-b", "xtream:live:8", "xtream", "Home"),
+        )
+
+        assertEquals(
+            BackupChannelMatch.Matched(candidates.last()),
             BackupChannelMatcher.resolve(identity, candidates),
         )
     }
