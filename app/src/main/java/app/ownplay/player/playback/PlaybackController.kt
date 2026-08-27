@@ -96,9 +96,10 @@ class PlaybackController(
 
                 override fun onBuffering() {
                     if (!acceptEngineEvent() || !desiredPlayWhenReady) return
-                    if (mutableState.value !is PlaybackState.Playing) return
+                    val playing = mutableState.value as? PlaybackState.Playing ?: return
+                    if (playing.buffering) return
                     mutableState.value = PlaybackReducer.reduce(
-                        mutableState.value,
+                        playing,
                         PlaybackEvent.Buffer,
                     )
                     scheduleRebufferTimeout()
@@ -382,11 +383,12 @@ class PlaybackController(
         val bufferingGeneration = generation
         bufferingTimeoutJob = scope.launch {
             delay(rebufferTimeoutMillis)
+            val playing = mutableState.value as? PlaybackState.Playing
             if (
                 released ||
                 bufferingGeneration != generation ||
                 !desiredPlayWhenReady ||
-                mutableState.value !is PlaybackState.Buffering
+                playing?.buffering != true
             ) {
                 return@launch
             }
@@ -462,7 +464,6 @@ private fun PlaybackState.requestOrNull(): PlaybackRequest? = when (this) {
     PlaybackState.Idle -> null
     is PlaybackState.Loading -> request
     is PlaybackState.Playing -> request
-    is PlaybackState.Buffering -> request
     is PlaybackState.Paused -> request
     is PlaybackState.Failed -> request
 }
