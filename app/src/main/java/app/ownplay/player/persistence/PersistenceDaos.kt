@@ -14,6 +14,9 @@ interface PlaylistSourceDao {
     @Query("SELECT * FROM playlist_sources WHERE enabled = 1 ORDER BY createdAtEpochMillis ASC")
     fun observeAll(): Flow<List<PlaylistSourceEntity>>
 
+    @Query("SELECT * FROM playlist_sources ORDER BY createdAtEpochMillis ASC, sourceId ASC")
+    suspend fun allForBackup(): List<PlaylistSourceEntity>
+
     @Query(
         """
         SELECT
@@ -155,6 +158,18 @@ interface PersonalizationDao {
 
     @Upsert
     suspend fun upsertHidden(entries: List<HiddenEntryEntity>)
+
+    @Query(
+        """
+        SELECT hidden.*
+        FROM hidden_entries AS hidden
+        INNER JOIN provider_channels AS channel
+            ON channel.channelId = hidden.channelId
+        WHERE channel.sourceId = :sourceId
+        ORDER BY hidden.hiddenAtEpochMillis ASC, hidden.channelId ASC
+        """,
+    )
+    suspend fun hiddenEntriesForSource(sourceId: String): List<HiddenEntryEntity>
 
     @Query("DELETE FROM hidden_entries WHERE channelId = :channelId")
     suspend fun unhide(channelId: String)

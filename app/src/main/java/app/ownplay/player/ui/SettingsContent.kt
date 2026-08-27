@@ -41,6 +41,8 @@ internal fun ContentSettingsContent(
         actionLabel = "Open",
         onClick = onOpenDownloads,
     )
+    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+    BackupRestoreSettingsContent()
 }
 
 @Composable
@@ -96,4 +98,3 @@ internal fun AboutSettingsContent() {
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
 }
-
