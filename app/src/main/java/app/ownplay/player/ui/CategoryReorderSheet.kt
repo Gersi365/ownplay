@@ -24,6 +24,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -32,6 +33,8 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalConfiguration
@@ -58,6 +61,7 @@ internal fun CategoryReorderSheet(
     val configuration = LocalConfiguration.current
     val isTelevision =
         configuration.uiMode and Configuration.UI_MODE_TYPE_MASK == Configuration.UI_MODE_TYPE_TELEVISION
+    val doneFocusRequester = remember { FocusRequester() }
     var working by remember(categories) { mutableStateOf(categories) }
     var draggedKey by remember { mutableStateOf<String?>(null) }
     var pointerY by remember { mutableStateOf<Float?>(null) }
@@ -65,6 +69,12 @@ internal fun CategoryReorderSheet(
     var dropTarget by remember { mutableStateOf<CategoryDropTarget?>(null) }
     val listState = rememberLazyListState()
     val scope = rememberCoroutineScope()
+
+    LaunchedEffect(isTelevision) {
+        if (isTelevision) {
+            doneFocusRequester.requestFocus()
+        }
+    }
 
     fun clearDrag() {
         draggedKey = null
@@ -129,7 +139,10 @@ internal fun CategoryReorderSheet(
                     )
                 }
                 if (isTelevision) {
-                    TextButton(onClick = onDismiss) { Text("Done") }
+                    TextButton(
+                        onClick = onDismiss,
+                        modifier = Modifier.focusRequester(doneFocusRequester),
+                    ) { Text("Done") }
                 }
             }
 
