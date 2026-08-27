@@ -20,6 +20,7 @@ interface PlaybackEngine {
     interface Listener {
         fun onReady()
         fun onPlaying()
+        fun onBuffering() = Unit
         fun onPaused()
         fun onEnded()
         fun onFailure(failure: PlaybackFailure)
@@ -40,6 +41,7 @@ class PlaybackController(
     private val mainDispatcher: CoroutineDispatcher = Dispatchers.Main.immediate,
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
     private val loadingTimeoutMillis: Long = DEFAULT_LOADING_TIMEOUT_MILLIS,
+    private val rebufferTimeoutMillis: Long = DEFAULT_REBUFFER_TIMEOUT_MILLIS,
     private val retryPolicy: PlaybackRetryPolicy = PlaybackRetryPolicy(),
     networkState: StateFlow<PlaybackNetworkState>? = null,
 ) : AutoCloseable {
@@ -53,6 +55,7 @@ class PlaybackController(
 
     private var resolutionJob: Job? = null
     private var timeoutJob: Job? = null
+    private var bufferingTimeoutJob: Job? = null
     private var retryJob: Job? = null
     private var generation: Long = 0L
     private var preparedGeneration: Long? = null
@@ -66,11 +69,14 @@ class PlaybackController(
 
     init {
         require(loadingTimeoutMillis > 0L) { "Loading timeout must be positive" }
+        require(rebufferTimeoutMillis > 0L) { "Rebuffer timeout must be positive" }
         engine.setListener(
             object : PlaybackEngine.Listener {
                 override fun onReady() {
                     if (!acceptEngineEvent()) return
                     timeoutJob?.cancel()
+                    bufferingTimeoutJob?.cancel()
+                    bufferingTimeoutJob = null
                     retryJob?.cancel()
                     retryJob = null
                     val prepared = PlaybackReducer.reduce(mutableState.value, PlaybackEvent.Prepared)
@@ -83,11 +89,25 @@ class PlaybackController(
 
                 override fun onPlaying() {
                     if (!acceptEngineEvent()) return
+                    bufferingTimeoutJob?.cancel()
+                    bufferingTimeoutJob = null
                     mutableState.value = PlaybackReducer.reduce(mutableState.value, PlaybackEvent.Play)
+                }
+
+                override fun onBuffering() {
+                    if (!acceptEngineEvent() || !desiredPlayWhenReady) return
+                    if (mutableState.value !is PlaybackState.Playing) return
+                    mutableState.value = PlaybackReducer.reduce(
+                        mutableState.value,
+                        PlaybackEvent.Buffer,
+                    )
+                    scheduleRebufferTimeout()
                 }
 
                 override fun onPaused() {
                     if (!acceptEngineEvent()) return
+                    bufferingTimeoutJob?.cancel()
+                    bufferingTimeoutJob = null
                     mutableState.value = PlaybackReducer.reduce(mutableState.value, PlaybackEvent.Pause)
                 }
 
@@ -135,8 +155,8 @@ class PlaybackController(
         check(!released) { "PlaybackController is released" }
         scope.launch {
             desiredPlayWhenReady = true
-            engine.play()
             mutableState.value = PlaybackReducer.reduce(mutableState.value, PlaybackEvent.Play)
+            engine.play()
         }
     }
 
@@ -144,8 +164,10 @@ class PlaybackController(
         check(!released) { "PlaybackController is released" }
         scope.launch {
             desiredPlayWhenReady = false
-            engine.pause()
+            bufferingTimeoutJob?.cancel()
+            bufferingTimeoutJob = null
             mutableState.value = PlaybackReducer.reduce(mutableState.value, PlaybackEvent.Pause)
+            engine.pause()
         }
     }
 
@@ -180,6 +202,8 @@ class PlaybackController(
         mutableResolvedOrigin.value = null
         resolutionJob?.cancel()
         timeoutJob?.cancel()
+        bufferingTimeoutJob?.cancel()
+        bufferingTimeoutJob = null
         retryJob?.cancel()
         retryJob = null
         engine.setListener(null)
@@ -198,6 +222,8 @@ class PlaybackController(
 
         resolutionJob?.cancel()
         timeoutJob?.cancel()
+        bufferingTimeoutJob?.cancel()
+        bufferingTimeoutJob = null
         retryJob?.cancel()
         retryJob = null
         preparedGeneration = null
@@ -315,6 +341,8 @@ class PlaybackController(
         mutableResolvedOrigin.value = null
         resolutionJob?.cancel()
         timeoutJob?.cancel()
+        bufferingTimeoutJob?.cancel()
+        bufferingTimeoutJob = null
         retryJob?.cancel()
         retryJob = null
         automaticRetryAttempt = 0
@@ -325,6 +353,8 @@ class PlaybackController(
     private fun handleNetworkUnavailable() {
         if (currentPlaybackUsesNetwork != true) return
         val request = mutableState.value.requestOrNull() ?: return
+        bufferingTimeoutJob?.cancel()
+        bufferingTimeoutJob = null
         retryJob?.cancel()
         retryJob = null
         generation += 1
@@ -347,9 +377,31 @@ class PlaybackController(
         scheduleAutomaticRetry(failed.request)
     }
 
+    private fun scheduleRebufferTimeout() {
+        bufferingTimeoutJob?.cancel()
+        val bufferingGeneration = generation
+        bufferingTimeoutJob = scope.launch {
+            delay(rebufferTimeoutMillis)
+            if (
+                released ||
+                bufferingGeneration != generation ||
+                !desiredPlayWhenReady ||
+                mutableState.value !is PlaybackState.Buffering
+            ) {
+                return@launch
+            }
+            bufferingTimeoutJob = null
+            failCurrentAndMaybeRetry(
+                PlaybackFailure(PlaybackFailureCategory.TIMEOUT),
+            )
+        }
+    }
+
     private fun failCurrentAndMaybeRetry(failure: PlaybackFailure) {
         val request = mutableState.value.requestOrNull() ?: return
         timeoutJob?.cancel()
+        bufferingTimeoutJob?.cancel()
+        bufferingTimeoutJob = null
         preparedGeneration = null
         engine.stop()
         mutableState.value = PlaybackState.Failed(
@@ -402,6 +454,7 @@ class PlaybackController(
 
     companion object {
         const val DEFAULT_LOADING_TIMEOUT_MILLIS: Long = 30_000L
+        const val DEFAULT_REBUFFER_TIMEOUT_MILLIS: Long = 20_000L
     }
 }
 
@@ -409,6 +462,7 @@ private fun PlaybackState.requestOrNull(): PlaybackRequest? = when (this) {
     PlaybackState.Idle -> null
     is PlaybackState.Loading -> request
     is PlaybackState.Playing -> request
+    is PlaybackState.Buffering -> request
     is PlaybackState.Paused -> request
     is PlaybackState.Failed -> request
 }
