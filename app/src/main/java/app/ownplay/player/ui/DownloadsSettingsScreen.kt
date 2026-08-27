@@ -18,9 +18,10 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.DownloadDone
 import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.Movie
+import androidx.compose.material.icons.filled.Pause
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.VideoLibrary
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
@@ -151,6 +152,12 @@ internal fun DownloadsSettingsScreen(
             items(downloads, key = { it.downloadId }) { download ->
                 DownloadRow(
                     download = download,
+                    onPause = {
+                        scope.launch { runtime.pause(download.downloadId) }
+                    },
+                    onResume = {
+                        scope.launch { runtime.resume(download.downloadId) }
+                    },
                     onRetry = {
                         scope.launch { runtime.retry(download.downloadId) }
                     },
@@ -166,6 +173,8 @@ internal fun DownloadsSettingsScreen(
 @Composable
 private fun DownloadRow(
     download: OfflineDownload,
+    onPause: () -> Unit,
+    onResume: () -> Unit,
     onRetry: () -> Unit,
     onRemove: () -> Unit,
 ) {
@@ -210,7 +219,12 @@ private fun DownloadRow(
                 when (download.state) {
                     DownloadStates.QUEUED,
                     DownloadStates.DOWNLOADING,
-                    -> CircularProgressIndicator(modifier = Modifier.padding(8.dp))
+                    -> IconButton(onClick = onPause) {
+                        Icon(Icons.Filled.Pause, contentDescription = "Pause download")
+                    }
+                    DownloadStates.PAUSED -> IconButton(onClick = onResume) {
+                        Icon(Icons.Filled.PlayArrow, contentDescription = "Resume download")
+                    }
                     DownloadStates.FAILED -> IconButton(onClick = onRetry) {
                         Icon(Icons.Filled.Refresh, contentDescription = "Retry download")
                     }
@@ -241,6 +255,12 @@ private fun DownloadRow(
                 }
                 DownloadStates.QUEUED -> Text(
                     text = "Queued",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                DownloadStates.PAUSED -> Text(
+                    text = "Paused · ${humanBytes(download.bytesDownloaded)}" +
+                        download.totalBytes?.let { " / ${humanBytes(it)}" }.orEmpty(),
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
