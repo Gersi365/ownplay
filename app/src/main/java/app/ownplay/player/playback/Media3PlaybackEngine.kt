@@ -244,6 +244,7 @@ class Media3PlaybackEngine(
 
     override fun bind(view: PlayerView) {
         runOnPlayerThread {
+            view.setShowBuffering(PlayerView.SHOW_BUFFERING_WHEN_PLAYING)
             if (boundVideoView === view) {
                 PlaybackInteractionBridge.observeBoundView(view)
                 return@runOnPlayerThread
