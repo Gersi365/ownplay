@@ -9,8 +9,8 @@ import android.view.KeyEvent
 import androidx.annotation.OptIn
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusable
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -60,6 +60,7 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -107,6 +108,8 @@ internal fun PlaybackScreen(
         configuration.uiMode and Configuration.UI_MODE_TYPE_MASK == Configuration.UI_MODE_TYPE_TELEVISION
     val controlsFocusRequester = remember { FocusRequester() }
     val wakeFocusRequester = remember { FocusRequester() }
+    val tracksFocusRequester = remember { FocusRequester() }
+    val diagnosticsFocusRequester = remember { FocusRequester() }
     var isFullscreen by remember { mutableStateOf(false) }
     var resizeMode by remember { mutableStateOf(PlaybackResizeMode.FIT) }
     var controlsVisible by remember { mutableStateOf(true) }
@@ -117,7 +120,9 @@ internal fun PlaybackScreen(
 
     fun revealControls() {
         controlsVisible = true
-        controlsInteractionToken += 1
+        if (isTelevision) {
+            controlsInteractionToken += 1
+        }
     }
 
     FullscreenSystemBarsEffect(enabled = isFullscreen)
@@ -149,13 +154,12 @@ internal fun PlaybackScreen(
         showDiagnostics,
         selection.request.channelId,
     ) {
-        if (!isTelevision || showTracks || showDiagnostics) return@LaunchedEffect
-        if (controlsVisible) {
-            if (controls.canPause || controls.canPlay) {
-                controlsFocusRequester.requestFocus()
-            }
-        } else {
-            wakeFocusRequester.requestFocus()
+        if (!isTelevision) return@LaunchedEffect
+        when {
+            showTracks -> tracksFocusRequester.requestFocus()
+            showDiagnostics -> diagnosticsFocusRequester.requestFocus()
+            !controlsVisible -> wakeFocusRequester.requestFocus()
+            controls.canPause || controls.canPlay -> controlsFocusRequester.requestFocus()
         }
     }
 
@@ -216,12 +220,14 @@ internal fun PlaybackScreen(
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .clickable {
-                        when {
-                            showDiagnostics -> showDiagnostics = false
-                            showTracks -> showTracks = false
-                            controlsVisible -> controlsVisible = false
-                            else -> revealControls()
+                    .pointerInput(controlsVisible, showTracks, showDiagnostics) {
+                        detectTapGestures {
+                            when {
+                                showDiagnostics -> showDiagnostics = false
+                                showTracks -> showTracks = false
+                                controlsVisible -> controlsVisible = false
+                                else -> revealControls()
+                            }
                         }
                     }
                     .then(remoteWakeModifier),
@@ -299,6 +305,7 @@ internal fun PlaybackScreen(
                         showTracks = false
                         revealControls()
                     },
+                    closeFocusRequester = tracksFocusRequester,
                     modifier = Modifier
                         .align(Alignment.Center)
                         .fillMaxWidth()
@@ -314,6 +321,7 @@ internal fun PlaybackScreen(
                         showDiagnostics = false
                         revealControls()
                     },
+                    closeFocusRequester = diagnosticsFocusRequester,
                     modifier = Modifier
                         .align(Alignment.Center)
                         .fillMaxWidth()
@@ -551,6 +559,7 @@ private fun PlaybackTracksPanel(
     onAudioSelection: (PlaybackAudioSelection) -> Unit,
     onSubtitleSelection: (PlaybackSubtitleSelection) -> Unit,
     onClose: () -> Unit,
+    closeFocusRequester: FocusRequester,
     modifier: Modifier = Modifier,
 ) {
     Surface(
@@ -575,7 +584,12 @@ private fun PlaybackTracksPanel(
                     fontWeight = FontWeight.SemiBold,
                 )
                 Spacer(modifier = Modifier.weight(1f))
-                TextButton(onClick = onClose) { Text("Close") }
+                TextButton(
+                    modifier = Modifier.focusRequester(closeFocusRequester),
+                    onClick = onClose,
+                ) {
+                    Text("Close")
+                }
             }
 
             Text(
@@ -639,6 +653,7 @@ private fun PlaybackTracksPanel(
 private fun PlaybackDiagnosticsPanel(
     diagnostics: PlaybackDiagnostics,
     onClose: () -> Unit,
+    closeFocusRequester: FocusRequester,
     modifier: Modifier = Modifier,
 ) {
     Surface(
@@ -663,7 +678,12 @@ private fun PlaybackDiagnosticsPanel(
                     fontWeight = FontWeight.SemiBold,
                 )
                 Spacer(modifier = Modifier.weight(1f))
-                TextButton(onClick = onClose) { Text("Close") }
+                TextButton(
+                    modifier = Modifier.focusRequester(closeFocusRequester),
+                    onClick = onClose,
+                ) {
+                    Text("Close")
+                }
             }
 
             Text(
