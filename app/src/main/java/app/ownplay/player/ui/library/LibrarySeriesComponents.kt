@@ -1,5 +1,6 @@
 package app.ownplay.player.ui.library
 
+import android.content.res.Configuration
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -51,6 +52,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -174,6 +178,9 @@ internal fun LibrarySeriesDetailScreen(
     onRemove: (OfflineDownload) -> Unit,
 ) {
     val context = LocalContext.current
+    val configuration = LocalConfiguration.current
+    val isTelevision =
+        configuration.uiMode and Configuration.UI_MODE_TYPE_MASK == Configuration.UI_MODE_TYPE_TELEVISION
     val seriesRuntime = remember(context) {
         SeriesFeatureRuntime(context.applicationContext)
     }
@@ -182,6 +189,7 @@ internal fun LibrarySeriesDetailScreen(
     }
 
     val seriesId = group.seriesId
+    val detailBackFocusRequester = remember(group.key) { FocusRequester() }
     var showAll by remember(group.key) { mutableStateOf(false) }
     var fullDetails by remember(group.key) { mutableStateOf<SeriesDetails?>(null) }
     var catalogLoading by remember(group.key) { mutableStateOf(seriesId != null) }
@@ -189,6 +197,12 @@ internal fun LibrarySeriesDetailScreen(
     var retryNonce by remember(group.key) { mutableIntStateOf(0) }
     var selectedSeasonNumber by remember(group.key) { mutableStateOf<Int?>(null) }
     var selectedEpisodeId by remember(group.key) { mutableStateOf<String?>(null) }
+
+    LaunchedEffect(isTelevision, group.key, selectedSeasonNumber, selectedEpisodeId) {
+        if (isTelevision) {
+            detailBackFocusRequester.requestFocus()
+        }
+    }
 
     LaunchedEffect(seriesId, retryNonce) {
         if (seriesId == null || fullDetails != null) {
@@ -322,7 +336,10 @@ internal fun LibrarySeriesDetailScreen(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            IconButton(onClick = ::navigateBack) {
+            IconButton(
+                onClick = ::navigateBack,
+                modifier = Modifier.focusRequester(detailBackFocusRequester),
+            ) {
                 Icon(Icons.Filled.ArrowBack, contentDescription = "Back")
             }
             Column(modifier = Modifier.weight(1f)) {
