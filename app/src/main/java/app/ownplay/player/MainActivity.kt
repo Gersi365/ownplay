@@ -3,6 +3,7 @@ package app.ownplay.player
 import android.content.res.Configuration
 import android.os.Bundle
 import android.view.GestureDetector
+import android.view.KeyEvent
 import android.view.MotionEvent
 import androidx.activity.ComponentActivity
 import androidx.activity.OnBackPressedCallback
@@ -33,6 +34,7 @@ import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 
 private const val DOUBLE_TAP_SEEK_MILLIS = 10_000L
+private const val REMOTE_SEEK_MILLIS = 10_000L
 
 class MainActivity : ComponentActivity() {
     private lateinit var runtime: OwnPlayAppRuntime
@@ -56,13 +58,7 @@ class MainActivity : ComponentActivity() {
 
                 override fun onDoubleTap(e: MotionEvent): Boolean {
                     if (!playbackFullscreen) return false
-                    val mediaKind = when (val state = runtime.playbackController.state.value) {
-                        PlaybackState.Idle -> null
-                        is PlaybackState.Loading -> state.request.mediaKind
-                        is PlaybackState.Playing -> state.request.mediaKind
-                        is PlaybackState.Paused -> state.request.mediaKind
-                        is PlaybackState.Failed -> state.request.mediaKind
-                    }
+                    val mediaKind = currentPlaybackMediaKind()
                     if (
                         mediaKind != PlaybackMediaKind.MOVIE &&
                         mediaKind != PlaybackMediaKind.SERIES_EPISODE
@@ -151,6 +147,13 @@ class MainActivity : ComponentActivity() {
         return super.dispatchTouchEvent(event)
     }
 
+    override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        if (event.action == KeyEvent.ACTION_DOWN && event.repeatCount == 0 && handleMediaKey(event.keyCode)) {
+            return true
+        }
+        return super.dispatchKeyEvent(event)
+    }
+
     override fun onResume() {
         super.onResume()
         hideStatusBar()
@@ -192,6 +195,63 @@ class MainActivity : ComponentActivity() {
         runtime.close()
         super.onDestroy()
     }
+
+    private fun handleMediaKey(keyCode: Int): Boolean {
+        val state = runtime.playbackController.state.value
+        return when (keyCode) {
+            KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE -> when (state) {
+                is PlaybackState.Playing -> {
+                    runtime.playbackController.pause()
+                    true
+                }
+                is PlaybackState.Paused -> {
+                    runtime.playbackController.play()
+                    true
+                }
+                else -> false
+            }
+            KeyEvent.KEYCODE_MEDIA_PLAY -> {
+                if (state is PlaybackState.Paused) {
+                    runtime.playbackController.play()
+                    true
+                } else {
+                    false
+                }
+            }
+            KeyEvent.KEYCODE_MEDIA_PAUSE -> {
+                if (state is PlaybackState.Playing) {
+                    runtime.playbackController.pause()
+                    true
+                } else {
+                    false
+                }
+            }
+            KeyEvent.KEYCODE_MEDIA_FAST_FORWARD -> seekFromRemote(REMOTE_SEEK_MILLIS)
+            KeyEvent.KEYCODE_MEDIA_REWIND -> seekFromRemote(-REMOTE_SEEK_MILLIS)
+            else -> false
+        }
+    }
+
+    private fun seekFromRemote(deltaMillis: Long): Boolean {
+        if (!playbackFullscreen) return false
+        val mediaKind = currentPlaybackMediaKind()
+        if (
+            mediaKind != PlaybackMediaKind.MOVIE &&
+            mediaKind != PlaybackMediaKind.SERIES_EPISODE
+        ) {
+            return false
+        }
+        return PlaybackInteractionBridge.seekBy(deltaMillis)
+    }
+
+    private fun currentPlaybackMediaKind(): PlaybackMediaKind? =
+        when (val state = runtime.playbackController.state.value) {
+            PlaybackState.Idle -> null
+            is PlaybackState.Loading -> state.request.mediaKind
+            is PlaybackState.Playing -> state.request.mediaKind
+            is PlaybackState.Paused -> state.request.mediaKind
+            is PlaybackState.Failed -> state.request.mediaKind
+        }
 
     private fun hideStatusBar() {
         WindowCompat.getInsetsController(window, window.decorView).apply {

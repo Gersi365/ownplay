@@ -1,17 +1,23 @@
 package app.ownplay.player.ui.theme
 
+import android.content.res.Configuration
+import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Shapes
 import androidx.compose.material3.Typography
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.remember
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import app.ownplay.player.ui.tv.TvRemoteIndication
 
 private val OwnPlayDarkColors = darkColorScheme(
     primary = Color(0xFF69D6E3),
@@ -128,10 +134,27 @@ private val OwnPlayTypography = Typography(
 
 @Composable
 fun OwnPlayTheme(content: @Composable () -> Unit) {
+    val configuration = LocalConfiguration.current
+    val isTelevision =
+        configuration.uiMode and Configuration.UI_MODE_TYPE_MASK == Configuration.UI_MODE_TYPE_TELEVISION
+    val tvIndication = remember {
+        TvRemoteIndication(
+            focusColor = OwnPlayDarkColors.primary,
+            pressedColor = Color.White,
+        )
+    }
+
     MaterialTheme(
         colorScheme = OwnPlayDarkColors,
         typography = OwnPlayTypography,
         shapes = OwnPlayShapes,
-        content = content,
-    )
+    ) {
+        if (isTelevision) {
+            CompositionLocalProvider(LocalIndication provides tvIndication) {
+                content()
+            }
+        } else {
+            content()
+        }
+    }
 }
