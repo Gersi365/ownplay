@@ -135,6 +135,89 @@ class PlaybackControllerTest {
     }
 
     @Test
+    fun midStreamBufferingRecoversBeforeWatchdogExpires() = runBlocking {
+        val engine = FakeEngine()
+        val controller = controller(
+            engine = engine,
+            rebufferTimeoutMillis = 20L,
+            resolver = {
+                PlaybackResolutionResult.Success(
+                    ResolvedPlaybackLocator(
+                        "https://stream.example.test/live",
+                        ResolvedPlaybackOrigin.DIRECT,
+                    ),
+                )
+            },
+        )
+
+        controller.start(request())
+        engine.emitReady()
+        engine.emitBuffering()
+
+        assertTrue(controller.state.value is PlaybackState.Buffering)
+
+        delay(5L)
+        engine.emitReady()
+        delay(30L)
+
+        assertTrue(controller.state.value is PlaybackState.Playing)
+        controller.close()
+    }
+
+    @Test
+    fun prolongedMidStreamBufferingFailsThroughTimeoutRecovery() = runBlocking {
+        val engine = FakeEngine()
+        val controller = controller(
+            engine = engine,
+            rebufferTimeoutMillis = 10L,
+            resolver = {
+                PlaybackResolutionResult.Success(
+                    ResolvedPlaybackLocator(
+                        "https://stream.example.test/live",
+                        ResolvedPlaybackOrigin.DIRECT,
+                    ),
+                )
+            },
+        )
+
+        controller.start(request())
+        engine.emitReady()
+        engine.emitBuffering()
+        delay(30L)
+
+        val failed = controller.state.value as PlaybackState.Failed
+        assertEquals(PlaybackFailureCategory.TIMEOUT, failed.failure.category)
+        assertTrue(engine.stopCount >= 2)
+        controller.close()
+    }
+
+    @Test
+    fun pausingDuringBufferingCancelsTheRebufferWatchdog() = runBlocking {
+        val engine = FakeEngine()
+        val controller = controller(
+            engine = engine,
+            rebufferTimeoutMillis = 10L,
+            resolver = {
+                PlaybackResolutionResult.Success(
+                    ResolvedPlaybackLocator(
+                        "https://stream.example.test/live",
+                        ResolvedPlaybackOrigin.DIRECT,
+                    ),
+                )
+            },
+        )
+
+        controller.start(request())
+        engine.emitReady()
+        engine.emitBuffering()
+        controller.pause()
+        delay(30L)
+
+        assertTrue(controller.state.value is PlaybackState.Paused)
+        controller.close()
+    }
+
+    @Test
     fun closeReleasesEngineAndResetsState() {
         val engine = FakeEngine()
         val controller = controller(
@@ -171,6 +254,7 @@ class PlaybackControllerTest {
     private fun controller(
         engine: FakeEngine,
         loadingTimeoutMillis: Long = 10_000L,
+        rebufferTimeoutMillis: Long = 20_000L,
         resolver: suspend (PlaybackRequest) -> PlaybackResolutionResult,
     ) = PlaybackController(
         resolveLocator = resolver,
@@ -178,6 +262,7 @@ class PlaybackControllerTest {
         mainDispatcher = Dispatchers.Unconfined,
         ioDispatcher = Dispatchers.Unconfined,
         loadingTimeoutMillis = loadingTimeoutMillis,
+        rebufferTimeoutMillis = rebufferTimeoutMillis,
     )
 
     private fun request() = PlaybackRequest(
@@ -215,6 +300,7 @@ class PlaybackControllerTest {
         }
 
         fun emitReady() = listener?.onReady()
+        fun emitBuffering() = listener?.onBuffering()
         fun emitFailure(failure: PlaybackFailure) = listener?.onFailure(failure)
     }
 }
