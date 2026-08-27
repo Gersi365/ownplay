@@ -80,7 +80,7 @@ class PlaybackContractsTest {
         assertEquals(PlaybackState.Playing(request), playing)
 
         val buffering = PlaybackReducer.reduce(playing, PlaybackEvent.Buffer)
-        assertEquals(PlaybackState.Buffering(request), buffering)
+        assertEquals(PlaybackState.Playing(request, buffering = true), buffering)
 
         val recovered = PlaybackReducer.reduce(buffering, PlaybackEvent.Prepared)
         assertEquals(PlaybackState.Playing(request), recovered)
@@ -104,7 +104,7 @@ class PlaybackContractsTest {
     @Test
     fun reducerAllowsPauseWhileBuffering() {
         val request = PlaybackRequest(sourceId = "source", channelId = "channel")
-        val buffering = PlaybackState.Buffering(request)
+        val buffering = PlaybackState.Playing(request, buffering = true)
 
         assertEquals(
             PlaybackState.Paused(request),
