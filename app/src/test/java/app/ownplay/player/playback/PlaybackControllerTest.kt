@@ -154,13 +154,15 @@ class PlaybackControllerTest {
         engine.emitReady()
         engine.emitBuffering()
 
-        assertTrue(controller.state.value is PlaybackState.Buffering)
+        val buffering = controller.state.value as PlaybackState.Playing
+        assertTrue(buffering.buffering)
 
         delay(5L)
         engine.emitReady()
         delay(30L)
 
-        assertTrue(controller.state.value is PlaybackState.Playing)
+        val recovered = controller.state.value as PlaybackState.Playing
+        assertFalse(recovered.buffering)
         controller.close()
     }
 
@@ -188,6 +190,34 @@ class PlaybackControllerTest {
         val failed = controller.state.value as PlaybackState.Failed
         assertEquals(PlaybackFailureCategory.TIMEOUT, failed.failure.category)
         assertTrue(engine.stopCount >= 2)
+        controller.close()
+    }
+
+    @Test
+    fun duplicateBufferingSignalDoesNotExtendWatchdog() = runBlocking {
+        val engine = FakeEngine()
+        val controller = controller(
+            engine = engine,
+            rebufferTimeoutMillis = 20L,
+            resolver = {
+                PlaybackResolutionResult.Success(
+                    ResolvedPlaybackLocator(
+                        "https://stream.example.test/live",
+                        ResolvedPlaybackOrigin.DIRECT,
+                    ),
+                )
+            },
+        )
+
+        controller.start(request())
+        engine.emitReady()
+        engine.emitBuffering()
+        delay(12L)
+        engine.emitBuffering()
+        delay(15L)
+
+        val failed = controller.state.value as PlaybackState.Failed
+        assertEquals(PlaybackFailureCategory.TIMEOUT, failed.failure.category)
         controller.close()
     }
 
