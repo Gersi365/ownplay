@@ -14,6 +14,7 @@ import app.ownplay.player.persistence.OwnPlayDatabase
 import app.ownplay.player.persistence.PlaylistSourceEntity
 import app.ownplay.player.persistence.PlaylistSourceSummary
 import app.ownplay.player.persistence.SourceKinds
+import app.ownplay.player.persistence.recent.RecentChannelHistory
 import app.ownplay.player.persistence.secure.AndroidKeystoreSensitiveValueStore
 import app.ownplay.player.persistence.secure.SensitiveValueRef
 import app.ownplay.player.personalization.CategoryOrderMutationResult
@@ -38,6 +39,8 @@ import app.ownplay.player.playback.AndroidPlaybackConnectivityMonitor
 import app.ownplay.player.playback.LivePlaybackResolver
 import app.ownplay.player.playback.Media3PlaybackEngine
 import app.ownplay.player.playback.PlaybackController
+import app.ownplay.player.playback.PlaybackMediaKind
+import app.ownplay.player.playback.PlaybackState
 import app.ownplay.player.playback.PlaybackTrackController
 import app.ownplay.player.playback.RoomPlaybackResolutionLookup
 import app.ownplay.player.source.CredentialRef
@@ -63,6 +66,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
@@ -93,6 +97,7 @@ class OwnPlayAppRuntime(
         observeHiddenCategoryKeys = categoryVisibilityStore::observeHiddenCategoryKeys,
         observeCategoryOrder = categoryOrderStore::observeOrder,
     )
+    private val recentChannelHistory = RecentChannelHistory(database)
     private val playbackConnectivityMonitor =
         AndroidPlaybackConnectivityMonitor(applicationContext)
     private val sensitiveValueStore = AndroidKeystoreSensitiveValueStore(applicationContext)
@@ -161,6 +166,22 @@ class OwnPlayAppRuntime(
     val playbackTrackController: PlaybackTrackController = playbackEngine
 
     init {
+        runtimeScope.launch {
+            playbackController.state.collect { state ->
+                val request = (state as? PlaybackState.Playing)?.request ?: return@collect
+                if (request.mediaKind != PlaybackMediaKind.LIVE) return@collect
+                try {
+                    recentChannelHistory.recordWatch(
+                        channelId = request.channelId,
+                        watchedAtEpochMillis = System.currentTimeMillis(),
+                    )
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (_: Exception) {
+                    // Recent history is best-effort and must never interrupt playback.
+                }
+            }
+        }
         runtimeScope.launch {
             val sources = try {
                 observeSources().first()
