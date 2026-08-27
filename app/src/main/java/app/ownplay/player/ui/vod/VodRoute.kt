@@ -233,6 +233,22 @@ internal fun VodRoute(
         scope.launch { downloadRuntime.resume(download.downloadId) }
     }
 
+    fun setMovieFavorite(movie: VodMovie, favorite: Boolean) {
+        scope.launch {
+            if (!featureRuntime.setFavorite(sourceId, movie.movieId, favorite)) return@launch
+            if (selectedMovie?.movieId == movie.movieId) {
+                selectedMovie = selectedMovie?.copy(isFavorite = favorite)
+            }
+            details = details?.let { current ->
+                if (current.movie.movieId != movie.movieId) {
+                    current
+                } else {
+                    current.copy(movie = current.movie.copy(isFavorite = favorite))
+                }
+            }
+        }
+    }
+
     fun clearMovieProgress(movie: VodMovie) {
         scope.launch {
             if (!featureRuntime.clearProgress(sourceId, movie.movieId)) return@launch
@@ -371,9 +387,7 @@ internal fun VodRoute(
                 download = downloadFor(movie),
                 focusBackOnEntry = true,
                 onDismiss = ::closeMovieDetails,
-                onFavoriteChanged = { favorite ->
-                    scope.launch { featureRuntime.setFavorite(sourceId, movie.movieId, favorite) }
-                },
+                onFavoriteChanged = { favorite -> setMovieFavorite(movie, favorite) },
                 onDownload = ::enqueueMovieDownload,
                 onPauseDownload = ::pauseDownload,
                 onResumeDownload = ::resumeDownload,
@@ -439,11 +453,7 @@ internal fun VodRoute(
                     download = downloadFor(movie),
                     focusBackOnEntry = returnToLibraryOnDetailBack,
                     onDismiss = ::closeMovieDetails,
-                    onFavoriteChanged = { favorite ->
-                        scope.launch {
-                            featureRuntime.setFavorite(sourceId, movie.movieId, favorite)
-                        }
-                    },
+                    onFavoriteChanged = { favorite -> setMovieFavorite(movie, favorite) },
                     onDownload = ::enqueueMovieDownload,
                     onPauseDownload = ::pauseDownload,
                     onResumeDownload = ::resumeDownload,
