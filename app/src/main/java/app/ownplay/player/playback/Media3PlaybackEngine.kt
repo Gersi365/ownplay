@@ -249,9 +249,14 @@ class Media3PlaybackEngine(
                 PlaybackInteractionBridge.observeBoundView(view)
                 return@runOnPlayerThread
             }
-            boundVideoView?.player = null
             view.useController = false
-            view.player = player
+            val previousView = boundVideoView
+            if (previousView == null) {
+                view.player = player
+            } else {
+                PlaybackInteractionBridge.observeUnboundView(previousView)
+                PlayerView.switchTargetView(player, previousView, view)
+            }
             boundVideoView = view
             PlaybackInteractionBridge.observeBoundView(view)
         }
@@ -437,7 +442,6 @@ class Media3PlaybackEngine(
         trackHandlesById.clear()
         mutableTrackState.value = PlaybackTrackSelectionPolicy.resetForNewMedia()
     }
-
     private fun runOnPlayerThread(action: () -> Unit) {
         if (Looper.myLooper() == player.applicationLooper) {
             action()
