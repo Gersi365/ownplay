@@ -1,5 +1,6 @@
 package app.ownplay.player.ui
 
+import android.content.res.Configuration
 import android.graphics.Color as AndroidColor
 import androidx.annotation.OptIn
 import androidx.compose.animation.AnimatedVisibility
@@ -45,6 +46,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -73,6 +75,9 @@ internal fun LivePreviewPanel(
     onClose: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val configuration = LocalConfiguration.current
+    val isTelevision =
+        configuration.uiMode and Configuration.UI_MODE_TYPE_MASK == Configuration.UI_MODE_TYPE_TELEVISION
     val controls = PlaybackPresentationPolicy.controlsFor(state)
     var controlsVisible by remember(selection.request.channelId) { mutableStateOf(true) }
     var interactionToken by remember(selection.request.channelId) { mutableStateOf(0) }
@@ -82,13 +87,23 @@ internal fun LivePreviewPanel(
         interactionToken += 1
     }
 
-    LaunchedEffect(selection.request.channelId, state, interactionToken) {
+    LaunchedEffect(selection.request.channelId, state, interactionToken, isTelevision) {
+        if (isTelevision) {
+            controlsVisible = true
+            return@LaunchedEffect
+        }
         if (state is PlaybackState.Playing) {
             delay(CONTROLS_AUTO_HIDE_MILLIS)
             controlsVisible = false
         } else {
             controlsVisible = true
         }
+    }
+
+    val previewInteractionModifier = if (isTelevision) {
+        Modifier
+    } else {
+        Modifier.clickable(onClick = ::revealControls)
     }
 
     Surface(
@@ -102,7 +117,7 @@ internal fun LivePreviewPanel(
                 .fillMaxWidth()
                 .aspectRatio(16f / 9f)
                 .background(Color.Black)
-                .clickable(onClick = ::revealControls),
+                .then(previewInteractionModifier),
         ) {
             AndroidView(
                 factory = { context ->
