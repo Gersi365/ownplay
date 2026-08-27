@@ -37,6 +37,8 @@ import app.ownplay.player.personalization.CategoryVisibilityMutationResult
 import app.ownplay.player.personalization.ChannelBulkAction
 import app.ownplay.player.personalization.ChannelEditReducer
 import app.ownplay.player.personalization.ChannelEditState
+import app.ownplay.player.personalization.FavoriteMutationResult
+import app.ownplay.player.personalization.ManualOrderMutationResult
 import app.ownplay.player.personalization.ManualOrderPlacement
 import app.ownplay.player.ui.live.LiveBrowseScreen
 import kotlinx.coroutines.CancellationException
@@ -132,19 +134,34 @@ internal fun LiveManagementScreen(
         scope.launch {
             try {
                 if (useFavoriteOrder) {
-                    runtime.moveFavoriteRelative(
-                        sourceId = selectedSourceId,
-                        channelId = channelId,
-                        anchorChannelId = anchorChannelId,
-                        placement = placement,
-                    )
+                    when (
+                        runtime.moveFavoriteRelative(
+                            sourceId = selectedSourceId,
+                            channelId = channelId,
+                            anchorChannelId = anchorChannelId,
+                            placement = placement,
+                        )
+                    ) {
+                        is FavoriteMutationResult.Success -> orderError = null
+                        is FavoriteMutationResult.Failure -> {
+                            orderError = "Could not save channel order."
+                        }
+                    }
                 } else {
-                    runtime.moveChannelRelative(
-                        sourceId = selectedSourceId,
-                        channelId = channelId,
-                        anchorChannelId = anchorChannelId,
-                        placement = placement,
-                    )
+                    when (
+                        runtime.moveChannelRelative(
+                            sourceId = selectedSourceId,
+                            channelId = channelId,
+                            anchorChannelId = anchorChannelId,
+                            placement = placement,
+                        )
+                    ) {
+                        is ManualOrderMutationResult.Success -> orderError = null
+                        is ManualOrderMutationResult.Rejected,
+                        ManualOrderMutationResult.InvalidSourceId,
+                        ManualOrderMutationResult.PersistenceFailure,
+                        -> orderError = "Could not save channel order."
+                    }
                 }
             } catch (cancelled: CancellationException) {
                 throw cancelled
@@ -295,22 +312,10 @@ internal fun LiveManagementScreen(
                     style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-                TextButton(
-                    onClick = ::moveSelectedToTop,
-                    enabled = canMoveSelectedUp,
-                ) { Text("Top") }
-                TextButton(
-                    onClick = ::moveSelectedUp,
-                    enabled = canMoveSelectedUp,
-                ) { Text("Move up") }
-                TextButton(
-                    onClick = ::moveSelectedDown,
-                    enabled = canMoveSelectedDown,
-                ) { Text("Move down") }
-                TextButton(
-                    onClick = ::moveSelectedToBottom,
-                    enabled = canMoveSelectedDown,
-                ) { Text("Bottom") }
+                TextButton(onClick = ::moveSelectedToTop) { Text("Top") }
+                TextButton(onClick = ::moveSelectedUp) { Text("Move up") }
+                TextButton(onClick = ::moveSelectedDown) { Text("Move down") }
+                TextButton(onClick = ::moveSelectedToBottom) { Text("Bottom") }
             }
         }
 
