@@ -34,7 +34,7 @@ internal enum class ContentViewMode(
 ) {
     LIST("list", "List"),
     COMPACT("compact", "Compact"),
-    CARDS("cards", "Cards"),
+    CARDS("cards", "Gallery"),
     ;
 
     companion object {
