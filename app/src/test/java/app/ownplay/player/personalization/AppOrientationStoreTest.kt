@@ -1,7 +1,9 @@
 package app.ownplay.player.personalization
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class AppOrientationStoreTest {
@@ -21,21 +23,64 @@ class AppOrientationStoreTest {
     }
 
     @Test
-    fun missingOrUnknownPreferenceRemainsUnconfiguredForFirstRunSetup() {
+    fun missingOrUnknownOrientationCanBeDetected() {
         assertNull(AppOrientationMode.fromStoredOrNull(null))
         assertNull(AppOrientationMode.fromStoredOrNull(""))
         assertNull(AppOrientationMode.fromStoredOrNull("sensor"))
     }
 
     @Test
-    fun explicitOrientationCanBeDetectedForFirstRunSetup() {
+    fun deviceProfilesRestoreOnlyKnownStoredValues() {
+        assertEquals(
+            AppDeviceProfile.SMARTPHONE,
+            AppDeviceProfile.fromStoredOrNull("smartphone"),
+        )
+        assertEquals(AppDeviceProfile.TABLET, AppDeviceProfile.fromStoredOrNull("tablet"))
+        assertEquals(
+            AppDeviceProfile.ANDROID_TV,
+            AppDeviceProfile.fromStoredOrNull("android_tv"),
+        )
+        assertEquals(AppDeviceProfile.TV_BOX, AppDeviceProfile.fromStoredOrNull("tv_box"))
+        assertNull(AppDeviceProfile.fromStoredOrNull(null))
+        assertNull(AppDeviceProfile.fromStoredOrNull("television"))
+    }
+
+    @Test
+    fun onlyTelevisionProfilesUseDpad() {
+        assertFalse(AppDeviceProfile.SMARTPHONE.usesDpad)
+        assertFalse(AppDeviceProfile.TABLET.usesDpad)
+        assertTrue(AppDeviceProfile.ANDROID_TV.usesDpad)
+        assertTrue(AppDeviceProfile.TV_BOX.usesDpad)
+    }
+
+    @Test
+    fun smartphoneRespectsOrientationWhileOtherProfilesStayLandscape() {
         assertEquals(
             AppOrientationMode.PORTRAIT,
-            AppOrientationMode.fromStoredOrNull("portrait"),
+            AppDeviceSettings(
+                profile = AppDeviceProfile.SMARTPHONE,
+                smartphoneOrientation = AppOrientationMode.PORTRAIT,
+            ).effectiveOrientation,
         )
         assertEquals(
             AppOrientationMode.LANDSCAPE,
-            AppOrientationMode.fromStoredOrNull("landscape"),
+            AppDeviceSettings(
+                profile = AppDeviceProfile.SMARTPHONE,
+                smartphoneOrientation = AppOrientationMode.LANDSCAPE,
+            ).effectiveOrientation,
         )
+        listOf(
+            AppDeviceProfile.TABLET,
+            AppDeviceProfile.ANDROID_TV,
+            AppDeviceProfile.TV_BOX,
+        ).forEach { profile ->
+            assertEquals(
+                AppOrientationMode.LANDSCAPE,
+                AppDeviceSettings(
+                    profile = profile,
+                    smartphoneOrientation = AppOrientationMode.PORTRAIT,
+                ).effectiveOrientation,
+            )
+        }
     }
 }

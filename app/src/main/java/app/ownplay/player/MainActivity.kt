@@ -25,14 +25,16 @@ import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import app.ownplay.player.download.OfflineDownloadFeatureRuntime
-import app.ownplay.player.personalization.AppOrientationSelection
-import app.ownplay.player.personalization.AppOrientationStore
+import app.ownplay.player.personalization.AppDeviceProfile
+import app.ownplay.player.personalization.AppDeviceProfileSelection
+import app.ownplay.player.personalization.AppDeviceProfileStore
+import app.ownplay.player.personalization.AppOrientationMode
 import app.ownplay.player.playback.PlaybackInteractionBridge
 import app.ownplay.player.playback.PlaybackMediaKind
 import app.ownplay.player.playback.PlaybackState
+import app.ownplay.player.ui.DeviceProfileSetupScreen
 import app.ownplay.player.ui.DownloadPlaybackBridge
 import app.ownplay.player.ui.OrientationSetupLoadingSurface
-import app.ownplay.player.ui.OrientationSetupScreen
 import app.ownplay.player.ui.OwnPlayRoot
 import app.ownplay.player.ui.PictureInPicturePlaybackSurface
 import app.ownplay.player.ui.PlaybackOriginBadge
@@ -53,7 +55,7 @@ class MainActivity : ComponentActivity() {
     private lateinit var runtime: OwnPlayAppRuntime
     private lateinit var offlineDownloadRuntime: OfflineDownloadFeatureRuntime
     private lateinit var playbackWindowController: PlaybackWindowController
-    private lateinit var appOrientationStore: AppOrientationStore
+    private lateinit var appDeviceProfileStore: AppDeviceProfileStore
     private lateinit var playbackGestureDetector: GestureDetector
     private val activityScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private var playbackFullscreen = false
@@ -62,7 +64,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         runtime = OwnPlayAppRuntime(applicationContext)
         offlineDownloadRuntime = OfflineDownloadFeatureRuntime(applicationContext)
-        appOrientationStore = AppOrientationStore(applicationContext)
+        appDeviceProfileStore = AppDeviceProfileStore(applicationContext)
         playbackWindowController = PlaybackWindowController(this)
         playbackGestureDetector = GestureDetector(
             this,
@@ -104,8 +106,8 @@ class MainActivity : ComponentActivity() {
         setContent {
             val isInPictureInPictureMode by
                 playbackWindowController.isInPictureInPictureMode.collectAsState()
-            val orientationSelection by appOrientationStore.observeSelection().collectAsState(
-                initial = AppOrientationSelection.Loading,
+            val deviceProfileSelection by appDeviceProfileStore.observeSelection().collectAsState(
+                initial = AppDeviceProfileSelection.Loading,
             )
             val playbackOrigin by runtime.playbackController.resolvedOrigin.collectAsState()
             var downloadPlaybackSession by remember {
@@ -144,22 +146,32 @@ class MainActivity : ComponentActivity() {
             }
 
             OwnPlayTheme {
-                when {
-                    orientationSelection == AppOrientationSelection.Loading -> {
+                when (deviceProfileSelection) {
+                    AppDeviceProfileSelection.Loading -> {
                         OrientationSetupLoadingSurface()
                     }
-                    orientationSelection == AppOrientationSelection.Unconfigured -> {
-                        OrientationSetupScreen(
-                            onOrientationSelected = { mode ->
+                    AppDeviceProfileSelection.Unconfigured -> {
+                        DeviceProfileSetupScreen(
+                            onConfigured = { profile, smartphoneOrientation ->
                                 activityScope.launch {
-                                    if (appOrientationStore.set(mode)) {
-                                        playbackWindowController.updateAppOrientation(mode)
+                                    if (
+                                        appDeviceProfileStore.configure(
+                                            profile = profile,
+                                            smartphoneOrientation = smartphoneOrientation,
+                                        )
+                                    ) {
+                                        playbackWindowController.updateAppOrientation(
+                                            configuredOrientation(
+                                                profile = profile,
+                                                smartphoneOrientation = smartphoneOrientation,
+                                            ),
+                                        )
                                     }
                                 }
                             },
                         )
                     }
-                    else -> {
+                    is AppDeviceProfileSelection.Configured -> {
                         Box(modifier = Modifier.fillMaxSize()) {
                             OwnPlayRoot(
                                 runtime = runtime,
@@ -240,9 +252,11 @@ class MainActivity : ComponentActivity() {
         }
         playbackWindowController.attachWindowRoot(findViewById(android.R.id.content))
         activityScope.launch {
-            appOrientationStore.observeSelection().collectLatest { selection ->
-                if (selection is AppOrientationSelection.Configured) {
-                    playbackWindowController.updateAppOrientation(selection.mode)
+            appDeviceProfileStore.observeSelection().collectLatest { selection ->
+                if (selection is AppDeviceProfileSelection.Configured) {
+                    playbackWindowController.updateAppOrientation(
+                        selection.settings.effectiveOrientation,
+                    )
                 }
             }
         }
@@ -315,4 +329,13 @@ class MainActivity : ComponentActivity() {
             hide(WindowInsetsCompat.Type.statusBars())
         }
     }
+}
+
+private fun configuredOrientation(
+    profile: AppDeviceProfile,
+    smartphoneOrientation: AppOrientationMode?,
+): AppOrientationMode = if (profile == AppDeviceProfile.SMARTPHONE) {
+    smartphoneOrientation ?: AppOrientationMode.PORTRAIT
+} else {
+    AppOrientationMode.LANDSCAPE
 }

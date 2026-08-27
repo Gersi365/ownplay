@@ -1,6 +1,5 @@
 package app.ownplay.player.ui
 
-import android.content.res.Configuration
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -18,6 +17,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -30,10 +30,10 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import app.ownplay.player.personalization.AppDeviceProfile
 import app.ownplay.player.personalization.AppOrientationMode
 
 @Composable
@@ -49,20 +49,18 @@ internal fun OrientationSetupLoadingSurface() {
 }
 
 @Composable
-internal fun OrientationSetupScreen(
-    onOrientationSelected: (AppOrientationMode) -> Unit,
+internal fun DeviceProfileSetupScreen(
+    onConfigured: (profile: AppDeviceProfile, smartphoneOrientation: AppOrientationMode?) -> Unit,
 ) {
-    val configuration = LocalConfiguration.current
-    val isTelevision =
-        configuration.uiMode and Configuration.UI_MODE_TYPE_MASK == Configuration.UI_MODE_TYPE_TELEVISION
+    var selectedProfile by remember { mutableStateOf<AppDeviceProfile?>(null) }
+    val smartphoneFocusRequester = remember { FocusRequester() }
     val portraitFocusRequester = remember { FocusRequester() }
-    val landscapeFocusRequester = remember { FocusRequester() }
 
-    LaunchedEffect(isTelevision) {
-        if (isTelevision) {
-            landscapeFocusRequester.requestFocus()
-        } else {
+    LaunchedEffect(selectedProfile) {
+        if (selectedProfile == AppDeviceProfile.SMARTPHONE) {
             portraitFocusRequester.requestFocus()
+        } else if (selectedProfile == null) {
+            smartphoneFocusRequester.requestFocus()
         }
     }
 
@@ -78,75 +76,114 @@ internal fun OrientationSetupScreen(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .widthIn(max = 760.dp),
+                    .widthIn(max = 860.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(18.dp),
             ) {
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(6.dp),
-                ) {
-                    Text(
-                        text = "Choose app orientation",
-                        style = MaterialTheme.typography.headlineSmall,
-                        fontWeight = FontWeight.Bold,
-                        textAlign = TextAlign.Center,
+                if (selectedProfile == AppDeviceProfile.SMARTPHONE) {
+                    SmartphoneOrientationStep(
+                        portraitFocusRequester = portraitFocusRequester,
+                        onBack = { selectedProfile = null },
+                        onSelected = { orientation ->
+                            onConfigured(AppDeviceProfile.SMARTPHONE, orientation)
+                        },
                     )
-                    Text(
-                        text = "Choose how OwnPlay should fit this device. You can change this later in Settings → Interface.",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        textAlign = TextAlign.Center,
-                    )
-                    if (isTelevision) {
+                } else {
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(6.dp),
+                    ) {
                         Text(
-                            text = "Use the remote D-pad to move focus and OK to choose.",
+                            text = "Choose this device",
+                            style = MaterialTheme.typography.headlineSmall,
+                            fontWeight = FontWeight.Bold,
+                            textAlign = TextAlign.Center,
+                        )
+                        Text(
+                            text = "This controls OwnPlay input and layout. You can change it later in Settings → Interface.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            textAlign = TextAlign.Center,
+                        )
+                        Text(
+                            text = "Touch or use the D-pad and OK to choose.",
                             style = MaterialTheme.typography.labelLarge,
                             color = MaterialTheme.colorScheme.primary,
                             textAlign = TextAlign.Center,
                         )
                     }
-                }
 
-                if (isWideLayout) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(12.dp),
-                    ) {
-                        OrientationChoiceButton(
-                            title = "Portrait",
-                            detail = "Phones and vertical displays",
-                            focusRequester = portraitFocusRequester,
-                            modifier = Modifier.weight(1f),
-                            onClick = { onOrientationSelected(AppOrientationMode.PORTRAIT) },
-                        )
-                        OrientationChoiceButton(
-                            title = "Landscape",
-                            detail = "TVs, tablets and wide displays",
-                            focusRequester = landscapeFocusRequester,
-                            modifier = Modifier.weight(1f),
-                            onClick = { onOrientationSelected(AppOrientationMode.LANDSCAPE) },
-                        )
-                    }
-                } else {
-                    Column(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalArrangement = Arrangement.spacedBy(10.dp),
-                    ) {
-                        OrientationChoiceButton(
-                            title = "Portrait",
-                            detail = "Phones and vertical displays",
-                            focusRequester = portraitFocusRequester,
+                    val choices = listOf(
+                        DeviceProfileChoice(
+                            profile = AppDeviceProfile.SMARTPHONE,
+                            title = "Smartphone",
+                            detail = "Touchscreen · Portrait or Landscape",
+                        ),
+                        DeviceProfileChoice(
+                            profile = AppDeviceProfile.TABLET,
+                            title = "Tablet",
+                            detail = "Touchscreen · Landscape",
+                        ),
+                        DeviceProfileChoice(
+                            profile = AppDeviceProfile.ANDROID_TV,
+                            title = "Android TV",
+                            detail = "Remote / D-pad · Landscape",
+                        ),
+                        DeviceProfileChoice(
+                            profile = AppDeviceProfile.TV_BOX,
+                            title = "TV Box",
+                            detail = "Remote / D-pad · Landscape",
+                        ),
+                    )
+
+                    if (isWideLayout) {
+                        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                            choices.chunked(2).forEachIndexed { rowIndex, rowChoices ->
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                ) {
+                                    rowChoices.forEachIndexed { choiceIndex, choice ->
+                                        DeviceProfileChoiceButton(
+                                            choice = choice,
+                                            focusRequester = if (rowIndex == 0 && choiceIndex == 0) {
+                                                smartphoneFocusRequester
+                                            } else {
+                                                null
+                                            },
+                                            modifier = Modifier.weight(1f),
+                                            onClick = {
+                                                if (choice.profile == AppDeviceProfile.SMARTPHONE) {
+                                                    selectedProfile = AppDeviceProfile.SMARTPHONE
+                                                } else {
+                                                    onConfigured(choice.profile, null)
+                                                }
+                                            },
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    } else {
+                        Column(
                             modifier = Modifier.fillMaxWidth(),
-                            onClick = { onOrientationSelected(AppOrientationMode.PORTRAIT) },
-                        )
-                        OrientationChoiceButton(
-                            title = "Landscape",
-                            detail = "TVs, tablets and wide displays",
-                            focusRequester = landscapeFocusRequester,
-                            modifier = Modifier.fillMaxWidth(),
-                            onClick = { onOrientationSelected(AppOrientationMode.LANDSCAPE) },
-                        )
+                            verticalArrangement = Arrangement.spacedBy(10.dp),
+                        ) {
+                            choices.forEachIndexed { index, choice ->
+                                DeviceProfileChoiceButton(
+                                    choice = choice,
+                                    focusRequester = if (index == 0) smartphoneFocusRequester else null,
+                                    modifier = Modifier.fillMaxWidth(),
+                                    onClick = {
+                                        if (choice.profile == AppDeviceProfile.SMARTPHONE) {
+                                            selectedProfile = AppDeviceProfile.SMARTPHONE
+                                        } else {
+                                            onConfigured(choice.profile, null)
+                                        }
+                                    },
+                                )
+                            }
+                        }
                     }
                 }
             }
@@ -155,10 +192,84 @@ internal fun OrientationSetupScreen(
 }
 
 @Composable
-private fun OrientationChoiceButton(
+private fun SmartphoneOrientationStep(
+    portraitFocusRequester: FocusRequester,
+    onBack: () -> Unit,
+    onSelected: (AppOrientationMode) -> Unit,
+) {
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(18.dp),
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            Text(
+                text = "Smartphone orientation",
+                style = MaterialTheme.typography.headlineSmall,
+                fontWeight = FontWeight.Bold,
+                textAlign = TextAlign.Center,
+            )
+            Text(
+                text = "Smartphone is the only profile that can use Portrait or Landscape.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center,
+            )
+        }
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            SetupChoiceButton(
+                title = "Portrait",
+                detail = "Vertical phone layout",
+                focusRequester = portraitFocusRequester,
+                modifier = Modifier.weight(1f),
+                onClick = { onSelected(AppOrientationMode.PORTRAIT) },
+            )
+            SetupChoiceButton(
+                title = "Landscape",
+                detail = "Wide phone layout",
+                focusRequester = null,
+                modifier = Modifier.weight(1f),
+                onClick = { onSelected(AppOrientationMode.LANDSCAPE) },
+            )
+        }
+        TextButton(onClick = onBack) {
+            Text("‹ Device type")
+        }
+    }
+}
+
+private data class DeviceProfileChoice(
+    val profile: AppDeviceProfile,
+    val title: String,
+    val detail: String,
+)
+
+@Composable
+private fun DeviceProfileChoiceButton(
+    choice: DeviceProfileChoice,
+    focusRequester: FocusRequester?,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit,
+) {
+    SetupChoiceButton(
+        title = choice.title,
+        detail = choice.detail,
+        focusRequester = focusRequester,
+        modifier = modifier,
+        onClick = onClick,
+    )
+}
+
+@Composable
+private fun SetupChoiceButton(
     title: String,
     detail: String,
-    focusRequester: FocusRequester,
+    focusRequester: FocusRequester?,
     modifier: Modifier = Modifier,
     onClick: () -> Unit,
 ) {
@@ -169,7 +280,7 @@ private fun OrientationChoiceButton(
     )
     OutlinedButton(
         modifier = modifier
-            .focusRequester(focusRequester)
+            .then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier)
             .onFocusChanged { focused = it.isFocused }
             .graphicsLayer {
                 val focusedScale = if (focused) 1.04f else 1f
