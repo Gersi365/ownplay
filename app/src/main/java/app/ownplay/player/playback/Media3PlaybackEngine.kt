@@ -55,6 +55,7 @@ class Media3PlaybackEngine(
             object : Player.Listener {
                 override fun onPlaybackStateChanged(playbackState: Int) {
                     when (playbackState) {
+                        Player.STATE_BUFFERING -> listener?.onBuffering()
                         Player.STATE_READY -> listener?.onReady()
                         Player.STATE_ENDED -> listener?.onEnded()
                     }
@@ -137,6 +138,9 @@ class Media3PlaybackEngine(
     override fun play() {
         runOnPlayerThread {
             player.play()
+            if (player.playbackState == Player.STATE_BUFFERING) {
+                listener?.onBuffering()
+            }
         }
     }
 
@@ -373,7 +377,7 @@ class Media3PlaybackEngine(
             audioMimeType = safeDiagnosticValue(audio?.sampleMimeType),
             audioCodecs = safeDiagnosticValue(audio?.codecs),
             audioSampleRate = audio?.sampleRate?.positiveOrNull(),
-            audioChannelCount = audio?.channelCount?.positiveOrNull(),
+            audioChannelCount = audio?.channelCount.positiveOrNull(),
             audioLanguage = safeDiagnosticValue(audio?.language),
         )
     }
@@ -442,6 +446,7 @@ class Media3PlaybackEngine(
         trackHandlesById.clear()
         mutableTrackState.value = PlaybackTrackSelectionPolicy.resetForNewMedia()
     }
+
     private fun runOnPlayerThread(action: () -> Unit) {
         if (Looper.myLooper() == player.applicationLooper) {
             action()
