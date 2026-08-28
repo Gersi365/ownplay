@@ -62,6 +62,7 @@ import app.ownplay.player.persistence.download.DownloadMediaKinds
 import app.ownplay.player.persistence.download.DownloadStates
 import app.ownplay.player.playback.PlaybackInteractionBridge
 import app.ownplay.player.playback.PlaybackMediaKind
+import app.ownplay.player.playback.PlaybackPresentationPolicy
 import app.ownplay.player.playback.PlaybackRequest
 import app.ownplay.player.playback.PlaybackState
 import app.ownplay.player.series.SeriesCatalog
@@ -72,6 +73,7 @@ import app.ownplay.player.series.SeriesSeason
 import app.ownplay.player.series.SeriesSummary
 import app.ownplay.player.source.SourceError
 import app.ownplay.player.source.SourceResult
+import app.ownplay.player.ui.playbackStatusLabel
 import app.ownplay.player.ui.vod.RemotePoster
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
@@ -1095,9 +1097,14 @@ private fun SeriesPlaybackScreen(
     onFullscreenStateChanged: (Boolean) -> Unit,
 ) {
     val playbackState by runtime.playbackController.state.collectAsState()
+    val playbackControls = PlaybackPresentationPolicy.controlsFor(playbackState)
+    val configuration = LocalConfiguration.current
+    val isTelevision =
+        configuration.uiMode and Configuration.UI_MODE_TYPE_MASK == Configuration.UI_MODE_TYPE_TELEVISION
     val scope = rememberCoroutineScope()
     var playerView by remember { mutableStateOf<PlayerView?>(null) }
     val backOwner = remember(episode.episodeId) { Any() }
+    val backFocusRequester = remember(episode.episodeId) { FocusRequester() }
 
     fun exitPlayback() {
         val view = playerView
@@ -1124,6 +1131,18 @@ private fun SeriesPlaybackScreen(
             PlaybackInteractionBridge.clearBackAction(backOwner)
             onFullscreenStateChanged(false)
         }
+    }
+
+    LaunchedEffect(isTelevision, playbackState, playerView, episode.episodeId) {
+        if (!isTelevision) return@LaunchedEffect
+        if (playbackState is PlaybackState.Failed) {
+            backFocusRequester.requestFocus()
+            return@LaunchedEffect
+        }
+        val view = playerView ?: return@LaunchedEffect
+        view.isFocusable = true
+        view.showController()
+        view.requestFocus()
     }
 
     LaunchedEffect(playerView, episode.episodeId) {
@@ -1161,7 +1180,10 @@ private fun SeriesPlaybackScreen(
                     style = MaterialTheme.typography.bodySmall,
                 )
             }
-            TextButton(onClick = ::exitPlayback) { Text("Back") }
+            TextButton(
+                modifier = Modifier.focusRequester(backFocusRequester),
+                onClick = ::exitPlayback,
+            ) { Text("Back") }
         }
         Box(
             modifier = Modifier
@@ -1197,6 +1219,26 @@ private fun SeriesPlaybackScreen(
             )
             if (playbackState is PlaybackState.Loading) {
                 CircularProgressIndicator()
+            }
+            val failedState = playbackState as? PlaybackState.Failed
+            if (failedState != null) {
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    tonalElevation = 6.dp,
+                ) {
+                    Column(
+                        modifier = Modifier.padding(16.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        Text(playbackStatusLabel(failedState))
+                        if (playbackControls.canRetry) {
+                            TextButton(onClick = runtime.playbackController::retry) {
+                                Text("Retry")
+                            }
+                        }
+                    }
+                }
             }
         }
     }
