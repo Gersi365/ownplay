@@ -17,6 +17,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
+import app.ownplay.player.source.SourceValidator
+import app.ownplay.player.source.UrlValidationResult
 import app.ownplay.player.source.network.SourceHttpClient
 import app.ownplay.player.source.network.awaitResponse
 import java.io.ByteArrayOutputStream
@@ -41,7 +43,7 @@ internal fun RemotePoster(
     title: String,
     modifier: Modifier = Modifier,
 ) {
-    val normalizedUrl = url?.trim()?.takeIf(String::isNotBlank)
+    val normalizedUrl = normalizedRemotePosterUrl(url)
     val cachedPoster = normalizedUrl?.let(posterMemoryCache::get)
     val image by produceState<ImageBitmap?>(
         initialValue = cachedPoster,
@@ -94,6 +96,14 @@ internal fun RemotePoster(
             style = MaterialTheme.typography.headlineMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
+    }
+}
+
+internal fun normalizedRemotePosterUrl(url: String?): String? {
+    val candidate = url?.trim()?.takeIf(String::isNotBlank) ?: return null
+    return when (val validation = SourceValidator.validateRemotePlaylistUrl(candidate)) {
+        is UrlValidationResult.Valid -> validation.normalizedUrl
+        is UrlValidationResult.Invalid -> null
     }
 }
 
