@@ -1,6 +1,7 @@
 package app.ownplay.player.source.network
 
 import java.io.IOException
+import kotlin.coroutines.resumeWithException
 import kotlinx.coroutines.suspendCancellableCoroutine
 import okhttp3.Call
 import okhttp3.Callback
@@ -13,15 +14,12 @@ internal suspend fun Call.awaitResponse(): Response = suspendCancellableCoroutin
     enqueue(
         object : Callback {
             override fun onFailure(call: Call, error: IOException) {
-                continuation.tryResumeWithException(error)?.let(continuation::completeResume)
+                continuation.resumeWithException(error)
             }
 
             override fun onResponse(call: Call, response: Response) {
-                val token = continuation.tryResume(response)
-                if (token == null) {
-                    response.close()
-                } else {
-                    continuation.completeResume(token)
+                continuation.resume(response) { _, resource, _ ->
+                    resource.close()
                 }
             }
         },
