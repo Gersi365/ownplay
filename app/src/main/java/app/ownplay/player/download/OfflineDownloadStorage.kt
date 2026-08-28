@@ -17,12 +17,12 @@ import java.util.Locale
 
 internal object OfflineDownloadStorage {
     private const val PRIVATE_DIRECTORY = "offline"
-    private const val CONTENT_URI_PREFIX = "content://"
+    private const val MEDIASTORE_URI_PREFIX = "content://media/"
 
     fun supportsPublicDownloads(): Boolean = Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q
 
     fun isPublicDownloadsLocation(location: String?): Boolean =
-        location?.startsWith(CONTENT_URI_PREFIX) == true
+        location?.startsWith(MEDIASTORE_URI_PREFIX) == true
 
     fun usableSpaceBytes(
         context: Context,
