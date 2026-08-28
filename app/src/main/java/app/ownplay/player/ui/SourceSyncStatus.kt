@@ -13,16 +13,20 @@ internal fun sourceSyncStatus(state: SourceSyncState): String? = when (state.sta
     SourceSyncStage.ChannelsFailed -> {
         val cause = sourceSyncFailureMessage(state.failure)
         if (state.channelCount > 0) {
-            "Channel refresh failed. $cause Existing channels were kept."
+            listOfNotNull(
+                "Channel refresh failed.",
+                cause,
+                "Existing channels were kept.",
+            ).joinToString(" ")
         } else {
-            "Could not load channels. $cause"
+            listOfNotNull("Could not load channels.", cause).joinToString(" ")
         }
     }
     SourceSyncStage.EpgFailed -> "Channels are ready. EPG refresh failed."
 }
 
-private fun sourceSyncFailureMessage(failure: SourceSyncFailure?): String = when (failure) {
-    null -> ""
+private fun sourceSyncFailureMessage(failure: SourceSyncFailure?): String? = when (failure) {
+    null -> null
     is SourceSyncFailure.Source -> sourceErrorMessage(failure.error)
     SourceSyncFailure.InvalidInput -> "Check the playlist details."
     SourceSyncFailure.SecureStorage -> "Secure storage failed."
