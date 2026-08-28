@@ -62,7 +62,12 @@ class SourceManagementService(
     private val xtreamClient: XtreamClient = XtreamClient(),
 ) {
     suspend fun load(sourceId: String): SourceEditSnapshot? = withContext(Dispatchers.IO) {
-        val source = database.playlistSourceDao().getById(sourceId) ?: return@withContext null
+        val source = try {
+            database.playlistSourceDao().getById(sourceId)
+        } catch (error: Exception) {
+            error.rethrowCancellation()
+            null
+        } ?: return@withContext null
         val locatorValue = try {
             sensitiveValueStore.get(SensitiveValueRef(source.locatorRef))
         } catch (error: Exception) {
@@ -122,8 +127,12 @@ class SourceManagementService(
         if (normalizedName.isEmpty()) {
             return@withContext SourceMutationResult.Failure(SourceMutationFailure.InvalidName)
         }
-        val source = database.playlistSourceDao().getById(sourceId)
-            ?: return@withContext SourceMutationResult.Failure(SourceMutationFailure.NotFound)
+        val source = try {
+            database.playlistSourceDao().getById(sourceId)
+        } catch (error: Exception) {
+            error.rethrowCancellation()
+            return@withContext SourceMutationResult.Failure(SourceMutationFailure.PersistenceFailure)
+        } ?: return@withContext SourceMutationResult.Failure(SourceMutationFailure.NotFound)
         try {
             database.playlistSourceDao().upsert(
                 source.copy(
@@ -151,8 +160,12 @@ class SourceManagementService(
             return@withContext SourceMutationResult.Failure(SourceMutationFailure.InvalidName)
         }
 
-        val source = database.playlistSourceDao().getById(sourceId)
-            ?: return@withContext SourceMutationResult.Failure(SourceMutationFailure.NotFound)
+        val source = try {
+            database.playlistSourceDao().getById(sourceId)
+        } catch (error: Exception) {
+            error.rethrowCancellation()
+            return@withContext SourceMutationResult.Failure(SourceMutationFailure.PersistenceFailure)
+        } ?: return@withContext SourceMutationResult.Failure(SourceMutationFailure.NotFound)
         if (source.sourceKind != SourceKinds.XTREAM) {
             return@withContext SourceMutationResult.Failure(SourceMutationFailure.UnsupportedEdit)
         }
@@ -276,8 +289,12 @@ class SourceManagementService(
     }
 
     suspend fun delete(sourceId: String): SourceMutationResult = withContext(Dispatchers.IO) {
-        val source = database.playlistSourceDao().getById(sourceId)
-            ?: return@withContext SourceMutationResult.Failure(SourceMutationFailure.NotFound)
+        val source = try {
+            database.playlistSourceDao().getById(sourceId)
+        } catch (error: Exception) {
+            error.rethrowCancellation()
+            return@withContext SourceMutationResult.Failure(SourceMutationFailure.PersistenceFailure)
+        } ?: return@withContext SourceMutationResult.Failure(SourceMutationFailure.NotFound)
 
         val channels = runCatching {
             database.providerCatalogDao().channelsForSource(sourceId)
