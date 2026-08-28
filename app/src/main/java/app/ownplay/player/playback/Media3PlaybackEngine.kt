@@ -20,6 +20,7 @@ import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.analytics.AnalyticsListener
 import androidx.media3.exoplayer.source.MediaLoadData
 import androidx.media3.ui.PlayerView
+import java.util.Locale
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -472,7 +473,7 @@ private fun safeDiagnosticValue(raw: String?): String? {
         ?.take(120)
         ?.takeIf(String::isNotBlank)
         ?: return null
-    val lower = normalized.lowercase()
+    val lower = normalized.lowercase(Locale.ROOT)
     val sensitiveMarker = listOf(
         "://",
         "password=",
@@ -530,13 +531,15 @@ internal object Media3PlaybackFailureMapper {
             PlaybackException.ERROR_CODE_IO_CLEARTEXT_NOT_PERMITTED,
             PlaybackException.ERROR_CODE_PARSING_CONTAINER_UNSUPPORTED,
             PlaybackException.ERROR_CODE_PARSING_MANIFEST_UNSUPPORTED,
+            PlaybackException.ERROR_CODE_DECODER_INIT_FAILED,
+            PlaybackException.ERROR_CODE_DECODER_QUERY_FAILED,
+            PlaybackException.ERROR_CODE_DECODING_FAILED,
             PlaybackException.ERROR_CODE_DECODING_FORMAT_EXCEEDS_CAPABILITIES,
             PlaybackException.ERROR_CODE_DECODING_FORMAT_UNSUPPORTED,
             -> PlaybackFailureCategory.UNSUPPORTED_MEDIA
 
             PlaybackException.ERROR_CODE_PARSING_CONTAINER_MALFORMED,
             PlaybackException.ERROR_CODE_PARSING_MANIFEST_MALFORMED,
-            PlaybackException.ERROR_CODE_DECODING_FAILED,
             -> PlaybackFailureCategory.STREAM_UNAVAILABLE
 
             else -> PlaybackFailureCategory.UNKNOWN
