@@ -5,7 +5,6 @@ on:
   push:
     branches:
       - main
-      - agent/source-improvements-no-apk
 
 permissions:
   contents: read
