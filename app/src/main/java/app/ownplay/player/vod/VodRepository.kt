@@ -11,6 +11,7 @@ import app.ownplay.player.persistence.vod.PlaybackProgressEntity
 import app.ownplay.player.persistence.vod.ProviderMovieEntity
 import app.ownplay.player.persistence.vod.ProviderVodCategoryEntity
 import app.ownplay.player.persistence.vod.VodMovieRow
+import app.ownplay.player.playback.MediaDuration
 import app.ownplay.player.playback.PlaybackProgressPolicy
 import app.ownplay.player.source.CredentialRef
 import app.ownplay.player.source.SourceError
@@ -203,7 +204,7 @@ class VodRepository(
             addedAtEpochSeconds = entity.addedAtEpochSeconds,
             isFavorite = false,
             positionMs = null,
-            durationMs = info.durationSeconds?.times(1_000L),
+            durationMs = MediaDuration.secondsToMillis(info.durationSeconds),
             progressCompleted = false,
             progressUpdatedAtEpochMillis = null,
         )
