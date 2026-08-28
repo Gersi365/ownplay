@@ -50,17 +50,18 @@ internal fun OrientationSetupLoadingSurface() {
 
 @Composable
 internal fun DeviceProfileSetupScreen(
+    preferredProfile: AppDeviceProfile = AppDeviceProfile.SMARTPHONE,
     onConfigured: (profile: AppDeviceProfile, smartphoneOrientation: AppOrientationMode?) -> Unit,
 ) {
     var selectedProfile by remember { mutableStateOf<AppDeviceProfile?>(null) }
-    val smartphoneFocusRequester = remember { FocusRequester() }
+    val initialFocusRequester = remember { FocusRequester() }
     val portraitFocusRequester = remember { FocusRequester() }
 
-    LaunchedEffect(selectedProfile) {
+    LaunchedEffect(selectedProfile, preferredProfile) {
         if (selectedProfile == AppDeviceProfile.SMARTPHONE) {
             portraitFocusRequester.requestFocus()
         } else if (selectedProfile == null) {
-            smartphoneFocusRequester.requestFocus()
+            initialFocusRequester.requestFocus()
         }
     }
 
@@ -94,13 +95,13 @@ internal fun DeviceProfileSetupScreen(
                         verticalArrangement = Arrangement.spacedBy(6.dp),
                     ) {
                         Text(
-                            text = "Choose this device",
+                            text = "Set up OwnPlay",
                             style = MaterialTheme.typography.headlineSmall,
                             fontWeight = FontWeight.Bold,
                             textAlign = TextAlign.Center,
                         )
                         Text(
-                            text = "This controls OwnPlay input and layout. You can change it later in Settings → Interface.",
+                            text = "Choose how you will use this device. You can change it later in Settings → Interface.",
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             textAlign = TextAlign.Center,
@@ -126,7 +127,7 @@ internal fun DeviceProfileSetupScreen(
                         ),
                         DeviceProfileChoice(
                             profile = AppDeviceProfile.ANDROID_TV,
-                            title = "Android TV",
+                            title = "Android TV / Google TV",
                             detail = "Remote / D-pad · Landscape",
                         ),
                         DeviceProfileChoice(
@@ -138,16 +139,16 @@ internal fun DeviceProfileSetupScreen(
 
                     if (isWideLayout) {
                         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                            choices.chunked(2).forEachIndexed { rowIndex, rowChoices ->
+                            choices.chunked(2).forEach { rowChoices ->
                                 Row(
                                     modifier = Modifier.fillMaxWidth(),
                                     horizontalArrangement = Arrangement.spacedBy(12.dp),
                                 ) {
-                                    rowChoices.forEachIndexed { choiceIndex, choice ->
+                                    rowChoices.forEach { choice ->
                                         DeviceProfileChoiceButton(
                                             choice = choice,
-                                            focusRequester = if (rowIndex == 0 && choiceIndex == 0) {
-                                                smartphoneFocusRequester
+                                            focusRequester = if (choice.profile == preferredProfile) {
+                                                initialFocusRequester
                                             } else {
                                                 null
                                             },
@@ -169,10 +170,14 @@ internal fun DeviceProfileSetupScreen(
                             modifier = Modifier.fillMaxWidth(),
                             verticalArrangement = Arrangement.spacedBy(10.dp),
                         ) {
-                            choices.forEachIndexed { index, choice ->
+                            choices.forEach { choice ->
                                 DeviceProfileChoiceButton(
                                     choice = choice,
-                                    focusRequester = if (index == 0) smartphoneFocusRequester else null,
+                                    focusRequester = if (choice.profile == preferredProfile) {
+                                        initialFocusRequester
+                                    } else {
+                                        null
+                                    },
                                     modifier = Modifier.fillMaxWidth(),
                                     onClick = {
                                         if (choice.profile == AppDeviceProfile.SMARTPHONE) {
