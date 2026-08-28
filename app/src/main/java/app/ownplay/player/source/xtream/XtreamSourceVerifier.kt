@@ -5,6 +5,7 @@ import app.ownplay.player.source.SourceError
 import app.ownplay.player.source.SourceResult
 import app.ownplay.player.source.credential.CredentialStore
 import java.security.GeneralSecurityException
+import kotlinx.coroutines.CancellationException
 
 class XtreamSourceVerifier(
     private val credentialStore: CredentialStore,
@@ -13,6 +14,8 @@ class XtreamSourceVerifier(
     suspend fun validate(source: PlaylistSource.Xtream): SourceResult<XtreamAccountInfo> {
         val credentials = try {
             credentialStore.get(source.credentialRef)
+        } catch (cancelled: CancellationException) {
+            throw cancelled
         } catch (_: GeneralSecurityException) {
             null
         } catch (_: IllegalArgumentException) {
