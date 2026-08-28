@@ -15,6 +15,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.unit.dp
 import app.ownplay.player.persistence.PlaylistSourceSummary
+import java.text.DateFormat
+import java.util.Date
 
 @Composable
 internal fun ContentSettingsContent(
@@ -34,6 +36,11 @@ internal fun ContentSettingsContent(
         detail = "${summaries.size} configured · sources & refresh",
         actionLabel = "Manage",
         onClick = onOpenPlaylists,
+    )
+    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+    SettingValueRow(
+        label = "Last Live refresh",
+        value = latestLiveRefreshLabel(summaries),
     )
     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
     BackupRestoreSettingsContent()
@@ -101,4 +108,12 @@ internal fun AboutSettingsContent() {
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
+}
+
+private fun latestLiveRefreshLabel(summaries: List<PlaylistSourceSummary>): String {
+    val timestamp = summaries.mapNotNull(PlaylistSourceSummary::lastLiveRefreshAtEpochMillis).maxOrNull()
+        ?: return "Not refreshed yet"
+    return DateFormat
+        .getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT)
+        .format(Date(timestamp))
 }
