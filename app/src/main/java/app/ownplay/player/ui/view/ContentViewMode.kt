@@ -5,9 +5,11 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowDropDown
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -124,6 +126,7 @@ internal fun ContentViewModeMenu(
                     }
                     append(mode.label)
                 },
+                style = MaterialTheme.typography.labelLarge,
             )
             Icon(
                 imageVector = Icons.Filled.ArrowDropDown,
@@ -137,10 +140,16 @@ internal fun ContentViewModeMenu(
         ) {
             ContentViewMode.entries.forEach { option ->
                 DropdownMenuItem(
-                    text = {
-                        Text(
-                            if (option == mode) "${option.label} ✓" else option.label,
-                        )
+                    text = { Text(option.label) },
+                    leadingIcon = if (option == mode) {
+                        {
+                            Icon(
+                                imageVector = Icons.Filled.Check,
+                                contentDescription = null,
+                            )
+                        }
+                    } else {
+                        null
                     },
                     onClick = {
                         expanded = false
