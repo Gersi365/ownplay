@@ -5,7 +5,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Cloud
-import androidx.compose.material.icons.filled.CloudOff
+import androidx.compose.material.icons.filled.DownloadDone
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -23,6 +23,7 @@ internal fun PlaybackOriginBadge(
     modifier: Modifier = Modifier,
 ) {
     val offline = origin == ResolvedPlaybackOrigin.LOCAL_DOWNLOAD
+    val label = if (offline) "OFFLINE FILE" else "STREAMING"
     Surface(
         modifier = modifier,
         shape = RoundedCornerShape(999.dp),
@@ -38,12 +39,12 @@ internal fun PlaybackOriginBadge(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Icon(
-                imageVector = if (offline) Icons.Filled.CloudOff else Icons.Filled.Cloud,
-                contentDescription = null,
+                imageVector = if (offline) Icons.Filled.DownloadDone else Icons.Filled.Cloud,
+                contentDescription = if (offline) "Playing offline file" else "Streaming online",
                 modifier = Modifier.padding(end = 5.dp),
             )
             Text(
-                text = if (offline) "OFFLINE" else "ONLINE",
+                text = label,
                 style = MaterialTheme.typography.labelMedium,
                 fontWeight = FontWeight.Bold,
             )
