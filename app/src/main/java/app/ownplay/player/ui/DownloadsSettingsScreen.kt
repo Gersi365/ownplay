@@ -70,6 +70,10 @@ internal fun DownloadsSettingsScreen(
     val downloads by runtime.observeAll().collectAsState(initial = emptyList())
     val scope = rememberCoroutineScope()
 
+    LaunchedEffect(runtime) {
+        runtime.reconcileCompletedFiles()
+    }
+
     LaunchedEffect(isTelevision, focusBackOnEntry) {
         if (isTelevision && focusBackOnEntry && onBack != null) {
             backFocusRequester.requestFocus()
