@@ -11,6 +11,8 @@ import java.net.ConnectException
 import java.net.NoRouteToHostException
 import java.net.SocketTimeoutException
 import java.net.UnknownHostException
+import java.nio.ByteBuffer
+import java.nio.charset.CodingErrorAction
 import java.nio.charset.StandardCharsets
 import java.util.Base64
 import javax.net.ssl.SSLException
@@ -424,7 +426,14 @@ class XtreamClient(
         val padded = trimmed + "=".repeat((4 - trimmed.length % 4) % 4)
         val decoded = runCatching { Base64.getDecoder().decode(padded) }.getOrNull()
             ?: return trimmed
-        val candidate = String(decoded, StandardCharsets.UTF_8).trim()
+        val candidate = runCatching {
+            StandardCharsets.UTF_8.newDecoder()
+                .onMalformedInput(CodingErrorAction.REPORT)
+                .onUnmappableCharacter(CodingErrorAction.REPORT)
+                .decode(ByteBuffer.wrap(decoded))
+                .toString()
+                .trim()
+        }.getOrNull() ?: return trimmed
         if (candidate.isEmpty()) return trimmed
         val printable = candidate.all { char ->
             char == '\n' || char == '\r' || char == '\t' || !char.isISOControl()
