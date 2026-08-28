@@ -18,8 +18,10 @@ import app.ownplay.player.playback.ResolvedPlaybackLocator
 import app.ownplay.player.playback.ResolvedPlaybackOrigin
 import java.io.File
 import java.util.UUID
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.withContext
 
 data class OfflineDownloadSpec(
     val sourceId: String,
@@ -251,8 +253,10 @@ class OfflineDownloadRepository(
                 restartWorkOnFailure = shouldRestartAfterSourceRemovalFailure(row.state),
             )
         }
-        items.forEach { item ->
-            workManager.cancelUniqueWork(workName(item.downloadId)).await()
+        withContext(NonCancellable) {
+            items.forEach { item ->
+                workManager.cancelUniqueWork(workName(item.downloadId)).await()
+            }
         }
         return OfflineSourceRemovalSnapshot(items)
     }
