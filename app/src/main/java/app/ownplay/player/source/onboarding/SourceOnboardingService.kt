@@ -349,14 +349,21 @@ class SourceOnboardingService(
                         }
                     }
             }.getOrDefault(emptyList())
-            runCatching { database.playlistSourceDao().deleteById(sourceId) }
-            runCatching {
-                sensitiveValueStore.deleteAll(
-                    buildSet {
-                        add(locatorRef)
-                        addAll(catalogRefs)
-                    },
-                )
+
+            val sourceRemoved = runCatching {
+                val deletedCount = database.playlistSourceDao().deleteById(sourceId)
+                deletedCount > 0 || database.playlistSourceDao().getById(sourceId) == null
+            }.getOrDefault(false)
+
+            if (sourceRemoved) {
+                runCatching {
+                    sensitiveValueStore.deleteAll(
+                        buildSet {
+                            add(locatorRef)
+                            addAll(catalogRefs)
+                        },
+                    )
+                }
             }
         }
     }
