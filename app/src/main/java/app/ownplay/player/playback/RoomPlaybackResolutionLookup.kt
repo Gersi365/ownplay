@@ -15,6 +15,8 @@ class RoomPlaybackResolutionLookup(
                 sourceId = source.sourceId,
                 sourceKind = when (source.sourceKind) {
                     SourceKinds.XTREAM -> PlaybackResolutionSourceKind.XTREAM
+                    SourceKinds.REMOTE_M3U -> PlaybackResolutionSourceKind.REMOTE_M3U
+                    SourceKinds.LOCAL_M3U -> PlaybackResolutionSourceKind.LOCAL_M3U
                     else -> PlaybackResolutionSourceKind.OTHER
                 },
                 locatorRef = source.locatorRef,
