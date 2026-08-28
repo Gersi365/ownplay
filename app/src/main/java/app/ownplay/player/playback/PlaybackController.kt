@@ -32,6 +32,7 @@ interface PlaybackEngine {
     fun pause()
     fun currentPositionMs(): Long? = null
     fun seekTo(positionMs: Long) = Unit
+    fun suspendPlayback() = stop()
     fun stop()
     fun release()
 }
@@ -217,7 +218,7 @@ class PlaybackController(
             bufferingTimeoutJob = null
             retryJob?.cancel()
             retryJob = null
-            engine.stop()
+            engine.suspendPlayback()
             desiredPlayWhenReady = false
             mutableState.value = PlaybackState.Paused(request)
         }
@@ -235,6 +236,7 @@ class PlaybackController(
                 resetRetryBudget = false,
                 playWhenReady = playWhenReady,
                 initialPositionMs = positionMs,
+                stopEngineBeforeStart = false,
             )
         }
     }
@@ -310,6 +312,7 @@ class PlaybackController(
         resetRetryBudget: Boolean,
         playWhenReady: Boolean = true,
         initialPositionMs: Long? = null,
+        stopEngineBeforeStart: Boolean = true,
     ) {
         generation += 1
         val requestGeneration = generation
@@ -323,7 +326,9 @@ class PlaybackController(
         preparedGeneration = null
         currentPlaybackUsesNetwork = null
         mutableResolvedOrigin.value = null
-        engine.stop()
+        if (stopEngineBeforeStart) {
+            engine.stop()
+        }
 
         if (resetRetryBudget) {
             automaticRetryAttempt = 0
