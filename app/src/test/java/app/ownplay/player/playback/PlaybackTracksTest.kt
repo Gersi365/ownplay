@@ -98,6 +98,31 @@ class PlaybackTracksTest {
     }
 
     @Test
+    fun playerFailureResetKeepsDiagnosticsButDropsEphemeralTrackState() {
+        val diagnostics = PlaybackDiagnostics(
+            videoMimeType = "video/avc",
+            videoDecoder = "c2.vendor.decoder",
+            videoWidth = 1920,
+            videoHeight = 1080,
+        )
+        val selected = PlaybackTrackState(
+            audioTracks = listOf(audio),
+            subtitleTracks = listOf(subtitle),
+            audioSelection = PlaybackAudioSelection.Specific(audio.id),
+            subtitleSelection = PlaybackSubtitleSelection.Off,
+            diagnostics = diagnostics,
+        )
+
+        val reset = PlaybackTrackSelectionPolicy.resetAfterPlayerFailure(selected)
+
+        assertTrue(reset.audioTracks.isEmpty())
+        assertTrue(reset.subtitleTracks.isEmpty())
+        assertEquals(PlaybackAudioSelection.Default, reset.audioSelection)
+        assertEquals(PlaybackSubtitleSelection.Default, reset.subtitleSelection)
+        assertEquals(diagnostics, reset.diagnostics)
+    }
+
+    @Test
     fun trackRefreshDropsSpecificSelectionWhenItsHandleDisappears() {
         val selected = PlaybackTrackState(
             audioTracks = listOf(audio),
