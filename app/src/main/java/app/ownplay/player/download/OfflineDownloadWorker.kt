@@ -110,18 +110,27 @@ class OfflineDownloadWorker(
             val response = httpClient.newCall(requestBuilder.build()).execute()
             response.use { opened ->
                 if (!opened.isSuccessful) {
-                    markFailed(
-                        dao = dao,
-                        row = initialRow,
-                        reason = "Provider returned HTTP ${opened.code}",
-                        bytesDownloaded = existingBytes,
-                        localLocation = destinationLocation,
+                    val retry = shouldRetryDownload(
+                        runAttemptCount = runAttemptCount,
+                        retryableFailure = isRetryableDownloadHttpStatus(opened.code),
                     )
-                    return if (isRetryableDownloadHttpStatus(opened.code)) {
-                        Result.retry()
+                    if (retry) {
+                        markRetryQueued(
+                            dao = dao,
+                            row = initialRow,
+                            bytesDownloaded = existingBytes,
+                            localLocation = destinationLocation,
+                        )
                     } else {
-                        Result.failure()
+                        markFailed(
+                            dao = dao,
+                            row = initialRow,
+                            reason = "Provider returned HTTP ${opened.code}",
+                            bytesDownloaded = existingBytes,
+                            localLocation = destinationLocation,
+                        )
                     }
+                    return if (retry) Result.retry() else Result.failure()
                 }
                 val body = opened.body
                 val append = existingBytes > 0L && opened.code == 206
@@ -256,16 +265,29 @@ class OfflineDownloadWorker(
             throw cancelled
         } catch (_: Exception) {
             val row = dao.getById(downloadId)
+            val retry = shouldRetryDownload(
+                runAttemptCount = runAttemptCount,
+                retryableFailure = true,
+            )
             if (row != null) {
-                markFailed(
-                    dao = dao,
-                    row = row,
-                    reason = "Download interrupted",
-                    bytesDownloaded = currentTransferBytes(row),
-                    localLocation = row.localRelativePath,
-                )
+                if (retry) {
+                    markRetryQueued(
+                        dao = dao,
+                        row = row,
+                        bytesDownloaded = currentTransferBytes(row),
+                        localLocation = row.localRelativePath,
+                    )
+                } else {
+                    markFailed(
+                        dao = dao,
+                        row = row,
+                        reason = "Download interrupted",
+                        bytesDownloaded = currentTransferBytes(row),
+                        localLocation = row.localRelativePath,
+                    )
+                }
             }
-            return Result.retry()
+            return if (retry) Result.retry() else Result.failure()
         } finally {
             database.close()
         }
@@ -280,6 +302,24 @@ class OfflineDownloadWorker(
             .takeIf(File::isFile)
             ?.length()
             ?: row.bytesDownloaded
+    }
+
+    private suspend fun markRetryQueued(
+        dao: MediaDownloadDao,
+        row: MediaDownloadEntity,
+        bytesDownloaded: Long = row.bytesDownloaded,
+        totalBytes: Long? = row.totalBytes,
+        localLocation: String? = row.localRelativePath,
+    ) {
+        dao.updateTransfer(
+            downloadId = row.downloadId,
+            state = DownloadStates.QUEUED,
+            bytesDownloaded = bytesDownloaded,
+            totalBytes = totalBytes,
+            localRelativePath = localLocation,
+            failureReason = null,
+            updatedAtEpochMillis = System.currentTimeMillis(),
+        )
     }
 
     private suspend fun markFailed(
