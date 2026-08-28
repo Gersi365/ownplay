@@ -17,7 +17,7 @@ internal class TvRemoteActionGuard {
         actionId: Int = 0,
         kind: TvRemoteActionKind = TvRemoteActionKind.STANDARD,
     ): Boolean {
-        if (nowMillis < globallyBlockedUntilMillis) return false
+        if (isGloballyBlocked(nowMillis)) return false
         if (kind == TvRemoteActionKind.TRANSITION) {
             globallyBlockedUntilMillis = saturatedAdd(nowMillis, kind.cooldownMillis)
             return true
@@ -39,6 +39,9 @@ internal class TvRemoteActionGuard {
             saturatedAdd(nowMillis, kind.cooldownMillis),
         )
     }
+
+    @Synchronized
+    fun isGloballyBlocked(nowMillis: Long): Boolean = nowMillis < globallyBlockedUntilMillis
 
     private fun saturatedAdd(value: Long, increment: Long): Long =
         if (value > Long.MAX_VALUE - increment) Long.MAX_VALUE else value + increment
