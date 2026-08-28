@@ -122,7 +122,7 @@ object PlaybackLocatorDescriptor {
     fun directUrl(url: String): String = "$PREFIX|direct|$url"
 
     fun xtreamLive(streamId: Int): String {
-        require(streamId >= 0) { "Xtream stream ID must not be negative" }
+        require(streamId > 0) { "Xtream stream ID must be positive" }
         return "$PREFIX|xtream-live|$streamId"
     }
 }
