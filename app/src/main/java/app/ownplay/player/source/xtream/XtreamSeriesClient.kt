@@ -49,12 +49,13 @@ class XtreamSeriesClient(
         return SourceResult.Success(
             array.mapNotNull { element ->
                 val item = element as? JsonObject ?: return@mapNotNull null
-                val id = item.text("category_id") ?: return@mapNotNull null
+                val id = item.text("category_id")?.takeIf(String::isNotBlank)
+                    ?: return@mapNotNull null
                 val name = item.text("category_name") ?: return@mapNotNull null
                 XtreamCategory(
                     id = id,
                     name = name,
-                    parentId = item.text("parent_id"),
+                    parentId = item.text("parent_id")?.takeIf(String::isNotBlank),
                 )
             },
         )
@@ -86,7 +87,7 @@ class XtreamSeriesClient(
                 XtreamSeriesSummary(
                     seriesId = seriesId,
                     name = name,
-                    categoryId = item.text("category_id"),
+                    categoryId = item.text("category_id")?.takeIf(String::isNotBlank),
                     posterUrl = item.text("cover")?.takeIf(String::isNotBlank),
                     rating = item.double("rating") ?: item.double("rating_5based"),
                     lastModifiedEpochSeconds = item.long("last_modified"),
