@@ -72,11 +72,16 @@ internal fun LibraryPlaybackScreen(
     onProgress: (positionMs: Long, durationMs: Long?) -> Unit,
     onFullscreenStateChanged: (Boolean) -> Unit,
     backContentDescription: String = "Back to Library",
-    contextLabel: String = "Library · offline copy",
+    contextLabel: String = "Library",
 ) {
     val playbackState by runtime.playbackController.state.collectAsState()
     val playbackControls = PlaybackPresentationPolicy.controlsFor(playbackState)
     val failedState = playbackState as? PlaybackState.Failed
+    val playbackContextLabel = "$contextLabel · " + if (session.download.savedToDownloads) {
+        "Phone Downloads"
+    } else {
+        "OwnPlay private storage"
+    }
     val configuration = LocalConfiguration.current
     val isTelevision =
         configuration.uiMode and Configuration.UI_MODE_TYPE_MASK == Configuration.UI_MODE_TYPE_TELEVISION
@@ -207,7 +212,7 @@ internal fun LibraryPlaybackScreen(
                         overflow = TextOverflow.Ellipsis,
                     )
                     Text(
-                        text = contextLabel,
+                        text = playbackContextLabel,
                         color = Color.White.copy(alpha = 0.72f),
                         style = MaterialTheme.typography.labelSmall,
                     )
