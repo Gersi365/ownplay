@@ -44,62 +44,80 @@ class OfflineDownloadFeatureRuntime(
     suspend fun remove(downloadId: String) = repository.remove(downloadId)
 
     suspend fun reconcileCompletedFiles(): Int = withContext(Dispatchers.IO) {
-        val dao = database.mediaDownloadDao()
         var missingCount = 0
-        dao.completed().forEach { row ->
-            if (!OfflineDownloadStorage.locationExists(applicationContext, row.localRelativePath)) {
-                dao.updateTransfer(
-                    downloadId = row.downloadId,
-                    state = DownloadStates.FAILED,
-                    bytesDownloaded = 0L,
-                    totalBytes = null,
-                    localRelativePath = null,
-                    failureReason = MISSING_FILE_REASON,
-                    updatedAtEpochMillis = System.currentTimeMillis(),
-                )
-                missingCount += 1
+        try {
+            val dao = database.mediaDownloadDao()
+            dao.completed().forEach { row ->
+                if (!OfflineDownloadStorage.locationExists(applicationContext, row.localRelativePath)) {
+                    dao.updateTransfer(
+                        downloadId = row.downloadId,
+                        state = DownloadStates.FAILED,
+                        bytesDownloaded = 0L,
+                        totalBytes = null,
+                        localRelativePath = null,
+                        failureReason = MISSING_FILE_REASON,
+                        updatedAtEpochMillis = System.currentTimeMillis(),
+                    )
+                    missingCount += 1
+                }
             }
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            // Reconciliation is best-effort and must not crash Activity resume.
         }
         missingCount
     }
 
     suspend fun playbackRequest(downloadId: String): PlaybackRequest? {
-        val row = database.mediaDownloadDao().getById(downloadId) ?: return null
-        if (row.state != DownloadStates.COMPLETED) return null
+        return try {
+            val row = database.mediaDownloadDao().getById(downloadId) ?: return null
+            if (row.state != DownloadStates.COMPLETED) return null
 
-        val request = when (row.mediaKind) {
-            DownloadMediaKinds.MOVIE -> PlaybackRequest(
-                sourceId = row.sourceId,
-                channelId = row.contentId,
-                mediaKind = PlaybackMediaKind.MOVIE,
-            )
+            val request = when (row.mediaKind) {
+                DownloadMediaKinds.MOVIE -> PlaybackRequest(
+                    sourceId = row.sourceId,
+                    channelId = row.contentId,
+                    mediaKind = PlaybackMediaKind.MOVIE,
+                )
 
-            DownloadMediaKinds.SERIES_EPISODE -> PlaybackRequest(
-                sourceId = row.sourceId,
-                channelId = row.contentId,
-                mediaKind = PlaybackMediaKind.SERIES_EPISODE,
-                providerStreamId = row.providerStreamId,
-                containerExtension = row.containerExtension,
-            )
+                DownloadMediaKinds.SERIES_EPISODE -> PlaybackRequest(
+                    sourceId = row.sourceId,
+                    channelId = row.contentId,
+                    mediaKind = PlaybackMediaKind.SERIES_EPISODE,
+                    providerStreamId = row.providerStreamId,
+                    containerExtension = row.containerExtension,
+                )
 
-            else -> return null
+                else -> return null
+            }
+
+            if (repository.localPlaybackLocator(request) != null) request else null
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            null
         }
-
-        return if (repository.localPlaybackLocator(request) != null) request else null
     }
 
     suspend fun playbackProgress(downloadId: String): OfflinePlaybackProgress? {
-        val row = database.mediaDownloadDao().getById(downloadId) ?: return null
-        val mediaKind = row.progressMediaKind() ?: return null
-        return database.vodCatalogDao()
-            .progress(row.sourceId, mediaKind, row.contentId)
-            ?.let { progress ->
-                OfflinePlaybackProgress(
-                    positionMs = progress.positionMs,
-                    durationMs = progress.durationMs,
-                    completed = progress.completed,
-                )
-            }
+        return try {
+            val row = database.mediaDownloadDao().getById(downloadId) ?: return null
+            val mediaKind = row.progressMediaKind() ?: return null
+            database.vodCatalogDao()
+                .progress(row.sourceId, mediaKind, row.contentId)
+                ?.let { progress ->
+                    OfflinePlaybackProgress(
+                        positionMs = progress.positionMs,
+                        durationMs = progress.durationMs,
+                        completed = progress.completed,
+                    )
+                }
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            null
+        }
     }
 
     suspend fun savePlaybackProgress(
@@ -107,22 +125,28 @@ class OfflineDownloadFeatureRuntime(
         positionMs: Long,
         durationMs: Long?,
     ): Boolean {
-        val downloadMediaKind = when (request.mediaKind) {
-            PlaybackMediaKind.MOVIE -> DownloadMediaKinds.MOVIE
-            PlaybackMediaKind.SERIES_EPISODE -> DownloadMediaKinds.SERIES_EPISODE
-            else -> return false
+        return try {
+            val downloadMediaKind = when (request.mediaKind) {
+                PlaybackMediaKind.MOVIE -> DownloadMediaKinds.MOVIE
+                PlaybackMediaKind.SERIES_EPISODE -> DownloadMediaKinds.SERIES_EPISODE
+                else -> return false
+            }
+            val row = database.mediaDownloadDao().getForContent(
+                sourceId = request.sourceId,
+                mediaKind = downloadMediaKind,
+                contentId = request.channelId,
+            ) ?: return false
+            if (row.state != DownloadStates.COMPLETED) return false
+            savePlaybackProgress(
+                downloadId = row.downloadId,
+                positionMs = positionMs,
+                durationMs = durationMs,
+            )
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            false
         }
-        val row = database.mediaDownloadDao().getForContent(
-            sourceId = request.sourceId,
-            mediaKind = downloadMediaKind,
-            contentId = request.channelId,
-        ) ?: return false
-        if (row.state != DownloadStates.COMPLETED) return false
-        return savePlaybackProgress(
-            downloadId = row.downloadId,
-            positionMs = positionMs,
-            durationMs = durationMs,
-        )
     }
 
     suspend fun savePlaybackProgress(
