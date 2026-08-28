@@ -158,8 +158,8 @@ internal fun PlaybackScreen(
         when {
             showTracks -> tracksFocusRequester.requestFocus()
             showDiagnostics -> diagnosticsFocusRequester.requestFocus()
-            !controlsVisible -> wakeFocusRequester.requestFocus()
-            controls.canPause || controls.canPlay -> controlsFocusRequester.requestFocus()
+            !controlsVisible && state is PlaybackState.Playing -> wakeFocusRequester.requestFocus()
+            else -> controlsFocusRequester.requestFocus()
         }
     }
 
@@ -445,7 +445,14 @@ private fun PlaybackControlsOverlay(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             PlaybackControlSlot {
-                IconButton(onClick = onReturnToChannels) {
+                IconButton(
+                    modifier = if (controls.canPause || controls.canPlay) {
+                        Modifier
+                    } else {
+                        Modifier.focusRequester(controlsFocusRequester)
+                    },
+                    onClick = onReturnToChannels,
+                ) {
                     Icon(
                         Icons.AutoMirrored.Filled.ArrowBack,
                         contentDescription = "Back to channels",
@@ -469,7 +476,11 @@ private fun PlaybackControlsOverlay(
             }
             PlaybackControlSlot {
                 FilledIconButton(
-                    modifier = Modifier.focusRequester(controlsFocusRequester),
+                    modifier = if (controls.canPause || controls.canPlay) {
+                        Modifier.focusRequester(controlsFocusRequester)
+                    } else {
+                        Modifier
+                    },
                     onClick = if (controls.canPause) onPause else onPlay,
                     enabled = controls.canPause || controls.canPlay,
                 ) {
