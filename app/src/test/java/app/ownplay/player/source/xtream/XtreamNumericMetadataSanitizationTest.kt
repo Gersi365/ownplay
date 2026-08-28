@@ -35,7 +35,7 @@ class XtreamNumericMetadataSanitizationTest {
                     """
                     [
                       {"stream_id":42,"name":"Movie","rating":"NaN","added":"-1"},
-                      {"stream_id":43,"name":"Rated Movie","rating":"8.1","added":"0"}
+                      {"stream_id":" 43 ","name":"Rated Movie","rating":" 8.1 ","added":" 0 "}
                     ]
                     """.trimIndent(),
                 )
@@ -48,7 +48,7 @@ class XtreamNumericMetadataSanitizationTest {
                     {
                       "info": {
                         "name": "Movie",
-                        "duration_secs": "-1",
+                        "duration_secs": " -1 ",
                         "rating": "Infinity"
                       },
                       "movie_data": {"stream_id":42}
@@ -88,7 +88,7 @@ class XtreamNumericMetadataSanitizationTest {
                     """
                     [
                       {"series_id":501,"name":"Series","rating":"NaN","last_modified":"-1"},
-                      {"series_id":502,"name":"Rated Series","rating":"8.4","last_modified":"0"}
+                      {"series_id":" 502 ","name":"Rated Series","rating":" 8.4 ","last_modified":" 0 "}
                     ]
                     """.trimIndent(),
                 )
@@ -103,12 +103,12 @@ class XtreamNumericMetadataSanitizationTest {
                       "episodes": {
                         "1": [
                           {
-                            "id":1001,
-                            "episode_num":1,
-                            "season":1,
+                            "id":" 1001 ",
+                            "episode_num":" 1 ",
+                            "season":" 1 ",
                             "title":"Episode",
-                            "added":"-1",
-                            "info":{"duration_secs":"0","rating":"NaN"}
+                            "added":" -1 ",
+                            "info":{"duration_secs":" 0 ","rating":"NaN"}
                           }
                         ]
                       }
