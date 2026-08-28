@@ -12,6 +12,7 @@ import app.ownplay.player.playback.PlaybackRequest
 import java.util.concurrent.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.withContext
 
 data class OfflinePlaybackProgress(
@@ -31,6 +32,7 @@ class OfflineDownloadFeatureRuntime(
     )
 
     fun observeAll(): Flow<List<OfflineDownload>> = repository.observeAll()
+        .onStart { reconcileCompletedFiles() }
 
     suspend fun enqueue(spec: OfflineDownloadSpec): String = repository.enqueue(spec)
 
