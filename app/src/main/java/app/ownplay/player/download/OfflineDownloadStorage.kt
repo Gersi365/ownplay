@@ -98,6 +98,27 @@ internal object OfflineDownloadStorage {
         if (updated <= 0) throw IOException("Could not publish file in Downloads")
     }
 
+    @TargetApi(Build.VERSION_CODES.Q)
+    fun isPublishedPublicDownload(context: Context, location: String?): Boolean? {
+        if (!supportsPublicDownloads() || !isPublicDownloadsLocation(location)) return null
+        val resolved = location ?: return null
+        return try {
+            context.contentResolver.query(
+                Uri.parse(resolved),
+                arrayOf(MediaStore.Downloads.IS_PENDING),
+                null,
+                null,
+                null,
+            )?.use { cursor ->
+                if (!cursor.moveToFirst()) return@use null
+                val pendingIndex = cursor.getColumnIndex(MediaStore.Downloads.IS_PENDING)
+                if (pendingIndex < 0) null else cursor.getInt(pendingIndex) == 0
+            }
+        } catch (_: Exception) {
+            null
+        }
+    }
+
     fun locationExists(context: Context, location: String?): Boolean {
         if (location.isNullOrBlank()) return false
         return if (isPublicDownloadsLocation(location)) {
