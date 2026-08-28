@@ -152,7 +152,7 @@ class XtreamSeriesClient(
                     episodeNumber = episodeNumber,
                     title = title,
                     containerExtension = item.text("container_extension")?.takeIf(String::isNotBlank),
-                    durationSeconds = episodeInfo?.long("duration_secs"),
+                    durationSeconds = episodeInfo?.long("duration_secs")?.takeIf { it > 0L },
                     description = episodeInfo?.text("plot") ?: episodeInfo?.text("description"),
                     posterUrl = episodeInfo?.text("movie_image")?.takeIf(String::isNotBlank),
                     rating = episodeInfo?.double("rating"),
@@ -260,7 +260,8 @@ class XtreamSeriesClient(
 
     private fun JsonObject.int(key: String): Int? = text(key)?.toIntOrNull()
     private fun JsonObject.long(key: String): Long? = text(key)?.toLongOrNull()
-    private fun JsonObject.double(key: String): Double? = text(key)?.toDoubleOrNull()
+    private fun JsonObject.double(key: String): Double? =
+        text(key)?.toDoubleOrNull()?.takeIf { it.isFinite() }
     private fun JsonObject.stringList(key: String): List<String> = when (val element = this[key]) {
         is JsonArray -> element.mapNotNull { item ->
             (item as? JsonPrimitive)?.contentOrNull?.takeIf(String::isNotBlank)
