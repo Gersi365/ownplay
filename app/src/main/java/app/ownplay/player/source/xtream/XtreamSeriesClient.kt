@@ -90,7 +90,7 @@ class XtreamSeriesClient(
                     categoryId = item.text("category_id")?.takeIf(String::isNotBlank),
                     posterUrl = item.text("cover")?.takeIf(String::isNotBlank),
                     rating = item.double("rating") ?: item.double("rating_5based"),
-                    lastModifiedEpochSeconds = item.long("last_modified"),
+                    lastModifiedEpochSeconds = item.long("last_modified")?.takeIf { it >= 0L },
                     description = item.text("plot") ?: item.text("description"),
                 )
             },
@@ -156,7 +156,7 @@ class XtreamSeriesClient(
                     description = episodeInfo?.text("plot") ?: episodeInfo?.text("description"),
                     posterUrl = episodeInfo?.text("movie_image")?.takeIf(String::isNotBlank),
                     rating = episodeInfo?.double("rating"),
-                    addedAtEpochSeconds = item.long("added"),
+                    addedAtEpochSeconds = item.long("added")?.takeIf { it >= 0L },
                 )
             }
         }
