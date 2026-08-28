@@ -110,14 +110,29 @@ class OfflineDownloadWorker(
             val response = httpClient.newCall(requestBuilder.build()).execute()
             response.use { opened ->
                 if (!opened.isSuccessful) {
-                    markFailed(
-                        dao = dao,
-                        row = initialRow,
-                        reason = "Provider returned HTTP ${opened.code}",
-                        bytesDownloaded = existingBytes,
-                        localLocation = destinationLocation,
-                    )
-                    return Result.retry()
+                    val reason = "Provider returned HTTP ${opened.code}"
+                    return when (OfflineDownloadRetryPolicy.forHttpStatus(opened.code)) {
+                        OfflineDownloadFailureDisposition.RETRY -> {
+                            markQueuedForRetry(
+                                dao = dao,
+                                row = initialRow,
+                                reason = reason,
+                                bytesDownloaded = existingBytes,
+                                localLocation = destinationLocation,
+                            )
+                            Result.retry()
+                        }
+                        OfflineDownloadFailureDisposition.FAIL -> {
+                            markFailed(
+                                dao = dao,
+                                row = initialRow,
+                                reason = reason,
+                                bytesDownloaded = existingBytes,
+                                localLocation = destinationLocation,
+                            )
+                            Result.failure()
+                        }
+                    }
                 }
                 val body = opened.body
                 val append = existingBytes > 0L && opened.code == 206
@@ -256,7 +271,7 @@ class OfflineDownloadWorker(
         } catch (_: Exception) {
             val row = dao.getById(downloadId)
             if (row != null) {
-                markFailed(
+                markQueuedForRetry(
                     dao = dao,
                     row = row,
                     reason = "Download interrupted",
@@ -279,6 +294,25 @@ class OfflineDownloadWorker(
             .takeIf(File::isFile)
             ?.length()
             ?: row.bytesDownloaded
+    }
+
+    private suspend fun markQueuedForRetry(
+        dao: MediaDownloadDao,
+        row: MediaDownloadEntity,
+        reason: String,
+        bytesDownloaded: Long = row.bytesDownloaded,
+        totalBytes: Long? = row.totalBytes,
+        localLocation: String? = row.localRelativePath,
+    ) {
+        dao.updateTransfer(
+            downloadId = row.downloadId,
+            state = DownloadStates.QUEUED,
+            bytesDownloaded = bytesDownloaded,
+            totalBytes = totalBytes,
+            localRelativePath = localLocation,
+            failureReason = reason,
+            updatedAtEpochMillis = System.currentTimeMillis(),
+        )
     }
 
     private suspend fun markFailed(
