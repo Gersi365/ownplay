@@ -6,6 +6,7 @@ import app.ownplay.player.source.SourceValidator
 import app.ownplay.player.source.UrlValidationResult
 import app.ownplay.player.source.credential.XtreamCredentials
 import app.ownplay.player.source.network.SourceHttpClient
+import app.ownplay.player.source.network.awaitResponse
 import java.io.IOException
 import java.net.ConnectException
 import java.net.NoRouteToHostException
@@ -81,7 +82,8 @@ class XtreamSeriesClient(
         return SourceResult.Success(
             array.mapNotNull { element ->
                 val item = element as? JsonObject ?: return@mapNotNull null
-                val seriesId = item.int("series_id") ?: return@mapNotNull null
+                val seriesId = item.int("series_id")?.takeIf { it > 0 }
+                    ?: return@mapNotNull null
                 val name = item.text("name") ?: return@mapNotNull null
                 XtreamSeriesSummary(
                     seriesId = seriesId,
@@ -117,7 +119,9 @@ class XtreamSeriesClient(
         val seasons = (root["seasons"] as? JsonArray)
             ?.mapNotNull { element ->
                 val item = element as? JsonObject ?: return@mapNotNull null
-                val number = item.int("season_number") ?: item.int("season") ?: return@mapNotNull null
+                val number = (item.int("season_number") ?: item.int("season"))
+                    ?.takeIf { it >= 0 }
+                    ?: return@mapNotNull null
                 XtreamSeriesSeason(
                     seasonNumber = number,
                     name = item.text("name"),
@@ -128,12 +132,16 @@ class XtreamSeriesClient(
             .orEmpty()
         val episodes = mutableListOf<XtreamSeriesEpisode>()
         (root["episodes"] as? JsonObject)?.forEach { (seasonKey, value) ->
-            val seasonFromKey = seasonKey.toIntOrNull()
+            val seasonFromKey = seasonKey.toIntOrNull()?.takeIf { it >= 0 }
             (value as? JsonArray)?.forEach episodeLoop@{ element ->
                 val item = element as? JsonObject ?: return@episodeLoop
-                val episodeId = item.int("id") ?: return@episodeLoop
-                val episodeNumber = item.int("episode_num") ?: item.int("episode") ?: return@episodeLoop
-                val seasonNumber = item.int("season") ?: seasonFromKey ?: return@episodeLoop
+                val episodeId = item.int("id")?.takeIf { it > 0 } ?: return@episodeLoop
+                val episodeNumber = (item.int("episode_num") ?: item.int("episode"))
+                    ?.takeIf { it > 0 }
+                    ?: return@episodeLoop
+                val seasonNumber = (item.int("season") ?: seasonFromKey)
+                    ?.takeIf { it >= 0 }
+                    ?: return@episodeLoop
                 val episodeInfo = item["info"] as? JsonObject
                 val title = item.text("title")
                     ?: episodeInfo?.text("name")
@@ -208,7 +216,7 @@ class XtreamSeriesClient(
         val request = Request.Builder().url(url).get().build()
         return withContext(Dispatchers.IO) {
             try {
-                httpClient.newCall(request).execute().use { response ->
+                httpClient.newCall(request).awaitResponse().use { response ->
                     when {
                         response.code == 401 || response.code == 403 ->
                             SourceResult.Failure(SourceError.AuthenticationFailed)
