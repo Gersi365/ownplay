@@ -47,6 +47,7 @@ import app.ownplay.player.series.SeriesRepository
 import app.ownplay.player.source.CredentialRef
 import app.ownplay.player.source.SourceError
 import app.ownplay.player.source.SourceResult
+import app.ownplay.player.source.SourceSyncFailure
 import app.ownplay.player.source.SourceSyncStage
 import app.ownplay.player.source.SourceSyncState
 import app.ownplay.player.source.credential.AndroidKeystoreCredentialStore
@@ -56,6 +57,7 @@ import app.ownplay.player.source.management.SourceMutationResult
 import app.ownplay.player.source.onboarding.SourceOnboardingFailure
 import app.ownplay.player.source.onboarding.SourceOnboardingResult
 import app.ownplay.player.source.onboarding.SourceOnboardingService
+import app.ownplay.player.source.onboarding.toSourceSyncFailure
 import app.ownplay.player.source.xtream.XtreamClient
 import app.ownplay.player.source.xtream.XtreamSeriesClient
 import app.ownplay.player.source.xtream.XtreamSourceLocatorCodec
@@ -254,6 +256,7 @@ class OwnPlayAppRuntime(
                 _sourceSyncState.value = SourceSyncState(
                     sourceName = name.trim().ifBlank { "Xtream" },
                     stage = SourceSyncStage.ChannelsFailed,
+                    failure = result.reason.toSourceSyncFailure(),
                 )
             }
         }
@@ -282,6 +285,7 @@ class OwnPlayAppRuntime(
             is SourceOnboardingResult.Failure -> SourceSyncState(
                 sourceName = name.trim().ifBlank { "M3U" },
                 stage = SourceSyncStage.ChannelsFailed,
+                failure = result.reason.toSourceSyncFailure(),
             )
         }
         result
@@ -309,6 +313,7 @@ class OwnPlayAppRuntime(
             is SourceOnboardingResult.Failure -> SourceSyncState(
                 sourceName = name.trim().ifBlank { "Local M3U" },
                 stage = SourceSyncStage.ChannelsFailed,
+                failure = result.reason.toSourceSyncFailure(),
             )
         }
         result
@@ -331,7 +336,10 @@ class OwnPlayAppRuntime(
             throw cancelled
         } catch (_: Exception) {
             val current = _sourceSyncState.value
-            _sourceSyncState.value = current.copy(stage = SourceSyncStage.ChannelsFailed)
+            _sourceSyncState.value = current.copy(
+                stage = SourceSyncStage.ChannelsFailed,
+                failure = SourceSyncFailure.Unexpected,
+            )
             return
         }
         sources.forEach { source -> refreshSource(source.sourceId) }
@@ -363,6 +371,7 @@ class OwnPlayAppRuntime(
                 sourceName = source.name,
                 stage = SourceSyncStage.ChannelsFailed,
                 channelCount = existingCount,
+                failure = channelResult.reason.toSourceSyncFailure(),
             )
             if (source.sourceKind == SourceKinds.XTREAM) {
                 refreshXtreamMediaCatalogs(sourceId)
@@ -434,6 +443,7 @@ class OwnPlayAppRuntime(
             sourceName = sourceName,
             stage = SourceSyncStage.ChannelsFailed,
             channelCount = channelCount,
+            failure = SourceSyncFailure.Unexpected,
         )
     }
 
