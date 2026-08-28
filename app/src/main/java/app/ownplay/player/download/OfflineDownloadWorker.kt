@@ -110,6 +110,36 @@ class OfflineDownloadWorker(
             val response = httpClient.newCall(requestBuilder.build()).execute()
             response.use { opened ->
                 if (!opened.isSuccessful) {
+                    if (shouldRestartOfflineDownloadFromZero(existingBytes, opened.code)) {
+                        resetPartialTransfer(
+                            partFile = partFile,
+                            localLocation = destinationLocation,
+                        )
+                        val retry = shouldRetryDownload(
+                            runAttemptCount = runAttemptCount,
+                            retryableFailure = true,
+                        )
+                        if (retry) {
+                            markRetryQueued(
+                                dao = dao,
+                                row = initialRow,
+                                bytesDownloaded = 0L,
+                                totalBytes = null,
+                                localLocation = null,
+                            )
+                        } else {
+                            markFailed(
+                                dao = dao,
+                                row = initialRow,
+                                reason = "Provider rejected the resume request",
+                                bytesDownloaded = 0L,
+                                totalBytes = null,
+                                localLocation = null,
+                            )
+                        }
+                        return if (retry) Result.retry() else Result.failure()
+                    }
+
                     val retry = shouldRetryDownload(
                         runAttemptCount = runAttemptCount,
                         retryableFailure = isRetryableDownloadHttpStatus(opened.code),
