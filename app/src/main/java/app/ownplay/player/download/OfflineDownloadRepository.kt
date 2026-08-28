@@ -92,6 +92,39 @@ class OfflineDownloadRepository(
         return pending.size
     }
 
+    suspend fun prepareSourceRemoval(sourceId: String): List<MediaDownloadEntity> {
+        val downloads = dao.forSource(sourceId)
+        downloads.forEach { row ->
+            workManager.cancelUniqueWork(workName(row.downloadId))
+        }
+        return downloads
+    }
+
+    fun cleanupRemovedSourceArtifacts(downloads: List<MediaDownloadEntity>) {
+        downloads.forEach { row ->
+            OfflineDownloadStorage.deleteLocation(applicationContext, row.localRelativePath)
+            OfflineDownloadStorage.partialFile(applicationContext, row.downloadId).delete()
+            OfflineDownloadStorage.privateFinalFile(
+                applicationContext,
+                row.downloadId,
+                row.containerExtension ?: "mp4",
+            ).delete()
+        }
+    }
+
+    fun restoreSourceWorkAfterFailedRemoval(downloads: List<MediaDownloadEntity>) {
+        downloads.asSequence()
+            .filter { row ->
+                row.state == DownloadStates.QUEUED || row.state == DownloadStates.DOWNLOADING
+            }
+            .forEach { row ->
+                enqueueWork(
+                    downloadId = row.downloadId,
+                    existingWorkPolicy = ExistingWorkPolicy.REPLACE,
+                )
+            }
+    }
+
     suspend fun enqueue(spec: OfflineDownloadSpec): String {
         require(spec.sourceId.isNotBlank()) { "sourceId is required" }
         require(spec.contentId.isNotBlank()) { "contentId is required" }
