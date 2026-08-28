@@ -37,6 +37,24 @@ class EpgTimelineProjectorTest {
         assertEquals(listOf("Future"), timeline.future.map { it.title })
     }
 
+    @Test
+    fun reversedOrZeroLengthIntervalsAreExcluded() {
+        val timeline = EpgTimelineProjector.project(
+            programs = listOf(
+                program("Reversed", 300, 100),
+                program("Zero length", 200, 200),
+                program("Valid", 200, 300),
+                program("Start only", 400, null),
+            ),
+            nowEpochSeconds = 250,
+        )
+
+        assertEquals(listOf("Valid", "Start only"), timeline.programs.map { it.title })
+        assertEquals("Valid", timeline.current?.title)
+        assertEquals(emptyList<String>(), timeline.past.map { it.title })
+        assertEquals(listOf("Start only"), timeline.future.map { it.title })
+    }
+
     private fun program(
         title: String,
         start: Long?,
