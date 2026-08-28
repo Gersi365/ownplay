@@ -175,7 +175,12 @@ class OfflineDownloadWorker(
                     partFile.delete()
                 }
                 val bodyLength = body.contentLength().takeIf { it >= 0L }
-                val totalBytes = bodyLength?.plus(startBytes)
+                val totalBytes = bodyLength?.let { knownBodyLength ->
+                    offlineDownloadTotalBytes(
+                        startBytes = startBytes,
+                        bodyLength = knownBodyLength,
+                    )
+                }
                 if (bodyLength != null) {
                     val availableBytes = OfflineDownloadStorage.availableBytes(
                         context = applicationContext,
