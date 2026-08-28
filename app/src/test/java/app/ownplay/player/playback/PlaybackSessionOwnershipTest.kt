@@ -72,6 +72,25 @@ class PlaybackSessionOwnershipTest {
         controller.close()
     }
 
+    @Test
+    fun disposedSessionCleanupAfterControllerReleaseIsNoOp() = runBlocking {
+        val engine = FakeEngine()
+        val controller = controller(engine)
+        val request = movieRequest("movie-released")
+
+        controller.start(request)
+        engine.emitReady()
+        controller.close()
+
+        controller.stopIfCurrent(
+            sourceId = request.sourceId,
+            channelId = request.channelId,
+            mediaKind = request.mediaKind,
+        )
+
+        assertEquals(PlaybackState.Idle, controller.state.value)
+    }
+
     private fun controller(engine: FakeEngine) = PlaybackController(
         resolveLocator = {
             PlaybackResolutionResult.Success(
