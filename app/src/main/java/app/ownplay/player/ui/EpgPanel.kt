@@ -7,11 +7,13 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -62,13 +64,19 @@ internal fun EpgPanel(
 
         when {
             loading -> StatusLine("Updating EPG…")
-            failed -> StatusLine("EPG unavailable")
+            failed -> StatusLine("EPG unavailable", error = true)
             current != null -> {
                 ProgramLine(
                     prefix = "Now",
                     program = current,
                     emphasized = true,
                 )
+                programProgressFraction(current)?.let { progress ->
+                    LinearProgressIndicator(
+                        progress = { progress },
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
                 if (next != null) {
                     HorizontalDivider()
                     ProgramLine(
@@ -94,11 +102,14 @@ internal fun EpgPanel(
 }
 
 @Composable
-private fun StatusLine(text: String) {
+private fun StatusLine(
+    text: String,
+    error: Boolean = false,
+) {
     Text(
         text = text,
         style = MaterialTheme.typography.bodyMedium,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        color = if (error) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
     )
 }
 
@@ -126,6 +137,7 @@ private fun ProgramLine(
                 text = "$prefix · ${program.title}",
                 style = MaterialTheme.typography.bodyMedium,
                 fontWeight = if (emphasized) FontWeight.SemiBold else FontWeight.Normal,
+                color = if (emphasized) MaterialTheme.colorScheme.onSurface else Color.Unspecified,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
@@ -142,6 +154,17 @@ private fun ProgramLine(
             }
         }
     }
+}
+
+private fun programProgressFraction(program: EpgProgram): Float? {
+    val start = program.startEpochSeconds ?: return null
+    val end = program.endEpochSeconds ?: return null
+    if (end <= start) return null
+    val now = System.currentTimeMillis() / 1_000L
+    if (now < start || now > end) return null
+    return ((now - start).toDouble() / (end - start).toDouble())
+        .toFloat()
+        .coerceIn(0f, 1f)
 }
 
 private fun timeRange(program: EpgProgram): String = when {
