@@ -74,6 +74,7 @@ class OfflineDownloadWorker(
                 OfflineDownloadStorage.supportsPublicDownloads() &&
                     !legacyPartialExists &&
                     !legacyPrivateLocation
+            var newlyCreatedPublicLocation: String? = null
             val destinationLocation = if (usePublicDownloads) {
                 initialRow.localRelativePath
                     ?.takeIf(OfflineDownloadStorage::isPublicDownloadsLocation)
@@ -83,7 +84,9 @@ class OfflineDownloadWorker(
                     ?: OfflineDownloadStorage.createPublicDownloadsDestination(
                         applicationContext,
                         initialRow,
-                    )
+                    ).also { created ->
+                        newlyCreatedPublicLocation = created
+                    }
             } else {
                 null
             }
@@ -93,15 +96,22 @@ class OfflineDownloadWorker(
                 partFile.takeIf(File::isFile)?.length() ?: 0L
             }
 
-            dao.updateTransfer(
-                downloadId = downloadId,
-                state = DownloadStates.DOWNLOADING,
-                bytesDownloaded = existingBytes,
-                totalBytes = null,
-                localRelativePath = destinationLocation,
-                failureReason = null,
-                updatedAtEpochMillis = System.currentTimeMillis(),
-            )
+            try {
+                dao.updateTransfer(
+                    downloadId = downloadId,
+                    state = DownloadStates.DOWNLOADING,
+                    bytesDownloaded = existingBytes,
+                    totalBytes = null,
+                    localRelativePath = destinationLocation,
+                    failureReason = null,
+                    updatedAtEpochMillis = System.currentTimeMillis(),
+                )
+            } catch (error: Exception) {
+                newlyCreatedPublicLocation?.let { created ->
+                    OfflineDownloadStorage.deleteLocation(applicationContext, created)
+                }
+                throw error
+            }
 
             val requestBuilder = Request.Builder().url(locator.value)
             if (existingBytes > 0L) {
@@ -111,10 +121,21 @@ class OfflineDownloadWorker(
             response.use { opened ->
                 if (!opened.isSuccessful) {
                     if (shouldRestartOfflineDownloadFromZero(existingBytes, opened.code)) {
-                        resetPartialTransfer(
+                        val resetSucceeded = resetPartialTransfer(
                             partFile = partFile,
                             localLocation = destinationLocation,
                         )
+                        if (!resetSucceeded) {
+                            markFailed(
+                                dao = dao,
+                                row = initialRow,
+                                reason = "Could not reset the partial download. Remove it and try again.",
+                                bytesDownloaded = existingBytes,
+                                totalBytes = null,
+                                localLocation = destinationLocation,
+                            )
+                            return Result.failure()
+                        }
                         val retry = shouldRetryDownload(
                             runAttemptCount = runAttemptCount,
                             retryableFailure = true,
@@ -169,10 +190,21 @@ class OfflineDownloadWorker(
                     contentRangeHeader = opened.header("Content-Range"),
                 )
                 if (responseMode == OfflineDownloadResponseMode.RETRY_FROM_ZERO) {
-                    resetPartialTransfer(
+                    val resetSucceeded = resetPartialTransfer(
                         partFile = partFile,
                         localLocation = destinationLocation,
                     )
+                    if (!resetSucceeded) {
+                        markFailed(
+                            dao = dao,
+                            row = initialRow,
+                            reason = "Could not reset the partial download. Remove it and try again.",
+                            bytesDownloaded = existingBytes,
+                            totalBytes = null,
+                            localLocation = destinationLocation,
+                        )
+                        return Result.failure()
+                    }
                     val retry = shouldRetryDownload(
                         runAttemptCount = runAttemptCount,
                         retryableFailure = true,
@@ -373,9 +405,10 @@ class OfflineDownloadWorker(
     private fun resetPartialTransfer(
         partFile: File,
         localLocation: String?,
-    ) {
-        OfflineDownloadStorage.deleteLocation(applicationContext, localLocation)
-        partFile.delete()
+    ): Boolean {
+        val locationDeleted = OfflineDownloadStorage.deleteLocation(applicationContext, localLocation)
+        val partDeleted = !partFile.exists() || partFile.delete() || !partFile.exists()
+        return locationDeleted && partDeleted
     }
 
     private fun currentTransferBytes(row: MediaDownloadEntity): Long {
