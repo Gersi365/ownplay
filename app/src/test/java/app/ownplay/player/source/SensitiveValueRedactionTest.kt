@@ -22,6 +22,14 @@ class SensitiveValueRedactionTest {
     }
 
     @Test
+    fun credentialReferenceToString_isOpaque() {
+        val rendered = CredentialRef("fixture-credential-reference-secret").toString()
+
+        assertFalse(rendered.contains("fixture-credential-reference-secret"))
+        assertTrue(rendered.contains("<opaque>"))
+    }
+
+    @Test
     fun sourceToString_redactsUrlsAndDocumentUris() {
         val remote = PlaylistSource.RemoteM3u(
             name = "Fixture",
