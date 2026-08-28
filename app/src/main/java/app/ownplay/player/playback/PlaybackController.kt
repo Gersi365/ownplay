@@ -30,6 +30,8 @@ interface PlaybackEngine {
     fun prepare(locator: ResolvedPlaybackLocator)
     fun play()
     fun pause()
+    fun currentPositionMs(): Long? = null
+    fun seekTo(positionMs: Long) = Unit
     fun stop()
     fun release()
 }
@@ -64,6 +66,7 @@ class PlaybackController(
     private var desiredPlayWhenReady: Boolean = true
     private var backgroundSuspendedRequest: PlaybackRequest? = null
     private var backgroundSuspendedPlayWhenReady: Boolean = false
+    private var backgroundSuspendedPositionMs: Long? = null
     private var networkAvailable: Boolean =
         networkState?.value != PlaybackNetworkState.UNAVAILABLE
     @Volatile
@@ -199,6 +202,11 @@ class PlaybackController(
 
             backgroundSuspendedRequest = request
             backgroundSuspendedPlayWhenReady = desiredPlayWhenReady
+            backgroundSuspendedPositionMs = if (request.mediaKind == PlaybackMediaKind.LIVE) {
+                null
+            } else {
+                engine.currentPositionMs()?.takeIf { it > 0L }
+            }
             generation += 1
             preparedGeneration = null
             currentPlaybackUsesNetwork = null
@@ -220,11 +228,13 @@ class PlaybackController(
         scope.launch {
             val request = backgroundSuspendedRequest ?: return@launch
             val playWhenReady = backgroundSuspendedPlayWhenReady
+            val positionMs = backgroundSuspendedPositionMs
             clearBackgroundSuspension()
             startOnControllerDispatcher(
                 request = request,
                 resetRetryBudget = false,
                 playWhenReady = playWhenReady,
+                initialPositionMs = positionMs,
             )
         }
     }
@@ -278,6 +288,7 @@ class PlaybackController(
         request: PlaybackRequest,
         resetRetryBudget: Boolean,
         playWhenReady: Boolean = true,
+        initialPositionMs: Long? = null,
     ) {
         generation += 1
         val requestGeneration = generation
@@ -334,6 +345,7 @@ class PlaybackController(
                 prepareResolvedLocator(
                     locator = offlineLocator,
                     requestGeneration = requestGeneration,
+                    initialPositionMs = initialPositionMs,
                 )
                 return@launch
             }
@@ -367,6 +379,7 @@ class PlaybackController(
                     prepareResolvedLocator(
                         locator = result.locator,
                         requestGeneration = requestGeneration,
+                        initialPositionMs = initialPositionMs,
                     )
                 }
                 is PlaybackResolutionResult.Failure -> {
@@ -380,6 +393,7 @@ class PlaybackController(
     private fun prepareResolvedLocator(
         locator: ResolvedPlaybackLocator,
         requestGeneration: Long,
+        initialPositionMs: Long?,
     ) {
         val usesNetwork = locator.origin != ResolvedPlaybackOrigin.LOCAL_DOWNLOAD
         currentPlaybackUsesNetwork = usesNetwork
@@ -393,6 +407,7 @@ class PlaybackController(
         mutableResolvedOrigin.value = locator.origin
         preparedGeneration = requestGeneration
         engine.prepare(locator)
+        initialPositionMs?.takeIf { it > 0L }?.let(engine::seekTo)
         if (desiredPlayWhenReady) {
             engine.play()
         } else {
@@ -419,6 +434,7 @@ class PlaybackController(
     private fun clearBackgroundSuspension() {
         backgroundSuspendedRequest = null
         backgroundSuspendedPlayWhenReady = false
+        backgroundSuspendedPositionMs = null
     }
 
     private fun handleNetworkUnavailable() {
