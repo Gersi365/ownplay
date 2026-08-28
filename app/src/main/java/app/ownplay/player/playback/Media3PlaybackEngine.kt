@@ -18,6 +18,7 @@ import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.HttpDataSource
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.ExoTimeoutException
 import androidx.media3.exoplayer.analytics.AnalyticsListener
 import androidx.media3.exoplayer.source.MediaLoadData
 import androidx.media3.ui.PlayerView
@@ -505,6 +506,9 @@ private data class Media3TrackHandle(
 @OptIn(UnstableApi::class)
 internal object Media3PlaybackFailureMapper {
     fun map(error: PlaybackException): PlaybackFailure {
+        if (error.cause.findExoTimeoutException() != null) {
+            return PlaybackFailure(PlaybackFailureCategory.UNKNOWN)
+        }
         val stuckPlayer = error.cause.findStuckPlayerException()
         if (stuckPlayer != null) {
             return when (stuckPlayer.stuckType) {
@@ -564,6 +568,15 @@ internal object Media3PlaybackFailureMapper {
             else -> PlaybackFailureCategory.UNKNOWN
         }
         return PlaybackFailure(category)
+    }
+
+    private fun Throwable?.findExoTimeoutException(): ExoTimeoutException? {
+        var current = this
+        while (current != null) {
+            if (current is ExoTimeoutException) return current
+            current = current.cause
+        }
+        return null
     }
 
     private fun Throwable?.findStuckPlayerException(): StuckPlayerException? {
