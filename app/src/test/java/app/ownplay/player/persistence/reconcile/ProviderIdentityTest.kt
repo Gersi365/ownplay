@@ -4,6 +4,7 @@ import app.ownplay.player.source.m3u.M3uEntry
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
+import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -11,6 +12,16 @@ class ProviderIdentityTest {
     @Test
     fun xtreamIdentityUsesOnlyNonSensitiveStreamId() {
         assertEquals("xtream:live:42", ProviderIdentity.xtreamLiveStream(42))
+    }
+
+    @Test
+    fun xtreamIdentityRejectsNonPositiveStreamIds() {
+        assertThrows(IllegalArgumentException::class.java) {
+            ProviderIdentity.xtreamLiveStream(0)
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            ProviderIdentity.xtreamLiveStream(-1)
+        }
     }
 
     @Test
