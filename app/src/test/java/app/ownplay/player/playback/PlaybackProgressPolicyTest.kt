@@ -70,6 +70,24 @@ class PlaybackProgressPolicyTest {
     }
 
     @Test
+    fun fractionalDurationDoesNotCompleteBelowNinetyFivePercent() {
+        val duration = 101L
+
+        assertFalse(
+            normalizePlaybackProgress(
+                positionMs = 95L,
+                reportedDurationMs = duration,
+            ).completed,
+        )
+        assertTrue(
+            normalizePlaybackProgress(
+                positionMs = 96L,
+                reportedDurationMs = duration,
+            ).completed,
+        )
+    }
+
+    @Test
     fun completionThresholdRemainsExactAtLongMaxDuration() {
         val duration = Long.MAX_VALUE
         val threshold = duration - (duration / 20L)
