@@ -62,6 +62,7 @@ object InitialLiveCatalogFactory {
         val seenChannelKeys = linkedSetOf<String>()
         val incomingChannels = buildList {
             streams.forEachIndexed { index, stream ->
+                if (stream.streamId <= 0) return@forEachIndexed
                 val providerKey = ProviderIdentity.xtreamLiveStream(stream.streamId)
                 if (!seenChannelKeys.add(providerKey)) return@forEachIndexed
                 add(
@@ -170,7 +171,7 @@ object PlaybackLocatorDescriptor {
     fun directUrl(url: String): String = "$PREFIX|direct|$url"
 
     fun xtreamLive(streamId: Int): String {
-        require(streamId >= 0) { "Xtream stream ID must not be negative" }
+        require(streamId > 0) { "Xtream stream ID must be positive" }
         return "$PREFIX|xtream-live|$streamId"
     }
 }
