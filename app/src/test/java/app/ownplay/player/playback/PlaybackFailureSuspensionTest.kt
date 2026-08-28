@@ -54,6 +54,24 @@ class PlaybackFailureSuspensionTest {
         controller.close()
     }
 
+    @Test
+    fun terminalPlayerFailureIsNotReclassifiedByLaterNetworkLoss() = runBlocking {
+        val engine = FakeEngine()
+        val networkState = MutableStateFlow(PlaybackNetworkState.AVAILABLE)
+        val controller = controller(engine, networkState)
+
+        controller.start(movieRequest())
+        engine.emitReady()
+        engine.emitFailure(PlaybackFailure(PlaybackFailureCategory.UNSUPPORTED_MEDIA))
+
+        networkState.value = PlaybackNetworkState.UNAVAILABLE
+
+        val failed = controller.state.value as PlaybackState.Failed
+        assertEquals(PlaybackFailureCategory.UNSUPPORTED_MEDIA, failed.failure.category)
+        assertEquals(1, engine.suspendCount)
+        controller.close()
+    }
+
     private fun controller(
         engine: FakeEngine,
         networkState: MutableStateFlow<PlaybackNetworkState>? = null,
