@@ -4,6 +4,8 @@ import androidx.annotation.OptIn
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.util.UnstableApi
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 @OptIn(UnstableApi::class)
@@ -70,5 +72,31 @@ class Media3PlaybackFailureMapperTest {
                 PlaybackException.ERROR_CODE_DECODING_FORMAT_UNSUPPORTED,
             ).category,
         )
+    }
+
+    @Test
+    fun decoderFailuresAreTerminalForCurrentMedia() {
+        listOf(
+            PlaybackException.ERROR_CODE_DECODER_INIT_FAILED,
+            PlaybackException.ERROR_CODE_DECODER_QUERY_FAILED,
+            PlaybackException.ERROR_CODE_DECODING_FAILED,
+            PlaybackException.ERROR_CODE_DECODING_FORMAT_EXCEEDS_CAPABILITIES,
+            PlaybackException.ERROR_CODE_DECODING_FORMAT_UNSUPPORTED,
+        ).forEach { errorCode ->
+            val failure = Media3PlaybackFailureMapper.map(errorCode)
+
+            assertEquals(PlaybackFailureCategory.UNSUPPORTED_MEDIA, failure.category)
+            assertFalse(failure.retryable)
+        }
+    }
+
+    @Test
+    fun malformedContainerRemainsRetryableWithoutBeingTreatedAsDecoderFailure() {
+        val failure = Media3PlaybackFailureMapper.map(
+            PlaybackException.ERROR_CODE_PARSING_CONTAINER_MALFORMED,
+        )
+
+        assertEquals(PlaybackFailureCategory.STREAM_UNAVAILABLE, failure.category)
+        assertTrue(failure.retryable)
     }
 }
