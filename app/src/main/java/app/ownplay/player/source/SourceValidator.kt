@@ -52,7 +52,7 @@ object SourceValidator {
         if (uri.host.isNullOrBlank()) {
             return UrlValidationResult.Invalid(SourceError.MissingHost)
         }
-        if (uri.port > 65_535) {
+        if (uri.port == 0 || uri.port > 65_535) {
             return UrlValidationResult.Invalid(SourceError.InvalidUrl)
         }
         if (uri.userInfo != null) {
