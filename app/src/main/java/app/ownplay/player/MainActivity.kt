@@ -312,6 +312,10 @@ class MainActivity : ComponentActivity() {
                     tvRemoteKeySuppression.allow(event.keyCode)
                 }
                 KeyEvent.ACTION_UP -> {
+                    if (tvRemoteActionGuard.isGloballyBlocked(SystemClock.elapsedRealtime())) {
+                        tvRemoteKeySuppression.consumeRelease(event.keyCode)
+                        return true
+                    }
                     if (tvRemoteKeySuppression.consumeRelease(event.keyCode)) return true
                 }
             }
