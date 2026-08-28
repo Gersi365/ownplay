@@ -2,7 +2,9 @@ package app.ownplay.player
 
 import android.content.res.Configuration
 import android.os.Bundle
+import android.os.SystemClock
 import android.view.GestureDetector
+import android.view.KeyEvent
 import android.view.MotionEvent
 import android.widget.Toast
 import androidx.activity.ComponentActivity
@@ -43,6 +45,7 @@ import app.ownplay.player.ui.PlaybackWindowController
 import app.ownplay.player.ui.library.LibraryPlaybackScreen
 import app.ownplay.player.ui.library.LibraryPlaybackSession
 import app.ownplay.player.ui.theme.OwnPlayTheme
+import app.ownplay.player.ui.tv.TvRemoteActionGuard
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -59,7 +62,10 @@ class MainActivity : ComponentActivity() {
     private lateinit var appDeviceProfileStore: AppDeviceProfileStore
     private lateinit var playbackGestureDetector: GestureDetector
     private val activityScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    private val tvRemoteActionGuard = TvRemoteActionGuard()
     private var playbackFullscreen = false
+    private var tvRemoteGuardEnabled = false
+    private var suppressedRemoteActivationKeyCode: Int? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -121,7 +127,9 @@ class MainActivity : ComponentActivity() {
             val downloadPlaybackOwner = remember { Any() }
 
             SideEffect {
-                PlaybackInteractionBridge.setDpadMode(configuredProfile?.usesDpad == true)
+                val usesDpad = configuredProfile?.usesDpad == true
+                PlaybackInteractionBridge.setDpadMode(usesDpad)
+                tvRemoteGuardEnabled = usesDpad
             }
 
             DisposableEffect(downloadPlaybackOwner) {
@@ -276,6 +284,28 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        if (tvRemoteGuardEnabled && event.isRemoteActivationKey()) {
+            when (event.action) {
+                KeyEvent.ACTION_DOWN -> {
+                    if (event.repeatCount > 0) return true
+                    if (!tvRemoteActionGuard.tryAcquire(SystemClock.elapsedRealtime())) {
+                        suppressedRemoteActivationKeyCode = event.keyCode
+                        return true
+                    }
+                    suppressedRemoteActivationKeyCode = null
+                }
+                KeyEvent.ACTION_UP -> {
+                    if (suppressedRemoteActivationKeyCode == event.keyCode) {
+                        suppressedRemoteActivationKeyCode = null
+                        return true
+                    }
+                }
+            }
+        }
+        return super.dispatchKeyEvent(event)
+    }
+
     override fun dispatchTouchEvent(event: MotionEvent): Boolean {
         playbackGestureDetector.onTouchEvent(event)
         return super.dispatchTouchEvent(event)
@@ -339,6 +369,11 @@ class MainActivity : ComponentActivity() {
         }
     }
 }
+
+private fun KeyEvent.isRemoteActivationKey(): Boolean =
+    keyCode == KeyEvent.KEYCODE_DPAD_CENTER ||
+        keyCode == KeyEvent.KEYCODE_ENTER ||
+        keyCode == KeyEvent.KEYCODE_NUMPAD_ENTER
 
 private fun configuredOrientation(
     profile: AppDeviceProfile,
