@@ -34,7 +34,15 @@ data class OfflineDownloadSpec(
     val episodeNumber: Int? = null,
     val posterUrl: String? = null,
     val containerExtension: String? = null,
-)
+) {
+    override fun toString(): String =
+        "OfflineDownloadSpec(sourceId=<opaque>, mediaKind=$mediaKind, contentId=<opaque>, " +
+            "providerStreamId=$providerStreamId, title=$title, seriesTitle=$seriesTitle, " +
+            "seasonNumber=$seasonNumber, episodeNumber=$episodeNumber, " +
+            "posterUrl=${redactedPresence(posterUrl)}, containerExtension=$containerExtension)"
+
+    private fun redactedPresence(value: String?): String = if (value == null) "null" else "<redacted>"
+}
 
 data class OfflineDownload(
     val downloadId: String,
@@ -69,6 +77,16 @@ data class OfflineDownload(
             if (total <= 0L) return null
             return (bytesDownloaded.toDouble() / total.toDouble()).coerceIn(0.0, 1.0).toFloat()
         }
+
+    override fun toString(): String =
+        "OfflineDownload(downloadId=<opaque>, sourceId=<opaque>, mediaKind=$mediaKind, " +
+            "contentId=<opaque>, title=$title, seriesTitle=$seriesTitle, seasonNumber=$seasonNumber, " +
+            "episodeNumber=$episodeNumber, posterUrl=${redactedPresence(posterUrl)}, state=$state, " +
+            "bytesDownloaded=$bytesDownloaded, totalBytes=$totalBytes, failureReason=$failureReason, " +
+            "createdAtEpochMillis=$createdAtEpochMillis, updatedAtEpochMillis=$updatedAtEpochMillis, " +
+            "savedToDownloads=$savedToDownloads)"
+
+    private fun redactedPresence(value: String?): String = if (value == null) "null" else "<redacted>"
 }
 
 internal data class OfflineSourceRemovalItem(
