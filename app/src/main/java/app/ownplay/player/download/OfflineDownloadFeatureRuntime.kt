@@ -8,6 +8,7 @@ import app.ownplay.player.persistence.download.MediaDownloadEntity
 import app.ownplay.player.persistence.vod.MediaKinds
 import app.ownplay.player.persistence.vod.PlaybackProgressEntity
 import app.ownplay.player.playback.PlaybackMediaKind
+import app.ownplay.player.playback.PlaybackProgressPolicy
 import app.ownplay.player.playback.PlaybackRequest
 import java.util.concurrent.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -147,20 +148,19 @@ class OfflineDownloadFeatureRuntime(
                 mediaKind,
                 row.contentId,
             )
-            val normalizedPosition = positionMs.coerceAtLeast(0L)
-            val normalizedDuration = durationMs?.takeIf { it > 0L }
-                ?: existing?.durationMs?.takeIf { it > 0L }
-            val completed = normalizedDuration?.let { duration ->
-                normalizedPosition >= (duration * 0.95).toLong()
-            } ?: false
+            val normalized = PlaybackProgressPolicy.normalize(
+                positionMs = positionMs,
+                durationMs = durationMs,
+                fallbackDurationMs = existing?.durationMs,
+            )
             database.vodCatalogDao().upsertProgress(
                 PlaybackProgressEntity(
                     sourceId = row.sourceId,
                     mediaKind = mediaKind,
                     contentId = row.contentId,
-                    positionMs = normalizedPosition,
-                    durationMs = normalizedDuration,
-                    completed = completed,
+                    positionMs = normalized.positionMs,
+                    durationMs = normalized.durationMs,
+                    completed = normalized.completed,
                     updatedAtEpochMillis = System.currentTimeMillis(),
                 ),
             )
