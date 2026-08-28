@@ -1,5 +1,6 @@
 package app.ownplay.player.ui
 
+import android.content.res.Configuration
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -10,13 +11,13 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -28,14 +29,21 @@ internal fun SourcePickerScreen(
     selectedSourceId: String?,
     onSourceSelected: (String) -> Unit,
 ) {
+    val configuration = LocalConfiguration.current
+    val isTelevision =
+        configuration.uiMode and Configuration.UI_MODE_TYPE_MASK == Configuration.UI_MODE_TYPE_TELEVISION
+
     Column(
         modifier = Modifier
             .fillMaxSize()
             .navigationBarsPadding()
-            .padding(horizontal = 16.dp, vertical = 20.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp),
+            .padding(
+                horizontal = if (isTelevision) 28.dp else 16.dp,
+                vertical = if (isTelevision) 24.dp else 20.dp,
+            ),
+        verticalArrangement = Arrangement.spacedBy(if (isTelevision) 18.dp else 14.dp),
     ) {
-        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Column(verticalArrangement = Arrangement.spacedBy(if (isTelevision) 6.dp else 4.dp)) {
             Text(
                 text = "Sources",
                 style = MaterialTheme.typography.headlineMedium,
@@ -54,7 +62,7 @@ internal fun SourcePickerScreen(
 
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
+            verticalArrangement = Arrangement.spacedBy(if (isTelevision) 12.dp else 10.dp),
         ) {
             items(
                 items = sources,
@@ -63,6 +71,7 @@ internal fun SourcePickerScreen(
                 SourceCard(
                     source = source,
                     selected = source.sourceId == selectedSourceId,
+                    isTelevision = isTelevision,
                     onClick = { onSourceSelected(source.sourceId) },
                 )
             }
@@ -74,13 +83,14 @@ internal fun SourcePickerScreen(
 private fun SourceCard(
     source: PlaylistSourceEntity,
     selected: Boolean,
+    isTelevision: Boolean,
     onClick: () -> Unit,
 ) {
     Surface(
         modifier = Modifier
             .fillMaxWidth()
             .clickable(enabled = source.enabled, onClick = onClick),
-        shape = RoundedCornerShape(20.dp),
+        shape = MaterialTheme.shapes.large,
         color = if (selected) {
             MaterialTheme.colorScheme.primaryContainer
         } else {
@@ -91,12 +101,15 @@ private fun SourceCard(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 18.dp, vertical = 16.dp),
+                .padding(
+                    horizontal = if (isTelevision) 22.dp else 18.dp,
+                    vertical = if (isTelevision) 20.dp else 16.dp,
+                ),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(14.dp),
+            horizontalArrangement = Arrangement.spacedBy(if (isTelevision) 18.dp else 14.dp),
         ) {
             Surface(
-                shape = RoundedCornerShape(14.dp),
+                shape = MaterialTheme.shapes.small,
                 color = if (selected) {
                     MaterialTheme.colorScheme.primary
                 } else {
@@ -109,7 +122,10 @@ private fun SourceCard(
                         .take(1)
                         .ifEmpty { "O" }
                         .uppercase(),
-                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+                    modifier = Modifier.padding(
+                        horizontal = if (isTelevision) 16.dp else 14.dp,
+                        vertical = if (isTelevision) 12.dp else 10.dp,
+                    ),
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
                     color = if (selected) {
@@ -136,10 +152,14 @@ private fun SourceCard(
             }
 
             Text(
-                text = if (selected) "Open" else "View",
+                text = if (selected) "Active" else "Select",
                 style = MaterialTheme.typography.labelLarge,
                 color = if (source.enabled) {
-                    MaterialTheme.colorScheme.primary
+                    if (selected) {
+                        MaterialTheme.colorScheme.onPrimaryContainer
+                    } else {
+                        MaterialTheme.colorScheme.primary
+                    }
                 } else {
                     MaterialTheme.colorScheme.onSurfaceVariant
                 },
