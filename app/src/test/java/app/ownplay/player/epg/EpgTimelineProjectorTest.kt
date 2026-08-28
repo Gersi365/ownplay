@@ -23,6 +23,19 @@ class EpgTimelineProjectorTest {
     }
 
     @Test
+    fun overlappingProgramsPreferTheOneThatStartedMostRecently() {
+        val timeline = EpgTimelineProjector.project(
+            programs = listOf(
+                program("Older overlap", 100, 300),
+                program("Newer overlap", 200, 280),
+            ),
+            nowEpochSeconds = 250,
+        )
+
+        assertEquals("Newer overlap", timeline.current?.title)
+    }
+
+    @Test
     fun gapBetweenProgramsHasNoFalseCurrentProgram() {
         val timeline = EpgTimelineProjector.project(
             programs = listOf(
