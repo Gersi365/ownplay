@@ -246,6 +246,7 @@ class PlaybackController(
         scope.launch {
             val failed = mutableState.value as? PlaybackState.Failed ?: return@launch
             if (!failed.failure.retryable) return@launch
+            val initialPositionMs = retryPositionFor(failed.request)
             clearBackgroundSuspension()
             retryJob?.cancel()
             retryJob = null
@@ -253,6 +254,7 @@ class PlaybackController(
             startOnControllerDispatcher(
                 request = failed.request,
                 resetRetryBudget = false,
+                initialPositionMs = initialPositionMs,
             )
         }
     }
@@ -463,6 +465,13 @@ class PlaybackController(
         backgroundSuspendedPositionMs = null
     }
 
+    private fun retryPositionFor(request: PlaybackRequest): Long? =
+        if (request.mediaKind == PlaybackMediaKind.LIVE) {
+            null
+        } else {
+            engine.currentPositionMs()?.takeIf { it > 0L }
+        }
+
     private fun handleNetworkUnavailable() {
         if (currentPlaybackUsesNetwork != true) return
         val request = mutableState.value.requestOrNull() ?: return
@@ -553,11 +562,13 @@ class PlaybackController(
             val failed = mutableState.value as? PlaybackState.Failed ?: return@launch
             if (failed.request != request || !failed.failure.retryable) return@launch
 
+            val initialPositionMs = retryPositionFor(request)
             retryJob = null
             automaticRetryAttempt = attempt
             startOnControllerDispatcher(
                 request = request,
                 resetRetryBudget = false,
+                initialPositionMs = initialPositionMs,
             )
         }
     }
