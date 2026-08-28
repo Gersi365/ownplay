@@ -39,7 +39,7 @@ internal fun PlaybackOriginBadge(
         ) {
             Icon(
                 imageVector = if (offline) Icons.Filled.DownloadDone else Icons.Filled.Cloud,
-                contentDescription = if (offline) "Playing offline file" else "Streaming online",
+                contentDescription = null,
                 modifier = Modifier.padding(end = 6.dp),
             )
             Text(
