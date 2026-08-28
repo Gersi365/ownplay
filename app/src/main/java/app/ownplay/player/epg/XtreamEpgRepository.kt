@@ -17,6 +17,7 @@ import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.concurrent.ConcurrentHashMap
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -200,7 +201,12 @@ class XtreamEpgRepository(
             ?.takeIf { entry -> nowEpochSeconds - entry.loadedAtEpochSeconds < SHORT_CACHE_TTL_SECONDS }
             ?.let { entry -> return entry.programs }
 
-        val streamId = providerStreamId?.trim()?.takeIf(String::isNotBlank) ?: return emptyList()
+        val streamId = providerStreamId
+            ?.trim()
+            ?.toIntOrNull()
+            ?.takeIf { it > 0 }
+            ?.toString()
+            ?: return emptyList()
         val access = resolveAccess(sourceId) ?: return emptyList()
         val guide = when (
             val result = xtreamClient.getShortEpg(
@@ -225,12 +231,22 @@ class XtreamEpgRepository(
     private suspend fun resolveAccess(sourceId: String): XtreamAccess? {
         val source = database.playlistSourceDao().getById(sourceId) ?: return null
         if (source.sourceKind != SourceKinds.XTREAM) return null
-        val locatorValue = runCatching {
+        val locatorValue = try {
             sensitiveValueStore.get(SensitiveValueRef(source.locatorRef))
-        }.getOrNull() ?: return null
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            null
+        } ?: return null
         val locator = XtreamSourceLocatorCodec.parse(locatorValue) ?: return null
         val credentialRef = source.credentialRef?.let(::CredentialRef) ?: return null
-        val credentials = runCatching { credentialStore.get(credentialRef) }.getOrNull() ?: return null
+        val credentials = try {
+            credentialStore.get(credentialRef)
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            null
+        } ?: return null
         return XtreamAccess(
             serverUrl = locator.serverUrl,
             credentials = credentials,
