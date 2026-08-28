@@ -32,6 +32,14 @@ class OfflineDownloadStorageTest {
     }
 
     @Test
+    fun publicFilenameStemRemovesControlCharacters() {
+        assertEquals(
+            "Movie Name Final",
+            OfflineDownloadStorage.safeFileStem("Movie\u0000Name\u0007 Final"),
+        )
+    }
+
+    @Test
     fun extensionNormalizationDoesNotDependOnDeviceLocale() {
         val originalLocale = Locale.getDefault()
         try {
