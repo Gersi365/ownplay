@@ -43,32 +43,51 @@ object InitialLiveCatalogFactory {
     fun fromXtream(
         categories: List<XtreamCategory>,
         streams: List<XtreamLiveStream>,
-    ): IncomingLiveCatalog = IncomingLiveCatalog(
-        categories = categories.mapIndexed { index, category ->
-            IncomingLiveCategory(
-                providerKey = category.id,
-                name = category.name,
-                parentProviderKey = category.parentId?.takeIf(String::isNotBlank),
-                providerOrder = index.toLong(),
-            )
-        },
-        channels = streams.mapIndexed { index, stream ->
-            IncomingLiveChannel(
-                providerKey = ProviderIdentity.xtreamLiveStream(stream.streamId),
-                providerStreamId = stream.streamId.toString(),
-                providerCategoryKey = stream.categoryId?.takeIf(String::isNotBlank),
-                providerName = stream.name,
-                tvgId = stream.epgChannelId,
-                tvgName = null,
-                locatorValue = stream.directSource
-                    ?.takeIf(String::isNotBlank)
-                    ?.let(PlaybackLocatorDescriptor::directUrl)
-                    ?: PlaybackLocatorDescriptor.xtreamLive(stream.streamId),
-                logoValue = stream.iconUrl?.takeIf(String::isNotBlank),
-                providerOrder = index.toLong(),
-            )
-        },
-    )
+    ): IncomingLiveCatalog {
+        val seenCategoryKeys = linkedSetOf<String>()
+        val incomingCategories = buildList {
+            categories.forEachIndexed { index, category ->
+                if (!seenCategoryKeys.add(category.id)) return@forEachIndexed
+                add(
+                    IncomingLiveCategory(
+                        providerKey = category.id,
+                        name = category.name,
+                        parentProviderKey = category.parentId?.takeIf(String::isNotBlank),
+                        providerOrder = index.toLong(),
+                    ),
+                )
+            }
+        }
+
+        val seenChannelKeys = linkedSetOf<String>()
+        val incomingChannels = buildList {
+            streams.forEachIndexed { index, stream ->
+                val providerKey = ProviderIdentity.xtreamLiveStream(stream.streamId)
+                if (!seenChannelKeys.add(providerKey)) return@forEachIndexed
+                add(
+                    IncomingLiveChannel(
+                        providerKey = providerKey,
+                        providerStreamId = stream.streamId.toString(),
+                        providerCategoryKey = stream.categoryId?.takeIf(String::isNotBlank),
+                        providerName = stream.name,
+                        tvgId = stream.epgChannelId,
+                        tvgName = null,
+                        locatorValue = stream.directSource
+                            ?.takeIf(String::isNotBlank)
+                            ?.let(PlaybackLocatorDescriptor::directUrl)
+                            ?: PlaybackLocatorDescriptor.xtreamLive(stream.streamId),
+                        logoValue = stream.iconUrl?.takeIf(String::isNotBlank),
+                        providerOrder = index.toLong(),
+                    ),
+                )
+            }
+        }
+
+        return IncomingLiveCatalog(
+            categories = incomingCategories,
+            channels = incomingChannels,
+        )
+    }
 
     fun fromM3u(playlist: M3uPlaylist): IncomingLiveCatalog {
         val categories = linkedMapOf<String, IncomingLiveCategory>()
