@@ -658,27 +658,3 @@ private fun mutationFailureMessage(failure: SourceMutationFailure): String = whe
     SourceMutationFailure.PersistenceFailure -> "Could not save playlist changes."
     is SourceMutationFailure.SourceFailure -> sourceErrorMessage(failure.error)
 }
-
-private fun sourceErrorMessage(error: SourceError): String = when (error) {
-    SourceError.EmptyValue -> "A required value is empty."
-    SourceError.InvalidUrl,
-    SourceError.UnsupportedScheme,
-    SourceError.MissingHost,
-    SourceError.EmbeddedCredentialsNotAllowed,
-    SourceError.UnexpectedUrlComponent,
-    -> "Invalid source URL."
-    SourceError.UnsupportedLocalUri -> "Unsupported local file URI."
-    SourceError.InvalidCredentials,
-    SourceError.CredentialUnavailable,
-    -> "Invalid or unavailable credentials."
-    SourceError.AuthenticationFailed -> "Authentication failed."
-    SourceError.CleartextTransportRequiresOptIn -> "Enable HTTP for this provider."
-    SourceError.SecureConnectionFailed -> "Secure connection failed."
-    SourceError.NetworkUnavailable -> "Network unavailable."
-    SourceError.Timeout -> "Provider timed out."
-    SourceError.SourceReadFailed -> "Could not read the source."
-    is SourceError.HttpFailure -> "Provider returned HTTP ${error.statusCode}."
-    SourceError.MalformedResponse -> "Provider returned an unsupported response."
-    SourceError.MalformedPlaylist -> "Playlist data is malformed."
-    SourceError.Unknown -> "Could not connect to this source."
-}
