@@ -1,5 +1,6 @@
 package app.ownplay.player.playback
 
+import java.util.Locale
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -144,6 +145,25 @@ class PlaybackTracksTest {
                 ordinal = 3,
             ),
         )
+    }
+
+    @Test
+    fun sensitiveMetadataDetectionDoesNotDependOnDeviceLocale() {
+        val previousLocale = Locale.getDefault()
+        try {
+            Locale.setDefault(Locale("tr", "TR"))
+            assertEquals(
+                "Audio 1",
+                PlaybackTrackLabelFormatter.format(
+                    kind = PlaybackTrackKind.AUDIO,
+                    rawLabel = "AUTHORIZATION=secret",
+                    rawLanguage = null,
+                    ordinal = 1,
+                ),
+            )
+        } finally {
+            Locale.setDefault(previousLocale)
+        }
     }
 
     @Test
