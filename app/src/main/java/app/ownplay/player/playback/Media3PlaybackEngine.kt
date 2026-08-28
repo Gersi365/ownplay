@@ -171,6 +171,12 @@ class Media3PlaybackEngine(
         }
     }
 
+    override fun suspendPlayback() {
+        runOnPlayerThread {
+            player.stop()
+        }
+    }
+
     override fun stop() {
         runOnPlayerThread {
             val preserveDiagnostics = player.playerError != null
@@ -217,7 +223,6 @@ class Media3PlaybackEngine(
             }
         }
     }
-
     override fun selectSubtitle(selection: PlaybackSubtitleSelection) {
         runOnPlayerThread {
             when (selection) {
