@@ -86,9 +86,6 @@ interface MediaDownloadDao {
     @Query("SELECT * FROM media_downloads WHERE state IN ('QUEUED', 'DOWNLOADING')")
     suspend fun needingWork(): List<MediaDownloadEntity>
 
-    @Query("SELECT * FROM media_downloads WHERE sourceId = :sourceId")
-    suspend fun forSource(sourceId: String): List<MediaDownloadEntity>
-
     @Query("SELECT * FROM media_downloads WHERE downloadId = :downloadId LIMIT 1")
     suspend fun getById(downloadId: String): MediaDownloadEntity?
 
