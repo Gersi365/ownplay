@@ -11,6 +11,11 @@ internal data class LibrarySeriesKey(
     val identity: String,
 ) : Serializable
 
+internal enum class LibrarySeriesAvailability {
+    OFFLINE,
+    MANAGED,
+}
+
 internal data class LibrarySeriesGroup(
     val key: LibrarySeriesKey,
     val title: String,
@@ -31,6 +36,13 @@ internal data class LibrarySeriesGroup(
 
     val hasOfflineEpisodes: Boolean
         get() = offlineEpisodeCount > 0
+
+    val availability: LibrarySeriesAvailability
+        get() = if (hasOfflineEpisodes) {
+            LibrarySeriesAvailability.OFFLINE
+        } else {
+            LibrarySeriesAvailability.MANAGED
+        }
 
     val seasonNumbers: List<Int>
         get() = episodes.mapNotNull { it.seasonNumber }.distinct().sorted()
