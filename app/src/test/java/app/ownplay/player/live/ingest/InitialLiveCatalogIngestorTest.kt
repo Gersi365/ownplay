@@ -108,6 +108,8 @@ class InitialLiveCatalogIngestorTest {
         assertEquals("local-channel", saved.channelId)
         assertEquals(3L, saved.lastSeenGeneration)
         assertEquals(ChannelAvailability.AVAILABLE, saved.availability)
+        assertEquals("source", persistence.appliedSourceId)
+        assertEquals(3L, persistence.appliedGeneration)
         assertFalse(store.contains("old-stream"))
         assertFalse(store.contains("old-logo"))
         assertTrue(store.contains(saved.streamLocatorRef))
@@ -200,14 +202,20 @@ class InitialLiveCatalogIngestorTest {
     ) : LiveCatalogPersistence {
         var savedCategories: List<ProviderCategoryEntity> = emptyList()
         var savedChannels: List<ProviderChannelEntity> = emptyList()
+        var appliedSourceId: String? = null
+        var appliedGeneration: Long? = null
 
         override suspend fun existingChannels(sourceId: String): List<ProviderChannelEntity> = existing
 
         override suspend fun applyInitialCatalog(
+            sourceId: String,
+            generation: Long,
             categories: List<ProviderCategoryEntity>,
             channels: List<ProviderChannelEntity>,
         ) {
             if (failApply) error("fixture persistence failure")
+            appliedSourceId = sourceId
+            appliedGeneration = generation
             savedCategories = categories
             savedChannels = channels
         }
