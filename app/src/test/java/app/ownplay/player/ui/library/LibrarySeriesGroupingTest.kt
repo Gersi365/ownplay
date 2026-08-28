@@ -89,6 +89,38 @@ class LibrarySeriesGroupingTest {
     }
 
     @Test
+    fun newestEpisodeSuppliesCurrentSeriesTitleAndPoster() {
+        val groups = groupLibrarySeries(
+            listOf(
+                episode(
+                    "older",
+                    "source-1",
+                    "source-1:series:42:episode:101",
+                    "Pilot",
+                    "Old title",
+                    1,
+                    1,
+                    100L,
+                ),
+                episode(
+                    "newer",
+                    "source-1",
+                    "source-1:series:42:episode:102",
+                    "Second",
+                    "Current title",
+                    1,
+                    2,
+                    200L,
+                ),
+            ),
+        )
+
+        assertEquals(1, groups.size)
+        assertEquals("Current title", groups.single().title)
+        assertEquals("poster-newer", groups.single().posterUrl)
+    }
+
+    @Test
     fun extractsSeriesIdFromStableEpisodeContentId() {
         assertEquals(
             "source-1:series:42",
