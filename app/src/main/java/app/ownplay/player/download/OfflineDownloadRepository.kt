@@ -81,6 +81,17 @@ class OfflineDownloadRepository(
     fun observeAll(): Flow<List<OfflineDownload>> =
         dao.observeAll().map { rows -> rows.map(::mapDownload) }
 
+    suspend fun reconcilePendingWork(): Int {
+        val pending = dao.needingWork()
+        pending.forEach { row ->
+            enqueueWork(
+                downloadId = row.downloadId,
+                existingWorkPolicy = ExistingWorkPolicy.KEEP,
+            )
+        }
+        return pending.size
+    }
+
     suspend fun enqueue(spec: OfflineDownloadSpec): String {
         require(spec.sourceId.isNotBlank()) { "sourceId is required" }
         require(spec.contentId.isNotBlank()) { "contentId is required" }
@@ -261,7 +272,10 @@ class OfflineDownloadRepository(
         )
     }
 
-    private fun enqueueWork(downloadId: String) {
+    private fun enqueueWork(
+        downloadId: String,
+        existingWorkPolicy: ExistingWorkPolicy = ExistingWorkPolicy.REPLACE,
+    ) {
         val constraints = Constraints.Builder()
             .setRequiredNetworkType(NetworkType.CONNECTED)
             .build()
@@ -276,7 +290,7 @@ class OfflineDownloadRepository(
             .build()
         workManager.enqueueUniqueWork(
             workName(downloadId),
-            ExistingWorkPolicy.REPLACE,
+            existingWorkPolicy,
             request,
         )
     }
