@@ -52,7 +52,8 @@ object InitialLiveCatalogFactory {
                 providerOrder = index.toLong(),
             )
         },
-        channels = streams.mapIndexed { index, stream ->
+        channels = streams.mapIndexedNotNull { index, stream ->
+            if (stream.streamId <= 0) return@mapIndexedNotNull null
             IncomingLiveChannel(
                 providerKey = ProviderIdentity.xtreamLiveStream(stream.streamId),
                 providerStreamId = stream.streamId.toString(),
