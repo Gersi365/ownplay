@@ -60,7 +60,7 @@ fun PictureInPicturePlaybackSurface(
                 if (returnTarget?.get() == null) {
                     val previousView = PlaybackInteractionBridge.currentBoundView()
                         ?.takeUnless { candidate -> candidate === previousPipView }
-                    returnTarget = previousView?.let(::WeakReference)
+                    returnTarget = previousView?.let { candidate -> WeakReference(candidate) }
                 }
                 PlayerView(context).apply {
                     useController = false
