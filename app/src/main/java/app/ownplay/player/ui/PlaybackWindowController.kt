@@ -32,9 +32,11 @@ internal object PlaybackWindowPolicy {
         appOrientation: AppOrientationMode,
         inPictureInPicture: Boolean,
         fullscreenSensorRotationEnabled: Boolean = true,
+        livePreviewRotationEnabled: Boolean = false,
     ): PlaybackOrientationIntent = when {
         inPictureInPicture -> PlaybackOrientationIntent.FOLLOW_SYSTEM
         fullscreen && fullscreenSensorRotationEnabled -> PlaybackOrientationIntent.SENSOR
+        livePreviewRotationEnabled -> PlaybackOrientationIntent.SENSOR
         appOrientation == AppOrientationMode.LANDSCAPE -> PlaybackOrientationIntent.LANDSCAPE
         else -> PlaybackOrientationIntent.PORTRAIT
     }
@@ -54,6 +56,7 @@ class PlaybackWindowController(
     private var isPlaying = false
     private var fullscreenRequested = false
     private var fullscreenSensorRotationEnabled = true
+    private var livePreviewRotationEnabled = false
     private var pictureInPictureEnabled = true
     private var playbackSurfaceActive = false
     private var appOrientation = AppOrientationMode.PORTRAIT
@@ -97,6 +100,12 @@ class PlaybackWindowController(
     fun updateFullscreenSensorRotationEnabled(enabled: Boolean) {
         if (fullscreenSensorRotationEnabled == enabled) return
         fullscreenSensorRotationEnabled = enabled
+        applyOrientationPolicy()
+    }
+
+    fun updateLivePreviewRotationEnabled(enabled: Boolean) {
+        if (livePreviewRotationEnabled == enabled) return
+        livePreviewRotationEnabled = enabled
         applyOrientationPolicy()
     }
 
@@ -158,6 +167,7 @@ class PlaybackWindowController(
         isPlaying = false
         fullscreenRequested = false
         fullscreenSensorRotationEnabled = true
+        livePreviewRotationEnabled = false
         pictureInPictureEnabled = true
         playbackSurfaceActive = false
         detachWindowRoot()
@@ -227,6 +237,7 @@ class PlaybackWindowController(
                 appOrientation = appOrientation,
                 inPictureInPicture = _isInPictureInPictureMode.value,
                 fullscreenSensorRotationEnabled = fullscreenSensorRotationEnabled,
+                livePreviewRotationEnabled = livePreviewRotationEnabled,
             )
         ) {
             PlaybackOrientationIntent.PORTRAIT -> ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
