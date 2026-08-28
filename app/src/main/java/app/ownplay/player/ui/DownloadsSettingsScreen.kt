@@ -47,6 +47,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import app.ownplay.player.download.OfflineDownload
 import app.ownplay.player.download.OfflineDownloadFeatureRuntime
+import app.ownplay.player.download.queuedDownloadStatusLabel
 import app.ownplay.player.persistence.download.DownloadMediaKinds
 import app.ownplay.player.persistence.download.DownloadStates
 import kotlinx.coroutines.launch
@@ -264,7 +265,7 @@ private fun DownloadRow(
                     )
                 }
                 DownloadStates.QUEUED -> Text(
-                    text = "Queued",
+                    text = queuedDownloadStatusLabel(download.failureReason),
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
