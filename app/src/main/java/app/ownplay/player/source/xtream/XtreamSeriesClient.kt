@@ -81,7 +81,7 @@ class XtreamSeriesClient(
         return SourceResult.Success(
             array.mapNotNull { element ->
                 val item = element as? JsonObject ?: return@mapNotNull null
-                val seriesId = item.int("series_id") ?: return@mapNotNull null
+                val seriesId = item.int("series_id")?.takeIf { it > 0 } ?: return@mapNotNull null
                 val name = item.text("name") ?: return@mapNotNull null
                 XtreamSeriesSummary(
                     seriesId = seriesId,
@@ -131,7 +131,7 @@ class XtreamSeriesClient(
             val seasonFromKey = seasonKey.toIntOrNull()
             (value as? JsonArray)?.forEach episodeLoop@{ element ->
                 val item = element as? JsonObject ?: return@episodeLoop
-                val episodeId = item.int("id") ?: return@episodeLoop
+                val episodeId = item.int("id")?.takeIf { it > 0 } ?: return@episodeLoop
                 val episodeNumber = item.int("episode_num") ?: item.int("episode") ?: return@episodeLoop
                 val seasonNumber = item.int("season") ?: seasonFromKey ?: return@episodeLoop
                 val episodeInfo = item["info"] as? JsonObject
