@@ -67,8 +67,12 @@ class SourceValidatorTest {
     }
 
     @Test
-    fun localDocument_acceptsContentUriOnly() {
+    fun localDocument_requiresHierarchicalContentUriWithAuthority() {
         assertNull(SourceValidator.validateLocalDocumentUri("content://media/document/42"))
+        assertEquals(
+            SourceError.UnsupportedLocalUri,
+            SourceValidator.validateLocalDocumentUri("content:/document/42"),
+        )
         assertEquals(
             SourceError.UnsupportedLocalUri,
             SourceValidator.validateLocalDocumentUri("file:///storage/emulated/0/list.m3u"),
