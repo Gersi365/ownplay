@@ -133,6 +133,58 @@ private val OwnPlayTypography = Typography(
     ),
 )
 
+private val OwnPlayTvTypography = Typography(
+    displaySmall = OwnPlayTypography.displaySmall.copy(
+        fontSize = 38.sp,
+        lineHeight = 44.sp,
+    ),
+    headlineMedium = OwnPlayTypography.headlineMedium.copy(
+        fontSize = 29.sp,
+        lineHeight = 35.sp,
+    ),
+    headlineSmall = OwnPlayTypography.headlineSmall.copy(
+        fontSize = 25.sp,
+        lineHeight = 31.sp,
+    ),
+    titleLarge = OwnPlayTypography.titleLarge.copy(
+        fontSize = 23.sp,
+        lineHeight = 29.sp,
+    ),
+    titleMedium = OwnPlayTypography.titleMedium.copy(
+        fontSize = 18.sp,
+        lineHeight = 24.sp,
+    ),
+    titleSmall = OwnPlayTypography.titleSmall.copy(
+        fontSize = 16.sp,
+        lineHeight = 22.sp,
+    ),
+    bodyLarge = OwnPlayTypography.bodyLarge.copy(
+        fontSize = 18.sp,
+        lineHeight = 26.sp,
+    ),
+    bodyMedium = OwnPlayTypography.bodyMedium.copy(
+        fontSize = 16.sp,
+        lineHeight = 23.sp,
+    ),
+    bodySmall = OwnPlayTypography.bodySmall.copy(
+        fontSize = 14.sp,
+        lineHeight = 20.sp,
+    ),
+    labelLarge = OwnPlayTypography.labelLarge.copy(
+        fontSize = 16.sp,
+        lineHeight = 21.sp,
+    ),
+    labelMedium = OwnPlayTypography.labelMedium.copy(
+        fontSize = 14.sp,
+        lineHeight = 19.sp,
+    ),
+    labelSmall = OwnPlayTypography.labelSmall.copy(
+        fontSize = 12.sp,
+        lineHeight = 17.sp,
+        letterSpacing = 0.35.sp,
+    ),
+)
+
 @Composable
 fun OwnPlayTheme(
     deviceProfile: AppDeviceProfile? = null,
@@ -164,7 +216,7 @@ fun OwnPlayTheme(
 
     MaterialTheme(
         colorScheme = OwnPlayDarkColors,
-        typography = OwnPlayTypography,
+        typography = if (usesDpad) OwnPlayTvTypography else OwnPlayTypography,
         shapes = OwnPlayShapes,
     ) {
         if (deviceProfile == null) {
