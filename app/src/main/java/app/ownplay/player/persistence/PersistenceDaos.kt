@@ -27,10 +27,18 @@ interface PlaylistSourceDao {
             CAST(COUNT(channel.channelId) AS INTEGER) AS channelCount,
             source.createdAtEpochMillis AS createdAtEpochMillis,
             source.updatedAtEpochMillis AS updatedAtEpochMillis,
-            (
-                SELECT MAX(refreshChannel.lastSeenGeneration)
-                FROM provider_channels AS refreshChannel
-                WHERE refreshChannel.sourceId = source.sourceId
+            COALESCE(
+                (
+                    SELECT refresh.lastSuccessAtEpochMillis
+                    FROM playlist_refresh_state AS refresh
+                    WHERE refresh.sourceId = source.sourceId
+                    LIMIT 1
+                ),
+                (
+                    SELECT MAX(refreshChannel.lastSeenGeneration)
+                    FROM provider_channels AS refreshChannel
+                    WHERE refreshChannel.sourceId = source.sourceId
+                )
             ) AS lastLiveRefreshAtEpochMillis
         FROM playlist_sources AS source
         LEFT JOIN provider_channels AS channel
@@ -63,6 +71,12 @@ interface ProviderCatalogDao {
             "WHERE sourceId = :sourceId ORDER BY providerOrder ASC",
     )
     suspend fun channelsForSource(sourceId: String): List<ProviderChannelEntity>
+
+    @Query(
+        "SELECT COUNT(*) FROM provider_channels " +
+            "WHERE sourceId = :sourceId AND availability != 'removed'",
+    )
+    suspend fun activeChannelCount(sourceId: String): Int
 
     @Query(
         "SELECT * FROM provider_channels " +
