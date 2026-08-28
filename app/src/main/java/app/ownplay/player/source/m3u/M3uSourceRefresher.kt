@@ -29,7 +29,7 @@ internal class M3uSourceRefresher(
         generation: Long,
         playlist: M3uPlaylist,
     ) -> InitialLiveCatalogIngestResult,
-    private val nowEpochMillis: () -> Long = System::currentTimeMillis,
+    private val nowEpochMillis: () -> Long = { System.currentTimeMillis() },
 ) {
     suspend fun refresh(request: M3uRefreshRequest): SourceOnboardingResult {
         val locator = M3uSourceLocatorCodec.parse(request.storedLocator)
