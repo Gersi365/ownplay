@@ -101,6 +101,18 @@ class PlaylistSourceSummaryDaoTest {
         assertEquals(3_000L, summary.lastLiveRefreshAtEpochMillis)
     }
 
+    @Test
+    fun equalCreationTimesUseSourceIdAsStableTieBreaker() = runBlocking {
+        database.playlistSourceDao().upsert(source("source-b"))
+        database.playlistSourceDao().upsert(source("source-a"))
+
+        val observedSources = database.playlistSourceDao().observeAll().first()
+        val summaries = database.playlistSourceDao().observeSummaries().first()
+
+        assertEquals(listOf("source-a", "source-b"), observedSources.map { it.sourceId })
+        assertEquals(listOf("source-a", "source-b"), summaries.map { it.sourceId })
+    }
+
     private fun source(sourceId: String) = PlaylistSourceEntity(
         sourceId = sourceId,
         name = sourceId,
