@@ -25,6 +25,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
+private const val STUCK_PLAYING_TIMEOUT_MILLIS = 20_000
+
 interface PlaybackVideoOutput {
     fun bind(view: PlayerView)
     fun unbind(view: PlayerView)
@@ -39,6 +41,7 @@ class Media3PlaybackEngine(
         .setEnableDecoderFallback(true)
         .setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON)
     private val player = ExoPlayer.Builder(applicationContext, renderersFactory)
+        .setStuckPlayingDetectionTimeoutMs(STUCK_PLAYING_TIMEOUT_MILLIS)
         .setAudioAttributes(AudioAttributes.DEFAULT, true)
         .build()
     private val playerHandler = Handler(player.applicationLooper)
