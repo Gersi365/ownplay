@@ -8,7 +8,6 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
@@ -66,8 +65,8 @@ internal fun LandscapeSettingsShell(
         modifier = Modifier
             .fillMaxSize()
             .navigationBarsPadding()
-            .padding(8.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
+            .padding(if (isTelevision) 14.dp else 8.dp),
+        horizontalArrangement = Arrangement.spacedBy(if (isTelevision) 12.dp else 8.dp),
     ) {
         LandscapeSettingsRail(
             selectedRailDestination = selectedRailDestination,
@@ -79,7 +78,7 @@ internal fun LandscapeSettingsShell(
             modifier = Modifier
                 .weight(1f)
                 .fillMaxHeight(),
-            shape = RoundedCornerShape(18.dp),
+            shape = MaterialTheme.shapes.medium,
             color = MaterialTheme.colorScheme.surface,
             tonalElevation = 1.dp,
         ) {
@@ -166,14 +165,21 @@ internal fun LandscapeSectionPage(
     subtitle: String,
     content: @Composable () -> Unit,
 ) {
+    val configuration = LocalConfiguration.current
+    val isTelevision =
+        configuration.uiMode and Configuration.UI_MODE_TYPE_MASK == Configuration.UI_MODE_TYPE_TELEVISION
+
     Column(
         modifier = Modifier
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
-            .padding(horizontal = 18.dp, vertical = 14.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
+            .padding(
+                horizontal = if (isTelevision) 26.dp else 18.dp,
+                vertical = if (isTelevision) 20.dp else 14.dp,
+            ),
+        verticalArrangement = Arrangement.spacedBy(if (isTelevision) 16.dp else 12.dp),
     ) {
-        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        Column(verticalArrangement = Arrangement.spacedBy(if (isTelevision) 4.dp else 2.dp)) {
             Text(
                 text = title,
                 style = MaterialTheme.typography.titleLarge,
@@ -188,4 +194,3 @@ internal fun LandscapeSectionPage(
         content()
     }
 }
-
