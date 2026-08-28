@@ -18,4 +18,30 @@ class OfflineSourceRemovalPolicyTest {
         assertFalse(shouldRestartAfterSourceRemovalFailure(DownloadStates.COMPLETED))
         assertFalse(shouldRestartAfterSourceRemovalFailure(DownloadStates.FAILED))
     }
+
+    @Test
+    fun rollbackDoesNotRestartDownloadPausedAfterSnapshot() {
+        assertFalse(
+            shouldRestartSourceRemovalRollback(
+                wasActiveBeforeRemoval = true,
+                currentState = DownloadStates.PAUSED,
+            ),
+        )
+    }
+
+    @Test
+    fun rollbackRestartsOnlyWhenSnapshotAndCurrentStateAreActive() {
+        assertTrue(
+            shouldRestartSourceRemovalRollback(
+                wasActiveBeforeRemoval = true,
+                currentState = DownloadStates.QUEUED,
+            ),
+        )
+        assertFalse(
+            shouldRestartSourceRemovalRollback(
+                wasActiveBeforeRemoval = false,
+                currentState = DownloadStates.QUEUED,
+            ),
+        )
+    }
 }
