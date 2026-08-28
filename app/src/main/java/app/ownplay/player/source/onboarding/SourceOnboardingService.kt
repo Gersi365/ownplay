@@ -19,6 +19,8 @@ import app.ownplay.player.source.UrlValidationResult
 import app.ownplay.player.source.credential.CredentialStore
 import app.ownplay.player.source.credential.XtreamCredentials
 import app.ownplay.player.source.m3u.AndroidLocalM3uLoader
+import app.ownplay.player.source.m3u.M3uSourceLocator
+import app.ownplay.player.source.m3u.M3uSourceLocatorCodec
 import app.ownplay.player.source.m3u.RemoteM3uLoader
 import app.ownplay.player.source.xtream.XtreamClient
 import app.ownplay.player.source.xtream.XtreamSourceLocator
@@ -64,6 +66,7 @@ class SourceOnboardingService(
     suspend fun addRemoteM3u(
         name: String,
         playlistUrl: String,
+        allowCleartext: Boolean = false,
     ): SourceOnboardingResult {
         val normalizedName = name.trim()
         if (normalizedName.isEmpty()) {
@@ -71,7 +74,12 @@ class SourceOnboardingService(
         }
 
         val normalizedUrl = playlistUrl.trim()
-        val playlist = when (val loaded = remoteM3uLoader.load(normalizedUrl)) {
+        val playlist = when (
+            val loaded = remoteM3uLoader.load(
+                playlistUrl = normalizedUrl,
+                allowCleartextForRequest = allowCleartext,
+            )
+        ) {
             is SourceResult.Success -> loaded.value
             is SourceResult.Failure -> {
                 return SourceOnboardingResult.Failure(
@@ -79,11 +87,17 @@ class SourceOnboardingService(
                 )
             }
         }
+        val sourceLocator = M3uSourceLocatorCodec.encode(
+            M3uSourceLocator(
+                value = normalizedUrl,
+                allowCleartext = allowCleartext,
+            ),
+        )
 
         return persistSourceAndCatalog(
             name = normalizedName,
             sourceKind = SourceKinds.REMOTE_M3U,
-            locatorValue = normalizedUrl,
+            locatorValue = sourceLocator,
             credentialRef = null,
             catalog = InitialLiveCatalogFactory.fromM3u(playlist),
         )
@@ -92,6 +106,7 @@ class SourceOnboardingService(
     suspend fun addLocalM3u(
         name: String,
         documentUri: String,
+        allowCleartext: Boolean = false,
     ): SourceOnboardingResult {
         val normalizedName = name.trim()
         if (normalizedName.isEmpty()) {
@@ -107,11 +122,17 @@ class SourceOnboardingService(
                 )
             }
         }
+        val sourceLocator = M3uSourceLocatorCodec.encode(
+            M3uSourceLocator(
+                value = normalizedDocumentUri,
+                allowCleartext = allowCleartext,
+            ),
+        )
 
         return persistSourceAndCatalog(
             name = normalizedName,
             sourceKind = SourceKinds.LOCAL_M3U,
-            locatorValue = normalizedDocumentUri,
+            locatorValue = sourceLocator,
             credentialRef = null,
             catalog = InitialLiveCatalogFactory.fromM3u(playlist),
         )
