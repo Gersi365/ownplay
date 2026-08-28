@@ -103,7 +103,7 @@ internal fun DownloadsSettingsScreen(
                     fontWeight = FontWeight.Bold,
                 )
                 Text(
-                    text = "Movies and series episodes saved for offline use.",
+                    text = "Offline copies saved on this device.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -140,6 +140,47 @@ internal fun DownloadsSettingsScreen(
                 }
             }
             return
+        }
+
+        val readyCount = downloads.count { it.state == DownloadStates.COMPLETED }
+        val activeCount = downloads.count {
+            it.state == DownloadStates.QUEUED ||
+                it.state == DownloadStates.DOWNLOADING ||
+                it.state == DownloadStates.PAUSED
+        }
+        val storedBytes = downloads
+            .asSequence()
+            .filter { it.state == DownloadStates.COMPLETED }
+            .sumOf(OfflineDownload::bytesDownloaded)
+
+        Surface(
+            modifier = Modifier
+                .fillMaxWidth()
+                .widthIn(max = 840.dp)
+                .align(Alignment.CenterHorizontally),
+            shape = RoundedCornerShape(12.dp),
+            color = MaterialTheme.colorScheme.surfaceVariant,
+        ) {
+            Row(
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 9.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Icon(
+                    Icons.Filled.DownloadDone,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                )
+                Text(
+                    text = buildString {
+                        append("$readyCount ready offline")
+                        if (activeCount > 0) append(" · $activeCount active")
+                        if (storedBytes > 0L) append(" · ${humanBytes(storedBytes)} stored")
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                    fontWeight = FontWeight.SemiBold,
+                )
+            }
         }
 
         LazyColumn(
@@ -275,7 +316,7 @@ private fun DownloadRow(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 DownloadStates.COMPLETED -> Text(
-                    text = "Downloaded · ${downloadStorageLabel(download)} · ${humanBytes(download.bytesDownloaded)}",
+                    text = "Offline ready · ${downloadStorageLabel(download)} · ${humanBytes(download.bytesDownloaded)}",
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.primary,
                 )
