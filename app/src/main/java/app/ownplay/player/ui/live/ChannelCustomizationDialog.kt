@@ -74,7 +74,7 @@ fun ChannelCustomizationDialog(
                                 localName = ""
                             },
                         ) {
-                            Text("Use provider name")
+                            Text("Remove custom name")
                         }
                     }
                     TextButton(
