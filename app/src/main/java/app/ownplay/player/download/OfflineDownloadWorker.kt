@@ -45,6 +45,9 @@ class OfflineDownloadWorker(
             ) {
                 return Result.success()
             }
+            if (recoverFinalizedDownload(initialRow, dao)) {
+                return Result.success()
+            }
 
             setForeground(createForegroundInfo(initialRow, initialRow.bytesDownloaded, initialRow.totalBytes))
             val resolver = XtreamDownloadLocatorResolver(
@@ -316,6 +319,52 @@ class OfflineDownloadWorker(
         } finally {
             database.close()
         }
+    }
+
+    private suspend fun recoverFinalizedDownload(
+        row: MediaDownloadEntity,
+        dao: MediaDownloadDao,
+    ): Boolean {
+        val finalLocation: String
+        val finalized: Boolean
+        val actualBytes: Long
+        if (OfflineDownloadStorage.isPublicDownloadsLocation(row.localRelativePath)) {
+            finalLocation = row.localRelativePath ?: return false
+            finalized = OfflineDownloadStorage.isPublishedPublicDownload(
+                applicationContext,
+                finalLocation,
+            ) == true
+            actualBytes = OfflineDownloadStorage.locationSize(applicationContext, finalLocation)
+                ?: return false
+        } else {
+            val finalFile = OfflineDownloadStorage.privateFinalFile(
+                applicationContext,
+                row.downloadId,
+                row.containerExtension ?: "mp4",
+            )
+            finalized = finalFile.isFile
+            actualBytes = finalFile.takeIf(File::isFile)?.length() ?: return false
+            finalLocation = OfflineDownloadStorage.privateRelativePath(finalFile)
+        }
+        val finalBytes = OfflineDownloadFinalizationPolicy.recoverableFinalBytes(
+            finalized = finalized,
+            actualBytes = actualBytes,
+            expectedTotalBytes = row.totalBytes,
+        ) ?: return false
+
+        dao.updateTransfer(
+            downloadId = row.downloadId,
+            state = DownloadStates.COMPLETED,
+            bytesDownloaded = finalBytes,
+            totalBytes = row.totalBytes ?: finalBytes,
+            localRelativePath = finalLocation,
+            failureReason = null,
+            updatedAtEpochMillis = System.currentTimeMillis(),
+        )
+        if (!OfflineDownloadStorage.isPublicDownloadsLocation(finalLocation)) {
+            OfflineDownloadStorage.partialFile(applicationContext, row.downloadId).delete()
+        }
+        return true
     }
 
     private fun currentTransferBytes(row: MediaDownloadEntity): Long {
