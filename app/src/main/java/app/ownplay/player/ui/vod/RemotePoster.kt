@@ -26,9 +26,12 @@ import okhttp3.Request
 
 private const val MAX_POSTER_BYTES = 8 * 1024 * 1024
 private const val MAX_POSTER_LONG_EDGE_PX = 768
-private const val POSTER_MEMORY_CACHE_ENTRIES = 12
+private const val POSTER_MEMORY_CACHE_KB = 8 * 1024
 
-private val posterMemoryCache = LruCache<String, ImageBitmap>(POSTER_MEMORY_CACHE_ENTRIES)
+private val posterMemoryCache = object : LruCache<String, ImageBitmap>(POSTER_MEMORY_CACHE_KB) {
+    override fun sizeOf(key: String, value: ImageBitmap): Int =
+        estimatedPosterMemoryKb(width = value.width, height = value.height)
+}
 
 @Composable
 internal fun RemotePoster(
@@ -100,6 +103,15 @@ private fun decodePoster(bytes: ByteArray): ImageBitmap? {
         )
     }
     return BitmapFactory.decodeByteArray(bytes, 0, bytes.size, options)?.asImageBitmap()
+}
+
+internal fun estimatedPosterMemoryKb(width: Int, height: Int): Int {
+    if (width <= 0 || height <= 0) return 1
+    val bytes = width.toLong() * height.toLong() * 4L
+    return ((bytes + 1023L) / 1024L)
+        .coerceAtMost(Int.MAX_VALUE.toLong())
+        .toInt()
+        .coerceAtLeast(1)
 }
 
 internal fun calculatePosterInSampleSize(
