@@ -218,6 +218,13 @@ class OfflineDownloadRepository(
         OfflineDownloadStorage.deleteLocation(applicationContext, existing?.localRelativePath)
         OfflineDownloadStorage.partialFile(applicationContext, downloadId).delete()
         dao.delete(downloadId)
+        if (existing != null) {
+            OfflineDownloadStorage.privateFinalFile(
+                applicationContext,
+                downloadId,
+                existing.containerExtension ?: "mp4",
+            ).delete()
+        }
     }
 
     suspend fun localPlaybackLocator(request: PlaybackRequest): ResolvedPlaybackLocator? {
