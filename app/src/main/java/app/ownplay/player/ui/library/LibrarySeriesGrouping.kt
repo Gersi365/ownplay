@@ -53,7 +53,7 @@ internal fun groupLibrarySeries(downloads: List<OfflineDownload>): List<LibraryS
             val newestFirst = groupedEpisodes.sortedByDescending { it.updatedAtEpochMillis }
             LibrarySeriesGroup(
                 key = key,
-                title = groupedEpisodes
+                title = newestFirst
                     .asSequence()
                     .mapNotNull { it.seriesTitle?.trim()?.takeIf(String::isNotBlank) }
                     .firstOrNull()
