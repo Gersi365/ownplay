@@ -50,9 +50,9 @@ import androidx.media3.ui.PlayerView
 import app.ownplay.player.OwnPlayAppRuntime
 import app.ownplay.player.download.OfflineDownload
 import app.ownplay.player.persistence.download.DownloadMediaKinds
-import app.ownplay.player.playback.PlaybackFailureCategory
 import app.ownplay.player.playback.PlaybackInteractionBridge
 import app.ownplay.player.playback.PlaybackState
+import app.ownplay.player.ui.playbackFailureLabel
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
@@ -228,7 +228,7 @@ internal fun LibraryPlaybackScreen(
                         verticalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
                         Text(
-                            text = libraryPlaybackFailureMessage(state.failure.category),
+                            text = playbackFailureLabel(state.failure.category),
                             color = Color.White,
                         )
                         if (state.failure.retryable) {
@@ -245,13 +245,4 @@ internal fun LibraryPlaybackScreen(
             }
         }
     }
-}
-
-private fun libraryPlaybackFailureMessage(category: PlaybackFailureCategory): String = when (category) {
-    PlaybackFailureCategory.NETWORK_UNAVAILABLE -> "Network unavailable"
-    PlaybackFailureCategory.TIMEOUT -> "Playback timed out"
-    PlaybackFailureCategory.AUTHENTICATION_FAILURE -> "Authentication failed"
-    PlaybackFailureCategory.STREAM_UNAVAILABLE -> "Stream unavailable"
-    PlaybackFailureCategory.UNSUPPORTED_MEDIA -> "Unsupported media"
-    PlaybackFailureCategory.UNKNOWN -> "Playback failed"
 }
