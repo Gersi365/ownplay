@@ -28,6 +28,14 @@ interface SensitiveValueStore {
     fun delete(ref: SensitiveValueRef)
 
     fun deleteAll(refs: Collection<SensitiveValueRef>) {
-        refs.forEach(::delete)
+        var firstFailure: Exception? = null
+        refs.forEach { ref ->
+            try {
+                delete(ref)
+            } catch (error: Exception) {
+                if (firstFailure == null) firstFailure = error
+            }
+        }
+        firstFailure?.let { throw it }
     }
 }
