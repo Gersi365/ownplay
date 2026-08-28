@@ -62,6 +62,29 @@ class RemoteM3uLoaderTest {
     }
 
     @Test
+    fun load_allowsPerRequestCleartextOptIn() = runBlocking {
+        server.enqueue(
+            MockResponse.Builder()
+                .body(
+                    """
+                    #EXTM3U
+                    #EXTINF:-1,Channel
+                    https://stream.example/live.m3u8
+                    """.trimIndent(),
+                )
+                .build(),
+        )
+        val loader = RemoteM3uLoader()
+
+        val result = loader.load(
+            playlistUrl = server.url("/playlist.m3u").toString(),
+            allowCleartextForRequest = true,
+        )
+
+        assertTrue(result is SourceResult.Success)
+    }
+
+    @Test
     fun load_emptySuccessfulBody_isMalformedPlaylist() = runBlocking {
         server.enqueue(MockResponse.Builder().body("\n# comment only\n").build())
         val loader = RemoteM3uLoader(allowCleartext = true)
