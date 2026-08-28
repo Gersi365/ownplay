@@ -4,6 +4,7 @@ import androidx.annotation.OptIn
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.util.StuckPlayerException
 import androidx.media3.common.util.UnstableApi
+import androidx.media3.exoplayer.ExoTimeoutException
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -133,5 +134,19 @@ class Media3PlaybackFailureMapperTest {
 
         assertEquals(PlaybackFailureCategory.TIMEOUT, failure.category)
         assertTrue(failure.retryable)
+    }
+
+    @Test
+    fun surfaceDetachTimeoutIsTerminalForCurrentVideo() {
+        val failure = Media3PlaybackFailureMapper.map(
+            PlaybackException(
+                "surface detach timeout",
+                ExoTimeoutException(ExoTimeoutException.TIMEOUT_OPERATION_DETACH_SURFACE),
+                PlaybackException.ERROR_CODE_TIMEOUT,
+            ),
+        )
+
+        assertEquals(PlaybackFailureCategory.UNKNOWN, failure.category)
+        assertFalse(failure.retryable)
     }
 }
