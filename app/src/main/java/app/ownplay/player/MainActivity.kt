@@ -130,6 +130,7 @@ class MainActivity : ComponentActivity() {
             SideEffect {
                 val usesDpad = configuredProfile?.usesDpad == true
                 PlaybackInteractionBridge.setDpadMode(usesDpad)
+                playbackWindowController.updateFullscreenSensorRotationEnabled(!usesDpad)
                 tvRemoteGuardEnabled = usesDpad
             }
 
