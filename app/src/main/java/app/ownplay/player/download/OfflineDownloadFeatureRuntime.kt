@@ -155,8 +155,12 @@ class OfflineDownloadFeatureRuntime(
                 mediaKind,
                 row.contentId,
             )
-            val normalized = PlaybackProgressPolicy.normalize(
+            val positionForSave = PlaybackProgressPolicy.positionForSave(
                 positionMs = positionMs,
+                fallbackPositionMs = existing?.positionMs,
+            )
+            val normalized = PlaybackProgressPolicy.normalize(
+                positionMs = positionForSave,
                 durationMs = durationMs,
                 fallbackDurationMs = existing?.durationMs,
             )
