@@ -2,6 +2,7 @@ package app.ownplay.player.playback
 
 import androidx.annotation.OptIn
 import androidx.media3.common.PlaybackException
+import androidx.media3.common.util.StuckPlayerException
 import androidx.media3.common.util.UnstableApi
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -97,6 +98,40 @@ class Media3PlaybackFailureMapperTest {
         )
 
         assertEquals(PlaybackFailureCategory.STREAM_UNAVAILABLE, failure.category)
+        assertTrue(failure.retryable)
+    }
+
+    @Test
+    fun stuckPlayingTimeoutIsTerminalEvenWhenMedia3UsesTimeoutErrorCode() {
+        val failure = Media3PlaybackFailureMapper.map(
+            PlaybackException(
+                "stuck playing",
+                StuckPlayerException(
+                    StuckPlayerException.STUCK_PLAYING_NO_PROGRESS,
+                    20_000,
+                ),
+                PlaybackException.ERROR_CODE_TIMEOUT,
+            ),
+        )
+
+        assertEquals(PlaybackFailureCategory.UNKNOWN, failure.category)
+        assertFalse(failure.retryable)
+    }
+
+    @Test
+    fun stuckBufferingTimeoutRemainsRetryable() {
+        val failure = Media3PlaybackFailureMapper.map(
+            PlaybackException(
+                "stuck buffering",
+                StuckPlayerException(
+                    StuckPlayerException.STUCK_BUFFERING_NO_PROGRESS,
+                    20_000,
+                ),
+                PlaybackException.ERROR_CODE_TIMEOUT,
+            ),
+        )
+
+        assertEquals(PlaybackFailureCategory.TIMEOUT, failure.category)
         assertTrue(failure.retryable)
     }
 }
