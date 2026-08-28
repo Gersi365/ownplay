@@ -169,7 +169,7 @@ private fun ProgramLine(
     }
 }
 
-private fun programProgressFraction(
+internal fun programProgressFraction(
     program: EpgProgram,
     nowEpochSeconds: Long,
 ): Float? {
