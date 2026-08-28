@@ -288,6 +288,13 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    override fun onStart() {
+        super.onStart()
+        if (::runtime.isInitialized && tvRemoteGuardEnabled) {
+            runtime.playbackController.resumeAfterBackground()
+        }
+    }
+
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
         if (tvRemoteGuardEnabled && event.isRemoteActivationKey()) {
             when (event.action) {
@@ -328,6 +335,18 @@ class MainActivity : ComponentActivity() {
                 offlineDownloadRuntime.reconcileCompletedFiles()
             }
         }
+    }
+
+    override fun onStop() {
+        if (
+            ::runtime.isInitialized &&
+            tvRemoteGuardEnabled &&
+            !isInPictureInPictureMode &&
+            !isChangingConfigurations
+        ) {
+            runtime.playbackController.suspendForBackground()
+        }
+        super.onStop()
     }
 
     override fun onWindowFocusChanged(hasFocus: Boolean) {
