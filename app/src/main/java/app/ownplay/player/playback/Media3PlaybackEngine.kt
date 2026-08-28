@@ -158,6 +158,19 @@ class Media3PlaybackEngine(
         }
     }
 
+    override fun currentPositionMs(): Long? = if (Looper.myLooper() == player.applicationLooper) {
+        player.currentPosition.takeIf { it > 0L }
+    } else {
+        null
+    }
+
+    override fun seekTo(positionMs: Long) {
+        if (positionMs <= 0L) return
+        runOnPlayerThread {
+            player.seekTo(positionMs)
+        }
+    }
+
     override fun stop() {
         runOnPlayerThread {
             val preserveDiagnostics = player.playerError != null
