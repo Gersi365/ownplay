@@ -16,6 +16,7 @@ import java.time.OffsetDateTime
 import java.time.format.DateTimeFormatter
 import java.time.format.DateTimeParseException
 import javax.net.ssl.SSLException
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
@@ -87,7 +88,7 @@ class XtreamXmlTvClient(
                             if (body == null) {
                                 SourceResult.Failure(SourceError.MalformedResponse)
                             } else {
-                                val snapshot = runCatching {
+                                val snapshot = try {
                                     body.byteStream().use { input ->
                                         parseXmlTv(
                                             input = input,
@@ -95,7 +96,9 @@ class XtreamXmlTvClient(
                                             nowEpochSeconds = nowEpochSeconds,
                                         )
                                     }
-                                }.getOrElse {
+                                } catch (cancelled: CancellationException) {
+                                    throw cancelled
+                                } catch (_: Exception) {
                                     return@withContext SourceResult.Failure(
                                         SourceError.MalformedResponse,
                                     )
@@ -105,6 +108,8 @@ class XtreamXmlTvClient(
                         }
                     }
                 }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
             } catch (_: SocketTimeoutException) {
                 SourceResult.Failure(SourceError.Timeout)
             } catch (_: SSLException) {
