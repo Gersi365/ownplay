@@ -114,7 +114,7 @@ class InitialLiveCatalogIngestor(
         val oldRefsToDelete = linkedSetOf<SensitiveValueRef>()
 
         val channelEntities = try {
-            catalog.channels.map { incoming ->
+            val incomingEntities = catalog.channels.map { incoming ->
                 val channelId = reconciliationPlan.matchedChannelIdsByProviderKey[incoming.providerKey]
                     ?: stableLocalId("channel", sourceId, incoming.providerKey)
                 val previous = existingByChannelId[channelId]
@@ -145,6 +145,12 @@ class InitialLiveCatalogIngestor(
                     lastSeenGeneration = generation,
                 )
             }
+            val removedIds = reconciliationPlan.missingChannelIds.toSet()
+            incomingEntities + existing
+                .asSequence()
+                .filter { channel -> channel.channelId in removedIds }
+                .map { channel -> channel.copy(availability = ChannelAvailability.REMOVED) }
+                .toList()
         } catch (error: Exception) {
             error.rethrowCancellation()
             cleanup(allocatedRefs)
@@ -173,7 +179,7 @@ class InitialLiveCatalogIngestor(
         cleanup(oldRefsToDelete)
         return InitialLiveCatalogIngestResult.Success(
             categoryCount = categoryEntities.size,
-            channelCount = channelEntities.size,
+            channelCount = catalog.channels.size,
         )
     }
 
