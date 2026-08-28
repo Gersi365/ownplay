@@ -35,6 +35,9 @@ fun ChannelCustomizationDialog(
         mutableStateOf(channel.localDisplayName.orEmpty())
     }
     var logoValue by remember(channel.channelId) { mutableStateOf("") }
+    val normalizedLocalName = localName.trim()
+    val canSaveLocalName =
+        normalizedLocalName.isNotEmpty() && normalizedLocalName != channel.localDisplayName?.trim()
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -76,12 +79,11 @@ fun ChannelCustomizationDialog(
                     }
                     TextButton(
                         onClick = {
-                            val normalized = localName.trim()
-                            if (normalized.isNotEmpty()) {
-                                onSetLocalDisplayName(channel.channelId, normalized)
+                            if (canSaveLocalName) {
+                                onSetLocalDisplayName(channel.channelId, normalizedLocalName)
                             }
                         },
-                        enabled = localName.isNotBlank(),
+                        enabled = canSaveLocalName,
                     ) {
                         Text("Save name")
                     }
@@ -91,9 +93,9 @@ fun ChannelCustomizationDialog(
 
                 Text(
                     text = if (channel.hasLogoOverride) {
-                        "A local logo override is active."
+                        "Custom logo is active."
                     } else {
-                        "No local logo override."
+                        "Using the provider logo."
                     },
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -102,9 +104,9 @@ fun ChannelCustomizationDialog(
                     value = logoValue,
                     onValueChange = { logoValue = it },
                     modifier = Modifier.fillMaxWidth(),
-                    label = { Text("New logo URL or URI") },
+                    label = { Text("Logo URL or URI") },
                     supportingText = {
-                        Text("Sensitive locator values are stored outside the Room database.")
+                        Text("Used only in OwnPlay. Provider data is not modified.")
                     },
                     singleLine = true,
                 )
@@ -119,7 +121,7 @@ fun ChannelCustomizationDialog(
                                 logoValue = ""
                             },
                         ) {
-                            Text("Clear logo")
+                            Text("Use provider logo")
                         }
                     }
                     TextButton(
