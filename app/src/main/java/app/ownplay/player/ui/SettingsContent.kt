@@ -21,7 +21,6 @@ internal fun ContentSettingsContent(
     summaries: List<PlaylistSourceSummary>,
     onOpenLiveManagement: () -> Unit,
     onOpenPlaylists: () -> Unit,
-    onOpenDownloads: () -> Unit,
 ) {
     SettingsActionRow(
         title = "Live management",
@@ -37,13 +36,6 @@ internal fun ContentSettingsContent(
         onClick = onOpenPlaylists,
     )
     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-    SettingsActionRow(
-        title = "Downloads",
-        detail = "Movies · series episodes · offline storage",
-        actionLabel = "Open",
-        onClick = onOpenDownloads,
-    )
-    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
     BackupRestoreSettingsContent()
 }
 
@@ -57,6 +49,7 @@ internal fun PlaybackSettingsContent(
     val configuration = LocalConfiguration.current
     val isTelevision =
         configuration.uiMode and Configuration.UI_MODE_TYPE_MASK == Configuration.UI_MODE_TYPE_TELEVISION
+    val actionHeight = if (isTelevision) 48.dp else 38.dp
 
     SettingValueRow(label = "Channel tap", value = "Preview")
     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
@@ -71,19 +64,19 @@ internal fun PlaybackSettingsContent(
     if (hasActivePlayback) {
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            horizontalArrangement = Arrangement.spacedBy(if (isTelevision) 10.dp else 6.dp),
         ) {
             Button(
                 onClick = onOpenLive,
                 modifier = Modifier
                     .weight(1f)
-                    .height(38.dp),
+                    .height(actionHeight),
             ) { Text("Back to Live") }
             OutlinedButton(
                 onClick = onStopPlayback,
                 modifier = Modifier
                     .weight(1f)
-                    .height(38.dp),
+                    .height(actionHeight),
             ) { Text("Stop") }
         }
     }
