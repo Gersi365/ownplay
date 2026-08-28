@@ -82,6 +82,12 @@ internal data class OfflineSourceRemovalSnapshot(
 internal fun shouldRestartAfterSourceRemovalFailure(state: String): Boolean =
     state == DownloadStates.QUEUED || state == DownloadStates.DOWNLOADING
 
+internal fun shouldRestartSourceRemovalRollback(
+    wasActiveBeforeRemoval: Boolean,
+    currentState: String,
+): Boolean =
+    wasActiveBeforeRemoval && shouldRestartAfterSourceRemovalFailure(currentState)
+
 class OfflineDownloadRepository(
     context: Context,
     private val database: OwnPlayDatabase,
@@ -252,14 +258,17 @@ class OfflineDownloadRepository(
     }
 
     suspend fun rollbackSourceRemoval(snapshot: OfflineSourceRemovalSnapshot) {
-        snapshot.items
-            .asSequence()
-            .filter(OfflineSourceRemovalItem::restartWorkOnFailure)
-            .forEach { item ->
-                if (dao.getById(item.downloadId) != null) {
-                    retry(item.downloadId)
-                }
+        snapshot.items.forEach { item ->
+            val current = dao.getById(item.downloadId) ?: return@forEach
+            if (
+                shouldRestartSourceRemovalRollback(
+                    wasActiveBeforeRemoval = item.restartWorkOnFailure,
+                    currentState = current.state,
+                )
+            ) {
+                retry(item.downloadId)
             }
+        }
     }
 
     suspend fun localPlaybackLocator(request: PlaybackRequest): ResolvedPlaybackLocator? {
