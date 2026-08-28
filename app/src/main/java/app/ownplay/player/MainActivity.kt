@@ -383,7 +383,15 @@ class MainActivity : ComponentActivity() {
         newConfig: Configuration,
     ) {
         super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig)
+        holdTvRemoteTransitionLock()
         playbackWindowController.onPictureInPictureModeChanged(isInPictureInPictureMode)
+        if (isInPictureInPictureMode && ::runtime.isInitialized && tvRemoteGuardEnabled) {
+            runtime.playbackController.resumeAfterBackground()
+            if (resumeOnDemandAfterBackground) {
+                resumeOnDemandAfterBackground = false
+                runtime.playbackController.play()
+            }
+        }
     }
 
     override fun onConfigurationChanged(newConfig: Configuration) {
