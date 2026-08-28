@@ -7,6 +7,7 @@ import app.ownplay.player.source.SourceResult
 import app.ownplay.player.source.SourceValidator
 import app.ownplay.player.source.UrlValidationResult
 import app.ownplay.player.source.network.SourceHttpClient
+import app.ownplay.player.source.network.awaitResponse
 import java.io.IOException
 import java.net.ConnectException
 import java.net.NoRouteToHostException
@@ -49,7 +50,7 @@ class RemoteM3uLoader(
 
         return withContext(Dispatchers.IO) {
             try {
-                httpClient.newCall(request).execute().use { response ->
+                httpClient.newCall(request).awaitResponse().use { response ->
                     when {
                         response.code == 401 || response.code == 403 -> {
                             SourceResult.Failure(SourceError.AuthenticationFailed)
