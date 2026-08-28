@@ -7,6 +7,7 @@ import app.ownplay.player.source.SourceResult
 import app.ownplay.player.source.credential.CredentialStore
 import app.ownplay.player.source.credential.XtreamCredentials
 import java.security.GeneralSecurityException
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.runBlocking
 import mockwebserver3.MockResponse
 import mockwebserver3.MockWebServer
@@ -100,6 +101,33 @@ class XtreamSourceVerifierTest {
         val result = verifier.validate(source)
 
         assertEquals(SourceResult.Failure(SourceError.CredentialUnavailable), result)
+    }
+
+    @Test
+    fun validate_propagatesCredentialStoreCancellation() {
+        val verifier = XtreamSourceVerifier(
+            credentialStore = object : CredentialStore {
+                override fun put(credentials: XtreamCredentials): CredentialRef = error("unused")
+
+                override fun get(ref: CredentialRef): XtreamCredentials? {
+                    throw CancellationException("cancel verification")
+                }
+
+                override fun delete(ref: CredentialRef) = Unit
+            },
+            client = XtreamClient(allowCleartext = true),
+        )
+        val source = PlaylistSource.Xtream(
+            name = "Cancelled",
+            serverUrl = server.url("/").toString(),
+            credentialRef = CredentialRef("cancelled-ref"),
+        )
+
+        val failure = runCatching {
+            runBlocking { verifier.validate(source) }
+        }.exceptionOrNull()
+
+        assertTrue(failure is CancellationException)
     }
 
     private class FakeCredentialStore(
