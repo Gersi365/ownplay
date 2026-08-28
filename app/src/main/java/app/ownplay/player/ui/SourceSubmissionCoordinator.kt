@@ -52,11 +52,13 @@ internal object SourceSubmissionCoordinator {
         runtime: OwnPlayAppRuntime,
         name: String,
         playlistUrl: String,
+        allowCleartext: Boolean = false,
     ) {
         submit(runtime) {
             runtime.addRemoteM3uSource(
                 name = name,
                 playlistUrl = playlistUrl,
+                allowCleartext = allowCleartext,
             )
         }
     }
@@ -65,11 +67,13 @@ internal object SourceSubmissionCoordinator {
         runtime: OwnPlayAppRuntime,
         name: String,
         documentUri: String,
+        allowCleartext: Boolean = false,
     ) {
         submit(runtime) {
             runtime.addLocalM3uSource(
                 name = name,
                 documentUri = documentUri,
+                allowCleartext = allowCleartext,
             )
         }
     }
