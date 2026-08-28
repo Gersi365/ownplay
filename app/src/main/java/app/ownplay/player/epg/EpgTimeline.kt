@@ -28,11 +28,7 @@ object EpgTimelineProjector {
         nowEpochSeconds: Long,
     ): EpgTimeline {
         val normalized = normalize(programs)
-        val current = normalized.firstOrNull { program ->
-            val start = program.startEpochSeconds
-            val end = program.endEpochSeconds
-            start != null && end != null && nowEpochSeconds >= start && nowEpochSeconds < end
-        }
+        val current = selectCurrentEpgProgram(normalized, nowEpochSeconds)
         val past = normalized.filter { program ->
             program !== current && when {
                 program.endEpochSeconds != null -> program.endEpochSeconds <= nowEpochSeconds
@@ -54,3 +50,19 @@ object EpgTimelineProjector {
         )
     }
 }
+
+internal fun selectCurrentEpgProgram(
+    programs: List<EpgProgram>,
+    nowEpochSeconds: Long,
+): EpgProgram? = programs
+    .asSequence()
+    .filter { program ->
+        val start = program.startEpochSeconds
+        val end = program.endEpochSeconds
+        start != null && end != null && nowEpochSeconds >= start && nowEpochSeconds < end
+    }
+    .maxWithOrNull(
+        compareBy<EpgProgram> { it.startEpochSeconds ?: Long.MIN_VALUE }
+            .thenBy { it.endEpochSeconds ?: Long.MIN_VALUE }
+            .thenBy(EpgProgram::title),
+    )
