@@ -230,22 +230,13 @@ class SourceOnboardingService(
                 allowCleartext = allowCleartext,
             ),
         )
-        val result = try {
-            persistSourceAndCatalog(
-                name = normalizedName,
-                sourceKind = SourceKinds.XTREAM,
-                locatorValue = sourceLocator,
-                credentialRef = credentialRef,
-                catalog = InitialLiveCatalogFactory.fromXtream(categories, streams),
-            )
-        } catch (cancelled: CancellationException) {
-            runCatching { credentialStore.delete(credentialRef) }
-            throw cancelled
-        }
-        if (result is SourceOnboardingResult.Failure) {
-            runCatching { credentialStore.delete(credentialRef) }
-        }
-        return result
+        return persistSourceAndCatalog(
+            name = normalizedName,
+            sourceKind = SourceKinds.XTREAM,
+            locatorValue = sourceLocator,
+            credentialRef = credentialRef,
+            catalog = InitialLiveCatalogFactory.fromXtream(categories, streams),
+        )
     }
 
     private suspend fun persistSourceAndCatalog(
@@ -259,6 +250,7 @@ class SourceOnboardingService(
         val locatorRef = try {
             sensitiveValueStore.put(locatorValue)
         } catch (error: Exception) {
+            cleanupCredential(credentialRef)
             error.rethrowCancellation()
             return SourceOnboardingResult.Failure(
                 SourceOnboardingFailure.SecureStorageFailure,
@@ -279,7 +271,7 @@ class SourceOnboardingService(
         try {
             database.playlistSourceDao().upsert(pendingSource)
         } catch (error: Exception) {
-            rollbackSource(sourceId, locatorRef)
+            rollbackSource(sourceId, locatorRef, credentialRef)
             error.rethrowCancellation()
             return SourceOnboardingResult.Failure(
                 SourceOnboardingFailure.PersistenceFailure,
@@ -293,7 +285,7 @@ class SourceOnboardingService(
                 catalog = catalog,
             )
         } catch (error: Exception) {
-            rollbackSource(sourceId, locatorRef)
+            rollbackSource(sourceId, locatorRef, credentialRef)
             error.rethrowCancellation()
             return SourceOnboardingResult.Failure(
                 SourceOnboardingFailure.CatalogImportFailure,
@@ -310,7 +302,7 @@ class SourceOnboardingService(
                         ),
                     )
                 } catch (error: Exception) {
-                    rollbackSource(sourceId, locatorRef)
+                    rollbackSource(sourceId, locatorRef, credentialRef)
                     error.rethrowCancellation()
                     return SourceOnboardingResult.Failure(
                         SourceOnboardingFailure.PersistenceFailure,
@@ -322,7 +314,7 @@ class SourceOnboardingService(
                 )
             }
             else -> {
-                rollbackSource(sourceId, locatorRef)
+                rollbackSource(sourceId, locatorRef, credentialRef)
                 SourceOnboardingResult.Failure(
                     SourceOnboardingFailure.CatalogImportFailure,
                 )
@@ -333,6 +325,7 @@ class SourceOnboardingService(
     private suspend fun rollbackSource(
         sourceId: String,
         locatorRef: SensitiveValueRef,
+        credentialRef: CredentialRef?,
     ) {
         withContext(NonCancellable) {
             val catalogRefs = runCatching {
@@ -364,8 +357,13 @@ class SourceOnboardingService(
                         },
                     )
                 }
+                cleanupCredential(credentialRef)
             }
         }
+    }
+
+    private fun cleanupCredential(credentialRef: CredentialRef?) {
+        credentialRef?.let { ref -> runCatching { credentialStore.delete(ref) } }
     }
 }
 
