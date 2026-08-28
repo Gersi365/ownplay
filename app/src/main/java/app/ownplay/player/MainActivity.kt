@@ -136,6 +136,9 @@ class MainActivity : ComponentActivity() {
                 PlaybackInteractionBridge.setDpadMode(usesDpad)
                 playbackWindowController.updateFullscreenSensorRotationEnabled(!usesDpad)
                 playbackWindowController.updatePictureInPictureEnabled(!usesDpad)
+                if (configuredProfile != AppDeviceProfile.SMARTPHONE) {
+                    playbackWindowController.updateLivePreviewRotationEnabled(false)
+                }
                 tvRemoteGuardEnabled = usesDpad
                 if (!usesDpad) tvRemoteKeySuppression.clear()
             }
@@ -200,6 +203,8 @@ class MainActivity : ComponentActivity() {
                         Box(modifier = Modifier.fillMaxSize()) {
                             OwnPlayRoot(
                                 runtime = runtime,
+                                rotationFullscreenEnabled =
+                                    configuredProfile == AppDeviceProfile.SMARTPHONE,
                                 onPlaybackFullscreenChanged = { isFullscreen ->
                                     holdTvRemoteTransitionLock()
                                     playbackFullscreen = isFullscreen
@@ -208,6 +213,12 @@ class MainActivity : ComponentActivity() {
                                 },
                                 onPlaybackSurfaceActiveChanged =
                                     playbackWindowController::updatePlaybackSurfaceState,
+                                onLivePreviewActiveChanged = { previewActive ->
+                                    playbackWindowController.updateLivePreviewRotationEnabled(
+                                        previewActive &&
+                                            configuredProfile == AppDeviceProfile.SMARTPHONE,
+                                    )
+                                },
                             )
 
                             when {
