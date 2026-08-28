@@ -13,16 +13,15 @@ internal suspend fun Call.awaitResponse(): Response = suspendCancellableCoroutin
     enqueue(
         object : Callback {
             override fun onFailure(call: Call, error: IOException) {
-                if (continuation.isActive) {
-                    continuation.resumeWith(Result.failure(error))
-                }
+                continuation.tryResumeWithException(error)?.let(continuation::completeResume)
             }
 
             override fun onResponse(call: Call, response: Response) {
-                if (continuation.isActive) {
-                    continuation.resumeWith(Result.success(response))
-                } else {
+                val token = continuation.tryResume(response)
+                if (token == null) {
                     response.close()
+                } else {
+                    continuation.completeResume(token)
                 }
             }
         },
