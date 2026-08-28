@@ -24,9 +24,20 @@ class LiveBrowseSession(
         catalog,
         query,
     ) { snapshot, currentQuery ->
+        val categoryKeysWithVisibleChannels = snapshot.channels
+            .asSequence()
+            .filter { channel ->
+                currentQuery.includeRemoved || channel.availability != ChannelAvailability.REMOVED
+            }
+            .mapNotNull { channel -> channel.providerCategoryKey }
+            .toSet()
         LiveBrowseState(
             categories = snapshot.categories
                 .asSequence()
+                .filter { category ->
+                    currentQuery.includeRemoved ||
+                        category.providerCategoryKey in categoryKeysWithVisibleChannels
+                }
                 .filter { category -> currentQuery.includeHidden || !category.isHidden }
                 .sortedWith(
                     compareBy<LiveCategory> { it.manualOrder == null }
