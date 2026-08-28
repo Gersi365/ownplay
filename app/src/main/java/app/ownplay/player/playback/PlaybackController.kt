@@ -272,7 +272,7 @@ class PlaybackController(
         channelId: String,
         mediaKind: PlaybackMediaKind,
     ) {
-        check(!released) { "PlaybackController is released" }
+        if (released) return
         scope.launch {
             val currentRequest =
                 backgroundSuspendedRequest ?: mutableState.value.requestOrNull() ?: return@launch
