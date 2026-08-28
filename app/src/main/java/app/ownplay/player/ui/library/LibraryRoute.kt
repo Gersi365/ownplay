@@ -52,6 +52,7 @@ import app.ownplay.player.OwnPlayAppRuntime
 import app.ownplay.player.download.OfflineDownload
 import app.ownplay.player.download.OfflineDownloadFeatureRuntime
 import app.ownplay.player.download.OfflineDownloadSpec
+import app.ownplay.player.download.queuedDownloadStatusLabel
 import app.ownplay.player.persistence.download.DownloadMediaKinds
 import app.ownplay.player.persistence.download.DownloadStates
 import app.ownplay.player.playback.PlaybackInteractionBridge
@@ -529,7 +530,7 @@ private fun downloadProgressLabel(download: OfflineDownload): String {
     val total = download.totalBytes?.takeIf { it > 0L }?.let(::humanBytes)
     val state = when (download.state) {
         DownloadStates.PAUSED -> "Paused"
-        DownloadStates.QUEUED -> "Queued"
+        DownloadStates.QUEUED -> queuedDownloadStatusLabel(download.failureReason)
         else -> "Downloading"
     }
     return if (total == null) "$state · $downloaded" else "$state · $downloaded / $total"
