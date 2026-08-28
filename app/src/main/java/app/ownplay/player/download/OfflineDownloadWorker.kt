@@ -245,7 +245,13 @@ class OfflineDownloadWorker(
                     }
                 }
 
-                if (dao.getById(downloadId)?.state == DownloadStates.PAUSED) {
+                val rowBeforeFinalization = dao.getById(downloadId)
+                if (rowBeforeFinalization == null) {
+                    OfflineDownloadStorage.deleteLocation(applicationContext, destinationLocation)
+                    partFile.delete()
+                    return Result.success()
+                }
+                if (rowBeforeFinalization.state == DownloadStates.PAUSED) {
                     throw CancellationException("Download paused before finalization")
                 }
                 if (totalBytes != null && downloaded < totalBytes) {
@@ -274,6 +280,11 @@ class OfflineDownloadWorker(
                     finalBytes = finalFile.length()
                 }
 
+                if (dao.getById(downloadId) == null) {
+                    OfflineDownloadStorage.deleteLocation(applicationContext, finalLocation)
+                    partFile.delete()
+                    return Result.success()
+                }
                 dao.updateTransfer(
                     downloadId = downloadId,
                     state = DownloadStates.COMPLETED,
