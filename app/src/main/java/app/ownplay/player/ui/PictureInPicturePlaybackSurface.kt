@@ -16,7 +16,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.ui.PlayerView
+import app.ownplay.player.playback.PlaybackInteractionBridge
 import app.ownplay.player.playback.PlaybackVideoOutput
+import java.lang.ref.WeakReference
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
@@ -28,6 +30,7 @@ fun PictureInPicturePlaybackSurface(
     onProgress: ((positionMs: Long, durationMs: Long?) -> Unit)? = null,
 ) {
     var playerView by remember { mutableStateOf<PlayerView?>(null) }
+    var returnTarget by remember { mutableStateOf<WeakReference<PlayerView>?>(null) }
     val progressCallback by rememberUpdatedState(onProgress)
 
     fun reportProgress(view: PlayerView?) {
@@ -53,9 +56,11 @@ fun PictureInPicturePlaybackSurface(
     ) {
         AndroidView(
             factory = { context ->
+                val previousView = PlaybackInteractionBridge.currentBoundView()
                 PlayerView(context).apply {
                     useController = false
                     setShutterBackgroundColor(AndroidColor.BLACK)
+                    returnTarget = previousView?.let(::WeakReference)
                     videoOutput.bind(this)
                     playerView = this
                 }
@@ -67,7 +72,15 @@ fun PictureInPicturePlaybackSurface(
             },
             onRelease = { view ->
                 reportProgress(view)
-                videoOutput.unbind(view)
+                val target = returnTarget
+                    ?.get()
+                    ?.takeIf { candidate -> candidate.isAttachedToWindow }
+                if (target != null) {
+                    videoOutput.bind(target)
+                } else {
+                    videoOutput.unbind(view)
+                }
+                returnTarget = null
                 if (playerView === view) playerView = null
             },
         )
