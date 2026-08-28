@@ -8,7 +8,7 @@ import java.util.Locale
 
 object ProviderIdentity {
     fun xtreamLiveStream(streamId: Int): String {
-        require(streamId >= 0) { "Xtream stream ID must not be negative" }
+        require(streamId > 0) { "Xtream stream ID must be positive" }
         return "xtream:live:$streamId"
     }
 
