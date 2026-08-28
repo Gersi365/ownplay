@@ -19,6 +19,7 @@ import androidx.media3.ui.PlayerView
 import app.ownplay.player.playback.PlaybackInteractionBridge
 import app.ownplay.player.playback.PlaybackVideoOutput
 import java.lang.ref.WeakReference
+import java.util.concurrent.atomic.AtomicReference
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
@@ -30,7 +31,7 @@ fun PictureInPicturePlaybackSurface(
     onProgress: ((positionMs: Long, durationMs: Long?) -> Unit)? = null,
 ) {
     var playerView by remember { mutableStateOf<PlayerView?>(null) }
-    var returnTarget by remember { mutableStateOf<WeakReference<PlayerView>?>(null) }
+    val returnTarget = remember { AtomicReference<WeakReference<PlayerView>?>(null) }
     val progressCallback by rememberUpdatedState(onProgress)
 
     fun reportProgress(view: PlayerView?) {
@@ -57,10 +58,10 @@ fun PictureInPicturePlaybackSurface(
         AndroidView(
             factory = { context ->
                 val previousPipView = playerView
-                if (returnTarget?.get() == null) {
+                if (returnTarget.get()?.get() == null) {
                     val previousView = PlaybackInteractionBridge.currentBoundView()
                         ?.takeUnless { candidate -> candidate === previousPipView }
-                    returnTarget = previousView?.let { candidate -> WeakReference(candidate) }
+                    returnTarget.set(previousView?.let { candidate -> WeakReference(candidate) })
                 }
                 PlayerView(context).apply {
                     useController = false
@@ -77,7 +78,7 @@ fun PictureInPicturePlaybackSurface(
             onRelease = { view ->
                 reportProgress(view)
                 if (PlaybackInteractionBridge.currentBoundView() === view) {
-                    val target = returnTarget
+                    val target = returnTarget.get()
                         ?.get()
                         ?.takeIf { candidate -> candidate.isAttachedToWindow }
                     if (target != null) {
@@ -85,7 +86,7 @@ fun PictureInPicturePlaybackSurface(
                     } else {
                         videoOutput.unbind(view)
                     }
-                    returnTarget = null
+                    returnTarget.set(null)
                 }
                 if (playerView === view) playerView = null
             },
