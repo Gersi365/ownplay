@@ -1,6 +1,7 @@
 package app.ownplay.player.source.m3u
 
 import java.net.URI
+import java.util.Locale
 
 object M3uParser {
     private val attributePattern = Regex(
@@ -79,11 +80,12 @@ object M3uParser {
 
     private fun parseAttributes(value: String): Map<String, String> = buildMap {
         attributePattern.findAll(value).forEach { match ->
-            val key = match.groupValues[1].lowercase()
+            val key = match.groupValues[1].lowercase(Locale.ROOT)
             val attributeValue = sequenceOf(2, 3, 4)
                 .map { match.groupValues[it] }
                 .firstOrNull { it.isNotEmpty() }
                 .orEmpty()
+                .trim()
             put(key, attributeValue)
         }
     }
