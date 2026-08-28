@@ -57,7 +57,7 @@ class XtreamSeriesClient(
                     name = name,
                     parentId = item.text("parent_id"),
                 )
-            },
+            }.distinctBy(XtreamCategory::id),
         )
     }
 
@@ -94,7 +94,7 @@ class XtreamSeriesClient(
                     lastModifiedEpochSeconds = item.long("last_modified"),
                     description = item.text("plot") ?: item.text("description"),
                 )
-            },
+            }.distinctBy(XtreamSeriesSummary::seriesId),
         )
     }
 
@@ -130,6 +130,7 @@ class XtreamSeriesClient(
                 )
             }
             .orEmpty()
+            .distinctBy(XtreamSeriesSeason::seasonNumber)
         val episodes = mutableListOf<XtreamSeriesEpisode>()
         (root["episodes"] as? JsonObject)?.forEach { (seasonKey, value) ->
             val seasonFromKey = seasonKey.toIntOrNull()?.takeIf { it >= 0 }
@@ -152,7 +153,7 @@ class XtreamSeriesClient(
                     episodeNumber = episodeNumber,
                     title = title,
                     containerExtension = item.text("container_extension")?.takeIf(String::isNotBlank),
-                    durationSeconds = episodeInfo?.long("duration_secs"),
+                    durationSeconds = episodeInfo?.long("duration_secs")?.takeIf { it > 0L },
                     description = episodeInfo?.text("plot") ?: episodeInfo?.text("description"),
                     posterUrl = episodeInfo?.text("movie_image")?.takeIf(String::isNotBlank),
                     rating = episodeInfo?.double("rating"),
@@ -160,7 +161,8 @@ class XtreamSeriesClient(
                 )
             }
         }
-        if (info == null && seasons.isEmpty() && episodes.isEmpty()) {
+        val uniqueEpisodes = episodes.distinctBy(XtreamSeriesEpisode::episodeId)
+        if (info == null && seasons.isEmpty() && uniqueEpisodes.isEmpty()) {
             return SourceResult.Failure(SourceError.MalformedResponse)
         }
         return SourceResult.Success(
@@ -177,8 +179,9 @@ class XtreamSeriesClient(
                 cast = info?.text("cast") ?: info?.text("actors"),
                 rating = info?.double("rating") ?: info?.double("rating_5based"),
                 seasons = seasons.sortedBy(XtreamSeriesSeason::seasonNumber),
-                episodes = episodes.sortedWith(
-                    compareBy(XtreamSeriesEpisode::seasonNumber, XtreamSeriesEpisode::episodeNumber),
+                episodes = uniqueEpisodes.sortedWith(
+                    compareBy(XtreamSeriesEpisode::seasonNumber, XtreamSeriesEpisode::episodeNumber)
+                        .thenBy(XtreamSeriesEpisode::episodeId),
                 ),
             ),
         )
