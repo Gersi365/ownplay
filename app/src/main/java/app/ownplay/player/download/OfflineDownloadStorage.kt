@@ -13,6 +13,7 @@ import app.ownplay.player.persistence.download.MediaDownloadEntity
 import java.io.BufferedOutputStream
 import java.io.File
 import java.io.IOException
+import java.util.Locale
 
 internal object OfflineDownloadStorage {
     private const val PRIVATE_DIRECTORY = "offline"
@@ -152,7 +153,7 @@ internal object OfflineDownloadStorage {
 
     fun normalizeExtension(extension: String?): String = extension
         ?.trim()
-        ?.lowercase()
+        ?.lowercase(Locale.ROOT)
         ?.takeIf { it.matches(Regex("[a-z0-9]{1,8}")) }
         ?: "mp4"
 
