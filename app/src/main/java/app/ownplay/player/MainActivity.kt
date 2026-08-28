@@ -1,6 +1,7 @@
 package app.ownplay.player
 
 import android.annotation.SuppressLint
+import android.app.AlertDialog
 import android.content.res.Configuration
 import android.os.Bundle
 import android.os.SystemClock
@@ -71,6 +72,7 @@ class MainActivity : ComponentActivity() {
     private val tvRemoteKeySuppression = TvRemoteKeySuppression()
     private var playbackFullscreen = false
     private var tvRemoteGuardEnabled = false
+    private var exitConfirmationDialog: AlertDialog? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -106,9 +108,7 @@ class MainActivity : ComponentActivity() {
             object : OnBackPressedCallback(true) {
                 override fun handleOnBackPressed() {
                     if (PlaybackInteractionBridge.handleBack()) return
-                    isEnabled = false
-                    onBackPressedDispatcher.onBackPressed()
-                    isEnabled = true
+                    showExitConfirmation()
                 }
             },
         )
@@ -306,6 +306,12 @@ class MainActivity : ComponentActivity() {
 
     @SuppressLint("RestrictedApi")
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        if (event.keyCode == KeyEvent.KEYCODE_ESCAPE) {
+            if (event.action == KeyEvent.ACTION_UP) {
+                onBackPressedDispatcher.onBackPressed()
+            }
+            return true
+        }
         if (tvRemoteGuardEnabled && event.isRemoteActivationKey()) {
             when (event.action) {
                 KeyEvent.ACTION_DOWN -> {
@@ -401,6 +407,8 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onDestroy() {
+        exitConfirmationDialog?.dismiss()
+        exitConfirmationDialog = null
         activityScope.cancel()
         offlineDownloadRuntime.close()
         playbackWindowController.release()
@@ -423,6 +431,17 @@ class MainActivity : ComponentActivity() {
             nowMillis = SystemClock.elapsedRealtime(),
             kind = TvRemoteActionKind.TRANSITION,
         )
+    }
+
+    private fun showExitConfirmation() {
+        if (isFinishing || exitConfirmationDialog?.isShowing == true) return
+        exitConfirmationDialog = AlertDialog.Builder(this)
+            .setTitle("Exit OwnPlay?")
+            .setMessage("Are you sure you want to close the app?")
+            .setNegativeButton("Cancel", null)
+            .setPositiveButton("Exit") { _, _ -> finish() }
+            .setOnDismissListener { exitConfirmationDialog = null }
+            .show()
     }
 
     private fun hideStatusBar() {
