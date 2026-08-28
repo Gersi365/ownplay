@@ -5,6 +5,8 @@ value class CredentialRef(val value: String) {
     init {
         require(value.isNotBlank()) { "Credential reference must not be blank" }
     }
+
+    override fun toString(): String = "CredentialRef(<opaque>)"
 }
 
 sealed interface PlaylistSource {
