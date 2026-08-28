@@ -57,9 +57,12 @@ class SourceManagementService(
 ) {
     suspend fun load(sourceId: String): SourceEditSnapshot? = withContext(Dispatchers.IO) {
         val source = database.playlistSourceDao().getById(sourceId) ?: return@withContext null
-        val locatorValue = runCatching {
+        val locatorValue = try {
             sensitiveValueStore.get(SensitiveValueRef(source.locatorRef))
-        }.getOrNull()
+        } catch (error: Exception) {
+            error.rethrowCancellation()
+            null
+        }
 
         when (source.sourceKind) {
             SourceKinds.XTREAM -> {
@@ -150,34 +153,36 @@ class SourceManagementService(
             )
         }
 
-        val oldCredentialRef = source.credentialRef?.let(::CredentialRef)
-            ?: return@withContext SourceMutationResult.Failure(
-                SourceMutationFailure.SecureStorageFailure,
-            )
-        val existingCredentials = try {
-            credentialStore.get(oldCredentialRef)
-        } catch (error: Exception) {
-            error.rethrowCancellation()
-            null
-        } ?: return@withContext SourceMutationResult.Failure(
-            SourceMutationFailure.SecureStorageFailure,
+        val credentialEditMode = XtreamCredentialReplacementPolicy.classify(
+            username = replacementUsername,
+            password = replacementPassword,
         )
-
-        val usernameProvided = replacementUsername.isNotBlank()
-        val passwordProvided = replacementPassword.isNotBlank()
-        if (usernameProvided != passwordProvided) {
+        if (credentialEditMode == XtreamCredentialEditMode.INCOMPLETE) {
             return@withContext SourceMutationResult.Failure(
                 SourceMutationFailure.IncompleteCredentialReplacement,
             )
         }
-        val replacingCredentials = usernameProvided && passwordProvided
+
+        val oldCredentialRef = source.credentialRef?.let(::CredentialRef)
+        val replacingCredentials = credentialEditMode == XtreamCredentialEditMode.REPLACE
         val effectiveCredentials = if (replacingCredentials) {
             XtreamCredentials(
                 username = replacementUsername.trim(),
                 password = replacementPassword,
             )
         } else {
-            existingCredentials
+            val existingRef = oldCredentialRef
+                ?: return@withContext SourceMutationResult.Failure(
+                    SourceMutationFailure.SecureStorageFailure,
+                )
+            try {
+                credentialStore.get(existingRef)
+            } catch (error: Exception) {
+                error.rethrowCancellation()
+                null
+            } ?: return@withContext SourceMutationResult.Failure(
+                SourceMutationFailure.SecureStorageFailure,
+            )
         }
 
         when (
@@ -222,7 +227,7 @@ class SourceManagementService(
                 )
             }
         } else {
-            oldCredentialRef
+            requireNotNull(oldCredentialRef)
         }
 
         try {
@@ -247,7 +252,9 @@ class SourceManagementService(
 
         runCatching { sensitiveValueStore.delete(SensitiveValueRef(source.locatorRef)) }
         if (replacingCredentials) {
-            runCatching { credentialStore.delete(oldCredentialRef) }
+            oldCredentialRef?.let { oldRef ->
+                runCatching { credentialStore.delete(oldRef) }
+            }
         }
         SourceMutationResult.Success
     }
