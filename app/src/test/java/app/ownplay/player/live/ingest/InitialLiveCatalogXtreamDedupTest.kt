@@ -30,6 +30,21 @@ class InitialLiveCatalogXtreamDedupTest {
         )
     }
 
+    @Test
+    fun nonPositiveProviderStreamIdsAreSkipped() {
+        val catalog = InitialLiveCatalogFactory.fromXtream(
+            categories = listOf(XtreamCategory(id = "10", name = "News", parentId = null)),
+            streams = listOf(
+                stream(streamId = 0, name = "Invalid zero"),
+                stream(streamId = -1, name = "Invalid negative"),
+                stream(streamId = 101, name = "Valid"),
+            ),
+        )
+
+        assertEquals(1, catalog.channels.size)
+        assertEquals(101, catalog.channels.single().providerStreamId?.toInt())
+    }
+
     private fun stream(streamId: Int, name: String): XtreamLiveStream = XtreamLiveStream(
         streamId = streamId,
         name = name,
