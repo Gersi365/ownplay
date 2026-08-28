@@ -53,6 +53,7 @@ import app.ownplay.player.source.SourceSyncState
 import app.ownplay.player.source.credential.AndroidKeystoreCredentialStore
 import app.ownplay.player.source.management.SourceEditSnapshot
 import app.ownplay.player.source.management.SourceManagementService
+import app.ownplay.player.source.management.SourceMutationFailure
 import app.ownplay.player.source.management.SourceMutationResult
 import app.ownplay.player.source.onboarding.SourceOnboardingFailure
 import app.ownplay.player.source.onboarding.SourceOnboardingResult
@@ -249,7 +250,11 @@ class OwnPlayAppRuntime(
                     channelCount = result.channelCount,
                 )
                 runtimeScope.launch {
-                    refreshXtreamMediaCatalogs(result.sourceId)
+                    refreshMutex.withLock {
+                        if (sourceExists(result.sourceId)) {
+                            refreshXtreamMediaCatalogs(result.sourceId)
+                        }
+                    }
                 }
             }
             is SourceOnboardingResult.Failure -> {
@@ -325,7 +330,11 @@ class OwnPlayAppRuntime(
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (_: Exception) {
-            publishUnexpectedRefreshFailure(sourceId)
+            refreshMutex.withLock {
+                if (sourceExists(sourceId)) {
+                    publishUnexpectedRefreshFailure(sourceId)
+                }
+            }
         }
     }
 
@@ -414,6 +423,14 @@ class OwnPlayAppRuntime(
         }
     }
 
+    private suspend fun sourceExists(sourceId: String): Boolean = try {
+        database.playlistSourceDao().getById(sourceId) != null
+    } catch (cancelled: CancellationException) {
+        throw cancelled
+    } catch (_: Exception) {
+        false
+    }
+
     private suspend fun publishUnexpectedRefreshFailure(sourceId: String) {
         val current = _sourceSyncState.value
         val sourceName = if (current.sourceId == sourceId) {
@@ -464,6 +481,12 @@ class OwnPlayAppRuntime(
             throw cancelled
         } catch (_: Exception) {
             null
+        }
+        if (!sourceExists(sourceId)) {
+            if (_sourceSyncState.value.sourceId == sourceId) {
+                _sourceSyncState.value = SourceSyncState()
+            }
+            return
         }
         _sourceSyncState.value = if (epg == null) {
             SourceSyncState(
@@ -521,48 +544,69 @@ class OwnPlayAppRuntime(
         return result
     }
 
-    suspend fun deleteSource(sourceId: String): SourceMutationResult {
-        val result = sourceManagementService.delete(sourceId)
-        if (result is SourceMutationResult.Success) {
-            epgRepository.invalidateSource(sourceId)
-            try {
-                categoryVisibilityStore.clearSource(sourceId)
-                categoryOrderStore.clearSource(sourceId)
-            } catch (cancelled: CancellationException) {
-                throw cancelled
-            } catch (_: Exception) {
-                // The source is already deleted. Stale source-scoped preferences are inert.
-            }
-            if (_sourceSyncState.value.sourceId == sourceId) {
-                _sourceSyncState.value = SourceSyncState()
-            }
+    suspend fun deleteSource(sourceId: String): SourceMutationResult = refreshMutex.withLock {
+        val downloads = try {
+            offlineDownloadRepository.prepareSourceRemoval(sourceId)
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            return@withLock SourceMutationResult.Failure(SourceMutationFailure.PersistenceFailure)
         }
-        return result
+
+        val result = sourceManagementService.delete(sourceId)
+        if (result !is SourceMutationResult.Success) {
+            offlineDownloadRepository.restoreSourceWorkAfterFailedRemoval(downloads)
+            return@withLock result
+        }
+
+        epgRepository.invalidateSource(sourceId)
+        try {
+            offlineDownloadRepository.cleanupRemovedSourceArtifacts(downloads)
+        } catch (_: Exception) {
+            // The source and its Room rows are already deleted. Worker guards also clean up
+            // active destinations if cancellation reaches them after the cascade.
+        }
+        try {
+            categoryVisibilityStore.clearSource(sourceId)
+            categoryOrderStore.clearSource(sourceId)
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            // The source is already deleted. Stale source-scoped preferences are inert.
+        }
+        if (_sourceSyncState.value.sourceId == sourceId) {
+            _sourceSyncState.value = SourceSyncState()
+        }
+        result
     }
 
     suspend fun ensureLiveCatalog(sourceId: String): SourceOnboardingResult =
         withContext(Dispatchers.IO) {
-            val existingChannels = try {
-                database.providerCatalogDao().channelsForSource(sourceId)
-            } catch (cancelled: CancellationException) {
-                throw cancelled
-            } catch (_: Exception) {
-                return@withContext SourceOnboardingResult.Failure(
-                    SourceOnboardingFailure.PersistenceFailure,
-                )
+            refreshMutex.withLock {
+                val existingChannels = try {
+                    database.providerCatalogDao().channelsForSource(sourceId)
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (_: Exception) {
+                    return@withLock SourceOnboardingResult.Failure(
+                        SourceOnboardingFailure.PersistenceFailure,
+                    )
+                }
+                if (existingChannels.isNotEmpty()) {
+                    return@withLock SourceOnboardingResult.Success(
+                        sourceId = sourceId,
+                        channelCount = existingChannels.size,
+                    )
+                }
+                refreshXtreamLiveCatalogInternal(sourceId)
             }
-            if (existingChannels.isNotEmpty()) {
-                return@withContext SourceOnboardingResult.Success(
-                    sourceId = sourceId,
-                    channelCount = existingChannels.size,
-                )
-            }
-            refreshXtreamLiveCatalogInternal(sourceId)
         }
 
     suspend fun refreshLiveCatalog(sourceId: String): SourceOnboardingResult =
         withContext(Dispatchers.IO) {
-            refreshXtreamLiveCatalogInternal(sourceId)
+            refreshMutex.withLock {
+                refreshXtreamLiveCatalogInternal(sourceId)
+            }
         }
 
     private suspend fun refreshXtreamLiveCatalogInternal(
