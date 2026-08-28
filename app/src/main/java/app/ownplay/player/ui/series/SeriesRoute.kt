@@ -79,6 +79,9 @@ import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
+
+private const val SERIES_EXIT_PROGRESS_SAVE_TIMEOUT_MILLIS = 1_000L
 
 @Composable
 internal fun SeriesRoute(
@@ -1102,22 +1105,27 @@ private fun SeriesPlaybackScreen(
         configuration.uiMode and Configuration.UI_MODE_TYPE_MASK == Configuration.UI_MODE_TYPE_TELEVISION
     val scope = rememberCoroutineScope()
     var playerView by remember { mutableStateOf<PlayerView?>(null) }
+    var exitRequested by remember(episode.episodeId) { mutableStateOf(false) }
     val backOwner = remember(episode.episodeId) { Any() }
     val backFocusRequester = remember(episode.episodeId) { FocusRequester() }
 
     fun exitPlayback() {
+        if (exitRequested) return
+        exitRequested = true
         val view = playerView
         scope.launch {
             val player = view?.player
             if (player != null) {
-                featureRuntime.saveEpisodeProgress(
-                    sourceId = sourceId,
-                    episodeId = episode.episodeId,
-                    positionMs = player.currentPosition,
-                    durationMs = player.duration.takeIf {
-                        it != C.TIME_UNSET && it > 0L
-                    },
-                )
+                withTimeoutOrNull(SERIES_EXIT_PROGRESS_SAVE_TIMEOUT_MILLIS) {
+                    featureRuntime.saveEpisodeProgress(
+                        sourceId = sourceId,
+                        episodeId = episode.episodeId,
+                        positionMs = player.currentPosition,
+                        durationMs = player.duration.takeIf {
+                            it != C.TIME_UNSET && it > 0L
+                        },
+                    )
+                }
             }
             onExit()
         }
@@ -1186,6 +1194,7 @@ private fun SeriesPlaybackScreen(
             }
             TextButton(
                 modifier = Modifier.focusRequester(backFocusRequester),
+                enabled = !exitRequested,
                 onClick = ::exitPlayback,
             ) { Text("Back") }
         }
