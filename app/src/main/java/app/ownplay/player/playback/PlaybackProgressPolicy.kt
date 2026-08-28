@@ -9,6 +9,14 @@ internal data class NormalizedPlaybackProgress(
 internal object PlaybackProgressPolicy {
     private const val COMPLETION_FRACTION = 0.95
 
+    fun positionForSave(
+        positionMs: Long,
+        fallbackPositionMs: Long?,
+    ): Long {
+        val fallback = fallbackPositionMs?.takeIf { it > 0L }
+        return if (positionMs <= 0L && fallback != null) fallback else positionMs
+    }
+
     fun normalize(
         positionMs: Long,
         durationMs: Long?,
