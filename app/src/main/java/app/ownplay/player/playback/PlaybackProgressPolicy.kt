@@ -15,7 +15,8 @@ internal fun normalizePlaybackProgress(
     val duration = reportedDurationMs?.takeIf { it > 0L }
         ?: existingDurationMs?.takeIf { it > 0L }
     val completed = duration?.let { knownDuration ->
-        position >= (knownDuration * 0.95).toLong()
+        val completionThreshold = knownDuration - (knownDuration / 20L)
+        position >= completionThreshold
     } ?: false
     return NormalizedPlaybackProgress(
         positionMs = position,
