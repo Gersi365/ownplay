@@ -180,6 +180,8 @@ internal object OfflineDownloadStorage {
 
     internal fun safeFileStem(value: String): String {
         val cleaned = value
+            .map { char -> if (char.isISOControl()) ' ' else char }
+            .joinToString(separator = "")
             .replace(Regex("[\\\\/:*?\"<>|]+"), " ")
             .replace(Regex("\\s+"), " ")
             .trim()
