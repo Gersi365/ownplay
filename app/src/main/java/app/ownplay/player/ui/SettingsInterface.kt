@@ -82,13 +82,12 @@ internal fun PortraitSettingsMenu(
 
             CompactSettingsSection(
                 title = "Content",
-                subtitle = "Manage what appears in OwnPlay",
+                subtitle = "Manage Live organization and playlist sources",
             ) {
                 ContentSettingsContent(
                     summaries = summaries,
                     onOpenLiveManagement = onOpenLiveManagement,
                     onOpenPlaylists = onOpenPlaylists,
-                    onOpenDownloads = onOpenDownloads,
                 )
             }
 
@@ -97,8 +96,8 @@ internal fun PortraitSettingsMenu(
                 subtitle = "Offline movies and series episodes",
             ) {
                 SettingsActionRow(
-                    title = "Downloaded media",
-                    detail = "Progress · retry · remove",
+                    title = "Offline library",
+                    detail = "Play · progress · retry · remove",
                     actionLabel = "Open",
                     onClick = onOpenDownloads,
                 )
@@ -231,4 +230,3 @@ internal fun deviceProfileLabel(profile: AppDeviceProfile?): String = when (prof
     AppDeviceProfile.TV_BOX -> "TV Box"
     null -> "Loading…"
 }
-
