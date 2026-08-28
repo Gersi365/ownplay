@@ -72,29 +72,58 @@ object InitialLiveCatalogFactory {
 
     fun fromM3u(playlist: M3uPlaylist): IncomingLiveCatalog {
         val categories = linkedMapOf<String, IncomingLiveCategory>()
-        val channels = playlist.entries.mapIndexed { index, entry ->
-            val categoryName = entry.groupTitle?.trim()?.takeIf(String::isNotEmpty)
-            val categoryKey = categoryName?.let(::m3uCategoryKey)
-            if (categoryName != null && categoryKey != null && categoryKey !in categories) {
-                categories[categoryKey] = IncomingLiveCategory(
-                    providerKey = categoryKey,
-                    name = categoryName,
-                    parentProviderKey = null,
-                    providerOrder = categories.size.toLong(),
+        val baseProviderKeys = playlist.entries.map(ProviderIdentity::m3u)
+        val baseProviderKeyCounts = baseProviderKeys.groupingBy { it }.eachCount()
+        val variantKeys = playlist.entries.map(ProviderIdentity::m3uVariant)
+        val canonicalVariantByDuplicateBase = baseProviderKeys
+            .indices
+            .asSequence()
+            .filter { index -> baseProviderKeyCounts.getValue(baseProviderKeys[index]) > 1 }
+            .groupBy { index -> baseProviderKeys[index] }
+            .mapValues { (_, indices) -> indices.minOf { index -> variantKeys[index] } }
+        val seenProviderKeys = linkedSetOf<String>()
+        val channels = buildList {
+            playlist.entries.forEachIndexed { index, entry ->
+                val categoryName = entry.groupTitle?.trim()?.takeIf(String::isNotEmpty)
+                val categoryKey = categoryName?.let(::m3uCategoryKey)
+                if (categoryName != null && categoryKey != null && categoryKey !in categories) {
+                    categories[categoryKey] = IncomingLiveCategory(
+                        providerKey = categoryKey,
+                        name = categoryName,
+                        parentProviderKey = null,
+                        providerOrder = categories.size.toLong(),
+                    )
+                }
+
+                val baseProviderKey = baseProviderKeys[index]
+                val providerKey = if (baseProviderKeyCounts.getValue(baseProviderKey) == 1) {
+                    baseProviderKey
+                } else {
+                    val variantKey = variantKeys[index]
+                    if (variantKey == canonicalVariantByDuplicateBase[baseProviderKey]) {
+                        baseProviderKey
+                    } else {
+                        variantKey
+                    }
+                }
+                if (!seenProviderKeys.add(providerKey)) {
+                    return@forEachIndexed
+                }
+
+                add(
+                    IncomingLiveChannel(
+                        providerKey = providerKey,
+                        providerStreamId = null,
+                        providerCategoryKey = categoryKey,
+                        providerName = entry.displayName,
+                        tvgId = entry.tvgId,
+                        tvgName = entry.tvgName,
+                        locatorValue = PlaybackLocatorDescriptor.directUrl(entry.streamUrl),
+                        logoValue = entry.logoUrl?.takeIf(String::isNotBlank),
+                        providerOrder = index.toLong(),
+                    ),
                 )
             }
-
-            IncomingLiveChannel(
-                providerKey = ProviderIdentity.m3u(entry),
-                providerStreamId = null,
-                providerCategoryKey = categoryKey,
-                providerName = entry.displayName,
-                tvgId = entry.tvgId,
-                tvgName = entry.tvgName,
-                locatorValue = PlaybackLocatorDescriptor.directUrl(entry.streamUrl),
-                logoValue = entry.logoUrl?.takeIf(String::isNotBlank),
-                providerOrder = index.toLong(),
-            )
         }
 
         return IncomingLiveCatalog(
