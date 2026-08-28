@@ -263,6 +263,26 @@ class PlaybackController(
         }
     }
 
+    fun stopIfCurrent(
+        sourceId: String,
+        channelId: String,
+        mediaKind: PlaybackMediaKind,
+    ) {
+        check(!released) { "PlaybackController is released" }
+        scope.launch {
+            val currentRequest = backgroundSuspendedRequest ?: mutableState.value.requestOrNull()
+            if (
+                currentRequest?.sourceId != sourceId ||
+                currentRequest.channelId != channelId ||
+                currentRequest.mediaKind != mediaKind
+            ) {
+                return@launch
+            }
+            clearBackgroundSuspension()
+            stopOnControllerDispatcher()
+        }
+    }
+
     override fun close() {
         if (released) return
         released = true
