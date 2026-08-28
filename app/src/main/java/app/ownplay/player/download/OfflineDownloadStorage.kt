@@ -106,8 +106,12 @@ internal object OfflineDownloadStorage {
         return if (isPublicDownloadsLocation(location)) {
             try {
                 context.contentResolver.openFileDescriptor(Uri.parse(location), "r")?.use { true } ?: false
-            } catch (_: Exception) {
+            } catch (_: FileNotFoundException) {
                 false
+            } catch (_: Exception) {
+                // A transient provider/permission failure is not proof that the file is gone.
+                // Preserve the managed URI so a later reconciliation or playback can recover.
+                true
             }
         } else {
             resolvePrivateRelativePath(context, location)?.isFile == true
