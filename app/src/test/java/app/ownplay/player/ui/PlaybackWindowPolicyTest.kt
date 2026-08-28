@@ -72,6 +72,19 @@ class PlaybackWindowPolicyTest {
     }
 
     @Test
+    fun livePreviewCanTemporarilyFollowPhysicalSensor() {
+        assertEquals(
+            PlaybackOrientationIntent.SENSOR,
+            PlaybackWindowPolicy.orientationIntent(
+                fullscreen = false,
+                appOrientation = AppOrientationMode.PORTRAIT,
+                inPictureInPicture = false,
+                livePreviewRotationEnabled = true,
+            ),
+        )
+    }
+
+    @Test
     fun fullscreenAlwaysFollowsPhysicalSensorByDefault() {
         assertEquals(
             PlaybackOrientationIntent.SENSOR,
@@ -113,6 +126,7 @@ class PlaybackWindowPolicyTest {
                 appOrientation = AppOrientationMode.LANDSCAPE,
                 inPictureInPicture = true,
                 fullscreenSensorRotationEnabled = false,
+                livePreviewRotationEnabled = true,
             ),
         )
     }
