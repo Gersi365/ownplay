@@ -34,6 +34,7 @@ class OfflineDownloadWorker(
         val downloadId = inputData.getString(KEY_DOWNLOAD_ID) ?: return Result.failure()
         val database = OwnPlayDatabase.create(applicationContext)
         val dao = database.mediaDownloadDao()
+        var activePublicDestination: String? = null
         try {
             val initialRow = dao.getById(downloadId) ?: return Result.success()
             if (initialRow.state == DownloadStates.PAUSED) {
@@ -89,6 +90,9 @@ class OfflineDownloadWorker(
                     )
             } else {
                 null
+            }
+            if (usePublicDownloads) {
+                activePublicDestination = destinationLocation
             }
             val existingBytes = if (usePublicDownloads) {
                 OfflineDownloadStorage.locationSize(applicationContext, destinationLocation) ?: 0L
@@ -351,6 +355,7 @@ class OfflineDownloadWorker(
         } catch (cancelled: CancellationException) {
             val row = dao.getById(downloadId)
             if (row != null) {
+                val localLocation = row.localRelativePath ?: activePublicDestination
                 val cancellationState = if (row.state == DownloadStates.PAUSED) {
                     DownloadStates.PAUSED
                 } else {
@@ -359,24 +364,29 @@ class OfflineDownloadWorker(
                 dao.updateTransfer(
                     downloadId = downloadId,
                     state = cancellationState,
-                    bytesDownloaded = currentTransferBytes(row),
+                    bytesDownloaded = currentTransferBytes(row, localLocation),
                     totalBytes = row.totalBytes,
-                    localRelativePath = row.localRelativePath,
+                    localRelativePath = localLocation,
                     failureReason = null,
                     updatedAtEpochMillis = System.currentTimeMillis(),
                 )
+            } else {
+                OfflineDownloadStorage.deleteLocation(applicationContext, activePublicDestination)
             }
             throw cancelled
         } catch (_: Exception) {
             val row = dao.getById(downloadId)
             if (row != null) {
+                val localLocation = row.localRelativePath ?: activePublicDestination
                 markQueuedForRetry(
                     dao = dao,
                     row = row,
                     reason = "Download interrupted",
-                    bytesDownloaded = currentTransferBytes(row),
-                    localLocation = row.localRelativePath,
+                    bytesDownloaded = currentTransferBytes(row, localLocation),
+                    localLocation = localLocation,
                 )
+            } else {
+                OfflineDownloadStorage.deleteLocation(applicationContext, activePublicDestination)
             }
             return Result.retry()
         } finally {
@@ -430,9 +440,12 @@ class OfflineDownloadWorker(
         return true
     }
 
-    private fun currentTransferBytes(row: MediaDownloadEntity): Long {
-        if (OfflineDownloadStorage.isPublicDownloadsLocation(row.localRelativePath)) {
-            return OfflineDownloadStorage.locationSize(applicationContext, row.localRelativePath)
+    private fun currentTransferBytes(
+        row: MediaDownloadEntity,
+        localLocation: String? = row.localRelativePath,
+    ): Long {
+        if (OfflineDownloadStorage.isPublicDownloadsLocation(localLocation)) {
+            return OfflineDownloadStorage.locationSize(applicationContext, localLocation)
                 ?: row.bytesDownloaded
         }
         return OfflineDownloadStorage.partialFile(applicationContext, row.downloadId)
