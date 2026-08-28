@@ -8,4 +8,5 @@ data class PlaylistSourceSummary(
     val channelCount: Int,
     val createdAtEpochMillis: Long,
     val updatedAtEpochMillis: Long,
+    val lastLiveRefreshAtEpochMillis: Long? = null,
 )
