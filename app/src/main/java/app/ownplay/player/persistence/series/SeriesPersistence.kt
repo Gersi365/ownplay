@@ -232,7 +232,12 @@ interface SeriesCatalogDao {
         WHERE s.sourceId = :sourceId
             AND p.positionMs > 0
             AND p.completed = 0
-        ORDER BY p.updatedAtEpochMillis DESC
+        ORDER BY
+            p.updatedAtEpochMillis DESC,
+            s.providerOrder ASC,
+            e.seasonNumber ASC,
+            e.episodeNumber ASC,
+            e.episodeId ASC
         LIMIT :limit
         """,
     )
