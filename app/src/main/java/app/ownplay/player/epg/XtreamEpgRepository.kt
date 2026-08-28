@@ -1,5 +1,6 @@
 package app.ownplay.player.epg
 
+import app.ownplay.player.persistence.ChannelAvailability
 import app.ownplay.player.persistence.OwnPlayDatabase
 import app.ownplay.player.persistence.SourceKinds
 import app.ownplay.player.persistence.secure.SensitiveValueRef
@@ -79,6 +80,7 @@ class XtreamEpgRepository(
             return@withContext EpgRefreshResult(0, 0)
         }
         val channels = database.providerCatalogDao().channelsForSource(sourceId)
+            .filter { channel -> channel.availability != ChannelAvailability.REMOVED }
         val channelIdsByEpgChannelId = channels.asSequence()
             .mapNotNull { channel ->
                 val epgId = channel.tvgId?.trim()?.takeIf(String::isNotBlank)
