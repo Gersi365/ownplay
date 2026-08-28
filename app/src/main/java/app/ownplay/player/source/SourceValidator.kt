@@ -2,6 +2,7 @@ package app.ownplay.player.source
 
 import java.net.URI
 import java.net.URISyntaxException
+import java.util.Locale
 
 sealed interface UrlValidationResult {
     data class Valid(
@@ -27,7 +28,10 @@ object SourceValidator {
         if (value.isEmpty()) return SourceError.EmptyValue
 
         val uri = parseUri(value) ?: return SourceError.InvalidUrl
-        return if (uri.scheme.equals("content", ignoreCase = true)) {
+        return if (
+            uri.scheme.equals("content", ignoreCase = true) &&
+            !uri.rawAuthority.isNullOrBlank()
+        ) {
             null
         } else {
             SourceError.UnsupportedLocalUri
@@ -43,7 +47,7 @@ object SourceValidator {
         if (value.isEmpty()) return UrlValidationResult.Invalid(SourceError.EmptyValue)
 
         val uri = parseUri(value) ?: return UrlValidationResult.Invalid(SourceError.InvalidUrl)
-        val scheme = uri.scheme?.lowercase()
+        val scheme = uri.scheme?.lowercase(Locale.ROOT)
             ?: return UrlValidationResult.Invalid(SourceError.UnsupportedScheme)
 
         if (scheme != "http" && scheme != "https") {
