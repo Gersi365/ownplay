@@ -160,9 +160,10 @@ class Media3PlaybackEngine(
 
     override fun stop() {
         runOnPlayerThread {
+            val preserveDiagnostics = player.playerError != null
             player.stop()
             player.clearMediaItems()
-            clearTrackSession()
+            clearTrackSession(preserveDiagnostics = preserveDiagnostics)
         }
     }
 
@@ -448,11 +449,15 @@ class Media3PlaybackEngine(
             .build()
     }
 
-    private fun clearTrackSession() {
+    private fun clearTrackSession(preserveDiagnostics: Boolean = false) {
         nextTrackId = 1L
         trackIdsByKey.clear()
         trackHandlesById.clear()
-        mutableTrackState.value = PlaybackTrackSelectionPolicy.resetForNewMedia()
+        mutableTrackState.value = if (preserveDiagnostics) {
+            PlaybackTrackSelectionPolicy.resetAfterPlayerFailure(mutableTrackState.value)
+        } else {
+            PlaybackTrackSelectionPolicy.resetForNewMedia()
+        }
     }
 
     private fun runOnPlayerThread(action: () -> Unit) {
