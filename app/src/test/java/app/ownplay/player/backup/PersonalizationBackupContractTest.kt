@@ -50,12 +50,37 @@ class PersonalizationBackupContractTest {
     }
 
     @Test
+    fun `invalid json and unsupported format are rejected before restore planning`() {
+        assertEquals(
+            BackupDecodeResult.Failure(BackupDecodeFailureReason.INVALID_JSON),
+            PersonalizationBackupCodec.decode("{not-json"),
+        )
+        assertEquals(
+            BackupDecodeResult.Failure(BackupDecodeFailureReason.UNSUPPORTED_FORMAT),
+            PersonalizationBackupCodec.decode(
+                """{"format":"other.product","version":1,"createdAtEpochMillis":1,"channels":[],"groups":[]}""",
+            ),
+        )
+    }
+
+    @Test
     fun `unsupported version is rejected before restore planning`() {
         val raw =
             """{"format":"ownplay.personalization","version":2,"createdAtEpochMillis":1,"channels":[],"groups":[]}"""
 
         assertEquals(
             BackupDecodeResult.Failure(BackupDecodeFailureReason.UNSUPPORTED_VERSION),
+            PersonalizationBackupCodec.decode(raw),
+        )
+    }
+
+    @Test
+    fun `duplicate stable channel identities are rejected`() {
+        val raw =
+            """{"format":"ownplay.personalization","version":1,"createdAtEpochMillis":1,"channels":[{"identity":{"providerKey":"xtream:live:1","sourceKind":"xtream","sourceName":"Home","sourceId":"source"},"localDisplayName":"One","manualOrder":null,"hiddenAtEpochMillis":null,"favoriteOrder":null,"favoriteAddedAtEpochMillis":null,"logoOverrideOmitted":false},{"identity":{"providerKey":"xtream:live:1","sourceKind":"xtream","sourceName":"Home","sourceId":"source"},"localDisplayName":"Two","manualOrder":null,"hiddenAtEpochMillis":null,"favoriteOrder":null,"favoriteAddedAtEpochMillis":null,"logoOverrideOmitted":false}],"groups":[]}"""
+
+        assertEquals(
+            BackupDecodeResult.Failure(BackupDecodeFailureReason.INVALID_PAYLOAD),
             PersonalizationBackupCodec.decode(raw),
         )
     }
