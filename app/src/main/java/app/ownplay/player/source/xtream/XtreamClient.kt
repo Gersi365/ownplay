@@ -288,6 +288,9 @@ class XtreamClient(
         extraQuery: Map<String, String> = emptyMap(),
         allowCleartext: Boolean,
     ): SourceResult<JsonElement> {
+        if (credentials.username.isBlank() || credentials.password.isBlank()) {
+            return SourceResult.Failure(SourceError.InvalidCredentials)
+        }
         val validation = SourceValidator.validateXtreamServer(serverUrl)
         if (validation is UrlValidationResult.Invalid) {
             return SourceResult.Failure(validation.error)
