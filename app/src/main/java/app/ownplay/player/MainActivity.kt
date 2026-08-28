@@ -40,6 +40,7 @@ import app.ownplay.player.ui.OwnPlayRoot
 import app.ownplay.player.ui.PictureInPicturePlaybackSurface
 import app.ownplay.player.ui.PlaybackOriginBadge
 import app.ownplay.player.ui.PlaybackWindowController
+import app.ownplay.player.ui.SourceSubmissionCoordinator
 import app.ownplay.player.ui.library.LibraryPlaybackScreen
 import app.ownplay.player.ui.library.LibraryPlaybackSession
 import app.ownplay.player.ui.theme.OwnPlayTheme
@@ -329,6 +330,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onDestroy() {
         activityScope.cancel()
+        SourceSubmissionCoordinator.release(runtime)
         offlineDownloadRuntime.close()
         playbackWindowController.release()
         runtime.close()
