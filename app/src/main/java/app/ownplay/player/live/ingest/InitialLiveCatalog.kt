@@ -92,16 +92,7 @@ object InitialLiveCatalogFactory {
 
     fun fromM3u(playlist: M3uPlaylist): IncomingLiveCatalog {
         val categories = linkedMapOf<String, IncomingLiveCategory>()
-        val baseProviderKeys = playlist.entries.map(ProviderIdentity::m3u)
-        val baseProviderKeyCounts = baseProviderKeys.groupingBy { it }.eachCount()
-        val variantKeys = playlist.entries.map(ProviderIdentity::m3uVariant)
-        val canonicalVariantByDuplicateBase = baseProviderKeys
-            .indices
-            .asSequence()
-            .filter { index -> baseProviderKeyCounts.getValue(baseProviderKeys[index]) > 1 }
-            .groupBy { index -> baseProviderKeys[index] }
-            .mapValues { (_, indices) -> indices.minOf { index -> variantKeys[index] } }
-        val seenProviderKeys = linkedSetOf<String>()
+        val exactVariantsByProviderKey = linkedMapOf<String, MutableSet<String>>()
         val channels = buildList {
             playlist.entries.forEachIndexed { index, entry ->
                 val categoryName = entry.groupTitle?.trim()?.takeIf(String::isNotEmpty)
@@ -115,18 +106,10 @@ object InitialLiveCatalogFactory {
                     )
                 }
 
-                val baseProviderKey = baseProviderKeys[index]
-                val providerKey = if (baseProviderKeyCounts.getValue(baseProviderKey) == 1) {
-                    baseProviderKey
-                } else {
-                    val variantKey = variantKeys[index]
-                    if (variantKey == canonicalVariantByDuplicateBase[baseProviderKey]) {
-                        baseProviderKey
-                    } else {
-                        variantKey
-                    }
-                }
-                if (!seenProviderKeys.add(providerKey)) {
+                val providerKey = ProviderIdentity.m3u(entry)
+                val variantFingerprint = ProviderIdentity.m3uVariantFingerprint(entry)
+                val seenVariants = exactVariantsByProviderKey.getOrPut(providerKey, ::linkedSetOf)
+                if (!seenVariants.add(variantFingerprint)) {
                     return@forEachIndexed
                 }
 
