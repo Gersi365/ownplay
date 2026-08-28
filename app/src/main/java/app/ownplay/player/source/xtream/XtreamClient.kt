@@ -88,7 +88,7 @@ class XtreamClient(
         return SourceResult.Success(
             array.mapNotNull { element ->
                 val item = element as? JsonObject ?: return@mapNotNull null
-                val streamId = item.int("stream_id") ?: return@mapNotNull null
+                val streamId = item.int("stream_id")?.takeIf { it > 0 } ?: return@mapNotNull null
                 val name = item.text("name") ?: return@mapNotNull null
                 XtreamLiveStream(
                     streamId = streamId,
@@ -136,7 +136,7 @@ class XtreamClient(
         return SourceResult.Success(
             array.mapNotNull { element ->
                 val item = element as? JsonObject ?: return@mapNotNull null
-                val streamId = item.int("stream_id") ?: return@mapNotNull null
+                val streamId = item.int("stream_id")?.takeIf { it > 0 } ?: return@mapNotNull null
                 val name = item.text("name") ?: return@mapNotNull null
                 XtreamVodStream(
                     streamId = streamId,
@@ -299,46 +299,33 @@ class XtreamClient(
 
         val baseUrl = valid.normalizedUrl.toHttpUrlOrNull()
             ?: return SourceResult.Failure(SourceError.InvalidUrl)
-        val urlBuilder = baseUrl.newBuilder()
+        val url = baseUrl.newBuilder()
             .addPathSegment("player_api.php")
-            .addQueryParameter("username", credentials.username)
-            .addQueryParameter("password", credentials.password)
-        action?.let { urlBuilder.addQueryParameter("action", it) }
-        extraQuery.forEach { (key, value) ->
-            urlBuilder.addQueryParameter(key, value)
-        }
-
-        val request = Request.Builder()
-            .url(urlBuilder.build())
-            .get()
+            .apply {
+                addQueryParameter("username", credentials.username)
+                addQueryParameter("password", credentials.password)
+                action?.let { addQueryParameter("action", it) }
+                extraQuery.forEach { (key, value) -> addQueryParameter(key, value) }
+            }
             .build()
+        val request = Request.Builder().url(url).get().build()
 
         return withContext(Dispatchers.IO) {
             try {
                 httpClient.newCall(request).execute().use { response ->
                     when {
-                        response.code == 401 || response.code == 403 -> {
+                        response.code == 401 || response.code == 403 ->
                             SourceResult.Failure(SourceError.AuthenticationFailed)
-                        }
-
-                        response.code == 408 || response.code == 504 -> {
+                        response.code == 408 || response.code == 504 ->
                             SourceResult.Failure(SourceError.Timeout)
-                        }
-
-                        !response.isSuccessful -> {
+                        !response.isSuccessful ->
                             SourceResult.Failure(SourceError.HttpFailure(response.code))
-                        }
-
-                        else -> {
-                            val body = response.body.string()
-                            val element = runCatching { json.parseToJsonElement(body) }
-                                .getOrElse {
-                                    return@withContext SourceResult.Failure(
-                                        SourceError.MalformedResponse,
-                                    )
-                                }
-                            SourceResult.Success(element)
-                        }
+                        else -> runCatching {
+                            json.parseToJsonElement(response.body.string())
+                        }.fold(
+                            onSuccess = { SourceResult.Success(it) },
+                            onFailure = { SourceResult.Failure(SourceError.MalformedResponse) },
+                        )
                     }
                 }
             } catch (_: SocketTimeoutException) {
@@ -359,37 +346,28 @@ class XtreamClient(
         }
     }
 
-    private fun parseAccount(element: JsonElement): SourceResult<XtreamAccountInfo> {
-        val root = element as? JsonObject
+    private fun parseAccount(root: JsonElement): SourceResult<XtreamAccountInfo> {
+        val objectRoot = root as? JsonObject
             ?: return SourceResult.Failure(SourceError.MalformedResponse)
-        val userInfo = root["user_info"] as? JsonObject
+        val userInfo = objectRoot["user_info"] as? JsonObject
             ?: return SourceResult.Failure(SourceError.MalformedResponse)
-        val authenticated = userInfo.flag("auth")
-            ?: return SourceResult.Failure(SourceError.MalformedResponse)
-        if (!authenticated) {
-            return SourceResult.Failure(SourceError.AuthenticationFailed)
-        }
+        val auth = userInfo.booleanish("auth")
+        if (auth == false) return SourceResult.Failure(SourceError.AuthenticationFailed)
 
-        val server = (root["server_info"] as? JsonObject)?.let { serverInfo ->
-            XtreamServerInfo(
-                protocol = serverInfo.text("server_protocol"),
-                timezone = serverInfo.text("timezone"),
-            )
-        }
-        val formats = (userInfo["allowed_output_formats"] as? JsonArray)
-            ?.mapNotNull { (it as? JsonPrimitive)?.contentOrNull }
-            .orEmpty()
-
-        return SourceResult.Success(
-            XtreamAccountInfo(
-                status = userInfo.text("status"),
-                expiresAtEpochSeconds = userInfo.long("exp_date"),
-                maxConnections = userInfo.int("max_connections"),
-                isTrial = userInfo.flag("is_trial"),
-                allowedOutputFormats = formats,
-                serverInfo = server,
-            ),
+        val account = XtreamAccountInfo(
+            status = userInfo.text("status"),
+            expiresAtEpochSeconds = userInfo.long("exp_date"),
+            maxConnections = userInfo.int("max_connections"),
+            isTrial = userInfo.booleanish("is_trial"),
+            allowedOutputFormats = userInfo.stringList("allowed_output_formats"),
+            serverInfo = (objectRoot["server_info"] as? JsonObject)?.let { serverInfo ->
+                XtreamServerInfo(
+                    protocol = serverInfo.text("server_protocol"),
+                    timezone = serverInfo.text("timezone"),
+                )
+            },
         )
+        return SourceResult.Success(account)
     }
 
     private fun JsonObject.text(key: String): String? {
@@ -401,11 +379,8 @@ class XtreamClient(
     }
 
     private fun JsonObject.int(key: String): Int? = text(key)?.toIntOrNull()
-
     private fun JsonObject.long(key: String): Long? = text(key)?.toLongOrNull()
-
     private fun JsonObject.double(key: String): Double? = text(key)?.toDoubleOrNull()
-
     private fun JsonObject.stringList(key: String): List<String> = when (val element = this[key]) {
         is JsonArray -> element.mapNotNull { item ->
             (item as? JsonPrimitive)?.contentOrNull?.takeIf(String::isNotBlank)
@@ -414,30 +389,30 @@ class XtreamClient(
         else -> emptyList()
     }
 
-    private fun JsonObject.flag(key: String): Boolean? = when (text(key)?.lowercase()) {
-        "1", "true", "yes" -> true
-        "0", "false", "no" -> false
-        else -> null
-    }
-
-    private fun decodeMaybeBase64(value: String): String {
-        val trimmed = value.trim()
-        if (trimmed.length < 4 || trimmed.any(Char::isWhitespace)) return trimmed
-        val padded = trimmed + "=".repeat((4 - trimmed.length % 4) % 4)
-        val decoded = runCatching { Base64.getDecoder().decode(padded) }.getOrNull()
-            ?: return trimmed
-        val candidate = runCatching {
-            StandardCharsets.UTF_8.newDecoder()
-                .onMalformedInput(CodingErrorAction.REPORT)
-                .onUnmappableCharacter(CodingErrorAction.REPORT)
-                .decode(ByteBuffer.wrap(decoded))
-                .toString()
-                .trim()
-        }.getOrNull() ?: return trimmed
-        if (candidate.isEmpty()) return trimmed
-        val printable = candidate.all { char ->
-            char == '\n' || char == '\r' || char == '\t' || !char.isISOControl()
+    private fun JsonObject.booleanish(key: String): Boolean? {
+        val value = text(key)?.trim()?.lowercase() ?: return null
+        return when (value) {
+            "1", "true", "active", "yes" -> true
+            "0", "false", "disabled", "no" -> false
+            else -> null
         }
-        return if (printable) candidate else trimmed
     }
+}
+
+private fun decodeMaybeBase64(value: String): String {
+    val trimmed = value.trim()
+    if (trimmed.isEmpty() || trimmed.length % 4 != 0) return value
+    if (!trimmed.matches(Regex("^[A-Za-z0-9+/]+={0,2}$"))) return value
+    return runCatching {
+        val decoded = Base64.getDecoder().decode(trimmed)
+        val decoder = StandardCharsets.UTF_8.newDecoder()
+            .onMalformedInput(CodingErrorAction.REPORT)
+            .onUnmappableCharacter(CodingErrorAction.REPORT)
+        val text = decoder.decode(ByteBuffer.wrap(decoded)).toString()
+        text.takeIf { decodedText ->
+            decodedText.isNotBlank() && decodedText.all { char ->
+                !char.isISOControl() || char == '\n' || char == '\r' || char == '\t'
+            }
+        } ?: value
+    }.getOrDefault(value)
 }
