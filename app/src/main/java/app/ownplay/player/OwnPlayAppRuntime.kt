@@ -50,8 +50,13 @@ import app.ownplay.player.source.SourceResult
 import app.ownplay.player.source.SourceSyncStage
 import app.ownplay.player.source.SourceSyncState
 import app.ownplay.player.source.credential.AndroidKeystoreCredentialStore
+import app.ownplay.player.source.m3u.AndroidLocalM3uLoader
+import app.ownplay.player.source.m3u.M3uRefreshRequest
+import app.ownplay.player.source.m3u.M3uSourceRefresher
+import app.ownplay.player.source.m3u.RemoteM3uLoader
 import app.ownplay.player.source.management.SourceEditSnapshot
 import app.ownplay.player.source.management.SourceManagementService
+import app.ownplay.player.source.management.SourceMutationFailure
 import app.ownplay.player.source.management.SourceMutationResult
 import app.ownplay.player.source.onboarding.SourceOnboardingFailure
 import app.ownplay.player.source.onboarding.SourceOnboardingResult
@@ -63,6 +68,7 @@ import app.ownplay.player.vod.VodRepository
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.Flow
@@ -105,11 +111,14 @@ class OwnPlayAppRuntime(
         AndroidPlaybackConnectivityMonitor(applicationContext)
     private val sensitiveValueStore = AndroidKeystoreSensitiveValueStore(applicationContext)
     private val credentialStore = AndroidKeystoreCredentialStore(applicationContext)
+    private val remoteM3uLoader = RemoteM3uLoader()
+    private val localM3uLoader = AndroidLocalM3uLoader(applicationContext.contentResolver)
     private val sourceOnboardingService = SourceOnboardingService(
         database = database,
         sensitiveValueStore = sensitiveValueStore,
         credentialStore = credentialStore,
         contentResolver = applicationContext.contentResolver,
+        remoteM3uLoader = remoteM3uLoader,
     )
     private val sourceManagementService = SourceManagementService(
         database = database,
@@ -121,6 +130,11 @@ class OwnPlayAppRuntime(
     private val liveCatalogIngestor = InitialLiveCatalogIngestor(
         persistence = RoomLiveCatalogPersistence(database),
         sensitiveValueStore = sensitiveValueStore,
+    )
+    private val m3uSourceRefresher = M3uSourceRefresher(
+        loadRemote = remoteM3uLoader::load,
+        loadLocal = localM3uLoader::load,
+        ingest = M3uSourceRefresher.catalogIngest(liveCatalogIngestor::ingest),
     )
     private val epgRepository = XtreamEpgRepository(
         database = database,
@@ -263,6 +277,7 @@ class OwnPlayAppRuntime(
     suspend fun addRemoteM3uSource(
         name: String,
         playlistUrl: String,
+        allowCleartext: Boolean = false,
     ): SourceOnboardingResult = withContext(Dispatchers.IO) {
         _sourceSyncState.value = SourceSyncState(
             sourceName = name.trim().ifBlank { "M3U" },
@@ -271,6 +286,7 @@ class OwnPlayAppRuntime(
         val result = sourceOnboardingService.addRemoteM3u(
             name = name,
             playlistUrl = playlistUrl,
+            allowCleartext = allowCleartext,
         )
         _sourceSyncState.value = when (result) {
             is SourceOnboardingResult.Success -> SourceSyncState(
@@ -290,6 +306,7 @@ class OwnPlayAppRuntime(
     suspend fun addLocalM3uSource(
         name: String,
         documentUri: String,
+        allowCleartext: Boolean = false,
     ): SourceOnboardingResult = withContext(Dispatchers.IO) {
         _sourceSyncState.value = SourceSyncState(
             sourceName = name.trim().ifBlank { "Local M3U" },
@@ -298,6 +315,7 @@ class OwnPlayAppRuntime(
         val result = sourceOnboardingService.addLocalM3u(
             name = name,
             documentUri = documentUri,
+            allowCleartext = allowCleartext,
         )
         _sourceSyncState.value = when (result) {
             is SourceOnboardingResult.Success -> SourceSyncState(
@@ -340,7 +358,7 @@ class OwnPlayAppRuntime(
     private suspend fun refreshSourcePipeline(sourceId: String) = refreshMutex.withLock {
         val source = database.playlistSourceDao().getById(sourceId) ?: return@withLock
         val existingCount = runCatching {
-            database.providerCatalogDao().channelsForSource(sourceId).size
+            database.providerCatalogDao().activeChannelCount(sourceId)
         }.getOrDefault(0)
         _sourceSyncState.value = SourceSyncState(
             sourceId = sourceId,
@@ -351,7 +369,10 @@ class OwnPlayAppRuntime(
 
         val channelResult = when (source.sourceKind) {
             SourceKinds.XTREAM -> refreshXtreamLiveCatalogInternal(sourceId)
-            else -> SourceOnboardingResult.Success(sourceId, existingCount)
+            SourceKinds.REMOTE_M3U,
+            SourceKinds.LOCAL_M3U,
+            -> refreshM3uLiveCatalogInternal(sourceId)
+            else -> SourceOnboardingResult.Failure(SourceOnboardingFailure.CatalogImportFailure)
         }
         if (channelResult is SourceOnboardingResult.Failure) {
             _sourceSyncState.value = SourceSyncState(
@@ -411,7 +432,7 @@ class OwnPlayAppRuntime(
         val channelCount = if (current.sourceId == sourceId) {
             current.channelCount
         } else {
-            runCatching { database.providerCatalogDao().channelsForSource(sourceId).size }
+            runCatching { database.providerCatalogDao().activeChannelCount(sourceId) }
                 .getOrDefault(0)
         }
         _sourceSyncState.value = SourceSyncState(
@@ -497,46 +518,127 @@ class OwnPlayAppRuntime(
     }
 
     suspend fun deleteSource(sourceId: String): SourceMutationResult {
-        val result = sourceManagementService.delete(sourceId)
-        if (result is SourceMutationResult.Success) {
-            epgRepository.invalidateSource(sourceId)
+        val removalSnapshot = try {
+            offlineDownloadRepository.prepareSourceRemoval(sourceId)
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            return SourceMutationResult.Failure(SourceMutationFailure.PersistenceFailure)
+        }
+
+        val result = try {
+            sourceManagementService.delete(sourceId)
+        } catch (cancelled: CancellationException) {
+            withContext(NonCancellable) {
+                runCatching { offlineDownloadRepository.rollbackSourceRemoval(removalSnapshot) }
+            }
+            throw cancelled
+        } catch (_: Exception) {
+            runCatching { offlineDownloadRepository.rollbackSourceRemoval(removalSnapshot) }
+            return SourceMutationResult.Failure(SourceMutationFailure.PersistenceFailure)
+        }
+
+        if (result is SourceMutationResult.Failure) {
             try {
-                categoryVisibilityStore.clearSource(sourceId)
-                categoryOrderStore.clearSource(sourceId)
+                offlineDownloadRepository.rollbackSourceRemoval(removalSnapshot)
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (_: Exception) {
-                // The source is already deleted. Stale source-scoped preferences are inert.
+                // Preserve the source mutation failure; active work can be retried manually.
             }
-            if (_sourceSyncState.value.sourceId == sourceId) {
-                _sourceSyncState.value = SourceSyncState()
-            }
+            return result
+        }
+
+        offlineDownloadRepository.completeSourceRemoval(removalSnapshot)
+        epgRepository.invalidateSource(sourceId)
+        try {
+            categoryVisibilityStore.clearSource(sourceId)
+            categoryOrderStore.clearSource(sourceId)
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            // The source is already deleted. Stale source-scoped preferences are inert.
+        }
+        if (_sourceSyncState.value.sourceId == sourceId) {
+            _sourceSyncState.value = SourceSyncState()
         }
         return result
     }
 
     suspend fun ensureLiveCatalog(sourceId: String): SourceOnboardingResult =
         withContext(Dispatchers.IO) {
-            val existingChannels = try {
-                database.providerCatalogDao().channelsForSource(sourceId)
+            val existingCount = try {
+                database.providerCatalogDao().activeChannelCount(sourceId)
             } catch (_: Exception) {
                 return@withContext SourceOnboardingResult.Failure(
                     SourceOnboardingFailure.PersistenceFailure,
                 )
             }
-            if (existingChannels.isNotEmpty()) {
+            if (existingCount > 0) {
                 return@withContext SourceOnboardingResult.Success(
                     sourceId = sourceId,
-                    channelCount = existingChannels.size,
+                    channelCount = existingCount,
                 )
             }
-            refreshXtreamLiveCatalogInternal(sourceId)
+            refreshLiveCatalogInternal(sourceId)
         }
 
     suspend fun refreshLiveCatalog(sourceId: String): SourceOnboardingResult =
         withContext(Dispatchers.IO) {
-            refreshXtreamLiveCatalogInternal(sourceId)
+            refreshLiveCatalogInternal(sourceId)
         }
+
+    private suspend fun refreshLiveCatalogInternal(sourceId: String): SourceOnboardingResult {
+        val sourceKind = try {
+            database.playlistSourceDao().getById(sourceId)?.sourceKind
+        } catch (_: Exception) {
+            null
+        } ?: return SourceOnboardingResult.Failure(SourceOnboardingFailure.PersistenceFailure)
+
+        return when (sourceKind) {
+            SourceKinds.XTREAM -> refreshXtreamLiveCatalogInternal(sourceId)
+            SourceKinds.REMOTE_M3U,
+            SourceKinds.LOCAL_M3U,
+            -> refreshM3uLiveCatalogInternal(sourceId)
+            else -> SourceOnboardingResult.Failure(SourceOnboardingFailure.CatalogImportFailure)
+        }
+    }
+
+    private suspend fun refreshM3uLiveCatalogInternal(
+        sourceId: String,
+    ): SourceOnboardingResult {
+        val source = try {
+            database.playlistSourceDao().getById(sourceId)
+        } catch (_: Exception) {
+            return SourceOnboardingResult.Failure(SourceOnboardingFailure.PersistenceFailure)
+        } ?: return SourceOnboardingResult.Failure(SourceOnboardingFailure.PersistenceFailure)
+
+        if (source.sourceKind != SourceKinds.REMOTE_M3U && source.sourceKind != SourceKinds.LOCAL_M3U) {
+            return SourceOnboardingResult.Failure(SourceOnboardingFailure.CatalogImportFailure)
+        }
+
+        val locatorValue = try {
+            sensitiveValueStore.get(SensitiveValueRef(source.locatorRef))
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            null
+        } ?: return SourceOnboardingResult.Failure(SourceOnboardingFailure.SecureStorageFailure)
+
+        return try {
+            m3uSourceRefresher.refresh(
+                M3uRefreshRequest(
+                    sourceId = sourceId,
+                    sourceKind = source.sourceKind,
+                    storedLocator = locatorValue,
+                ),
+            )
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            SourceOnboardingResult.Failure(SourceOnboardingFailure.CatalogImportFailure)
+        }
+    }
 
     private suspend fun refreshXtreamLiveCatalogInternal(
         sourceId: String,
