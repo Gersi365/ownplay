@@ -38,6 +38,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.font.FontWeight
@@ -86,6 +88,7 @@ internal fun LibraryPlaybackScreen(
     val isTelevision =
         configuration.uiMode and Configuration.UI_MODE_TYPE_MASK == Configuration.UI_MODE_TYPE_TELEVISION
     val backOwner = remember(session.download.downloadId) { Any() }
+    val backFocusRequester = remember(session.download.downloadId) { FocusRequester() }
     var playerView by remember(session.download.downloadId) { mutableStateOf<PlayerView?>(null) }
     var currentPosition by remember(session.download.downloadId) {
         mutableStateOf(session.initialPositionMs)
@@ -107,8 +110,12 @@ internal fun LibraryPlaybackScreen(
         }
     }
 
-    LaunchedEffect(isTelevision, playerView, session.download.downloadId) {
+    LaunchedEffect(isTelevision, playerView, playbackState, session.download.downloadId) {
         if (!isTelevision) return@LaunchedEffect
+        if (playbackState is PlaybackState.Failed) {
+            backFocusRequester.requestFocus()
+            return@LaunchedEffect
+        }
         val view = playerView ?: return@LaunchedEffect
         view.isFocusable = true
         view.showController()
@@ -188,7 +195,10 @@ internal fun LibraryPlaybackScreen(
                     .padding(horizontal = 6.dp, vertical = 4.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                IconButton(onClick = onExit) {
+                IconButton(
+                    modifier = Modifier.focusRequester(backFocusRequester),
+                    onClick = onExit,
+                ) {
                     Icon(Icons.Filled.ArrowBack, contentDescription = backContentDescription, tint = Color.White)
                 }
                 Icon(
