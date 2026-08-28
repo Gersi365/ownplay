@@ -228,12 +228,19 @@ class OfflineDownloadRepository(
         enqueueWork(downloadId)
     }
 
-    suspend fun remove(downloadId: String) {
+    suspend fun remove(downloadId: String): Boolean {
         workManager.cancelUniqueWork(workName(downloadId)).await()
         val existing = dao.getById(downloadId)
-        OfflineDownloadStorage.deleteLocation(applicationContext, existing?.localRelativePath)
-        OfflineDownloadStorage.partialFile(applicationContext, downloadId).delete()
+        val locationDeleted = OfflineDownloadStorage.deleteLocation(
+            applicationContext,
+            existing?.localRelativePath,
+        )
+        val partialDeleted = deleteFileIfPresent(
+            OfflineDownloadStorage.partialFile(applicationContext, downloadId),
+        )
+        if (!locationDeleted || !partialDeleted) return false
         dao.delete(downloadId)
+        return true
     }
 
     suspend fun prepareSourceRemoval(sourceId: String): OfflineSourceRemovalSnapshot {
@@ -253,7 +260,7 @@ class OfflineDownloadRepository(
     fun completeSourceRemoval(snapshot: OfflineSourceRemovalSnapshot) {
         snapshot.items.forEach { item ->
             OfflineDownloadStorage.deleteLocation(applicationContext, item.localRelativePath)
-            OfflineDownloadStorage.partialFile(applicationContext, item.downloadId).delete()
+            deleteFileIfPresent(OfflineDownloadStorage.partialFile(applicationContext, item.downloadId))
         }
     }
 
@@ -329,6 +336,9 @@ class OfflineDownloadRepository(
             ?.length()
             ?: 0L
     }
+
+    private fun deleteFileIfPresent(file: File): Boolean =
+        !file.exists() || file.delete() || !file.exists()
 
     private fun mapDownload(row: MediaDownloadEntity): OfflineDownload = OfflineDownload(
         downloadId = row.downloadId,
