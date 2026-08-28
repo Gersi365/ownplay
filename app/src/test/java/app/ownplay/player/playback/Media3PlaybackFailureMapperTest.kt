@@ -4,7 +4,6 @@ import androidx.annotation.OptIn
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.util.StuckPlayerException
 import androidx.media3.common.util.UnstableApi
-import androidx.media3.exoplayer.ExoTimeoutException
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -105,14 +104,8 @@ class Media3PlaybackFailureMapperTest {
     @Test
     fun stuckPlayingTimeoutIsTerminalEvenWhenMedia3UsesTimeoutErrorCode() {
         val failure = Media3PlaybackFailureMapper.map(
-            PlaybackException(
-                "stuck playing",
-                StuckPlayerException(
-                    StuckPlayerException.STUCK_PLAYING_NO_PROGRESS,
-                    20_000,
-                ),
-                PlaybackException.ERROR_CODE_TIMEOUT,
-            ),
+            errorCode = PlaybackException.ERROR_CODE_TIMEOUT,
+            stuckType = StuckPlayerException.STUCK_PLAYING_NO_PROGRESS,
         )
 
         assertEquals(PlaybackFailureCategory.UNKNOWN, failure.category)
@@ -122,14 +115,8 @@ class Media3PlaybackFailureMapperTest {
     @Test
     fun stuckBufferingTimeoutRemainsRetryable() {
         val failure = Media3PlaybackFailureMapper.map(
-            PlaybackException(
-                "stuck buffering",
-                StuckPlayerException(
-                    StuckPlayerException.STUCK_BUFFERING_NO_PROGRESS,
-                    20_000,
-                ),
-                PlaybackException.ERROR_CODE_TIMEOUT,
-            ),
+            errorCode = PlaybackException.ERROR_CODE_TIMEOUT,
+            stuckType = StuckPlayerException.STUCK_BUFFERING_NO_PROGRESS,
         )
 
         assertEquals(PlaybackFailureCategory.TIMEOUT, failure.category)
@@ -139,11 +126,8 @@ class Media3PlaybackFailureMapperTest {
     @Test
     fun surfaceDetachTimeoutIsTerminalForCurrentVideo() {
         val failure = Media3PlaybackFailureMapper.map(
-            PlaybackException(
-                "surface detach timeout",
-                ExoTimeoutException(ExoTimeoutException.TIMEOUT_OPERATION_DETACH_SURFACE),
-                PlaybackException.ERROR_CODE_TIMEOUT,
-            ),
+            errorCode = PlaybackException.ERROR_CODE_TIMEOUT,
+            hasExoTimeout = true,
         )
 
         assertEquals(PlaybackFailureCategory.UNKNOWN, failure.category)

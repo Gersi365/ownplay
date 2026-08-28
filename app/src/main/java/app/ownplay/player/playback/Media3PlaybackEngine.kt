@@ -530,13 +530,24 @@ private data class Media3TrackHandle(
 
 @OptIn(UnstableApi::class)
 internal object Media3PlaybackFailureMapper {
-    fun map(error: PlaybackException): PlaybackFailure {
-        if (error.cause.findExoTimeoutException() != null) {
+    fun map(error: PlaybackException): PlaybackFailure = map(
+        errorCode = error.errorCode,
+        httpStatusCode = error.cause.findHttpStatusCode(),
+        hasExoTimeout = error.cause.findExoTimeoutException() != null,
+        stuckType = error.cause.findStuckPlayerException()?.stuckType,
+    )
+
+    fun map(
+        errorCode: Int,
+        httpStatusCode: Int? = null,
+        hasExoTimeout: Boolean = false,
+        stuckType: Int? = null,
+    ): PlaybackFailure {
+        if (hasExoTimeout) {
             return PlaybackFailure(PlaybackFailureCategory.UNKNOWN)
         }
-        val stuckPlayer = error.cause.findStuckPlayerException()
-        if (stuckPlayer != null) {
-            return when (stuckPlayer.stuckType) {
+        if (stuckType != null) {
+            return when (stuckType) {
                 StuckPlayerException.STUCK_BUFFERING_NOT_LOADING,
                 StuckPlayerException.STUCK_BUFFERING_NO_PROGRESS,
                 -> PlaybackFailure(PlaybackFailureCategory.TIMEOUT)
@@ -548,16 +559,7 @@ internal object Media3PlaybackFailureMapper {
                 else -> PlaybackFailure(PlaybackFailureCategory.UNKNOWN)
             }
         }
-        return map(
-            errorCode = error.errorCode,
-            httpStatusCode = error.cause.findHttpStatusCode(),
-        )
-    }
 
-    fun map(
-        errorCode: Int,
-        httpStatusCode: Int? = null,
-    ): PlaybackFailure {
         val category = when (errorCode) {
             PlaybackException.ERROR_CODE_TIMEOUT,
             PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT,
