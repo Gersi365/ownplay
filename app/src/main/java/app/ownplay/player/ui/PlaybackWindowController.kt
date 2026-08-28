@@ -24,7 +24,8 @@ internal object PlaybackWindowPolicy {
         pipSupported: Boolean,
         isPlaying: Boolean,
         playbackSurfaceActive: Boolean,
-    ): Boolean = pipSupported && isPlaying && playbackSurfaceActive
+        pipEnabled: Boolean = true,
+    ): Boolean = pipEnabled && pipSupported && isPlaying && playbackSurfaceActive
 
     fun orientationIntent(
         fullscreen: Boolean,
@@ -53,6 +54,7 @@ class PlaybackWindowController(
     private var isPlaying = false
     private var fullscreenRequested = false
     private var fullscreenSensorRotationEnabled = true
+    private var pictureInPictureEnabled = true
     private var playbackSurfaceActive = false
     private var appOrientation = AppOrientationMode.PORTRAIT
     private var sourceRectHint: Rect? = null
@@ -96,6 +98,12 @@ class PlaybackWindowController(
         if (fullscreenSensorRotationEnabled == enabled) return
         fullscreenSensorRotationEnabled = enabled
         applyOrientationPolicy()
+    }
+
+    fun updatePictureInPictureEnabled(enabled: Boolean) {
+        if (pictureInPictureEnabled == enabled) return
+        pictureInPictureEnabled = enabled
+        updatePictureInPictureParams()
     }
 
     fun updatePlaybackSurfaceState(active: Boolean) {
@@ -143,6 +151,7 @@ class PlaybackWindowController(
         isPlaying = false
         fullscreenRequested = false
         fullscreenSensorRotationEnabled = true
+        pictureInPictureEnabled = true
         playbackSurfaceActive = false
         detachWindowRoot()
         sourceRectHint = null
@@ -152,6 +161,7 @@ class PlaybackWindowController(
         pipSupported = pipSupported,
         isPlaying = isPlaying,
         playbackSurfaceActive = playbackSurfaceActive,
+        pipEnabled = pictureInPictureEnabled,
     )
 
     private fun buildPictureInPictureParams(): PictureInPictureParams {
