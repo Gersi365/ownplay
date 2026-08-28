@@ -32,7 +32,15 @@ class OfflineDownloadFeatureRuntime(
     )
 
     fun observeAll(): Flow<List<OfflineDownload>> = repository.observeAll()
-        .onStart { reconcileCompletedFiles() }
+        .onStart {
+            try {
+                reconcileCompletedFiles()
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                Unit
+            }
+        }
 
     suspend fun enqueue(spec: OfflineDownloadSpec): String = repository.enqueue(spec)
 
