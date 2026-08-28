@@ -1,5 +1,6 @@
 package app.ownplay.player.playback
 
+import java.util.Locale
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -57,6 +58,25 @@ class PlaybackContractsTest {
                 nextChannelId = "channel",
             ),
         )
+    }
+
+    @Test
+    fun containerExtensionValidationIsLocaleStable() {
+        val previous = Locale.getDefault()
+        try {
+            Locale.setDefault(Locale("tr", "TR"))
+            val request = PlaybackRequest(
+                sourceId = "source",
+                channelId = "episode",
+                mediaKind = PlaybackMediaKind.SERIES_EPISODE,
+                providerStreamId = 42,
+                containerExtension = "AVI",
+            )
+
+            assertEquals("AVI", request.containerExtension)
+        } finally {
+            Locale.setDefault(previous)
+        }
     }
 
     @Test
