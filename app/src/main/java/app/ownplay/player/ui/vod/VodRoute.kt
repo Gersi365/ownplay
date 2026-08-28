@@ -352,7 +352,7 @@ internal fun VodRoute(
             .filter { movie -> normalizedQuery.isBlank() || movie.name.lowercase().contains(normalizedQuery) }
             .let { sequence ->
                 when (sortOrder) {
-                    VodSortOrder.PROVIDER -> sequence.sortedBy { it.providerStreamId }
+                    VodSortOrder.PROVIDER -> sequence
                     VodSortOrder.A_TO_Z -> sequence.sortedBy { it.name.lowercase() }
                     VodSortOrder.NEWEST -> sequence.sortedByDescending { it.addedAtEpochSeconds ?: Long.MIN_VALUE }
                     VodSortOrder.RATING -> sequence.sortedByDescending { it.rating ?: Double.NEGATIVE_INFINITY }
