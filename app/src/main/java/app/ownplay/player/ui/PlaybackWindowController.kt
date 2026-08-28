@@ -27,6 +27,9 @@ internal object PlaybackWindowPolicy {
         playbackSurfaceActive: Boolean,
     ): Boolean = pipSupported && isPlaying && playbackSurfaceActive
 
+    fun defaultAppOrientation(isTelevision: Boolean): AppOrientationMode =
+        if (isTelevision) AppOrientationMode.LANDSCAPE else AppOrientationMode.PORTRAIT
+
     fun orientationIntent(
         fullscreen: Boolean,
         appOrientation: AppOrientationMode,
@@ -59,7 +62,7 @@ class PlaybackWindowController(
     private var isPlaying = false
     private var fullscreenRequested = false
     private var playbackSurfaceActive = false
-    private var appOrientation = AppOrientationMode.PORTRAIT
+    private var appOrientation = PlaybackWindowPolicy.defaultAppOrientation(isTelevision)
     private var sourceRectHint: Rect? = null
     private var windowRoot: View? = null
     private var layoutListener: View.OnLayoutChangeListener? = null
