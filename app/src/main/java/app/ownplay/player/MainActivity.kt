@@ -292,7 +292,12 @@ class MainActivity : ComponentActivity() {
             when (event.action) {
                 KeyEvent.ACTION_DOWN -> {
                     if (event.repeatCount > 0) return true
-                    if (!tvRemoteActionGuard.tryAcquire(SystemClock.elapsedRealtime())) {
+                    if (
+                        !tvRemoteActionGuard.tryAcquire(
+                            nowMillis = SystemClock.elapsedRealtime(),
+                            actionId = event.keyCode,
+                        )
+                    ) {
                         suppressedRemoteActivationKeyCode = event.keyCode
                         return true
                     }
