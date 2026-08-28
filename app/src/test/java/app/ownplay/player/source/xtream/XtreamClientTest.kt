@@ -171,6 +171,41 @@ class XtreamClientTest {
     }
 
     @Test
+    fun getShortEpg_preservesPlainBase64LookingTextAndDecodesValidBase64() = runBlocking {
+        server.enqueue(
+            MockResponse.Builder()
+                .body(
+                    """
+                    {
+                      "epg_listings": [
+                        {
+                          "id": "epg-plain",
+                          "title": "News",
+                          "description": "SGVhZGxpbmVz",
+                          "start_timestamp": "100",
+                          "stop_timestamp": "200"
+                        }
+                      ]
+                    }
+                    """.trimIndent(),
+                )
+                .build(),
+        )
+        val client = XtreamClient(allowCleartext = true)
+
+        val result = client.getShortEpg(
+            serverUrl = server.url("/").toString(),
+            credentials = XtreamCredentials("fixture-user", "fixture-password"),
+            streamId = "42",
+        )
+
+        assertTrue(result is SourceResult.Success)
+        val program = (result as SourceResult.Success).value.programs.single()
+        assertEquals("News", program.title)
+        assertEquals("Headlines", program.description)
+    }
+
+    @Test
     fun cleartextIsRejectedBeforeNetworkByDefault() = runBlocking {
         val client = XtreamClient()
 
