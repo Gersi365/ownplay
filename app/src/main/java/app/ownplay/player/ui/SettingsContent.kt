@@ -15,8 +15,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.unit.dp
 import app.ownplay.player.persistence.PlaylistSourceSummary
-import java.text.DateFormat
-import java.util.Date
 
 @Composable
 internal fun ContentSettingsContent(
@@ -110,10 +108,7 @@ internal fun AboutSettingsContent() {
     )
 }
 
-private fun latestLiveRefreshLabel(summaries: List<PlaylistSourceSummary>): String {
-    val timestamp = summaries.mapNotNull(PlaylistSourceSummary::lastLiveRefreshAtEpochMillis).maxOrNull()
-        ?: return "Not refreshed yet"
-    return DateFormat
-        .getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT)
-        .format(Date(timestamp))
-}
+private fun latestLiveRefreshLabel(summaries: List<PlaylistSourceSummary>): String =
+    refreshTimeLabel(
+        summaries.mapNotNull(PlaylistSourceSummary::lastLiveRefreshAtEpochMillis).maxOrNull(),
+    )
