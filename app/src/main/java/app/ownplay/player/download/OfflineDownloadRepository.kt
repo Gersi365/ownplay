@@ -89,6 +89,8 @@ class OfflineDownloadRepository(
                 spec.mediaKind == DownloadMediaKinds.SERIES_EPISODE,
         ) { "Unsupported download media kind" }
 
+        val normalizedTitle = spec.title.trim()
+        val normalizedSeriesTitle = spec.seriesTitle?.trim()?.takeIf(String::isNotBlank)
         val existing = dao.getForContent(spec.sourceId, spec.mediaKind, spec.contentId)
         if (existing != null) {
             if (
@@ -103,8 +105,8 @@ class OfflineDownloadRepository(
             dao.upsert(
                 existing.copy(
                     providerStreamId = spec.providerStreamId,
-                    title = spec.title,
-                    seriesTitle = spec.seriesTitle,
+                    title = normalizedTitle,
+                    seriesTitle = normalizedSeriesTitle,
                     seasonNumber = spec.seasonNumber,
                     episodeNumber = spec.episodeNumber,
                     posterUrl = spec.posterUrl,
@@ -130,8 +132,8 @@ class OfflineDownloadRepository(
                 mediaKind = spec.mediaKind,
                 contentId = spec.contentId,
                 providerStreamId = spec.providerStreamId,
-                title = spec.title.trim(),
-                seriesTitle = spec.seriesTitle?.trim()?.takeIf(String::isNotBlank),
+                title = normalizedTitle,
+                seriesTitle = normalizedSeriesTitle,
                 seasonNumber = spec.seasonNumber,
                 episodeNumber = spec.episodeNumber,
                 posterUrl = spec.posterUrl,
