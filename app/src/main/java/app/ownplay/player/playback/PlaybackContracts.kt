@@ -80,6 +80,7 @@ enum class PlaybackFailureCategory(
     TIMEOUT(retryable = true),
     AUTHENTICATION_FAILURE(retryable = false),
     STREAM_UNAVAILABLE(retryable = true),
+    INSECURE_TRANSPORT_BLOCKED(retryable = false),
     UNSUPPORTED_MEDIA(retryable = false),
     UNKNOWN(retryable = false),
 }
