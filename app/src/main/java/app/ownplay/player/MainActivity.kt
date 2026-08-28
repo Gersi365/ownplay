@@ -67,6 +67,15 @@ class MainActivity : ComponentActivity() {
         offlineDownloadRuntime = OfflineDownloadFeatureRuntime(applicationContext)
         appDeviceProfileStore = AppDeviceProfileStore(applicationContext)
         playbackWindowController = PlaybackWindowController(this)
+        val preferredSetupProfile =
+            if (
+                resources.configuration.uiMode and Configuration.UI_MODE_TYPE_MASK ==
+                Configuration.UI_MODE_TYPE_TELEVISION
+            ) {
+                AppDeviceProfile.ANDROID_TV
+            } else {
+                AppDeviceProfile.SMARTPHONE
+            }
         playbackGestureDetector = GestureDetector(
             this,
             object : GestureDetector.SimpleOnGestureListener() {
@@ -161,6 +170,7 @@ class MainActivity : ComponentActivity() {
                     }
                     AppDeviceProfileSelection.Unconfigured -> {
                         DeviceProfileSetupScreen(
+                            preferredProfile = preferredSetupProfile,
                             onConfigured = { profile, smartphoneOrientation ->
                                 activityScope.launch {
                                     if (
