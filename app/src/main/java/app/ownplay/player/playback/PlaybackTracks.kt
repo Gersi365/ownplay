@@ -1,5 +1,6 @@
 package app.ownplay.player.playback
 
+import java.util.Locale
 import kotlinx.coroutines.flow.StateFlow
 
 enum class PlaybackTrackKind {
@@ -220,7 +221,7 @@ internal object PlaybackTrackLabelFormatter {
             ?.takeIf(String::isNotBlank)
             ?: return null
 
-        val lower = normalized.lowercase()
+        val lower = normalized.lowercase(Locale.ROOT)
         val sensitiveMarker = listOf(
             "://",
             "password=",
