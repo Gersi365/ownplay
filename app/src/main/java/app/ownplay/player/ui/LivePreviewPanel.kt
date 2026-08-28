@@ -84,6 +84,7 @@ internal fun LivePreviewPanel(
     var controlsVisible by remember(selection.request.channelId) { mutableStateOf(true) }
     var interactionToken by remember(selection.request.channelId) { mutableStateOf(0) }
     val fullscreenFocusRequester = remember(selection.request.channelId) { FocusRequester() }
+    val closeFocusRequester = remember(selection.request.channelId) { FocusRequester() }
 
     fun revealControls() {
         controlsVisible = true
@@ -103,8 +104,11 @@ internal fun LivePreviewPanel(
         }
     }
 
-    LaunchedEffect(selection.request.channelId, isTelevision) {
-        if (isTelevision) {
+    LaunchedEffect(selection.request.channelId, state, isTelevision) {
+        if (!isTelevision) return@LaunchedEffect
+        if (state is PlaybackState.Failed) {
+            closeFocusRequester.requestFocus()
+        } else {
             fullscreenFocusRequester.requestFocus()
         }
     }
@@ -330,7 +334,9 @@ internal fun LivePreviewPanel(
                         PreviewControlSlot {
                             IconButton(
                                 onClick = onClose,
-                                modifier = Modifier.size(38.dp),
+                                modifier = Modifier
+                                    .size(38.dp)
+                                    .focusRequester(closeFocusRequester),
                             ) {
                                 Icon(
                                     Icons.Filled.Close,
