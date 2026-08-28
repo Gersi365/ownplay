@@ -49,6 +49,7 @@ import app.ownplay.player.ui.tv.TvBackgroundPlaybackAction
 import app.ownplay.player.ui.tv.TvPlaybackLifecyclePolicy
 import app.ownplay.player.ui.tv.TvRemoteActionGuard
 import app.ownplay.player.ui.tv.TvRemoteActionKind
+import app.ownplay.player.ui.tv.TvRemoteKeySuppression
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -66,9 +67,9 @@ class MainActivity : ComponentActivity() {
     private lateinit var playbackGestureDetector: GestureDetector
     private val activityScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val tvRemoteActionGuard = TvRemoteActionGuard()
+    private val tvRemoteKeySuppression = TvRemoteKeySuppression()
     private var playbackFullscreen = false
     private var tvRemoteGuardEnabled = false
-    private var suppressedRemoteActivationKeyCode: Int? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -135,6 +136,7 @@ class MainActivity : ComponentActivity() {
                 playbackWindowController.updateFullscreenSensorRotationEnabled(!usesDpad)
                 playbackWindowController.updatePictureInPictureEnabled(!usesDpad)
                 tvRemoteGuardEnabled = usesDpad
+                if (!usesDpad) tvRemoteKeySuppression.clear()
             }
 
             DisposableEffect(downloadPlaybackOwner) {
@@ -237,7 +239,6 @@ class MainActivity : ComponentActivity() {
                                         runtime = runtime,
                                         session = session,
                                         onExit = {
-                                            runtime.playbackController.stop()
                                             downloadPlaybackSession = null
                                         },
                                         onProgress = { positionMs, durationMs ->
@@ -302,16 +303,13 @@ class MainActivity : ComponentActivity() {
                             actionId = event.keyCode,
                         )
                     ) {
-                        suppressedRemoteActivationKeyCode = event.keyCode
+                        tvRemoteKeySuppression.suppress(event.keyCode)
                         return true
                     }
-                    suppressedRemoteActivationKeyCode = null
+                    tvRemoteKeySuppression.allow(event.keyCode)
                 }
                 KeyEvent.ACTION_UP -> {
-                    if (suppressedRemoteActivationKeyCode == event.keyCode) {
-                        suppressedRemoteActivationKeyCode = null
-                        return true
-                    }
+                    if (tvRemoteKeySuppression.consumeRelease(event.keyCode)) return true
                 }
             }
         }
