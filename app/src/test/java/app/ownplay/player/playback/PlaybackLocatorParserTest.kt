@@ -19,7 +19,7 @@ class PlaybackLocatorParserTest {
     }
 
     @Test
-    fun xtreamLiveDescriptorParsesCanonicalNonNegativeStreamId() {
+    fun xtreamLiveDescriptorParsesCanonicalPositiveStreamId() {
         val result = PlaybackLocatorParser.parse("ownplay-locator-v1|xtream-live|42")
         assertEquals(
             PlaybackLocatorParseResult.Success(ParsedPlaybackLocator.XtreamLive(42)),
@@ -57,6 +57,7 @@ class PlaybackLocatorParserTest {
             "ownplay-locator-v1|direct|",
             "ownplay-locator-v1|direct|   ",
             "ownplay-locator-v1|xtream-live|",
+            "ownplay-locator-v1|xtream-live|0",
             "ownplay-locator-v1|xtream-live|-1",
             "ownplay-locator-v1|xtream-live|42x",
             "ownplay-locator-v1|xtream-live|999999999999999999999999",
