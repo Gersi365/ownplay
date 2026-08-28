@@ -2,6 +2,7 @@ package app.ownplay.player.series
 
 import app.ownplay.player.persistence.OwnPlayDatabase
 import app.ownplay.player.persistence.SourceKinds
+import app.ownplay.player.persistence.reconcile.CatalogRefreshGeneration
 import app.ownplay.player.persistence.secure.SensitiveValueRef
 import app.ownplay.player.persistence.secure.SensitiveValueStore
 import app.ownplay.player.persistence.series.EpisodeProgressRow
@@ -143,7 +144,7 @@ class SeriesRepository(
             is SourceResult.Success -> result.value
             is SourceResult.Failure -> return result
         }
-        val generation = System.currentTimeMillis()
+        val generation = CatalogRefreshGeneration.next()
         val categoryEntities = categories.mapIndexed { index, category ->
             ProviderSeriesCategoryEntity(
                 categoryId = stableCategoryId(sourceId, category.id),
