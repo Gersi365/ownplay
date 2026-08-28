@@ -56,6 +56,28 @@ class OfflineDownloadResponsePolicyTest {
     }
 
     @Test
+    fun unknownPartialTotalIsNeverTreatedAsComplete() {
+        assertEquals(
+            OfflineDownloadWriteDisposition.RESTART,
+            OfflineDownloadResponsePolicy.plan(
+                statusCode = 206,
+                existingBytes = 1_000L,
+                contentRange = "bytes 1000-1999/*",
+                contentLength = 1_000L,
+            ).disposition,
+        )
+        assertEquals(
+            OfflineDownloadWriteDisposition.FAIL,
+            OfflineDownloadResponsePolicy.plan(
+                statusCode = 206,
+                existingBytes = 0L,
+                contentRange = "bytes 0-999/*",
+                contentLength = 1_000L,
+            ).disposition,
+        )
+    }
+
+    @Test
     fun rangeLengthMustMatchResponseBodyLength() {
         assertEquals(
             OfflineDownloadWriteDisposition.RESTART,
