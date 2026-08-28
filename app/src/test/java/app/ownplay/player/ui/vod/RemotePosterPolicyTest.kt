@@ -38,4 +38,28 @@ class RemotePosterPolicyTest {
 
         assertNull(readPosterBytes(ByteArrayInputStream(payload), maxBytes = 32))
     }
+
+    @Test
+    fun `remote poster url preserves valid https query`() {
+        assertEquals(
+            "https://images.example.test/poster.jpg?token=opaque",
+            normalizedRemotePosterUrl(" https://images.example.test/poster.jpg?token=opaque "),
+        )
+    }
+
+    @Test
+    fun `remote poster url currently permits valid http for source-aware policy later`() {
+        assertEquals(
+            "http://images.example.test/poster.jpg",
+            normalizedRemotePosterUrl("http://images.example.test/poster.jpg"),
+        )
+    }
+
+    @Test
+    fun `remote poster url rejects unsupported schemes embedded credentials and fragments`() {
+        assertNull(normalizedRemotePosterUrl("file:///tmp/poster.jpg"))
+        assertNull(normalizedRemotePosterUrl("ftp://images.example.test/poster.jpg"))
+        assertNull(normalizedRemotePosterUrl("https://user:pass@images.example.test/poster.jpg"))
+        assertNull(normalizedRemotePosterUrl("https://images.example.test/poster.jpg#fragment"))
+    }
 }
