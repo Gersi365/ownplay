@@ -64,7 +64,7 @@ class PlaybackWindowPolicyTest {
     }
 
     @Test
-    fun fullscreenAlwaysFollowsPhysicalSensor() {
+    fun fullscreenAlwaysFollowsPhysicalSensorByDefault() {
         assertEquals(
             PlaybackOrientationIntent.SENSOR,
             PlaybackWindowPolicy.orientationIntent(
@@ -84,6 +84,19 @@ class PlaybackWindowPolicyTest {
     }
 
     @Test
+    fun fullscreenKeepsLandscapeWhenSensorRotationIsDisabled() {
+        assertEquals(
+            PlaybackOrientationIntent.LANDSCAPE,
+            PlaybackWindowPolicy.orientationIntent(
+                fullscreen = true,
+                appOrientation = AppOrientationMode.LANDSCAPE,
+                inPictureInPicture = false,
+                fullscreenSensorRotationEnabled = false,
+            ),
+        )
+    }
+
+    @Test
     fun pictureInPictureReleasesOrientationToSystem() {
         assertEquals(
             PlaybackOrientationIntent.FOLLOW_SYSTEM,
@@ -91,6 +104,7 @@ class PlaybackWindowPolicyTest {
                 fullscreen = true,
                 appOrientation = AppOrientationMode.LANDSCAPE,
                 inPictureInPicture = true,
+                fullscreenSensorRotationEnabled = false,
             ),
         )
     }
