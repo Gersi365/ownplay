@@ -10,6 +10,7 @@ import app.ownplay.player.persistence.vod.PlaybackProgressEntity
 import app.ownplay.player.persistence.vod.ProviderMovieEntity
 import app.ownplay.player.persistence.vod.ProviderVodCategoryEntity
 import app.ownplay.player.persistence.vod.VodMovieRow
+import app.ownplay.player.playback.normalizePlaybackProgress
 import app.ownplay.player.source.CredentialRef
 import app.ownplay.player.source.SourceError
 import app.ownplay.player.source.SourceResult
@@ -255,19 +256,20 @@ class VodRepository(
         positionMs: Long,
         durationMs: Long?,
     ): Boolean = try {
-        val normalizedPosition = positionMs.coerceAtLeast(0L)
-        val normalizedDuration = durationMs?.takeIf { it > 0L }
-        val completed = normalizedDuration?.let { duration ->
-            normalizedPosition >= (duration * 0.95).toLong()
-        } ?: false
+        val existing = dao.progress(sourceId, MediaKinds.MOVIE, movieId)
+        val progress = normalizePlaybackProgress(
+            positionMs = positionMs,
+            reportedDurationMs = durationMs,
+            existingDurationMs = existing?.durationMs,
+        )
         dao.upsertProgress(
             PlaybackProgressEntity(
                 sourceId = sourceId,
                 mediaKind = MediaKinds.MOVIE,
                 contentId = movieId,
-                positionMs = normalizedPosition,
-                durationMs = normalizedDuration,
-                completed = completed,
+                positionMs = progress.positionMs,
+                durationMs = progress.durationMs,
+                completed = progress.completed,
                 updatedAtEpochMillis = System.currentTimeMillis(),
             ),
         )
