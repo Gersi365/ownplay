@@ -68,7 +68,6 @@ class MainActivity : ComponentActivity() {
     private val tvRemoteActionGuard = TvRemoteActionGuard()
     private var playbackFullscreen = false
     private var tvRemoteGuardEnabled = false
-    private var resumeOnDemandAfterBackground = false
     private var suppressedRemoteActivationKeyCode: Int? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -134,6 +133,7 @@ class MainActivity : ComponentActivity() {
                 val usesDpad = configuredProfile?.usesDpad == true
                 PlaybackInteractionBridge.setDpadMode(usesDpad)
                 playbackWindowController.updateFullscreenSensorRotationEnabled(!usesDpad)
+                playbackWindowController.updatePictureInPictureEnabled(!usesDpad)
                 tvRemoteGuardEnabled = usesDpad
             }
 
@@ -327,10 +327,6 @@ class MainActivity : ComponentActivity() {
         super.onResume()
         if (::runtime.isInitialized && tvRemoteGuardEnabled) {
             runtime.playbackController.resumeAfterBackground()
-            if (resumeOnDemandAfterBackground) {
-                resumeOnDemandAfterBackground = false
-                runtime.playbackController.play()
-            }
         }
         hideStatusBar()
         if (::offlineDownloadRuntime.isInitialized) {
@@ -352,16 +348,9 @@ class MainActivity : ComponentActivity() {
                     runtime.playbackController.state.value,
                 )
             ) {
-                TvBackgroundPlaybackAction.NONE -> {
-                    resumeOnDemandAfterBackground = false
-                }
+                TvBackgroundPlaybackAction.NONE -> Unit
                 TvBackgroundPlaybackAction.SUSPEND -> {
-                    resumeOnDemandAfterBackground = false
                     runtime.playbackController.suspendForBackground()
-                }
-                TvBackgroundPlaybackAction.PAUSE_AND_RESUME -> {
-                    resumeOnDemandAfterBackground = true
-                    runtime.playbackController.pause()
                 }
             }
         }
@@ -385,13 +374,6 @@ class MainActivity : ComponentActivity() {
         super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig)
         holdTvRemoteTransitionLock()
         playbackWindowController.onPictureInPictureModeChanged(isInPictureInPictureMode)
-        if (isInPictureInPictureMode && ::runtime.isInitialized && tvRemoteGuardEnabled) {
-            runtime.playbackController.resumeAfterBackground()
-            if (resumeOnDemandAfterBackground) {
-                resumeOnDemandAfterBackground = false
-                runtime.playbackController.play()
-            }
-        }
     }
 
     override fun onConfigurationChanged(newConfig: Configuration) {
