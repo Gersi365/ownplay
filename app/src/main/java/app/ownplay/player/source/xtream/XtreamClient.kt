@@ -213,7 +213,7 @@ class XtreamClient(
         allowCleartext: Boolean = defaultAllowCleartext,
     ): SourceResult<XtreamEpgGuide> {
         val normalizedStreamId = streamId.trim()
-        if (normalizedStreamId.isEmpty()) {
+        if (normalizedStreamId.toIntOrNull()?.let { it > 0 } != true) {
             return SourceResult.Failure(SourceError.MalformedResponse)
         }
         val response = requestJson(
