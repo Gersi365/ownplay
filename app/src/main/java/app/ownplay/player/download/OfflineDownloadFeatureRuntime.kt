@@ -41,7 +41,13 @@ class OfflineDownloadFeatureRuntime(
 
     suspend fun retry(downloadId: String) = repository.retry(downloadId)
 
-    suspend fun remove(downloadId: String) = repository.remove(downloadId)
+    suspend fun remove(downloadId: String): Boolean = try {
+        repository.remove(downloadId)
+    } catch (cancelled: CancellationException) {
+        throw cancelled
+    } catch (_: Exception) {
+        false
+    }
 
     suspend fun reconcileCompletedFiles(): Int = withContext(Dispatchers.IO) {
         var missingCount = 0
