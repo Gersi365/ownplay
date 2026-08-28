@@ -7,12 +7,15 @@ import app.ownplay.player.source.SourceValidator
 import app.ownplay.player.source.UrlValidationResult
 import app.ownplay.player.source.credential.CredentialStore
 import app.ownplay.player.source.credential.XtreamCredentials
+import app.ownplay.player.source.m3u.M3uSourceLocatorCodec
 import app.ownplay.player.source.xtream.XtreamSourceLocatorCodec
 import java.util.concurrent.CancellationException
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 
 enum class PlaybackResolutionSourceKind {
     XTREAM,
+    REMOTE_M3U,
+    LOCAL_M3U,
     OTHER,
 }
 
@@ -129,6 +132,11 @@ private data class LoadedXtreamAccess(
 private sealed interface LoadedXtreamAccessResult {
     data class Success(val access: LoadedXtreamAccess) : LoadedXtreamAccessResult
     data class Failure(val reason: PlaybackResolutionFailureReason) : LoadedXtreamAccessResult
+}
+
+private sealed interface LoadedM3uSourcePolicyResult {
+    data class Success(val allowCleartext: Boolean) : LoadedM3uSourcePolicyResult
+    data class Failure(val reason: PlaybackResolutionFailureReason) : LoadedM3uSourcePolicyResult
 }
 
 class LivePlaybackResolver(
@@ -287,6 +295,12 @@ class LivePlaybackResolver(
                 if (validation.usesCleartext && !allowCleartext) {
                     val sourceAllowsCleartext = when (source.sourceKind) {
                         PlaybackResolutionSourceKind.OTHER -> false
+                        PlaybackResolutionSourceKind.REMOTE_M3U,
+                        PlaybackResolutionSourceKind.LOCAL_M3U,
+                        -> when (val loaded = loadM3uSourcePolicy(source)) {
+                            is LoadedM3uSourcePolicyResult.Success -> loaded.allowCleartext
+                            is LoadedM3uSourcePolicyResult.Failure -> return failure(loaded.reason)
+                        }
                         PlaybackResolutionSourceKind.XTREAM -> when (
                             val loaded = loadXtreamSource(source)
                         ) {
@@ -334,6 +348,39 @@ class LivePlaybackResolver(
             .toString()
 
         return success(resolved, ResolvedPlaybackOrigin.XTREAM_LIVE)
+    }
+
+    private suspend fun loadM3uSourcePolicy(
+        source: PlaybackSourceRecord,
+    ): LoadedM3uSourcePolicyResult {
+        if (
+            source.sourceKind != PlaybackResolutionSourceKind.REMOTE_M3U &&
+            source.sourceKind != PlaybackResolutionSourceKind.LOCAL_M3U
+        ) {
+            return LoadedM3uSourcePolicyResult.Failure(
+                PlaybackResolutionFailureReason.UNSUPPORTED_SOURCE_KIND,
+            )
+        }
+        val sourceLocatorRef = sensitiveRef(source.locatorRef)
+            ?: return LoadedM3uSourcePolicyResult.Failure(
+                PlaybackResolutionFailureReason.SOURCE_LOCATOR_REFERENCE_INVALID,
+            )
+        val storedLocator = try {
+            sensitiveValueStore.get(sourceLocatorRef)
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            return LoadedM3uSourcePolicyResult.Failure(
+                PlaybackResolutionFailureReason.SECURE_STORE_FAILURE,
+            )
+        } ?: return LoadedM3uSourcePolicyResult.Failure(
+            PlaybackResolutionFailureReason.SOURCE_LOCATOR_NOT_FOUND,
+        )
+        val locator = M3uSourceLocatorCodec.parse(storedLocator)
+            ?: return LoadedM3uSourcePolicyResult.Failure(
+                PlaybackResolutionFailureReason.SOURCE_LOCATOR_INVALID,
+            )
+        return LoadedM3uSourcePolicyResult.Success(locator.allowCleartext)
     }
 
     private suspend fun loadXtreamAccess(
