@@ -7,6 +7,7 @@ import app.ownplay.player.source.SourceValidator
 import app.ownplay.player.source.UrlValidationResult
 import app.ownplay.player.source.credential.XtreamCredentials
 import app.ownplay.player.source.network.SourceHttpClient
+import app.ownplay.player.source.network.awaitResponse
 import java.io.IOException
 import java.net.ConnectException
 import java.net.NoRouteToHostException
@@ -51,6 +52,9 @@ class XtreamXmlTvClient(
         if (channelIds.isEmpty()) {
             return SourceResult.Success(XtreamXmlTvSnapshot(emptyMap()))
         }
+        if (credentials.username.isBlank() || credentials.password.isBlank()) {
+            return SourceResult.Failure(SourceError.InvalidCredentials)
+        }
 
         val validation = SourceValidator.validateXtreamServer(serverUrl)
         if (validation is UrlValidationResult.Invalid) {
@@ -71,7 +75,7 @@ class XtreamXmlTvClient(
 
         return withContext(Dispatchers.IO) {
             try {
-                httpClient.newCall(request).execute().use { response ->
+                httpClient.newCall(request).awaitResponse().use { response ->
                     when {
                         response.code == 401 || response.code == 403 -> {
                             SourceResult.Failure(SourceError.AuthenticationFailed)
