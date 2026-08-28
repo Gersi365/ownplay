@@ -93,7 +93,7 @@ internal fun RefreshSettingsContent() {
     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
     SettingValueRow(label = "Sequence", value = "Channels → EPG → Movies → Series")
     Text(
-        text = "Saved catalogs remain visible while refresh runs, so navigation and playback can continue. Downloads run independently through WorkManager.",
+        text = "Saved catalogs remain visible while refresh runs, so navigation and playback can continue. Offline downloads continue independently in the background.",
         style = MaterialTheme.typography.labelSmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
