@@ -93,6 +93,32 @@ class XtreamSeriesClientTest {
     }
 
     @Test
+    fun getSeries_skipsNonPositiveProviderIds() = runBlocking {
+        server.enqueue(
+            MockResponse.Builder()
+                .body(
+                    """
+                    [
+                      {"series_id": 0, "name": "Zero"},
+                      {"series_id": -1, "name": "Negative"},
+                      {"series_id": 502, "name": "Valid"}
+                    ]
+                    """.trimIndent(),
+                )
+                .build(),
+        )
+        val client = XtreamSeriesClient(allowCleartext = true)
+
+        val result = client.getSeries(server.url("/").toString(), credentials)
+
+        assertTrue(result is SourceResult.Success)
+        assertEquals(
+            listOf(502),
+            (result as SourceResult.Success).value.map(XtreamSeriesSummary::seriesId),
+        )
+    }
+
+    @Test
     fun getSeriesInfo_parsesSeasonsAndEpisodes() = runBlocking {
         server.enqueue(
             MockResponse.Builder()
@@ -167,5 +193,45 @@ class XtreamSeriesClientTest {
         val request = server.takeRequest()
         assertEquals("get_series_info", request.url.queryParameter("action"))
         assertEquals("501", request.url.queryParameter("series_id"))
+    }
+
+    @Test
+    fun getSeriesInfo_skipsMalformedRowsButKeepsSpecialsSeasonZero() = runBlocking {
+        server.enqueue(
+            MockResponse.Builder()
+                .body(
+                    """
+                    {
+                      "info": {"name": "Series One"},
+                      "seasons": [
+                        {"season_number": -1, "name": "Invalid"},
+                        {"season_number": 0, "name": "Specials"}
+                      ],
+                      "episodes": {
+                        "0": [
+                          {"id": "0", "episode_num": 1, "season": 0, "title": "Invalid ID"},
+                          {"id": "2001", "episode_num": 0, "season": 0, "title": "Invalid number"},
+                          {"id": "2002", "episode_num": 1, "season": 0, "title": "Special"}
+                        ]
+                      }
+                    }
+                    """.trimIndent(),
+                )
+                .build(),
+        )
+        val client = XtreamSeriesClient(allowCleartext = true)
+
+        val result = client.getSeriesInfo(
+            serverUrl = server.url("/").toString(),
+            credentials = credentials,
+            seriesId = 501,
+        )
+
+        assertTrue(result is SourceResult.Success)
+        val info = (result as SourceResult.Success).value
+        assertEquals(listOf(0), info.seasons.map(XtreamSeriesSeason::seasonNumber))
+        assertEquals(listOf(2002), info.episodes.map(XtreamSeriesEpisode::episodeId))
+        assertEquals(0, info.episodes.single().seasonNumber)
+        assertEquals(1, info.episodes.single().episodeNumber)
     }
 }
