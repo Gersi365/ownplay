@@ -418,6 +418,7 @@ class OfflineDownloadWorker(
         private val httpClient = OkHttpClient.Builder()
             .connectTimeout(20, TimeUnit.SECONDS)
             .readTimeout(45, TimeUnit.SECONDS)
+            .followSslRedirects(false)
             .build()
     }
 }
