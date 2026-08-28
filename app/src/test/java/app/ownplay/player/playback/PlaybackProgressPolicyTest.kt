@@ -53,4 +53,19 @@ class PlaybackProgressPolicyTest {
         assertEquals(0L, normalized.positionMs)
         assertFalse(normalized.completed)
     }
+
+    @Test
+    fun completionStartsAtExactlyNinetyFivePercent() {
+        val beforeThreshold = normalizePlaybackProgress(
+            positionMs = 94_999L,
+            reportedDurationMs = 100_000L,
+        )
+        val atThreshold = normalizePlaybackProgress(
+            positionMs = 95_000L,
+            reportedDurationMs = 100_000L,
+        )
+
+        assertFalse(beforeThreshold.completed)
+        assertTrue(atThreshold.completed)
+    }
 }
