@@ -50,6 +50,7 @@ import androidx.media3.ui.PlayerView
 import app.ownplay.player.OwnPlayAppRuntime
 import app.ownplay.player.download.OfflineDownload
 import app.ownplay.player.persistence.download.DownloadMediaKinds
+import app.ownplay.player.playback.PlaybackFailureCategory
 import app.ownplay.player.playback.PlaybackInteractionBridge
 import app.ownplay.player.playback.PlaybackState
 import kotlinx.coroutines.currentCoroutineContext
@@ -211,7 +212,7 @@ internal fun LibraryPlaybackScreen(
                 Spacer(Modifier.width(82.dp))
             }
 
-            when (playbackState) {
+            when (val state = playbackState) {
                 is PlaybackState.Loading -> CircularProgressIndicator(
                     modifier = Modifier.align(Alignment.Center),
                 )
@@ -226,11 +227,16 @@ internal fun LibraryPlaybackScreen(
                         horizontalAlignment = Alignment.CenterHorizontally,
                         verticalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
-                        Text("Playback failed", color = Color.White)
-                        FilledTonalButton(onClick = runtime.playbackController::retry) {
-                            Icon(Icons.Filled.Refresh, contentDescription = null)
-                            Spacer(Modifier.width(4.dp))
-                            Text("Retry")
+                        Text(
+                            text = libraryPlaybackFailureMessage(state.failure.category),
+                            color = Color.White,
+                        )
+                        if (state.failure.retryable) {
+                            FilledTonalButton(onClick = runtime.playbackController::retry) {
+                                Icon(Icons.Filled.Refresh, contentDescription = null)
+                                Spacer(Modifier.width(4.dp))
+                                Text("Retry")
+                            }
                         }
                     }
                 }
@@ -239,4 +245,13 @@ internal fun LibraryPlaybackScreen(
             }
         }
     }
+}
+
+private fun libraryPlaybackFailureMessage(category: PlaybackFailureCategory): String = when (category) {
+    PlaybackFailureCategory.NETWORK_UNAVAILABLE -> "Network unavailable"
+    PlaybackFailureCategory.TIMEOUT -> "Playback timed out"
+    PlaybackFailureCategory.AUTHENTICATION_FAILURE -> "Authentication failed"
+    PlaybackFailureCategory.STREAM_UNAVAILABLE -> "Stream unavailable"
+    PlaybackFailureCategory.UNSUPPORTED_MEDIA -> "Unsupported media"
+    PlaybackFailureCategory.UNKNOWN -> "Playback failed"
 }
