@@ -38,7 +38,7 @@ fun ChannelCustomizationDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Customize channel") },
+        title = { Text("Channel appearance") },
         text = {
             Column(
                 modifier = Modifier
@@ -51,13 +51,18 @@ fun ChannelCustomizationDialog(
                     text = channel.providerName,
                     style = MaterialTheme.typography.titleMedium,
                 )
+                Text(
+                    text = "Changes apply only inside OwnPlay. Your provider data stays unchanged.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
 
                 OutlinedTextField(
                     value = localName,
                     onValueChange = { localName = it },
                     modifier = Modifier.fillMaxWidth(),
-                    label = { Text("Local channel name") },
-                    supportingText = { Text("Provider data is not modified.") },
+                    label = { Text("Display name") },
+                    supportingText = { Text("Leave the provider name untouched outside OwnPlay.") },
                     singleLine = true,
                 )
                 Row(
@@ -91,9 +96,9 @@ fun ChannelCustomizationDialog(
 
                 Text(
                     text = if (channel.hasLogoOverride) {
-                        "A local logo override is active."
+                        "Custom channel logo active"
                     } else {
-                        "No local logo override."
+                        "Provider channel logo"
                     },
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -102,9 +107,9 @@ fun ChannelCustomizationDialog(
                     value = logoValue,
                     onValueChange = { logoValue = it },
                     modifier = Modifier.fillMaxWidth(),
-                    label = { Text("New logo URL or URI") },
+                    label = { Text("Custom logo URL or URI") },
                     supportingText = {
-                        Text("Sensitive locator values are stored outside the Room database.")
+                        Text("The custom logo location is stored securely on this device.")
                     },
                     singleLine = true,
                 )
@@ -119,7 +124,7 @@ fun ChannelCustomizationDialog(
                                 logoValue = ""
                             },
                         ) {
-                            Text("Clear logo")
+                            Text("Use provider logo")
                         }
                     }
                     TextButton(
@@ -132,7 +137,7 @@ fun ChannelCustomizationDialog(
                         },
                         enabled = logoValue.isNotBlank(),
                     ) {
-                        Text("Set logo")
+                        Text("Save logo")
                     }
                 }
             }
