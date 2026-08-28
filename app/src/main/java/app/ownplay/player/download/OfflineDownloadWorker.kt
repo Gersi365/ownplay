@@ -14,6 +14,7 @@ import app.ownplay.player.persistence.download.MediaDownloadDao
 import app.ownplay.player.persistence.download.MediaDownloadEntity
 import app.ownplay.player.persistence.secure.AndroidKeystoreSensitiveValueStore
 import app.ownplay.player.source.credential.AndroidKeystoreCredentialStore
+import app.ownplay.player.source.network.awaitResponse
 import java.io.BufferedInputStream
 import java.io.BufferedOutputStream
 import java.io.File
@@ -117,7 +118,7 @@ class OfflineDownloadWorker(
             if (existingBytes > 0L) {
                 requestBuilder.header("Range", "bytes=$existingBytes-")
             }
-            val response = httpClient.newCall(requestBuilder.build()).execute()
+            val response = httpClient.newCall(requestBuilder.build()).awaitResponse()
             response.use { opened ->
                 if (!opened.isSuccessful) {
                     if (shouldRestartOfflineDownloadFromZero(existingBytes, opened.code)) {
