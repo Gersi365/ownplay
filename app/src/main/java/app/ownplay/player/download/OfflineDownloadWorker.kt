@@ -111,13 +111,46 @@ class OfflineDownloadWorker(
             response.use { opened ->
                 if (!opened.isSuccessful) {
                     val reason = "Provider returned HTTP ${opened.code}"
-                    return when (OfflineDownloadRetryPolicy.forHttpStatus(opened.code)) {
+                    return when (
+                        OfflineDownloadRetryPolicy.forHttpStatus(
+                            statusCode = opened.code,
+                            hasPartialContent = existingBytes > 0L,
+                        )
+                    ) {
                         OfflineDownloadFailureDisposition.RETRY -> {
                             markQueuedForRetry(
                                 dao = dao,
                                 row = initialRow,
                                 reason = reason,
                                 bytesDownloaded = existingBytes,
+                                localLocation = destinationLocation,
+                            )
+                            Result.retry()
+                        }
+                        OfflineDownloadFailureDisposition.RESTART -> {
+                            if (usePublicDownloads) {
+                                OfflineDownloadStorage.openPublicOutput(
+                                    context = applicationContext,
+                                    location = requireNotNull(destinationLocation),
+                                    append = false,
+                                    startBytes = 0L,
+                                ).use { output -> output.flush() }
+                            } else if (partFile.exists() && !partFile.delete()) {
+                                markFailed(
+                                    dao = dao,
+                                    row = initialRow,
+                                    reason = "Could not reset the partial download after HTTP 416",
+                                    bytesDownloaded = existingBytes,
+                                    localLocation = destinationLocation,
+                                )
+                                return Result.failure()
+                            }
+                            markQueuedForRetry(
+                                dao = dao,
+                                row = initialRow,
+                                reason = "Provider rejected resume. Restarting from the beginning.",
+                                bytesDownloaded = 0L,
+                                totalBytes = null,
                                 localLocation = destinationLocation,
                             )
                             Result.retry()
