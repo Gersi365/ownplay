@@ -93,7 +93,7 @@ class XtreamClient(
                 XtreamLiveStream(
                     streamId = streamId,
                     name = name,
-                    categoryId = item.text("category_id"),
+                    categoryId = item.text("category_id")?.takeIf(String::isNotBlank),
                     iconUrl = item.text("stream_icon")?.takeIf(String::isNotBlank),
                     epgChannelId = item.text("epg_channel_id")?.takeIf(String::isNotBlank),
                     archiveDurationDays = item.int("tv_archive_duration"),
@@ -141,7 +141,7 @@ class XtreamClient(
                 XtreamVodStream(
                     streamId = streamId,
                     name = name,
-                    categoryId = item.text("category_id"),
+                    categoryId = item.text("category_id")?.takeIf(String::isNotBlank),
                     posterUrl = item.text("stream_icon")?.takeIf(String::isNotBlank),
                     containerExtension = item.text("container_extension")?.takeIf(String::isNotBlank),
                     rating = item.double("rating") ?: item.double("rating_5based"),
@@ -197,7 +197,8 @@ class XtreamClient(
                 youtubeTrailer = info?.text("youtube_trailer"),
                 containerExtension = movieData?.text("container_extension")
                     ?: info?.text("container_extension"),
-                categoryId = movieData?.text("category_id") ?: info?.text("category_id"),
+                categoryId = movieData?.text("category_id")?.takeIf(String::isNotBlank)
+                    ?: info?.text("category_id")?.takeIf(String::isNotBlank),
                 directSource = movieData?.text("direct_source")?.takeIf(String::isNotBlank)
                     ?: info?.text("direct_source")?.takeIf(String::isNotBlank),
             ),
@@ -270,12 +271,13 @@ class XtreamClient(
         return SourceResult.Success(
             array.mapNotNull { element ->
                 val item = element as? JsonObject ?: return@mapNotNull null
-                val id = item.text("category_id") ?: return@mapNotNull null
+                val id = item.text("category_id")?.takeIf(String::isNotBlank)
+                    ?: return@mapNotNull null
                 val name = item.text("category_name") ?: return@mapNotNull null
                 XtreamCategory(
                     id = id,
                     name = name,
-                    parentId = item.text("parent_id"),
+                    parentId = item.text("parent_id")?.takeIf(String::isNotBlank),
                 )
             },
         )
