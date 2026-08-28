@@ -1,5 +1,6 @@
 package app.ownplay.player.source.m3u
 
+import java.util.Locale
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Test
@@ -25,6 +26,30 @@ class M3uParserTest {
         assertEquals("News One", entry.tvgName)
         assertEquals("https://img.example/logo.png", entry.logoUrl)
         assertEquals("News, Local", entry.groupTitle)
+    }
+
+    @Test
+    fun attributesAreTrimmedAndCaseNormalizedIndependentOfDeviceLocale() {
+        val previousLocale = Locale.getDefault()
+        try {
+            Locale.setDefault(Locale("tr", "TR"))
+            val playlist = M3uParser.parse(
+                """
+                #EXTM3U URL-TVG=" https://example.com/guide.xml "
+                #EXTINF:-1 TVG-ID=" news.1 " TVG-NAME=" News One " GROUP-TITLE=" News ",
+                https://stream.example/live/1
+                """.trimIndent(),
+            )
+
+            assertEquals(listOf("https://example.com/guide.xml"), playlist.epgUrls)
+            val entry = playlist.entries.single()
+            assertEquals("news.1", entry.tvgId)
+            assertEquals("News One", entry.tvgName)
+            assertEquals("News One", entry.displayName)
+            assertEquals("News", entry.groupTitle)
+        } finally {
+            Locale.setDefault(previousLocale)
+        }
     }
 
     @Test
