@@ -73,7 +73,7 @@ class PlaybackWindowController(
         detachWindowRoot()
         windowRoot = view
         val listener = View.OnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
-            if (updateSourceRectHint()) {
+            if (pictureInPictureEnabled && updateSourceRectHint()) {
                 updatePictureInPictureParams()
             }
         }
@@ -103,6 +103,11 @@ class PlaybackWindowController(
     fun updatePictureInPictureEnabled(enabled: Boolean) {
         if (pictureInPictureEnabled == enabled) return
         pictureInPictureEnabled = enabled
+        if (enabled) {
+            updateSourceRectHint()
+        } else {
+            sourceRectHint = null
+        }
         updatePictureInPictureParams(force = true)
     }
 
@@ -119,7 +124,9 @@ class PlaybackWindowController(
     }
 
     fun refreshWindowState() {
-        updateSourceRectHint()
+        if (pictureInPictureEnabled) {
+            updateSourceRectHint()
+        }
         applyOrientationPolicy()
         updatePictureInPictureParams()
     }
