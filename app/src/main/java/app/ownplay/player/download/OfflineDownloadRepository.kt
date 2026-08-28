@@ -229,7 +229,7 @@ class OfflineDownloadRepository(
     }
 
     suspend fun remove(downloadId: String) {
-        workManager.cancelUniqueWork(workName(downloadId))
+        workManager.cancelUniqueWork(workName(downloadId)).await()
         val existing = dao.getById(downloadId)
         OfflineDownloadStorage.deleteLocation(applicationContext, existing?.localRelativePath)
         OfflineDownloadStorage.partialFile(applicationContext, downloadId).delete()
