@@ -17,6 +17,17 @@ class EpgRefreshGenerationTest {
     }
 
     @Test
+    fun beginningRefreshSupersedesOlderSnapshots() {
+        val generation = EpgRefreshGeneration()
+        val oldSnapshot = generation.snapshot("source-a")
+
+        val refreshSnapshot = generation.beginRefresh("source-a")
+
+        assertFalse(generation.isCurrent("source-a", oldSnapshot))
+        assertTrue(generation.isCurrent("source-a", refreshSnapshot))
+    }
+
+    @Test
     fun staleSnapshotDoesNotRunPublishAction() {
         val generation = EpgRefreshGeneration()
         val snapshot = generation.snapshot("source-a")
@@ -43,6 +54,21 @@ class EpgRefreshGenerationTest {
 
         assertTrue(accepted)
         assertTrue(published)
+    }
+
+    @Test
+    fun successfulRefreshPublicationAdvancesGeneration() {
+        val generation = EpgRefreshGeneration()
+        val refreshSnapshot = generation.beginRefresh("source-a")
+        var published = false
+
+        val accepted = generation.runIfCurrentAndAdvance("source-a", refreshSnapshot) {
+            published = true
+        }
+
+        assertTrue(accepted)
+        assertTrue(published)
+        assertFalse(generation.isCurrent("source-a", refreshSnapshot))
     }
 
     @Test
