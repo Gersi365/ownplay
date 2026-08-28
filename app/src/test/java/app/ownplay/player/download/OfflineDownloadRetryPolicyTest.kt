@@ -16,8 +16,20 @@ class OfflineDownloadRetryPolicyTest {
     }
 
     @Test
+    fun rejectedResumeRestartsOnlyWhenPartialContentExists() {
+        assertEquals(
+            OfflineDownloadFailureDisposition.RESTART,
+            OfflineDownloadRetryPolicy.forHttpStatus(416, hasPartialContent = true),
+        )
+        assertEquals(
+            OfflineDownloadFailureDisposition.FAIL,
+            OfflineDownloadRetryPolicy.forHttpStatus(416, hasPartialContent = false),
+        )
+    }
+
+    @Test
     fun failsTerminalHttpErrorsWithoutAutomaticRetry() {
-        listOf(400, 401, 403, 404, 405, 409, 410, 416, 501, 505, 599).forEach { statusCode ->
+        listOf(400, 401, 403, 404, 405, 409, 410, 501, 505, 599).forEach { statusCode ->
             assertEquals(
                 "Expected HTTP $statusCode to be terminal",
                 OfflineDownloadFailureDisposition.FAIL,
