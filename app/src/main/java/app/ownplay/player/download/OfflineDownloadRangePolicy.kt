@@ -28,6 +28,11 @@ internal fun offlineDownloadResponseMode(
     }
 }
 
+internal fun shouldRestartOfflineDownloadFromZero(
+    existingBytes: Long,
+    responseCode: Int,
+): Boolean = existingBytes > 0L && responseCode == 416
+
 internal fun offlineDownloadTotalBytes(
     startBytes: Long,
     bodyLength: Long,
@@ -43,10 +48,16 @@ private fun contentRangeStart(value: String?): Long? {
     val start = match.groupValues[1].toLongOrNull() ?: return null
     val end = match.groupValues[2].toLongOrNull() ?: return null
     if (end < start) return null
+
+    val totalValue = match.groupValues[3]
+    if (totalValue != "*") {
+        val total = totalValue.toLongOrNull() ?: return null
+        if (total <= end) return null
+    }
     return start
 }
 
 private val CONTENT_RANGE_PATTERN = Regex(
-    pattern = "bytes\\s+(\\d+)-(\\d+)/(?:\\d+|\\*)",
+    pattern = "bytes\\s+(\\d+)-(\\d+)/(\\d+|\\*)",
     option = RegexOption.IGNORE_CASE,
 )
