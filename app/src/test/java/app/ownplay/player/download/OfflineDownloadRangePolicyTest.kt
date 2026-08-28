@@ -1,6 +1,7 @@
 package app.ownplay.player.download
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Test
 
 class OfflineDownloadRangePolicyTest {
@@ -78,5 +79,14 @@ class OfflineDownloadRangePolicyTest {
                 contentRangeHeader = "not-a-range",
             ),
         )
+    }
+
+    @Test
+    fun knownTotalAddsResumeOffsetWithoutOverflow() {
+        assertEquals(4_096L, offlineDownloadTotalBytes(startBytes = 1_024L, bodyLength = 3_072L))
+        assertEquals(Long.MAX_VALUE, offlineDownloadTotalBytes(Long.MAX_VALUE - 1L, 1L))
+        assertNull(offlineDownloadTotalBytes(Long.MAX_VALUE, 1L))
+        assertNull(offlineDownloadTotalBytes(-1L, 1L))
+        assertNull(offlineDownloadTotalBytes(0L, -1L))
     }
 }
