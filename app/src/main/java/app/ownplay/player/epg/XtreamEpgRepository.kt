@@ -71,8 +71,10 @@ class XtreamEpgRepository(
 
     private val cache = ConcurrentHashMap<String, SourceCache>()
     private val shortCache = ConcurrentHashMap<ShortCacheKey, ShortCacheEntry>()
+    private val refreshGeneration = EpgRefreshGeneration()
 
     suspend fun refreshSource(sourceId: String): EpgRefreshResult? = withContext(Dispatchers.IO) {
+        val generation = refreshGeneration.snapshot(sourceId)
         val source = database.playlistSourceDao().getById(sourceId) ?: return@withContext null
         if (source.sourceKind != SourceKinds.XTREAM) {
             invalidateSource(sourceId)
@@ -90,11 +92,14 @@ class XtreamEpgRepository(
             )
         val epgIds = channelIdsByEpgChannelId.keys
         if (epgIds.isEmpty()) {
-            cache[sourceId] = SourceCache(
-                channelIdsByEpgChannelId = emptyMap(),
-                programsByEpgChannelId = emptyMap(),
-            )
-            clearShortCache(sourceId)
+            val published = refreshGeneration.runIfCurrent(sourceId, generation) {
+                cache[sourceId] = SourceCache(
+                    channelIdsByEpgChannelId = emptyMap(),
+                    programsByEpgChannelId = emptyMap(),
+                )
+                clearShortCache(sourceId)
+            }
+            if (!published) return@withContext null
             return@withContext EpgRefreshResult(0, 0)
         }
 
@@ -114,11 +119,14 @@ class XtreamEpgRepository(
         val mapped = snapshot.programsByChannelId.mapValues { (_, entries) ->
             EpgTimelineProjector.normalize(entries.map(::toProgram))
         }
-        cache[sourceId] = SourceCache(
-            channelIdsByEpgChannelId = channelIdsByEpgChannelId,
-            programsByEpgChannelId = mapped,
-        )
-        clearShortCache(sourceId)
+        val published = refreshGeneration.runIfCurrent(sourceId, generation) {
+            cache[sourceId] = SourceCache(
+                channelIdsByEpgChannelId = channelIdsByEpgChannelId,
+                programsByEpgChannelId = mapped,
+            )
+            clearShortCache(sourceId)
+        }
+        if (!published) return@withContext null
         EpgRefreshResult(
             matchedChannelCount = EpgCoverage.matchedChannelCount(
                 channelIdsByEpgChannelId = channelIdsByEpgChannelId,
@@ -191,6 +199,7 @@ class XtreamEpgRepository(
     }
 
     fun invalidateSource(sourceId: String) {
+        refreshGeneration.invalidate(sourceId)
         cache.remove(sourceId)
         clearShortCache(sourceId)
     }
@@ -204,6 +213,7 @@ class XtreamEpgRepository(
         channelId: String,
         providerStreamId: String?,
     ): List<EpgProgram> {
+        val generation = refreshGeneration.snapshot(sourceId)
         val nowEpochSeconds = System.currentTimeMillis() / 1_000L
         val key = ShortCacheKey(sourceId = sourceId, channelId = channelId)
         shortCache[key]
@@ -225,11 +235,13 @@ class XtreamEpgRepository(
             is SourceResult.Failure -> return emptyList()
         }
         val programs = EpgTimelineProjector.normalize(guide.programs.map(::toProgram))
-        shortCache[key] = ShortCacheEntry(
-            programs = programs,
-            loadedAtEpochSeconds = nowEpochSeconds,
-        )
-        return programs
+        val published = refreshGeneration.runIfCurrent(sourceId, generation) {
+            shortCache[key] = ShortCacheEntry(
+                programs = programs,
+                loadedAtEpochSeconds = nowEpochSeconds,
+            )
+        }
+        return if (published) programs else emptyList()
     }
 
     private suspend fun resolveAccess(sourceId: String): XtreamAccess? {
