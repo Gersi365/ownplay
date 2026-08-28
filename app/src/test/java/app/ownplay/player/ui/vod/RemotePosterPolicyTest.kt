@@ -19,6 +19,12 @@ class RemotePosterPolicyTest {
     }
 
     @Test
+    fun `poster cache cost uses conservative argb estimate`() {
+        assertEquals(1536, estimatedPosterMemoryKb(width = 512, height = 768))
+        assertEquals(1, estimatedPosterMemoryKb(width = 0, height = 768))
+    }
+
+    @Test
     fun `bounded poster read accepts payload at limit`() {
         val payload = ByteArray(32) { index -> index.toByte() }
         val result = readPosterBytes(ByteArrayInputStream(payload), maxBytes = payload.size)
