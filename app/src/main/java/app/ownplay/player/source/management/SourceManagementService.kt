@@ -30,7 +30,12 @@ data class SourceEditSnapshot(
     val sourceKind: String,
     val endpoint: String?,
     val allowCleartext: Boolean,
-)
+) {
+    override fun toString(): String =
+        "SourceEditSnapshot(sourceId=<opaque>, name=$name, sourceKind=$sourceKind, " +
+            "endpoint=${if (endpoint == null) "null" else "<redacted>"}, " +
+            "allowCleartext=$allowCleartext)"
+}
 
 sealed interface SourceMutationResult {
     data object Success : SourceMutationResult
