@@ -80,6 +80,7 @@ object LiveBrowseProjector {
             .filter { item ->
                 normalizedSearch.isEmpty() ||
                     item.displayName.lowercase(Locale.ROOT).contains(normalizedSearch) ||
+                    item.providerName.lowercase(Locale.ROOT).contains(normalizedSearch) ||
                     item.categoryName.orEmpty().lowercase(Locale.ROOT).contains(normalizedSearch)
             }
             .toList()
