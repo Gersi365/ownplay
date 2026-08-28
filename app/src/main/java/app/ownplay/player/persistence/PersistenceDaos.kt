@@ -26,7 +26,8 @@ interface PlaylistSourceDao {
             source.enabled AS enabled,
             CAST(COUNT(channel.channelId) AS INTEGER) AS channelCount,
             source.createdAtEpochMillis AS createdAtEpochMillis,
-            source.updatedAtEpochMillis AS updatedAtEpochMillis
+            source.updatedAtEpochMillis AS updatedAtEpochMillis,
+            MAX(channel.lastSeenGeneration) AS lastLiveRefreshAtEpochMillis
         FROM playlist_sources AS source
         LEFT JOIN provider_channels AS channel
             ON channel.sourceId = source.sourceId
