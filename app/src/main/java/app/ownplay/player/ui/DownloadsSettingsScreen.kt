@@ -12,7 +12,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.DownloadDone
@@ -60,6 +59,10 @@ internal fun DownloadsSettingsScreen(
     val configuration = LocalConfiguration.current
     val isTelevision =
         configuration.uiMode and Configuration.UI_MODE_TYPE_MASK == Configuration.UI_MODE_TYPE_TELEVISION
+    val horizontalPadding = if (isTelevision) 28.dp else 12.dp
+    val verticalPadding = if (isTelevision) 16.dp else 8.dp
+    val contentMaxWidth = if (isTelevision) 1080.dp else 840.dp
+    val sectionSpacing = if (isTelevision) 12.dp else 8.dp
     val backFocusRequester = remember { FocusRequester() }
     val runtime = remember(context) {
         OfflineDownloadFeatureRuntime(context.applicationContext)
@@ -80,13 +83,13 @@ internal fun DownloadsSettingsScreen(
         modifier = Modifier
             .fillMaxSize()
             .navigationBarsPadding()
-            .padding(horizontal = 12.dp, vertical = 8.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
+            .padding(horizontal = horizontalPadding, vertical = verticalPadding),
+        verticalArrangement = Arrangement.spacedBy(sectionSpacing),
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .widthIn(max = 840.dp)
+                .widthIn(max = contentMaxWidth)
                 .align(Alignment.CenterHorizontally),
             verticalAlignment = Alignment.CenterVertically,
         ) {
@@ -114,13 +117,13 @@ internal fun DownloadsSettingsScreen(
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .widthIn(max = 840.dp)
+                    .widthIn(max = contentMaxWidth)
                     .align(Alignment.CenterHorizontally),
                 contentAlignment = Alignment.Center,
             ) {
                 Column(
                     horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalArrangement = Arrangement.spacedBy(if (isTelevision) 10.dp else 6.dp),
                 ) {
                     Icon(
                         Icons.Filled.DownloadDone,
@@ -156,15 +159,18 @@ internal fun DownloadsSettingsScreen(
         Surface(
             modifier = Modifier
                 .fillMaxWidth()
-                .widthIn(max = 840.dp)
+                .widthIn(max = contentMaxWidth)
                 .align(Alignment.CenterHorizontally),
-            shape = RoundedCornerShape(12.dp),
+            shape = MaterialTheme.shapes.medium,
             color = MaterialTheme.colorScheme.surfaceVariant,
         ) {
             Row(
-                modifier = Modifier.padding(horizontal = 12.dp, vertical = 9.dp),
+                modifier = Modifier.padding(
+                    horizontal = if (isTelevision) 18.dp else 12.dp,
+                    vertical = if (isTelevision) 13.dp else 9.dp,
+                ),
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                horizontalArrangement = Arrangement.spacedBy(if (isTelevision) 12.dp else 8.dp),
             ) {
                 Icon(
                     Icons.Filled.DownloadDone,
@@ -186,13 +192,14 @@ internal fun DownloadsSettingsScreen(
         LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
-                .widthIn(max = 840.dp)
+                .widthIn(max = contentMaxWidth)
                 .align(Alignment.CenterHorizontally),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(if (isTelevision) 12.dp else 8.dp),
         ) {
             items(downloads, key = { it.downloadId }) { download ->
                 DownloadRow(
                     download = download,
+                    spacious = isTelevision,
                     onPlayOffline = { DownloadPlaybackBridge.request(download) },
                     onPause = {
                         scope.launch { runtime.pause(download.downloadId) }
@@ -215,6 +222,7 @@ internal fun DownloadsSettingsScreen(
 @Composable
 private fun DownloadRow(
     download: OfflineDownload,
+    spacious: Boolean,
     onPlayOffline: () -> Unit,
     onPause: () -> Unit,
     onResume: () -> Unit,
@@ -223,16 +231,19 @@ private fun DownloadRow(
 ) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(14.dp),
+        shape = MaterialTheme.shapes.medium,
         tonalElevation = 1.dp,
     ) {
         Column(
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
-            verticalArrangement = Arrangement.spacedBy(7.dp),
+            modifier = Modifier.padding(
+                horizontal = if (spacious) 18.dp else 12.dp,
+                vertical = if (spacious) 14.dp else 10.dp,
+            ),
+            verticalArrangement = Arrangement.spacedBy(if (spacious) 10.dp else 7.dp),
         ) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(9.dp),
+                horizontalArrangement = Arrangement.spacedBy(if (spacious) 12.dp else 9.dp),
             ) {
                 Icon(
                     imageVector = if (download.mediaKind == DownloadMediaKinds.SERIES_EPISODE) {
