@@ -10,7 +10,7 @@ import org.junit.Test
 
 class PlaybackBackgroundSuspensionTest {
     @Test
-    fun playingSessionReleasesEngineAndRestoresPlayingAfterBackground() = runBlocking {
+    fun playingSessionReleasesResourcesAndRestoresPlayingAfterBackground() = runBlocking {
         val engine = FakeEngine()
         val controller = controller(engine)
         val request = request()
@@ -19,13 +19,14 @@ class PlaybackBackgroundSuspensionTest {
         engine.emitReady()
         assertTrue(controller.state.value is PlaybackState.Playing)
 
-        val stopsBeforeBackground = engine.stopCount
+        val hardStopsBeforeBackground = engine.stopCount
         controller.suspendForBackground()
 
         val suspended = controller.state.value as PlaybackState.Paused
         assertEquals(request, suspended.request)
-        assertTrue(engine.stopCount > stopsBeforeBackground)
-        assertNull(engine.preparedLocator)
+        assertEquals(1, engine.suspendCount)
+        assertEquals(hardStopsBeforeBackground, engine.stopCount)
+        assertTrue(engine.preparedLocator != null)
 
         engine.emitFailure(PlaybackFailure(PlaybackFailureCategory.UNKNOWN))
         assertTrue(controller.state.value is PlaybackState.Paused)
@@ -41,7 +42,7 @@ class PlaybackBackgroundSuspensionTest {
     }
 
     @Test
-    fun pausedSessionReleasesEngineAndRestoresPausedAfterBackground() = runBlocking {
+    fun pausedSessionReleasesResourcesAndRestoresPausedAfterBackground() = runBlocking {
         val engine = FakeEngine()
         val controller = controller(engine)
         val request = request()
@@ -53,7 +54,8 @@ class PlaybackBackgroundSuspensionTest {
 
         controller.suspendForBackground()
         assertTrue(controller.state.value is PlaybackState.Paused)
-        assertNull(engine.preparedLocator)
+        assertEquals(1, engine.suspendCount)
+        assertTrue(engine.preparedLocator != null)
 
         controller.resumeAfterBackground()
         assertTrue(controller.state.value is PlaybackState.Loading)
@@ -77,6 +79,7 @@ class PlaybackBackgroundSuspensionTest {
         controller.suspendForBackground()
         controller.resumeAfterBackground()
 
+        assertEquals(1, engine.suspendCount)
         assertEquals(42_000L, engine.seekPositionMs)
         engine.emitReady()
         assertTrue(controller.state.value is PlaybackState.Playing)
@@ -84,13 +87,14 @@ class PlaybackBackgroundSuspensionTest {
     }
 
     @Test
-    fun networkLossWhileSuspendedFailsBeforePreparingDecoderOnResume() = runBlocking {
+    fun networkLossWhileSuspendedFailsBeforePreparingDecoderAgainOnResume() = runBlocking {
         val engine = FakeEngine()
         val networkState = MutableStateFlow(PlaybackNetworkState.AVAILABLE)
         val controller = controller(engine, networkState)
 
         controller.start(request())
         engine.emitReady()
+        val preparesBeforeBackground = engine.prepareCount
         controller.suspendForBackground()
         networkState.value = PlaybackNetworkState.UNAVAILABLE
 
@@ -98,7 +102,19 @@ class PlaybackBackgroundSuspensionTest {
 
         val failed = controller.state.value as PlaybackState.Failed
         assertEquals(PlaybackFailureCategory.NETWORK_UNAVAILABLE, failed.failure.category)
-        assertNull(engine.preparedLocator)
+        assertEquals(preparesBeforeBackground, engine.prepareCount)
+        controller.close()
+    }
+
+    @Test
+    fun freshStartStillUsesHardStop() = runBlocking {
+        val engine = FakeEngine()
+        val controller = controller(engine)
+
+        controller.start(request())
+
+        assertTrue(engine.stopCount > 0)
+        assertEquals(0, engine.suspendCount)
         controller.close()
     }
 
@@ -132,7 +148,11 @@ class PlaybackBackgroundSuspensionTest {
         private var listener: PlaybackEngine.Listener? = null
         var preparedLocator: ResolvedPlaybackLocator? = null
             private set
+        var prepareCount: Int = 0
+            private set
         var stopCount: Int = 0
+            private set
+        var suspendCount: Int = 0
             private set
         var pauseCount: Int = 0
             private set
@@ -144,6 +164,7 @@ class PlaybackBackgroundSuspensionTest {
         }
 
         override fun prepare(locator: ResolvedPlaybackLocator) {
+            prepareCount += 1
             preparedLocator = locator
         }
 
@@ -157,6 +178,10 @@ class PlaybackBackgroundSuspensionTest {
 
         override fun seekTo(positionMs: Long) {
             seekPositionMs = positionMs
+        }
+
+        override fun suspendPlayback() {
+            suspendCount += 1
         }
 
         override fun stop() {
