@@ -82,9 +82,11 @@ internal fun PlaybackSettingsContent(
 
 @Composable
 internal fun RefreshSettingsContent() {
-    SettingValueRow(label = "Sequence", value = "Channels → EPG")
+    SettingValueRow(label = "Startup refresh", value = "Automatic · background")
+    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+    SettingValueRow(label = "Sequence", value = "Channels → EPG → Movies → Series")
     Text(
-        text = "Existing content remains usable while refresh runs. Downloads continue independently through WorkManager.",
+        text = "Saved catalogs remain visible while refresh runs, so navigation and playback can continue. Downloads run independently through WorkManager.",
         style = MaterialTheme.typography.labelSmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
