@@ -291,7 +291,6 @@ internal fun SeriesRoute(
             sourceId = sourceId,
             episode = currentEpisode,
             onExit = {
-                runtime.playbackController.stop()
                 playingEpisode = null
             },
             onFullscreenStateChanged = onFullscreenStateChanged,
@@ -1128,6 +1127,11 @@ private fun SeriesPlaybackScreen(
         onFullscreenStateChanged(true)
         PlaybackInteractionBridge.registerBackAction(backOwner, ::exitPlayback)
         onDispose {
+            runtime.playbackController.stopIfCurrent(
+                sourceId = sourceId,
+                channelId = episode.episodeId,
+                mediaKind = PlaybackMediaKind.SERIES_EPISODE,
+            )
             PlaybackInteractionBridge.clearBackAction(backOwner)
             onFullscreenStateChanged(false)
         }
