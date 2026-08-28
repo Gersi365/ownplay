@@ -145,7 +145,7 @@ class XtreamClient(
                     posterUrl = item.text("stream_icon")?.takeIf(String::isNotBlank),
                     containerExtension = item.text("container_extension")?.takeIf(String::isNotBlank),
                     rating = item.double("rating") ?: item.double("rating_5based"),
-                    addedAtEpochSeconds = item.long("added"),
+                    addedAtEpochSeconds = item.long("added")?.takeIf { it >= 0L },
                     directSource = item.text("direct_source")?.takeIf(String::isNotBlank),
                 )
             },
