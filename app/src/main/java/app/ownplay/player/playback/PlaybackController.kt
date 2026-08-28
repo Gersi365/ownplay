@@ -476,7 +476,7 @@ class PlaybackController(
         mutableResolvedOrigin.value = null
         resolutionJob?.cancel()
         timeoutJob?.cancel()
-        engine.stop()
+        engine.suspendPlayback()
         mutableState.value = PlaybackState.Failed(
             request = request,
             failure = PlaybackFailure(PlaybackFailureCategory.NETWORK_UNAVAILABLE),
@@ -517,7 +517,8 @@ class PlaybackController(
         bufferingTimeoutJob?.cancel()
         bufferingTimeoutJob = null
         preparedGeneration = null
-        engine.stop()
+        currentPlaybackUsesNetwork = null
+        engine.suspendPlayback()
         mutableState.value = PlaybackState.Failed(
             request = request,
             failure = failure,
