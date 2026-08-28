@@ -117,7 +117,11 @@ class OfflineDownloadWorker(
                         bytesDownloaded = existingBytes,
                         localLocation = destinationLocation,
                     )
-                    return Result.retry()
+                    return if (isRetryableDownloadHttpStatus(opened.code)) {
+                        Result.retry()
+                    } else {
+                        Result.failure()
+                    }
                 }
                 val body = opened.body
                 val append = existingBytes > 0L && opened.code == 206
