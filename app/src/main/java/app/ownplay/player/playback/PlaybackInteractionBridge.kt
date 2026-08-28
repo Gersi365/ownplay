@@ -66,6 +66,24 @@ object PlaybackInteractionBridge {
         }
     }
 
+    fun currentPositionMs(): Long? {
+        val player = boundView.get()?.player ?: return null
+        return player.currentPosition.takeIf { it > 0L }
+    }
+
+    fun seekTo(positionMillis: Long): Boolean {
+        if (positionMillis <= 0L) return false
+        val player = boundView.get()?.player ?: return false
+        val duration = player.duration
+        val target = if (duration != C.TIME_UNSET && duration > 0L) {
+            positionMillis.coerceAtMost(duration)
+        } else {
+            positionMillis
+        }
+        player.seekTo(target)
+        return true
+    }
+
     fun seekBy(deltaMillis: Long): Boolean {
         if (deltaMillis == 0L) return false
         val player = boundView.get()?.player ?: return false
