@@ -187,7 +187,7 @@ class XtreamClient(
                     ?: movieData?.text("stream_icon"),
                 backdropUrls = info?.stringList("backdrop_path").orEmpty(),
                 releaseDate = info?.text("releasedate") ?: info?.text("release_date"),
-                durationSeconds = info?.long("duration_secs"),
+                durationSeconds = info?.long("duration_secs")?.takeIf { it > 0L },
                 durationLabel = info?.text("duration") ?: info?.text("episode_run_time"),
                 genre = info?.text("genre"),
                 country = info?.text("country"),
@@ -409,7 +409,8 @@ class XtreamClient(
 
     private fun JsonObject.long(key: String): Long? = text(key)?.toLongOrNull()
 
-    private fun JsonObject.double(key: String): Double? = text(key)?.toDoubleOrNull()
+    private fun JsonObject.double(key: String): Double? =
+        text(key)?.toDoubleOrNull()?.takeIf { it.isFinite() }
 
     private fun JsonObject.stringList(key: String): List<String> = when (val element = this[key]) {
         is JsonArray -> element.mapNotNull { item ->
