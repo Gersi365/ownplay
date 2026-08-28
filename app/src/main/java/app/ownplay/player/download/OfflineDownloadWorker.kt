@@ -170,14 +170,66 @@ class OfflineDownloadWorker(
                         }
                     }
                 }
+
                 val body = opened.body
-                val append = existingBytes > 0L && opened.code == 206
+                val bodyLength = body.contentLength().takeIf { it >= 0L }
+                val responsePlan = OfflineDownloadResponsePolicy.plan(
+                    statusCode = opened.code,
+                    existingBytes = existingBytes,
+                    contentRange = opened.header("Content-Range"),
+                    contentLength = bodyLength,
+                )
+                when (responsePlan.disposition) {
+                    OfflineDownloadWriteDisposition.RESTART -> {
+                        if (usePublicDownloads) {
+                            OfflineDownloadStorage.openPublicOutput(
+                                context = applicationContext,
+                                location = requireNotNull(destinationLocation),
+                                append = false,
+                                startBytes = 0L,
+                            ).use { output -> output.flush() }
+                        } else if (partFile.exists() && !partFile.delete()) {
+                            markFailed(
+                                dao = dao,
+                                row = initialRow,
+                                reason = "Could not reset the partial download after an invalid resume response",
+                                bytesDownloaded = existingBytes,
+                                localLocation = destinationLocation,
+                            )
+                            return Result.failure()
+                        }
+                        markQueuedForRetry(
+                            dao = dao,
+                            row = initialRow,
+                            reason = "Provider returned an incompatible resume range. Restarting from the beginning.",
+                            bytesDownloaded = 0L,
+                            totalBytes = null,
+                            localLocation = destinationLocation,
+                        )
+                        return Result.retry()
+                    }
+                    OfflineDownloadWriteDisposition.FAIL -> {
+                        markFailed(
+                            dao = dao,
+                            row = initialRow,
+                            reason = "Provider returned an invalid or empty media response",
+                            bytesDownloaded = existingBytes,
+                            totalBytes = responsePlan.expectedTotalBytes,
+                            localLocation = destinationLocation,
+                        )
+                        return Result.failure()
+                    }
+                    OfflineDownloadWriteDisposition.WRITE_FROM_ZERO,
+                    OfflineDownloadWriteDisposition.APPEND,
+                    -> Unit
+                }
+
+                val append = responsePlan.disposition == OfflineDownloadWriteDisposition.APPEND
                 val startBytes = if (append) existingBytes else 0L
                 if (!usePublicDownloads && !append && partFile.exists()) {
                     partFile.delete()
                 }
-                val bodyLength = body.contentLength().takeIf { it >= 0L }
-                val totalBytes = bodyLength?.plus(startBytes)
+                val totalBytes = responsePlan.expectedTotalBytes
                 if (bodyLength != null) {
                     val usableSpace = OfflineDownloadStorage.usableSpaceBytes(
                         context = applicationContext,
