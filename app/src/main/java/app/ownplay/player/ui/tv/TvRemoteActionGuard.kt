@@ -20,6 +20,17 @@ internal class TvRemoteActionGuard {
         return true
     }
 
+    @Synchronized
+    fun extendBlock(
+        nowMillis: Long,
+        kind: TvRemoteActionKind = TvRemoteActionKind.TRANSITION,
+    ) {
+        blockedUntilMillis = maxOf(
+            blockedUntilMillis,
+            saturatedAdd(nowMillis, kind.cooldownMillis),
+        )
+    }
+
     private fun saturatedAdd(value: Long, increment: Long): Long =
         if (value > Long.MAX_VALUE - increment) Long.MAX_VALUE else value + increment
 }
