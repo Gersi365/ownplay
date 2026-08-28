@@ -42,6 +42,8 @@ class InitialLiveCatalogRemovalTest {
 
         assertEquals(InitialLiveCatalogIngestResult.Success(0, 1), result)
         assertEquals(2, persistence.savedChannels.size)
+        assertEquals("source", persistence.appliedSourceId)
+        assertEquals(1_000L, persistence.appliedGeneration)
         assertEquals(
             ChannelAvailability.AVAILABLE,
             persistence.savedChannels.single { it.channelId == "kept" }.availability,
@@ -89,6 +91,7 @@ class InitialLiveCatalogRemovalTest {
         assertEquals("returning", saved.channelId)
         assertEquals(ChannelAvailability.AVAILABLE, saved.availability)
         assertEquals(2_000L, saved.lastSeenGeneration)
+        assertEquals(2_000L, persistence.appliedGeneration)
     }
 
     private fun channel(
@@ -116,13 +119,19 @@ class InitialLiveCatalogRemovalTest {
         private val existing: List<ProviderChannelEntity>,
     ) : LiveCatalogPersistence {
         var savedChannels: List<ProviderChannelEntity> = emptyList()
+        var appliedSourceId: String? = null
+        var appliedGeneration: Long? = null
 
         override suspend fun existingChannels(sourceId: String): List<ProviderChannelEntity> = existing
 
         override suspend fun applyInitialCatalog(
+            sourceId: String,
+            generation: Long,
             categories: List<ProviderCategoryEntity>,
             channels: List<ProviderChannelEntity>,
         ) {
+            appliedSourceId = sourceId
+            appliedGeneration = generation
             savedChannels = channels
         }
     }
