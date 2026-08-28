@@ -6,6 +6,7 @@ import androidx.work.ExistingWorkPolicy
 import androidx.work.NetworkType
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
+import androidx.work.await
 import androidx.work.workDataOf
 import app.ownplay.player.persistence.OwnPlayDatabase
 import app.ownplay.player.persistence.download.DownloadMediaKinds
@@ -67,6 +68,19 @@ data class OfflineDownload(
             return (bytesDownloaded.toDouble() / total.toDouble()).coerceIn(0.0, 1.0).toFloat()
         }
 }
+
+internal data class OfflineSourceRemovalItem(
+    val downloadId: String,
+    val localRelativePath: String?,
+    val restartWorkOnFailure: Boolean,
+)
+
+internal data class OfflineSourceRemovalSnapshot(
+    val items: List<OfflineSourceRemovalItem>,
+)
+
+internal fun shouldRestartAfterSourceRemovalFailure(state: String): Boolean =
+    state == DownloadStates.QUEUED || state == DownloadStates.DOWNLOADING
 
 class OfflineDownloadRepository(
     context: Context,
@@ -214,6 +228,38 @@ class OfflineDownloadRepository(
         OfflineDownloadStorage.deleteLocation(applicationContext, existing?.localRelativePath)
         OfflineDownloadStorage.partialFile(applicationContext, downloadId).delete()
         dao.delete(downloadId)
+    }
+
+    suspend fun prepareSourceRemoval(sourceId: String): OfflineSourceRemovalSnapshot {
+        val items = dao.forSource(sourceId).map { row ->
+            OfflineSourceRemovalItem(
+                downloadId = row.downloadId,
+                localRelativePath = row.localRelativePath,
+                restartWorkOnFailure = shouldRestartAfterSourceRemovalFailure(row.state),
+            )
+        }
+        items.forEach { item ->
+            workManager.cancelUniqueWork(workName(item.downloadId)).await()
+        }
+        return OfflineSourceRemovalSnapshot(items)
+    }
+
+    fun completeSourceRemoval(snapshot: OfflineSourceRemovalSnapshot) {
+        snapshot.items.forEach { item ->
+            OfflineDownloadStorage.deleteLocation(applicationContext, item.localRelativePath)
+            OfflineDownloadStorage.partialFile(applicationContext, item.downloadId).delete()
+        }
+    }
+
+    suspend fun rollbackSourceRemoval(snapshot: OfflineSourceRemovalSnapshot) {
+        snapshot.items
+            .asSequence()
+            .filter(OfflineSourceRemovalItem::restartWorkOnFailure)
+            .forEach { item ->
+                if (dao.getById(item.downloadId) != null) {
+                    retry(item.downloadId)
+                }
+            }
     }
 
     suspend fun localPlaybackLocator(request: PlaybackRequest): ResolvedPlaybackLocator? {
