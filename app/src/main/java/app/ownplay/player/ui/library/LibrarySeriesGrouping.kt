@@ -2,7 +2,9 @@ package app.ownplay.player.ui.library
 
 import app.ownplay.player.download.OfflineDownload
 import app.ownplay.player.persistence.download.DownloadMediaKinds
+import app.ownplay.player.persistence.download.DownloadStates
 import java.io.Serializable
+import java.util.Locale
 
 internal data class LibrarySeriesKey(
     val sourceId: String,
@@ -23,6 +25,12 @@ internal data class LibrarySeriesGroup(
 
     val episodeCount: Int
         get() = episodes.size
+
+    val offlineEpisodeCount: Int
+        get() = episodes.count { it.state == DownloadStates.COMPLETED }
+
+    val hasOfflineEpisodes: Boolean
+        get() = offlineEpisodeCount > 0
 
     val seasonNumbers: List<Int>
         get() = episodes.mapNotNull { it.seasonNumber }.distinct().sorted()
@@ -47,7 +55,7 @@ internal fun groupLibrarySeries(downloads: List<OfflineDownload>): List<LibraryS
                 compareBy<OfflineDownload>(
                     { it.seasonNumber ?: Int.MAX_VALUE },
                     { it.episodeNumber ?: Int.MAX_VALUE },
-                    { it.title.lowercase() },
+                    { it.title.lowercase(Locale.ROOT) },
                 ),
             )
             val newestFirst = groupedEpisodes.sortedByDescending { it.updatedAtEpochMillis }
@@ -67,7 +75,7 @@ internal fun groupLibrarySeries(downloads: List<OfflineDownload>): List<LibraryS
         }
         .sortedWith(
             compareByDescending<LibrarySeriesGroup> { it.latestUpdatedAtEpochMillis }
-                .thenBy { it.title.lowercase() },
+                .thenBy { it.title.lowercase(Locale.ROOT) },
         )
 }
 
@@ -83,6 +91,6 @@ private fun seriesKey(download: OfflineDownload): LibrarySeriesKey {
     val seriesTitle = download.seriesTitle?.trim()?.takeIf(String::isNotBlank)
     return LibrarySeriesKey(
         sourceId = download.sourceId,
-        identity = exactSeriesId ?: seriesTitle?.lowercase() ?: "episode:${download.contentId}",
+        identity = exactSeriesId ?: seriesTitle?.lowercase(Locale.ROOT) ?: "episode:${download.contentId}",
     )
 }
