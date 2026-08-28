@@ -68,6 +68,16 @@ class TvRemoteActionGuardTest {
     }
 
     @Test
+    fun transitionStateIsVisibleForReleaseSuppressionUntilBoundary() {
+        val guard = TvRemoteActionGuard()
+
+        guard.extendBlock(5_000L, kind = TvRemoteActionKind.TRANSITION)
+
+        assertTrue(guard.isGloballyBlocked(5_899L))
+        assertFalse(guard.isGloballyBlocked(5_900L))
+    }
+
+    @Test
     fun lockDeadlineSaturatesInsteadOfOverflowing() {
         val guard = TvRemoteActionGuard()
 
