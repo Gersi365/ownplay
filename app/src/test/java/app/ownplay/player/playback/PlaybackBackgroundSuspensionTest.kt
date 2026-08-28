@@ -33,6 +33,7 @@ class PlaybackBackgroundSuspensionTest {
         controller.resumeAfterBackground()
         assertTrue(controller.state.value is PlaybackState.Loading)
         assertTrue(engine.preparedLocator != null)
+        assertNull(engine.seekPositionMs)
 
         engine.emitReady()
         assertTrue(controller.state.value is PlaybackState.Playing)
@@ -57,10 +58,28 @@ class PlaybackBackgroundSuspensionTest {
         controller.resumeAfterBackground()
         assertTrue(controller.state.value is PlaybackState.Loading)
         assertTrue(engine.pauseCount > 0)
+        assertNull(engine.seekPositionMs)
 
         engine.emitReady()
         val restored = controller.state.value as PlaybackState.Paused
         assertEquals(request, restored.request)
+        controller.close()
+    }
+
+    @Test
+    fun onDemandSessionRestoresPositionAfterBackground() = runBlocking {
+        val engine = FakeEngine(currentPositionMs = 42_000L)
+        val controller = controller(engine)
+        val request = request(PlaybackMediaKind.MOVIE)
+
+        controller.start(request)
+        engine.emitReady()
+        controller.suspendForBackground()
+        controller.resumeAfterBackground()
+
+        assertEquals(42_000L, engine.seekPositionMs)
+        engine.emitReady()
+        assertTrue(controller.state.value is PlaybackState.Playing)
         controller.close()
     }
 
@@ -101,18 +120,23 @@ class PlaybackBackgroundSuspensionTest {
         networkState = networkState,
     )
 
-    private fun request() = PlaybackRequest(
+    private fun request(mediaKind: PlaybackMediaKind = PlaybackMediaKind.LIVE) = PlaybackRequest(
         sourceId = "source",
         channelId = "channel",
+        mediaKind = mediaKind,
     )
 
-    private class FakeEngine : PlaybackEngine {
+    private class FakeEngine(
+        private val currentPositionMs: Long? = 42_000L,
+    ) : PlaybackEngine {
         private var listener: PlaybackEngine.Listener? = null
         var preparedLocator: ResolvedPlaybackLocator? = null
             private set
         var stopCount: Int = 0
             private set
         var pauseCount: Int = 0
+            private set
+        var seekPositionMs: Long? = null
             private set
 
         override fun setListener(listener: PlaybackEngine.Listener?) {
@@ -127,6 +151,12 @@ class PlaybackBackgroundSuspensionTest {
 
         override fun pause() {
             pauseCount += 1
+        }
+
+        override fun currentPositionMs(): Long? = currentPositionMs
+
+        override fun seekTo(positionMs: Long) {
+            seekPositionMs = positionMs
         }
 
         override fun stop() {
