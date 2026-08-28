@@ -13,6 +13,7 @@ import androidx.media3.common.Player
 import androidx.media3.common.TrackGroup
 import androidx.media3.common.TrackSelectionOverride
 import androidx.media3.common.Tracks
+import androidx.media3.common.util.StuckPlayerException
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.HttpDataSource
 import androidx.media3.exoplayer.DefaultRenderersFactory
@@ -503,11 +504,26 @@ private data class Media3TrackHandle(
 
 @OptIn(UnstableApi::class)
 internal object Media3PlaybackFailureMapper {
-    fun map(error: PlaybackException): PlaybackFailure =
-        map(
+    fun map(error: PlaybackException): PlaybackFailure {
+        val stuckPlayer = error.cause.findStuckPlayerException()
+        if (stuckPlayer != null) {
+            return when (stuckPlayer.stuckType) {
+                StuckPlayerException.STUCK_BUFFERING_NOT_LOADING,
+                StuckPlayerException.STUCK_BUFFERING_NO_PROGRESS,
+                -> PlaybackFailure(PlaybackFailureCategory.TIMEOUT)
+
+                StuckPlayerException.STUCK_PLAYING_NO_PROGRESS,
+                StuckPlayerException.STUCK_PLAYING_NOT_ENDING,
+                -> PlaybackFailure(PlaybackFailureCategory.UNKNOWN)
+
+                else -> PlaybackFailure(PlaybackFailureCategory.UNKNOWN)
+            }
+        }
+        return map(
             errorCode = error.errorCode,
             httpStatusCode = error.cause.findHttpStatusCode(),
         )
+    }
 
     fun map(
         errorCode: Int,
@@ -548,6 +564,15 @@ internal object Media3PlaybackFailureMapper {
             else -> PlaybackFailureCategory.UNKNOWN
         }
         return PlaybackFailure(category)
+    }
+
+    private fun Throwable?.findStuckPlayerException(): StuckPlayerException? {
+        var current = this
+        while (current != null) {
+            if (current is StuckPlayerException) return current
+            current = current.cause
+        }
+        return null
     }
 
     private fun Throwable?.findHttpStatusCode(): Int? {
