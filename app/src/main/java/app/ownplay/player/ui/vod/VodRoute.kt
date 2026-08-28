@@ -370,7 +370,6 @@ internal fun VodRoute(
             sourceId = sourceId,
             movie = movieToPlay,
             onExit = {
-                runtime.playbackController.stop()
                 playingMovie = null
             },
             onFullscreenStateChanged = onFullscreenStateChanged,
@@ -1214,6 +1213,11 @@ private fun VodPlaybackScreen(
             scope.launch {
                 featureRuntime.saveProgress(sourceId, movie.movieId, lastPosition, lastDuration)
             }
+            runtime.playbackController.stopIfCurrent(
+                sourceId = sourceId,
+                channelId = movie.movieId,
+                mediaKind = PlaybackMediaKind.MOVIE,
+            )
             PlaybackInteractionBridge.clearBackAction(backOwner)
             onFullscreenStateChanged(false)
         }
