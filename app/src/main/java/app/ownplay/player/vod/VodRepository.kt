@@ -263,8 +263,12 @@ class VodRepository(
             mediaKind = MediaKinds.MOVIE,
             contentId = movieId,
         )
-        val normalized = PlaybackProgressPolicy.normalize(
+        val positionForSave = PlaybackProgressPolicy.positionForSave(
             positionMs = positionMs,
+            fallbackPositionMs = existing?.positionMs,
+        )
+        val normalized = PlaybackProgressPolicy.normalize(
+            positionMs = positionForSave,
             durationMs = durationMs,
             fallbackDurationMs = existing?.durationMs,
         )
