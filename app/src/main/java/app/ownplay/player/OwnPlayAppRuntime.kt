@@ -339,9 +339,13 @@ class OwnPlayAppRuntime(
 
     private suspend fun refreshSourcePipeline(sourceId: String) = refreshMutex.withLock {
         val source = database.playlistSourceDao().getById(sourceId) ?: return@withLock
-        val existingCount = runCatching {
+        val existingCount = try {
             database.providerCatalogDao().channelsForSource(sourceId).size
-        }.getOrDefault(0)
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            0
+        }
         _sourceSyncState.value = SourceSyncState(
             sourceId = sourceId,
             sourceName = source.name,
@@ -406,13 +410,24 @@ class OwnPlayAppRuntime(
         val sourceName = if (current.sourceId == sourceId) {
             current.sourceName
         } else {
-            runCatching { database.playlistSourceDao().getById(sourceId)?.name }.getOrNull()
+            try {
+                database.playlistSourceDao().getById(sourceId)?.name
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                null
+            }
         }
         val channelCount = if (current.sourceId == sourceId) {
             current.channelCount
         } else {
-            runCatching { database.providerCatalogDao().channelsForSource(sourceId).size }
-                .getOrDefault(0)
+            try {
+                database.providerCatalogDao().channelsForSource(sourceId).size
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                0
+            }
         }
         _sourceSyncState.value = SourceSyncState(
             sourceId = sourceId,
@@ -519,6 +534,8 @@ class OwnPlayAppRuntime(
         withContext(Dispatchers.IO) {
             val existingChannels = try {
                 database.providerCatalogDao().channelsForSource(sourceId)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
             } catch (_: Exception) {
                 return@withContext SourceOnboardingResult.Failure(
                     SourceOnboardingFailure.PersistenceFailure,
@@ -543,6 +560,8 @@ class OwnPlayAppRuntime(
     ): SourceOnboardingResult {
         val source = try {
             database.playlistSourceDao().getById(sourceId)
+        } catch (cancelled: CancellationException) {
+            throw cancelled
         } catch (_: Exception) {
             return SourceOnboardingResult.Failure(SourceOnboardingFailure.PersistenceFailure)
         } ?: return SourceOnboardingResult.Failure(SourceOnboardingFailure.PersistenceFailure)
@@ -553,6 +572,8 @@ class OwnPlayAppRuntime(
 
         val locatorValue = try {
             sensitiveValueStore.get(SensitiveValueRef(source.locatorRef))
+        } catch (cancelled: CancellationException) {
+            throw cancelled
         } catch (_: Exception) {
             null
         } ?: return SourceOnboardingResult.Failure(SourceOnboardingFailure.SecureStorageFailure)
@@ -566,6 +587,8 @@ class OwnPlayAppRuntime(
             ?: return SourceOnboardingResult.Failure(SourceOnboardingFailure.SecureStorageFailure)
         val credentials = try {
             credentialStore.get(CredentialRef(credentialRefValue))
+        } catch (cancelled: CancellationException) {
+            throw cancelled
         } catch (_: Exception) {
             null
         } ?: return SourceOnboardingResult.Failure(SourceOnboardingFailure.SecureStorageFailure)
@@ -620,6 +643,8 @@ class OwnPlayAppRuntime(
                 generation = System.currentTimeMillis(),
                 catalog = InitialLiveCatalogFactory.fromXtream(categories, streams),
             )
+        } catch (cancelled: CancellationException) {
+            throw cancelled
         } catch (_: Exception) {
             return SourceOnboardingResult.Failure(SourceOnboardingFailure.CatalogImportFailure)
         }
