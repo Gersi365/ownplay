@@ -1,5 +1,6 @@
 package app.ownplay.player.ui
 
+import android.content.res.Configuration
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -11,6 +12,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.unit.dp
 import app.ownplay.player.persistence.PlaylistSourceSummary
 
@@ -52,9 +54,16 @@ internal fun PlaybackSettingsContent(
     onOpenLive: () -> Unit,
     onStopPlayback: () -> Unit,
 ) {
+    val configuration = LocalConfiguration.current
+    val isTelevision =
+        configuration.uiMode and Configuration.UI_MODE_TYPE_MASK == Configuration.UI_MODE_TYPE_TELEVISION
+
     SettingValueRow(label = "Channel tap", value = "Preview")
     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-    SettingValueRow(label = "Fullscreen", value = "Manual · Sensor")
+    SettingValueRow(
+        label = "Fullscreen",
+        value = if (isTelevision) "Manual · Landscape" else "Manual · Sensor",
+    )
     activeSourceName?.let { name ->
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
         SettingValueRow(label = "Active playlist", value = name)
