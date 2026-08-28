@@ -102,6 +102,19 @@ class LiveBrowseProjectorTest {
     }
 
     @Test
+    fun providerNameRemainsSearchableAfterLocalRename() {
+        val customized = records.first().copy(localDisplayName = "My News")
+
+        val result = LiveBrowseProjector.project(
+            records = listOf(customized),
+            query = LiveBrowseQuery(searchTerm = "provider one"),
+        )
+
+        assertEquals(listOf("one"), result.map { it.channelId })
+        assertEquals("My News", result.single().displayName)
+    }
+
+    @Test
     fun searchAndCategoryFilteringDoNotMutatePersistentOrdering() {
         val query = LiveBrowseQuery(
             searchTerm = "news",
