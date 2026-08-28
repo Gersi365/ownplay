@@ -335,13 +335,30 @@ class SourceOnboardingService(
         locatorRef: SensitiveValueRef,
     ) {
         withContext(NonCancellable) {
+            val catalogRefs = runCatching {
+                database.providerCatalogDao()
+                    .channelsForSource(sourceId)
+                    .flatMap { channel ->
+                        buildList {
+                            runCatching { SensitiveValueRef(channel.streamLocatorRef) }
+                                .getOrNull()
+                                ?.let(::add)
+                            channel.logoRef
+                                ?.let { value -> runCatching { SensitiveValueRef(value) }.getOrNull() }
+                                ?.let(::add)
+                        }
+                    }
+            }.getOrDefault(emptyList())
             runCatching { database.playlistSourceDao().deleteById(sourceId) }
-            cleanupLocator(locatorRef)
+            runCatching {
+                sensitiveValueStore.deleteAll(
+                    buildSet {
+                        add(locatorRef)
+                        addAll(catalogRefs)
+                    },
+                )
+            }
         }
-    }
-
-    private fun cleanupLocator(locatorRef: SensitiveValueRef) {
-        runCatching { sensitiveValueStore.delete(locatorRef) }
     }
 }
 
