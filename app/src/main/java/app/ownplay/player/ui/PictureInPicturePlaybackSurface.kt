@@ -56,11 +56,15 @@ fun PictureInPicturePlaybackSurface(
     ) {
         AndroidView(
             factory = { context ->
-                val previousView = PlaybackInteractionBridge.currentBoundView()
+                val previousPipView = playerView
+                if (returnTarget?.get() == null) {
+                    val previousView = PlaybackInteractionBridge.currentBoundView()
+                        ?.takeUnless { candidate -> candidate === previousPipView }
+                    returnTarget = previousView?.let(::WeakReference)
+                }
                 PlayerView(context).apply {
                     useController = false
                     setShutterBackgroundColor(AndroidColor.BLACK)
-                    returnTarget = previousView?.let(::WeakReference)
                     videoOutput.bind(this)
                     playerView = this
                 }
@@ -72,15 +76,17 @@ fun PictureInPicturePlaybackSurface(
             },
             onRelease = { view ->
                 reportProgress(view)
-                val target = returnTarget
-                    ?.get()
-                    ?.takeIf { candidate -> candidate.isAttachedToWindow }
-                if (target != null) {
-                    videoOutput.bind(target)
-                } else {
-                    videoOutput.unbind(view)
+                if (PlaybackInteractionBridge.currentBoundView() === view) {
+                    val target = returnTarget
+                        ?.get()
+                        ?.takeIf { candidate -> candidate.isAttachedToWindow }
+                    if (target != null) {
+                        videoOutput.bind(target)
+                    } else {
+                        videoOutput.unbind(view)
+                    }
+                    returnTarget = null
                 }
-                returnTarget = null
                 if (playerView === view) playerView = null
             },
         )
