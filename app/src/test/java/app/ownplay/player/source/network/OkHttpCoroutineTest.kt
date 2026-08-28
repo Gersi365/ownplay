@@ -27,17 +27,34 @@ class OkHttpCoroutineTest {
 
         assertTrue(call.cancelled.get())
     }
+
+    @Test
+    fun lateFailureAfterCancellationIsIgnored() = runBlocking {
+        val call = RecordingCall()
+        val job = launch {
+            call.awaitResponse()
+        }
+
+        yield()
+        job.cancelAndJoin()
+        call.fail(IOException("late network callback"))
+
+        assertTrue(call.cancelled.get())
+    }
 }
 
 private class RecordingCall : Call {
     val cancelled = AtomicBoolean(false)
     private val request = Request.Builder().url("https://example.com/").build()
+    private var callback: Callback? = null
 
     override fun request(): Request = request
 
     override fun execute(): Response = throw UnsupportedOperationException("Not used")
 
-    override fun enqueue(responseCallback: Callback) = Unit
+    override fun enqueue(responseCallback: Callback) {
+        callback = responseCallback
+    }
 
     override fun cancel() {
         cancelled.set(true)
@@ -50,4 +67,8 @@ private class RecordingCall : Call {
     override fun timeout(): Timeout = Timeout()
 
     override fun clone(): Call = RecordingCall()
+
+    fun fail(error: IOException) {
+        requireNotNull(callback).onFailure(this, error)
+    }
 }
