@@ -40,6 +40,18 @@ internal object OfflineDownloadStorage {
         }
     }
 
+    fun availableBytes(
+        context: Context,
+        usePublicDownloads: Boolean,
+    ): Long {
+        val storageRoot = if (usePublicDownloads && supportsPublicDownloads()) {
+            context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS)
+        } else {
+            privateDirectory(context)
+        }
+        return (storageRoot ?: context.filesDir).usableSpace
+    }
+
     @TargetApi(Build.VERSION_CODES.Q)
     fun createPublicDownloadsDestination(
         context: Context,
