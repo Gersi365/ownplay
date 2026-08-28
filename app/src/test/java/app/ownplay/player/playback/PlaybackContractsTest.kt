@@ -65,8 +65,24 @@ class PlaybackContractsTest {
         assertTrue(PlaybackFailure(PlaybackFailureCategory.TIMEOUT).retryable)
         assertTrue(PlaybackFailure(PlaybackFailureCategory.STREAM_UNAVAILABLE).retryable)
         assertFalse(PlaybackFailure(PlaybackFailureCategory.AUTHENTICATION_FAILURE).retryable)
+        assertFalse(PlaybackFailure(PlaybackFailureCategory.INSECURE_TRANSPORT_BLOCKED).retryable)
         assertFalse(PlaybackFailure(PlaybackFailureCategory.UNSUPPORTED_MEDIA).retryable)
         assertFalse(PlaybackFailure(PlaybackFailureCategory.UNKNOWN).retryable)
+    }
+
+    @Test
+    fun cleartextResolutionMapsToDedicatedNonRetryableFailure() {
+        val failure = PlaybackResolutionFailureReason.CLEARTEXT_NOT_ALLOWED.toPlaybackFailure()
+
+        assertEquals(PlaybackFailureCategory.INSECURE_TRANSPORT_BLOCKED, failure.category)
+        assertFalse(failure.retryable)
+    }
+
+    @Test
+    fun invalidDescriptorStillMapsToUnsupportedMedia() {
+        val failure = PlaybackResolutionFailureReason.DESCRIPTOR_INVALID.toPlaybackFailure()
+
+        assertEquals(PlaybackFailureCategory.UNSUPPORTED_MEDIA, failure.category)
     }
 
     @Test
