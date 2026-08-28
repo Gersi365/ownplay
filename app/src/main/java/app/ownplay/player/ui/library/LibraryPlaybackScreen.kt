@@ -53,6 +53,7 @@ import app.ownplay.player.persistence.download.DownloadMediaKinds
 import app.ownplay.player.playback.PlaybackInteractionBridge
 import app.ownplay.player.playback.PlaybackPresentationPolicy
 import app.ownplay.player.playback.PlaybackState
+import app.ownplay.player.ui.playbackStatusLabel
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
@@ -75,6 +76,7 @@ internal fun LibraryPlaybackScreen(
 ) {
     val playbackState by runtime.playbackController.state.collectAsState()
     val playbackControls = PlaybackPresentationPolicy.controlsFor(playbackState)
+    val failedState = playbackState as? PlaybackState.Failed
     val configuration = LocalConfiguration.current
     val isTelevision =
         configuration.uiMode and Configuration.UI_MODE_TYPE_MASK == Configuration.UI_MODE_TYPE_TELEVISION
@@ -219,7 +221,7 @@ internal fun LibraryPlaybackScreen(
                 )
             }
 
-            if (playbackState is PlaybackState.Failed) {
+            if (failedState != null) {
                 Surface(
                     modifier = Modifier.align(Alignment.Center),
                     shape = RoundedCornerShape(14.dp),
@@ -230,7 +232,7 @@ internal fun LibraryPlaybackScreen(
                         horizontalAlignment = Alignment.CenterHorizontally,
                         verticalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
-                        Text("Playback failed", color = Color.White)
+                        Text(playbackStatusLabel(failedState), color = Color.White)
                         if (playbackControls.canRetry) {
                             FilledTonalButton(onClick = runtime.playbackController::retry) {
                                 Icon(Icons.Filled.Refresh, contentDescription = null)
