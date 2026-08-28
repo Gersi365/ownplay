@@ -3,8 +3,10 @@ package app.ownplay.player.live.ingest
 import androidx.room.withTransaction
 import app.ownplay.player.persistence.ChannelAvailability
 import app.ownplay.player.persistence.OwnPlayDatabase
+import app.ownplay.player.persistence.PlaylistRefreshStateEntity
 import app.ownplay.player.persistence.ProviderCategoryEntity
 import app.ownplay.player.persistence.ProviderChannelEntity
+import app.ownplay.player.persistence.RefreshStates
 import app.ownplay.player.persistence.reconcile.ChannelReconciler
 import app.ownplay.player.persistence.reconcile.ExistingChannelIdentity
 import app.ownplay.player.persistence.reconcile.ReconciliationResult
@@ -18,6 +20,8 @@ interface LiveCatalogPersistence {
     suspend fun existingChannels(sourceId: String): List<ProviderChannelEntity>
 
     suspend fun applyInitialCatalog(
+        sourceId: String,
+        generation: Long,
         categories: List<ProviderCategoryEntity>,
         channels: List<ProviderChannelEntity>,
     )
@@ -30,12 +34,24 @@ class RoomLiveCatalogPersistence(
         database.providerCatalogDao().channelsForSource(sourceId)
 
     override suspend fun applyInitialCatalog(
+        sourceId: String,
+        generation: Long,
         categories: List<ProviderCategoryEntity>,
         channels: List<ProviderChannelEntity>,
     ) {
         database.withTransaction {
             database.providerCatalogDao().upsertCategories(categories)
             database.providerCatalogDao().upsertChannels(channels)
+            database.refreshStateDao().upsert(
+                PlaylistRefreshStateEntity(
+                    sourceId = sourceId,
+                    generation = generation,
+                    state = RefreshStates.SUCCEEDED,
+                    lastAttemptAtEpochMillis = generation,
+                    lastSuccessAtEpochMillis = generation,
+                    lastErrorCode = null,
+                ),
+            )
         }
     }
 }
@@ -169,7 +185,12 @@ class InitialLiveCatalogIngestor(
         }
 
         try {
-            persistence.applyInitialCatalog(categoryEntities, channelEntities)
+            persistence.applyInitialCatalog(
+                sourceId = sourceId,
+                generation = generation,
+                categories = categoryEntities,
+                channels = channelEntities,
+            )
         } catch (error: Exception) {
             error.rethrowCancellation()
             cleanup(allocatedRefs)
