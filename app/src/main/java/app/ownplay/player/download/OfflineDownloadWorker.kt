@@ -281,7 +281,9 @@ class OfflineDownloadWorker(
                                 now - lastReportedAt >= PROGRESS_REPORT_MILLIS
                             ) {
                                 openedOutput.flush()
-                                if (dao.getById(downloadId)?.state == DownloadStates.PAUSED) {
+                                val currentRow = dao.getById(downloadId)
+                                    ?: throw IOException("Download record was removed")
+                                if (currentRow.state == DownloadStates.PAUSED) {
                                     throw CancellationException("Download paused")
                                 }
                                 dao.updateTransfer(
@@ -372,6 +374,7 @@ class OfflineDownloadWorker(
                 )
             } else {
                 OfflineDownloadStorage.deleteLocation(applicationContext, activePublicDestination)
+                OfflineDownloadStorage.partialFile(applicationContext, downloadId).delete()
             }
             throw cancelled
         } catch (_: Exception) {
@@ -385,10 +388,11 @@ class OfflineDownloadWorker(
                     bytesDownloaded = currentTransferBytes(row, localLocation),
                     localLocation = localLocation,
                 )
-            } else {
-                OfflineDownloadStorage.deleteLocation(applicationContext, activePublicDestination)
+                return Result.retry()
             }
-            return Result.retry()
+            OfflineDownloadStorage.deleteLocation(applicationContext, activePublicDestination)
+            OfflineDownloadStorage.partialFile(applicationContext, downloadId).delete()
+            return Result.success()
         } finally {
             database.close()
         }
