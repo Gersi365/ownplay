@@ -150,7 +150,12 @@ class XtreamXmlTvClient(
                 if (
                     channelId != null &&
                     channelId in channelIds &&
-                    overlapsWindow(start, stop, earliest, latest)
+                    XmlTvProgramWindow.overlaps(
+                        startEpochSeconds = start,
+                        stopEpochSeconds = stop,
+                        earliestEpochSeconds = earliest,
+                        latestEpochSeconds = latest,
+                    )
                 ) {
                     var title: String? = null
                     var description: String? = null
@@ -192,18 +197,6 @@ class XtreamXmlTvClient(
             )
         }
         return XtreamXmlTvSnapshot(normalized)
-    }
-
-    private fun overlapsWindow(
-        start: Long?,
-        stop: Long?,
-        earliest: Long,
-        latest: Long,
-    ): Boolean {
-        if (start == null && stop == null) return true
-        val effectiveStart = start ?: stop ?: return true
-        val effectiveStop = stop ?: start ?: return true
-        return effectiveStop >= earliest && effectiveStart <= latest
     }
 
     private fun parseXmlTvTime(raw: String?): Long? {
