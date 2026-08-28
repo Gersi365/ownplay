@@ -176,18 +176,24 @@ class OfflineDownloadRepository(
         if (existing.state != DownloadStates.QUEUED && existing.state != DownloadStates.DOWNLOADING) {
             return
         }
+
+        workManager.cancelUniqueWork(workName(downloadId)).await()
+
+        val current = dao.getById(downloadId) ?: return
+        if (current.state != DownloadStates.QUEUED && current.state != DownloadStates.DOWNLOADING) {
+            return
+        }
         dao.updateTransfer(
             downloadId = downloadId,
             state = DownloadStates.PAUSED,
-            bytesDownloaded = transferBytes(downloadId, existing.localRelativePath)
+            bytesDownloaded = transferBytes(downloadId, current.localRelativePath)
                 .takeIf { it > 0L }
-                ?: existing.bytesDownloaded,
-            totalBytes = existing.totalBytes,
-            localRelativePath = existing.localRelativePath,
+                ?: current.bytesDownloaded,
+            totalBytes = current.totalBytes,
+            localRelativePath = current.localRelativePath,
             failureReason = null,
             updatedAtEpochMillis = System.currentTimeMillis(),
         )
-        workManager.cancelUniqueWork(workName(downloadId)).await()
     }
 
     suspend fun resume(downloadId: String) {
