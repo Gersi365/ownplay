@@ -23,6 +23,15 @@ internal object OfflineDownloadStorage {
     fun isPublicDownloadsLocation(location: String?): Boolean =
         location?.startsWith(CONTENT_URI_PREFIX) == true
 
+    fun usableSpaceBytes(
+        context: Context,
+        publicDownloads: Boolean,
+    ): Long = if (publicDownloads) {
+        context.getExternalFilesDir(null)?.usableSpace?.coerceAtLeast(0L) ?: 0L
+    } else {
+        privateDirectory(context).usableSpace.coerceAtLeast(0L)
+    }
+
     fun partialFile(context: Context, downloadId: String): File =
         File(privateDirectory(context), "$downloadId.part")
 
