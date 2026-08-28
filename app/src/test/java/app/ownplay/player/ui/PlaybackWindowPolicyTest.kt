@@ -37,6 +37,14 @@ class PlaybackWindowPolicyTest {
                 playbackSurfaceActive = false,
             ),
         )
+        assertFalse(
+            PlaybackWindowPolicy.isPipEligible(
+                pipSupported = true,
+                isPlaying = true,
+                playbackSurfaceActive = true,
+                pipEnabled = false,
+            ),
+        )
     }
 
     @Test
