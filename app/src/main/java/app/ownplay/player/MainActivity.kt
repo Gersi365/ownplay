@@ -420,6 +420,8 @@ private fun KeyEvent.isRemoteActivationKey(): Boolean =
         keyCode == KeyEvent.KEYCODE_BUTTON_A ||
         keyCode == KeyEvent.KEYCODE_BUTTON_SELECT ||
         keyCode == KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE ||
+        keyCode == KeyEvent.KEYCODE_MEDIA_PLAY ||
+        keyCode == KeyEvent.KEYCODE_MEDIA_PAUSE ||
         keyCode == KeyEvent.KEYCODE_BACK
 
 private fun configuredOrientation(
