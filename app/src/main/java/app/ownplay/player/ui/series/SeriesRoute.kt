@@ -142,6 +142,8 @@ internal fun SeriesRoute(
     var selectedSeasonNumber by remember(sourceId) { mutableStateOf<Int?>(null) }
     var selectedEpisodeId by remember(sourceId) { mutableStateOf<String?>(null) }
     var playingEpisode by remember(sourceId) { mutableStateOf<SeriesEpisode?>(null) }
+    var playbackReturnsToCatalog by remember(sourceId) { mutableStateOf(false) }
+    var restoreCatalogFocusAfterPlayback by remember(sourceId) { mutableStateOf(false) }
     val detailsBackOwner = remember(sourceId) { Any() }
 
     fun closeSeriesLevel() {
@@ -184,7 +186,9 @@ internal fun SeriesRoute(
         }
     }
 
-    fun playEpisode(episode: SeriesEpisode) {
+    fun playEpisode(episode: SeriesEpisode, returnFocusToCatalog: Boolean) {
+        restoreCatalogFocusAfterPlayback = false
+        playbackReturnsToCatalog = returnFocusToCatalog
         runtime.playbackController.start(
             PlaybackRequest(
                 sourceId = sourceId,
@@ -243,6 +247,7 @@ internal fun SeriesRoute(
         favoritesOnly = false
         selectedSeasonNumber = null
         selectedEpisodeId = null
+        restoreCatalogFocusAfterPlayback = false
         selectedSeries = target
         onRequestedSeriesConsumed()
     }
@@ -295,6 +300,10 @@ internal fun SeriesRoute(
             episode = currentEpisode,
             onExit = {
                 playingEpisode = null
+                if (playbackReturnsToCatalog) {
+                    restoreCatalogFocusAfterPlayback = true
+                }
+                playbackReturnsToCatalog = false
             },
             onFullscreenStateChanged = onFullscreenStateChanged,
         )
@@ -330,7 +339,7 @@ internal fun SeriesRoute(
                     featureRuntime.setFavorite(sourceId, portraitSelection.seriesId, favorite)
                 }
             },
-            onPlay = ::playEpisode,
+            onPlay = { episode -> playEpisode(episode, returnFocusToCatalog = false) },
             onDownload = ::downloadEpisode,
             onPauseDownload = ::pauseDownload,
             onResumeDownload = ::resumeDownload,
@@ -360,16 +369,19 @@ internal fun SeriesRoute(
             selectedCategoryKey = categoryKey,
             favoritesOnly = favoritesOnly,
             selectedSeriesId = selectedSeries?.seriesId,
+            restoreFocusOnEntry = restoreCatalogFocusAfterPlayback,
+            onFocusRestored = { restoreCatalogFocusAfterPlayback = false },
             onQueryChanged = { query = it },
             onCategoryChanged = { categoryKey = it },
             onFavoritesChanged = { favoritesOnly = it },
             onRefresh = ::refresh,
             onSeriesSelected = {
+                restoreCatalogFocusAfterPlayback = false
                 selectedSeasonNumber = null
                 selectedEpisodeId = null
                 selectedSeries = it
             },
-            onContinueEpisode = ::playEpisode,
+            onContinueEpisode = { episode -> playEpisode(episode, returnFocusToCatalog = true) },
             modifier = Modifier.weight(if (selectedSeries == null) 1f else 0.58f),
         )
         selectedSeries?.let { selected ->
@@ -393,7 +405,7 @@ internal fun SeriesRoute(
                         featureRuntime.setFavorite(sourceId, selected.seriesId, favorite)
                     }
                 },
-                onPlay = ::playEpisode,
+                onPlay = { episode -> playEpisode(episode, returnFocusToCatalog = false) },
                 onDownload = ::downloadEpisode,
                 onPauseDownload = ::pauseDownload,
                 onResumeDownload = ::resumeDownload,
@@ -421,6 +433,8 @@ private fun SeriesCatalogPane(
     selectedCategoryKey: String?,
     favoritesOnly: Boolean,
     selectedSeriesId: String?,
+    restoreFocusOnEntry: Boolean,
+    onFocusRestored: () -> Unit,
     onQueryChanged: (String) -> Unit,
     onCategoryChanged: (String?) -> Unit,
     onFavoritesChanged: (Boolean) -> Unit,
@@ -429,6 +443,20 @@ private fun SeriesCatalogPane(
     onContinueEpisode: (SeriesEpisode) -> Unit,
     modifier: Modifier,
 ) {
+    val configuration = LocalConfiguration.current
+    val isTelevision =
+        configuration.uiMode and Configuration.UI_MODE_TYPE_MASK == Configuration.UI_MODE_TYPE_TELEVISION
+    val catalogReturnFocusRequester = remember { FocusRequester() }
+
+    LaunchedEffect(isTelevision, restoreFocusOnEntry) {
+        if (isTelevision && restoreFocusOnEntry) {
+            catalogReturnFocusRequester.requestFocus()
+        }
+        if (restoreFocusOnEntry) {
+            onFocusRestored()
+        }
+    }
+
     Column(modifier = modifier.fillMaxSize()) {
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -467,6 +495,7 @@ private fun SeriesCatalogPane(
                 selected = selectedCategoryKey == null,
                 onClick = { onCategoryChanged(null) },
                 label = { Text("All") },
+                modifier = Modifier.focusRequester(catalogReturnFocusRequester),
             )
             FilterChip(
                 selected = favoritesOnly,
