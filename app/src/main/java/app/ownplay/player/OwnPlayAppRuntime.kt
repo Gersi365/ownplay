@@ -53,7 +53,6 @@ import app.ownplay.player.source.SourceSyncState
 import app.ownplay.player.source.credential.AndroidKeystoreCredentialStore
 import app.ownplay.player.source.management.SourceEditSnapshot
 import app.ownplay.player.source.management.SourceManagementService
-import app.ownplay.player.source.management.SourceMutationFailure
 import app.ownplay.player.source.management.SourceMutationResult
 import app.ownplay.player.source.onboarding.SourceOnboardingFailure
 import app.ownplay.player.source.onboarding.SourceOnboardingResult
@@ -545,37 +544,20 @@ class OwnPlayAppRuntime(
     }
 
     suspend fun deleteSource(sourceId: String): SourceMutationResult = refreshMutex.withLock {
-        val downloads = try {
-            offlineDownloadRepository.prepareSourceRemoval(sourceId)
-        } catch (cancelled: CancellationException) {
-            throw cancelled
-        } catch (_: Exception) {
-            return@withLock SourceMutationResult.Failure(SourceMutationFailure.PersistenceFailure)
-        }
-
         val result = sourceManagementService.delete(sourceId)
-        if (result !is SourceMutationResult.Success) {
-            offlineDownloadRepository.restoreSourceWorkAfterFailedRemoval(downloads)
-            return@withLock result
-        }
-
-        epgRepository.invalidateSource(sourceId)
-        try {
-            offlineDownloadRepository.cleanupRemovedSourceArtifacts(downloads)
-        } catch (_: Exception) {
-            // The source and its Room rows are already deleted. Worker guards also clean up
-            // active destinations if cancellation reaches them after the cascade.
-        }
-        try {
-            categoryVisibilityStore.clearSource(sourceId)
-            categoryOrderStore.clearSource(sourceId)
-        } catch (cancelled: CancellationException) {
-            throw cancelled
-        } catch (_: Exception) {
-            // The source is already deleted. Stale source-scoped preferences are inert.
-        }
-        if (_sourceSyncState.value.sourceId == sourceId) {
-            _sourceSyncState.value = SourceSyncState()
+        if (result is SourceMutationResult.Success) {
+            epgRepository.invalidateSource(sourceId)
+            try {
+                categoryVisibilityStore.clearSource(sourceId)
+                categoryOrderStore.clearSource(sourceId)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                // The source is already deleted. Stale source-scoped preferences are inert.
+            }
+            if (_sourceSyncState.value.sourceId == sourceId) {
+                _sourceSyncState.value = SourceSyncState()
+            }
         }
         result
     }
