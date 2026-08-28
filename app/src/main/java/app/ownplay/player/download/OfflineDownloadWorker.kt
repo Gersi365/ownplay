@@ -177,8 +177,11 @@ class OfflineDownloadWorker(
                 val bodyLength = body.contentLength().takeIf { it >= 0L }
                 val totalBytes = bodyLength?.plus(startBytes)
                 if (bodyLength != null) {
-                    val storageRoot = partFile.parentFile ?: applicationContext.filesDir
-                    if (!hasEnoughOfflineDownloadSpace(storageRoot.usableSpace, bodyLength)) {
+                    val availableBytes = OfflineDownloadStorage.availableBytes(
+                        context = applicationContext,
+                        usePublicDownloads = usePublicDownloads,
+                    )
+                    if (!hasEnoughOfflineDownloadSpace(availableBytes, bodyLength)) {
                         markFailed(
                             dao = dao,
                             row = initialRow,
