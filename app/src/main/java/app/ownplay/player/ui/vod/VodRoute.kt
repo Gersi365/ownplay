@@ -109,9 +109,11 @@ import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlin.math.max
 
 private const val VOD_CONTROLS_AUTO_HIDE_MILLIS = 3_000L
+private const val VOD_EXIT_PROGRESS_SAVE_TIMEOUT_MILLIS = 1_000L
 
 enum class VodSortOrder {
     PROVIDER,
@@ -1198,21 +1200,30 @@ private fun VodPlaybackScreen(
     var resumeApplied by remember(movie.movieId) { mutableStateOf(false) }
     var controlsVisible by remember(movie.movieId) { mutableStateOf(true) }
     var controlsInteractionToken by remember(movie.movieId) { mutableStateOf(0) }
+    var exitRequested by remember(movie.movieId) { mutableStateOf(false) }
 
     fun revealControls() {
         controlsVisible = true
         controlsInteractionToken += 1
     }
 
-    DisposableEffect(movie.movieId, backOwner) {
-        onFullscreenStateChanged(true)
-        PlaybackInteractionBridge.registerBackAction(backOwner, onExit)
-        onDispose {
-            val lastPosition = currentPosition
-            val lastDuration = duration.takeIf { it > 0L }
-            scope.launch {
+    fun exitPlayback() {
+        if (exitRequested) return
+        exitRequested = true
+        val lastPosition = currentPosition
+        val lastDuration = duration.takeIf { it > 0L }
+        scope.launch {
+            withTimeoutOrNull(VOD_EXIT_PROGRESS_SAVE_TIMEOUT_MILLIS) {
                 featureRuntime.saveProgress(sourceId, movie.movieId, lastPosition, lastDuration)
             }
+            onExit()
+        }
+    }
+
+    DisposableEffect(movie.movieId, backOwner) {
+        onFullscreenStateChanged(true)
+        PlaybackInteractionBridge.registerBackAction(backOwner, ::exitPlayback)
+        onDispose {
             runtime.playbackController.stopIfCurrent(
                 sourceId = sourceId,
                 channelId = movie.movieId,
@@ -1369,7 +1380,8 @@ private fun VodPlaybackScreen(
                 ) {
                     IconButton(
                         modifier = Modifier.focusRequester(backFocusRequester),
-                        onClick = onExit,
+                        enabled = !exitRequested,
+                        onClick = ::exitPlayback,
                     ) {
                         Icon(Icons.Filled.ArrowBack, contentDescription = "Back", tint = Color.White)
                     }
