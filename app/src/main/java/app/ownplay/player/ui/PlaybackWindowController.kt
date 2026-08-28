@@ -30,9 +30,10 @@ internal object PlaybackWindowPolicy {
         fullscreen: Boolean,
         appOrientation: AppOrientationMode,
         inPictureInPicture: Boolean,
+        fullscreenSensorRotationEnabled: Boolean = true,
     ): PlaybackOrientationIntent = when {
         inPictureInPicture -> PlaybackOrientationIntent.FOLLOW_SYSTEM
-        fullscreen -> PlaybackOrientationIntent.SENSOR
+        fullscreen && fullscreenSensorRotationEnabled -> PlaybackOrientationIntent.SENSOR
         appOrientation == AppOrientationMode.LANDSCAPE -> PlaybackOrientationIntent.LANDSCAPE
         else -> PlaybackOrientationIntent.PORTRAIT
     }
@@ -51,6 +52,7 @@ class PlaybackWindowController(
 
     private var isPlaying = false
     private var fullscreenRequested = false
+    private var fullscreenSensorRotationEnabled = true
     private var playbackSurfaceActive = false
     private var appOrientation = AppOrientationMode.PORTRAIT
     private var sourceRectHint: Rect? = null
@@ -85,6 +87,12 @@ class PlaybackWindowController(
     fun updateFullscreenState(fullscreen: Boolean) {
         if (fullscreenRequested == fullscreen) return
         fullscreenRequested = fullscreen
+        applyOrientationPolicy()
+    }
+
+    fun updateFullscreenSensorRotationEnabled(enabled: Boolean) {
+        if (fullscreenSensorRotationEnabled == enabled) return
+        fullscreenSensorRotationEnabled = enabled
         applyOrientationPolicy()
     }
 
@@ -132,6 +140,7 @@ class PlaybackWindowController(
     fun release() {
         isPlaying = false
         fullscreenRequested = false
+        fullscreenSensorRotationEnabled = true
         playbackSurfaceActive = false
         detachWindowRoot()
         sourceRectHint = null
@@ -186,6 +195,7 @@ class PlaybackWindowController(
                 fullscreen = fullscreenRequested,
                 appOrientation = appOrientation,
                 inPictureInPicture = _isInPictureInPictureMode.value,
+                fullscreenSensorRotationEnabled = fullscreenSensorRotationEnabled,
             )
         ) {
             PlaybackOrientationIntent.PORTRAIT -> ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
