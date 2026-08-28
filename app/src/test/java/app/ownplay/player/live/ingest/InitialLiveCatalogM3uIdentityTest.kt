@@ -1,16 +1,17 @@
 package app.ownplay.player.live.ingest
 
+import app.ownplay.player.persistence.reconcile.ChannelReconciler
 import app.ownplay.player.persistence.reconcile.ProviderIdentity
+import app.ownplay.player.persistence.reconcile.ReconciliationResult
 import app.ownplay.player.source.m3u.M3uEntry
 import app.ownplay.player.source.m3u.M3uPlaylist
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class InitialLiveCatalogM3uIdentityTest {
     @Test
-    fun duplicateTvgIdVariantsReceiveUniqueDeterministicProviderKeys() {
+    fun distinctVariantsWithSameTvgIdRemainAnExplicitCollision() {
         val hd = M3uEntry(
             displayName = "News HD",
             streamUrl = "https://example.test/live/news-hd.m3u8?token=one",
@@ -23,33 +24,33 @@ class InitialLiveCatalogM3uIdentityTest {
         )
 
         val catalog = InitialLiveCatalogFactory.fromM3u(M3uPlaylist(entries = listOf(hd, sd)))
+        val reconciliation = ChannelReconciler.plan(
+            existing = emptyList(),
+            incomingProviderKeys = catalog.channels.map(IncomingLiveChannel::providerKey),
+        )
 
         assertEquals(2, catalog.channels.size)
-        assertEquals(2, catalog.channels.map { it.providerKey }.toSet().size)
-        assertTrue(catalog.channels.any { it.providerKey == ProviderIdentity.m3u(hd) })
+        assertEquals(1, catalog.channels.map { it.providerKey }.toSet().size)
+        assertTrue(reconciliation is ReconciliationResult.DuplicateIncomingProviderKey)
     }
 
     @Test
-    fun duplicateVariantIdentityIsStableAcrossPlaylistOrdering() {
+    fun tokenOnlyDuplicateEntryIsCollapsed() {
         val first = M3uEntry(
-            displayName = "News HD",
-            streamUrl = "https://example.test/live/news-hd.m3u8?token=one",
+            displayName = "News",
+            streamUrl = "https://example.test/live/news.m3u8?token=one",
             tvgId = "NEWS.ONE",
         )
-        val second = first.copy(
-            displayName = "News SD",
-            streamUrl = "https://example.test/live/news-sd.m3u8?token=two",
+        val refreshedToken = first.copy(
+            streamUrl = "https://example.test/live/news.m3u8?token=two",
         )
 
-        val normalOrder = InitialLiveCatalogFactory.fromM3u(
-            M3uPlaylist(entries = listOf(first, second)),
-        ).channels.associate { it.providerName to it.providerKey }
-        val reversedOrder = InitialLiveCatalogFactory.fromM3u(
-            M3uPlaylist(entries = listOf(second, first)),
-        ).channels.associate { it.providerName to it.providerKey }
+        val catalog = InitialLiveCatalogFactory.fromM3u(
+            M3uPlaylist(entries = listOf(first, refreshedToken)),
+        )
 
-        assertEquals(normalOrder, reversedOrder)
-        assertNotEquals(normalOrder.getValue("News HD"), normalOrder.getValue("News SD"))
+        assertEquals(1, catalog.channels.size)
+        assertEquals(ProviderIdentity.m3u(first), catalog.channels.single().providerKey)
     }
 
     @Test
