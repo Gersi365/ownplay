@@ -2,7 +2,6 @@ package app.ownplay.player.ui
 
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Cloud
 import androidx.compose.material.icons.filled.DownloadDone
@@ -26,22 +25,22 @@ internal fun PlaybackOriginBadge(
     val label = if (offline) "OFFLINE FILE" else "STREAMING"
     Surface(
         modifier = modifier,
-        shape = RoundedCornerShape(999.dp),
+        shape = MaterialTheme.shapes.extraLarge,
         color = if (offline) {
             MaterialTheme.colorScheme.primaryContainer
         } else {
-            MaterialTheme.colorScheme.surface.copy(alpha = 0.90f)
+            MaterialTheme.colorScheme.surface.copy(alpha = 0.92f)
         },
         tonalElevation = 2.dp,
     ) {
         Row(
-            modifier = Modifier.padding(horizontal = 9.dp, vertical = 6.dp),
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Icon(
                 imageVector = if (offline) Icons.Filled.DownloadDone else Icons.Filled.Cloud,
                 contentDescription = if (offline) "Playing offline file" else "Streaming online",
-                modifier = Modifier.padding(end = 5.dp),
+                modifier = Modifier.padding(end = 6.dp),
             )
             Text(
                 text = label,
