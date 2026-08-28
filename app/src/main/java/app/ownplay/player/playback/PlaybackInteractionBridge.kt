@@ -66,6 +66,8 @@ object PlaybackInteractionBridge {
         }
     }
 
+    fun currentBoundView(): PlayerView? = boundView.get()
+
     fun seekBy(deltaMillis: Long): Boolean {
         if (deltaMillis == 0L) return false
         val player = boundView.get()?.player ?: return false
