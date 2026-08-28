@@ -8,6 +8,7 @@ import app.ownplay.player.source.UrlValidationResult
 import app.ownplay.player.source.credential.CredentialStore
 import app.ownplay.player.source.credential.XtreamCredentials
 import app.ownplay.player.source.xtream.XtreamSourceLocatorCodec
+import java.util.Locale
 import java.util.concurrent.CancellationException
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 
@@ -430,7 +431,7 @@ class LivePlaybackResolver(
 
     private fun normalizedExtension(value: String?): String = value
         ?.trim()
-        ?.lowercase()
+        ?.lowercase(Locale.ROOT)
         ?.takeIf { candidate -> candidate.matches(Regex("[a-z0-9]{1,8}")) }
         ?: "mp4"
 
