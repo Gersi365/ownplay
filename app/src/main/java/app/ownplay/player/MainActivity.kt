@@ -1,5 +1,6 @@
 package app.ownplay.player
 
+import android.annotation.SuppressLint
 import android.content.res.Configuration
 import android.os.Bundle
 import android.os.SystemClock
@@ -292,6 +293,7 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    @SuppressLint("RestrictedApi")
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
         if (tvRemoteGuardEnabled && event.isRemoteActivationKey()) {
             when (event.action) {
