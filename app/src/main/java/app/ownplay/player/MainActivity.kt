@@ -385,6 +385,9 @@ private fun KeyEvent.isRemoteActivationKey(): Boolean =
     keyCode == KeyEvent.KEYCODE_DPAD_CENTER ||
         keyCode == KeyEvent.KEYCODE_ENTER ||
         keyCode == KeyEvent.KEYCODE_NUMPAD_ENTER ||
+        keyCode == KeyEvent.KEYCODE_BUTTON_A ||
+        keyCode == KeyEvent.KEYCODE_BUTTON_SELECT ||
+        keyCode == KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE ||
         keyCode == KeyEvent.KEYCODE_BACK
 
 private fun configuredOrientation(
