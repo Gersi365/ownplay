@@ -8,10 +8,15 @@ import org.junit.Test
 
 class OfflineDownloadStorageTest {
     @Test
-    fun contentUriIsRecognizedAsPhoneDownloadsLocation() {
+    fun mediaStoreUriIsRecognizedAsPhoneDownloadsLocation() {
         assertTrue(
             OfflineDownloadStorage.isPublicDownloadsLocation(
                 "content://media/external/downloads/42",
+            ),
+        )
+        assertFalse(
+            OfflineDownloadStorage.isPublicDownloadsLocation(
+                "content://com.example.documents/document/42",
             ),
         )
         assertFalse(OfflineDownloadStorage.isPublicDownloadsLocation("offline/movie.mp4"))
