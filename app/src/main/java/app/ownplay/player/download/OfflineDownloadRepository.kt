@@ -1,6 +1,7 @@
 package app.ownplay.player.download
 
 import android.content.Context
+import androidx.work.BackoffPolicy
 import androidx.work.Constraints
 import androidx.work.ExistingWorkPolicy
 import androidx.work.NetworkType
@@ -17,6 +18,7 @@ import app.ownplay.player.playback.ResolvedPlaybackLocator
 import app.ownplay.player.playback.ResolvedPlaybackOrigin
 import java.io.File
 import java.util.UUID
+import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 
@@ -258,6 +260,11 @@ class OfflineDownloadRepository(
             .build()
         val request = OneTimeWorkRequestBuilder<OfflineDownloadWorker>()
             .setConstraints(constraints)
+            .setBackoffCriteria(
+                BackoffPolicy.EXPONENTIAL,
+                RETRY_BACKOFF_SECONDS,
+                TimeUnit.SECONDS,
+            )
             .setInputData(workDataOf(OfflineDownloadWorker.KEY_DOWNLOAD_ID to downloadId))
             .build()
         workManager.enqueueUniqueWork(
@@ -297,6 +304,8 @@ class OfflineDownloadRepository(
     )
 
     companion object {
+        private const val RETRY_BACKOFF_SECONDS = 30L
+
         fun workName(downloadId: String): String = "ownplay-offline-download-$downloadId"
     }
 }
