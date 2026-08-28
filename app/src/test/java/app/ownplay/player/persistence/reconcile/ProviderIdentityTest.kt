@@ -29,7 +29,7 @@ class ProviderIdentityTest {
     }
 
     @Test
-    fun m3uVariantIdentityIgnoresChangingQueryToken() {
+    fun m3uVariantFingerprintIgnoresChangingQueryToken() {
         val first = M3uEntry(
             displayName = "News HD",
             streamUrl = "https://example.test/live/news-hd.m3u8?token=secret-one",
@@ -40,12 +40,15 @@ class ProviderIdentityTest {
             streamUrl = "https://example.test/live/news-hd.m3u8?token=secret-two",
         )
 
-        assertEquals(ProviderIdentity.m3uVariant(first), ProviderIdentity.m3uVariant(refreshed))
-        assertFalse(ProviderIdentity.m3uVariant(first).contains("secret-one"))
+        assertEquals(
+            ProviderIdentity.m3uVariantFingerprint(first),
+            ProviderIdentity.m3uVariantFingerprint(refreshed),
+        )
+        assertFalse(ProviderIdentity.m3uVariantFingerprint(first).contains("secret-one"))
     }
 
     @Test
-    fun m3uVariantIdentitySeparatesDifferentStreamPathsForSameTvgId() {
+    fun m3uVariantFingerprintSeparatesDifferentStreamPathsForSameTvgId() {
         val hd = M3uEntry(
             displayName = "News HD",
             streamUrl = "https://example.test/live/news-hd.m3u8",
@@ -57,7 +60,10 @@ class ProviderIdentityTest {
         )
 
         assertEquals(ProviderIdentity.m3u(hd), ProviderIdentity.m3u(sd))
-        assertNotEquals(ProviderIdentity.m3uVariant(hd), ProviderIdentity.m3uVariant(sd))
+        assertNotEquals(
+            ProviderIdentity.m3uVariantFingerprint(hd),
+            ProviderIdentity.m3uVariantFingerprint(sd),
+        )
     }
 
     @Test
