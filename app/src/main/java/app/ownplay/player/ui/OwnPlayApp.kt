@@ -47,6 +47,8 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import app.ownplay.player.OwnPlayAppRuntime
+import app.ownplay.player.playback.LiveFullscreenEntryReason
+import app.ownplay.player.playback.LivePlaybackPresentationPolicy
 import app.ownplay.player.playback.LivePlaybackSelection
 import app.ownplay.player.source.SourceSyncStage
 import app.ownplay.player.source.SourceSyncState
@@ -67,8 +69,10 @@ private enum class OwnPlaySection {
 @Composable
 fun OwnPlayApp(
     runtime: OwnPlayAppRuntime,
+    rotationFullscreenEnabled: Boolean = false,
     onPlaybackFullscreenChanged: (Boolean) -> Unit = {},
     onPlaybackSurfaceActiveChanged: (Boolean) -> Unit = {},
+    onLivePreviewActiveChanged: (Boolean) -> Unit = {},
 ) {
     val configuration = LocalConfiguration.current
     val summaries by runtime.observeSourceSummaries().collectAsState(initial = emptyList())
@@ -81,6 +85,7 @@ fun OwnPlayApp(
     var activeSourceId by remember { mutableStateOf<String?>(null) }
     var activeSelection by remember { mutableStateOf<LivePlaybackSelection?>(null) }
     var fullscreenSelection by remember { mutableStateOf<LivePlaybackSelection?>(null) }
+    var fullscreenEntryReason by remember { mutableStateOf<LiveFullscreenEntryReason?>(null) }
     var requestedVodMovieId by remember { mutableStateOf<String?>(null) }
     var requestedSeriesId by remember { mutableStateOf<String?>(null) }
     var movieDetailReturnToLibrary by remember { mutableStateOf(false) }
@@ -88,6 +93,27 @@ fun OwnPlayApp(
     var vodFullscreen by remember { mutableStateOf(false) }
     var seriesFullscreen by remember { mutableStateOf(false) }
     var libraryFullscreen by remember { mutableStateOf(false) }
+
+    fun openLiveFullscreen(
+        selection: LivePlaybackSelection,
+        reason: LiveFullscreenEntryReason,
+    ) {
+        runtime.playbackController.stop()
+        activeSelection = selection
+        fullscreenEntryReason = reason
+        fullscreenSelection = selection
+        runtime.playbackController.start(selection.request)
+    }
+
+    fun returnLiveToPreview(selection: LivePlaybackSelection) {
+        runtime.playbackController.stop()
+        activeSourceId = selection.request.sourceId
+        section = OwnPlaySection.LIVE
+        activeSelection = selection
+        fullscreenSelection = null
+        fullscreenEntryReason = null
+        runtime.playbackController.start(selection.request)
+    }
 
     LaunchedEffect(summaries) {
         val ids = summaries.map { it.sourceId }.toSet()
@@ -100,6 +126,7 @@ fun OwnPlayApp(
         if (selectionSourceId != null && selectionSourceId !in ids) {
             activeSelection = null
             fullscreenSelection = null
+            fullscreenEntryReason = null
             runtime.playbackController.stop()
         }
         if (activeSourceId !in ids) {
@@ -114,6 +141,7 @@ fun OwnPlayApp(
         if (target != OwnPlaySection.LIVE && activeSelection != null) {
             activeSelection = null
             fullscreenSelection = null
+            fullscreenEntryReason = null
             runtime.playbackController.stop()
         }
         if (target != OwnPlaySection.MOVIES) {
@@ -150,12 +178,58 @@ fun OwnPlayApp(
             vodFullscreen ||
             seriesFullscreen ||
             libraryFullscreen
+    val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
+    val isPortrait = configuration.orientation == Configuration.ORIENTATION_PORTRAIT
     val contentLandscape =
-        configuration.orientation == Configuration.ORIENTATION_LANDSCAPE &&
+        isLandscape &&
             (section == OwnPlaySection.LIVE || section == OwnPlaySection.MOVIES)
 
     LaunchedEffect(playbackSurfaceActive) {
         onPlaybackSurfaceActiveChanged(playbackSurfaceActive)
+    }
+
+    LaunchedEffect(previewActive, rotationFullscreenEnabled) {
+        onLivePreviewActiveChanged(previewActive && rotationFullscreenEnabled)
+    }
+
+    LaunchedEffect(fullscreenSelection != null) {
+        onPlaybackFullscreenChanged(fullscreenSelection != null)
+    }
+
+    LaunchedEffect(
+        rotationFullscreenEnabled,
+        isLandscape,
+        isPortrait,
+        activeSelection?.request?.channelId,
+        fullscreenSelection?.request?.channelId,
+        fullscreenEntryReason,
+    ) {
+        val selected = activeSelection
+        if (
+            LivePlaybackPresentationPolicy.shouldEnterFullscreenFromRotation(
+                rotationFullscreenEnabled = rotationFullscreenEnabled,
+                isLandscape = isLandscape,
+                hasSelection = selected != null,
+                alreadyFullscreen = fullscreenSelection != null,
+            )
+        ) {
+            selected?.let { selection ->
+                openLiveFullscreen(selection, LiveFullscreenEntryReason.ROTATION)
+            }
+            return@LaunchedEffect
+        }
+
+        val opened = fullscreenSelection
+        if (
+            LivePlaybackPresentationPolicy.shouldReturnToPreviewFromRotation(
+                rotationFullscreenEnabled = rotationFullscreenEnabled,
+                isPortrait = isPortrait,
+                entryReason = fullscreenEntryReason,
+                isFullscreen = opened != null,
+            )
+        ) {
+            opened?.let(::returnLiveToPreview)
+        }
     }
 
     val openedFullscreen = fullscreenSelection
@@ -178,11 +252,9 @@ fun OwnPlayApp(
                 }
             },
             onReturnToChannels = {
-                activeSourceId = openedFullscreen.request.sourceId
-                section = OwnPlaySection.LIVE
-                fullscreenSelection = null
+                returnLiveToPreview(openedFullscreen)
             },
-            onFullscreenStateChanged = onPlaybackFullscreenChanged,
+            onFullscreenStateChanged = {},
         )
         return
     }
@@ -319,7 +391,12 @@ fun OwnPlayApp(
                                     activeSelection = null
                                     runtime.playbackController.stop()
                                 },
-                                onOpenFullscreen = { selection -> fullscreenSelection = selection },
+                                onOpenFullscreen = { selection ->
+                                    openLiveFullscreen(
+                                        selection = selection,
+                                        reason = LiveFullscreenEntryReason.USER,
+                                    )
+                                },
                                 onNavigatePreview = { direction ->
                                     activeSelection
                                         ?.navigate(direction)
@@ -401,6 +478,7 @@ fun OwnPlayApp(
                             if (sourceId != activeSourceId) {
                                 activeSelection = null
                                 fullscreenSelection = null
+                                fullscreenEntryReason = null
                                 runtime.playbackController.stop()
                             }
                             activeSourceId = sourceId
@@ -408,6 +486,8 @@ fun OwnPlayApp(
                         },
                         onStopPlayback = {
                             activeSelection = null
+                            fullscreenSelection = null
+                            fullscreenEntryReason = null
                             runtime.playbackController.stop()
                         },
                     )
