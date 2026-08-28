@@ -24,6 +24,7 @@ import app.ownplay.player.backup.BackupRestoreFailureReason
 import app.ownplay.player.backup.BackupRestoreResult
 import app.ownplay.player.backup.PersonalizationBackupService
 import java.io.IOException
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -80,7 +81,7 @@ internal fun BackupRestoreSettingsContent() {
             status = "Validating backup…"
             val raw = readBackup(context, uri)
             status = if (raw == null) {
-                "Backup could not be read or is larger than 5 MB."
+                "Backup could not be read or exceeds the supported size limit."
             } else {
                 restoreStatus(service.restoreBackup(raw))
             }
@@ -125,6 +126,8 @@ private suspend fun writeBackup(
         val stream = context.contentResolver.openOutputStream(uri, "wt") ?: return@withContext false
         stream.bufferedWriter(Charsets.UTF_8).use { writer -> writer.write(content) }
         true
+    } catch (cancelled: CancellationException) {
+        throw cancelled
     } catch (_: Exception) {
         false
     }
@@ -149,6 +152,8 @@ private suspend fun readBackup(
             }
             output.toString()
         }
+    } catch (cancelled: CancellationException) {
+        throw cancelled
     } catch (_: Exception) {
         null
     }
