@@ -21,6 +21,20 @@ class EpgCurrentProgramIndexTest {
     }
 
     @Test
+    fun overlappingProgramsPreferTheOneThatStartedMostRecently() {
+        val older = program("Older overlap", 100, 300)
+        val newer = program("Newer overlap", 200, 280)
+
+        assertSame(
+            newer,
+            EpgCurrentProgramIndex.currentProgram(
+                programs = listOf(older, newer),
+                nowEpochSeconds = 250,
+            ),
+        )
+    }
+
+    @Test
     fun endBoundaryFutureAndIncompleteProgramsAreNotCurrent() {
         val result = EpgCurrentProgramIndex.currentByChannel(
             channelIdsByEpgChannelId = mapOf(
