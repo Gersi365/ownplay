@@ -67,13 +67,14 @@ import app.ownplay.player.series.SeriesFeatureRuntime
 import app.ownplay.player.series.SeriesSeason
 import app.ownplay.player.source.SourceResult
 import app.ownplay.player.ui.vod.RemotePoster
+import java.util.Locale
 
 @Composable
 internal fun LibrarySeriesCard(
     group: LibrarySeriesGroup,
     onOpenOfflineSeries: () -> Unit,
 ) {
-    val completed = group.episodes.count { it.state == DownloadStates.COMPLETED }
+    val completed = group.offlineEpisodeCount
     val active = group.episodes.count {
         it.state == DownloadStates.DOWNLOADING || it.state == DownloadStates.QUEUED
     }
@@ -276,7 +277,7 @@ internal fun LibrarySeriesDetailScreen(
                 .sortedWith(
                     compareBy<SeriesEpisode>(
                         { it.episodeNumber },
-                        { it.title.lowercase() },
+                        { it.title.lowercase(Locale.ROOT) },
                     ),
                 )
                 .filter { episode -> showAll || managedByEpisodeId.containsKey(episode.episodeId) }
@@ -358,7 +359,10 @@ internal fun LibrarySeriesDetailScreen(
                     text = when {
                         selectedEpisode != null -> if (selectedEpisode.download != null) "Managed episode" else "Series episode"
                         selectedSeason != null -> if (selectedSeason.managedCount > 0) "Managed season" else "Series season"
-                        else -> "Offline series"
+                        else -> when (group.availability) {
+                            LibrarySeriesAvailability.OFFLINE -> "Offline series"
+                            LibrarySeriesAvailability.MANAGED -> "Series downloads"
+                        }
                     },
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -427,7 +431,11 @@ internal fun LibrarySeriesDetailScreen(
                 ) {
                     Icon(Icons.Filled.ErrorOutline, contentDescription = null)
                     Text(
-                        text = "The full series could not be loaded. Your offline library remains available.",
+                        text = if (group.hasOfflineEpisodes) {
+                            "The full series could not be loaded. Your offline downloads remain available."
+                        } else {
+                            "The full series could not be loaded. Your Library downloads remain available."
+                        },
                         style = MaterialTheme.typography.bodySmall,
                         modifier = Modifier.weight(1f),
                     )
@@ -549,12 +557,15 @@ private fun OfflineSeriesHero(
     onToggleShowAll: () -> Unit,
     onOpenFullSeries: (() -> Unit)?,
 ) {
-    val completed = group.episodes.count { it.state == DownloadStates.COMPLETED }
+    val completed = group.offlineEpisodeCount
 
     OfflineHeroShell(
         posterUrl = group.posterUrl,
         title = group.title,
-        eyebrow = "OFFLINE SERIES",
+        eyebrow = when (group.availability) {
+            LibrarySeriesAvailability.OFFLINE -> "OFFLINE SERIES"
+            LibrarySeriesAvailability.MANAGED -> "SERIES DOWNLOADS"
+        },
         meta = buildString {
             append("$completed downloaded")
             if (group.episodeCount != completed) append(" · ${group.episodeCount} managed")
@@ -589,7 +600,7 @@ private fun OfflineSeasonHero(
     OfflineHeroShell(
         posterUrl = model.posterUrl,
         title = model.title,
-        eyebrow = seriesTitle.uppercase(),
+        eyebrow = seriesTitle.uppercase(Locale.ROOT),
         meta = "${model.managedCount}/${model.totalCount} in Library",
         secondary = if (model.managedCount == 0) {
             "No managed episodes yet"
@@ -635,7 +646,7 @@ private fun OfflineEpisodeHero(
             DownloadStates.COMPLETED -> Button(onClick = requireNotNull(onPlay)) {
                 Icon(Icons.Filled.PlayArrow, contentDescription = null, modifier = Modifier.size(18.dp))
                 Spacer(Modifier.width(5.dp))
-                Text("Play")
+                Text("Play Offline")
             }
 
             DownloadStates.DOWNLOADING,
