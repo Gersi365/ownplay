@@ -146,8 +146,6 @@ class PlaybackWindowController(
         playbackSurfaceActive = false
         detachWindowRoot()
         sourceRectHint = null
-        updatePictureInPictureParams()
-        applyOrientationPolicy()
     }
 
     private fun pipEligible(): Boolean = PlaybackWindowPolicy.isPipEligible(
