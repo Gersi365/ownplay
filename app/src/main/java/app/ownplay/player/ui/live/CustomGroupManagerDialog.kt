@@ -10,6 +10,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -88,11 +89,11 @@ fun CustomGroupManagerDialog(
         groupToDelete != null -> {
             AlertDialog(
                 onDismissRequest = { deleteTarget = null },
-                title = { Text("Delete group?") },
+                title = { Text("Delete ${groupToDelete.name}?") },
                 text = {
                     Text(
-                        "This removes the local group and its memberships. " +
-                            "Channels and provider data are not deleted.",
+                        "The group and its local memberships will be removed. " +
+                            "Channels and provider data stay unchanged.",
                     )
                 },
                 confirmButton = {
@@ -102,7 +103,10 @@ fun CustomGroupManagerDialog(
                             deleteTarget = null
                         },
                     ) {
-                        Text("Delete")
+                        Text(
+                            text = "Delete group",
+                            color = MaterialTheme.colorScheme.error,
+                        )
                     }
                 },
                 dismissButton = {
@@ -116,17 +120,22 @@ fun CustomGroupManagerDialog(
         else -> {
             AlertDialog(
                 onDismissRequest = onDismiss,
-                title = { Text("Custom groups") },
+                title = { Text("Channel groups") },
                 text = {
                     Column(
                         modifier = Modifier.fillMaxWidth(),
                         verticalArrangement = Arrangement.spacedBy(12.dp),
                     ) {
+                        Text(
+                            text = "Create local groups to organize channels without changing provider data.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
                         OutlinedTextField(
                             value = newGroupName,
                             onValueChange = { newGroupName = it },
                             modifier = Modifier.fillMaxWidth(),
-                            label = { Text("New group") },
+                            label = { Text("Group name") },
                             singleLine = true,
                         )
                         TextButton(
@@ -140,13 +149,16 @@ fun CustomGroupManagerDialog(
                             enabled = newGroupName.isNotBlank(),
                             modifier = Modifier.align(Alignment.End),
                         ) {
-                            Text("Create")
+                            Text("Create group")
                         }
 
                         HorizontalDivider()
 
                         if (groups.isEmpty()) {
-                            Text("No custom groups yet.")
+                            Text(
+                                text = "No channel groups yet.",
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
                         } else {
                             LazyColumn(
                                 modifier = Modifier
@@ -182,7 +194,10 @@ fun CustomGroupManagerDialog(
                                             TextButton(
                                                 onClick = { deleteTarget = group },
                                             ) {
-                                                Text("Delete")
+                                                Text(
+                                                    text = "Delete",
+                                                    color = MaterialTheme.colorScheme.error,
+                                                )
                                             }
                                         }
                                     }
