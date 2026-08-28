@@ -24,6 +24,7 @@ import java.util.concurrent.CancellationException
 import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
+import okhttp3.Call
 import okhttp3.OkHttpClient
 import okhttp3.Request
 
@@ -31,6 +32,14 @@ class OfflineDownloadWorker(
     appContext: Context,
     workerParams: WorkerParameters,
 ) : CoroutineWorker(appContext, workerParams) {
+    @Volatile
+    private var activeCall: Call? = null
+
+    override fun onStopped() {
+        activeCall?.cancel()
+        super.onStopped()
+    }
+
     override suspend fun doWork(): Result {
         val downloadId = inputData.getString(KEY_DOWNLOAD_ID) ?: return Result.failure()
         val database = OwnPlayDatabase.create(applicationContext)
@@ -118,7 +127,9 @@ class OfflineDownloadWorker(
             if (existingBytes > 0L) {
                 requestBuilder.header("Range", "bytes=$existingBytes-")
             }
-            val response = httpClient.newCall(requestBuilder.build()).awaitResponse()
+            val call = httpClient.newCall(requestBuilder.build())
+            activeCall = call
+            val response = call.awaitResponse()
             response.use { opened ->
                 if (!opened.isSuccessful) {
                     if (shouldRestartOfflineDownloadFromZero(existingBytes, opened.code)) {
@@ -399,6 +410,7 @@ class OfflineDownloadWorker(
             }
             return if (retry) Result.retry() else Result.failure()
         } finally {
+            activeCall = null
             database.close()
         }
     }
