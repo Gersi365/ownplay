@@ -258,10 +258,10 @@ class XtreamSeriesClient(
             ?.takeUnless { it.equals("null", ignoreCase = true) }
     }
 
-    private fun JsonObject.int(key: String): Int? = text(key)?.toIntOrNull()
-    private fun JsonObject.long(key: String): Long? = text(key)?.toLongOrNull()
+    private fun JsonObject.int(key: String): Int? = text(key)?.trim()?.toIntOrNull()
+    private fun JsonObject.long(key: String): Long? = text(key)?.trim()?.toLongOrNull()
     private fun JsonObject.double(key: String): Double? =
-        text(key)?.toDoubleOrNull()?.takeIf { it.isFinite() }
+        text(key)?.trim()?.toDoubleOrNull()?.takeIf { it.isFinite() }
     private fun JsonObject.stringList(key: String): List<String> = when (val element = this[key]) {
         is JsonArray -> element.mapNotNull { item ->
             (item as? JsonPrimitive)?.contentOrNull?.takeIf(String::isNotBlank)
