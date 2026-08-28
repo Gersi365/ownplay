@@ -58,22 +58,32 @@ private class TvRemoteIndicationNode(
     }
 
     override fun ContentDrawScope.draw() {
+        val cornerRadius = CornerRadius(12.dp.toPx())
+
+        if (focusCount > 0) {
+            drawRoundRect(
+                color = focusColor,
+                alpha = 0.10f,
+                cornerRadius = cornerRadius,
+            )
+        }
+
         drawContent()
 
         if (pressCount > 0) {
             drawRoundRect(
                 color = pressedColor,
-                alpha = 0.16f,
-                cornerRadius = CornerRadius(10.dp.toPx()),
+                alpha = 0.18f,
+                cornerRadius = cornerRadius,
             )
         }
 
         if (focusCount > 0) {
-            val strokeWidth = 3.dp.toPx()
             drawRoundRect(
                 color = focusColor,
-                cornerRadius = CornerRadius(10.dp.toPx()),
-                style = Stroke(width = strokeWidth),
+                alpha = 0.98f,
+                cornerRadius = cornerRadius,
+                style = Stroke(width = 3.dp.toPx()),
             )
         }
     }
