@@ -242,7 +242,7 @@ class MainActivity : ComponentActivity() {
                                             if (!isFullscreen) hideStatusBar()
                                         },
                                         backContentDescription = "Back to Downloads",
-                                        contextLabel = "Downloads · offline copy",
+                                        contextLabel = "Downloads",
                                     )
                                     playbackOrigin?.let { origin ->
                                         PlaybackOriginBadge(
