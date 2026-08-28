@@ -1,12 +1,12 @@
 package app.ownplay.player.ui
 
+import android.content.res.Configuration
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -16,9 +16,17 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+
+@Composable
+private fun usesTelevisionSpacing(): Boolean {
+    val configuration = LocalConfiguration.current
+    return configuration.uiMode and Configuration.UI_MODE_TYPE_MASK ==
+        Configuration.UI_MODE_TYPE_TELEVISION
+}
 
 @Composable
 internal fun OrientationButton(
@@ -27,17 +35,18 @@ internal fun OrientationButton(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val controlHeight = if (usesTelevisionSpacing()) 48.dp else 38.dp
     if (selected) {
         Button(
             onClick = onClick,
-            modifier = modifier.height(38.dp),
+            modifier = modifier.height(controlHeight),
         ) {
             Text(label, style = MaterialTheme.typography.labelLarge)
         }
     } else {
         OutlinedButton(
             onClick = onClick,
-            modifier = modifier.height(38.dp),
+            modifier = modifier.height(controlHeight),
         ) {
             Text(label, style = MaterialTheme.typography.labelLarge)
         }
@@ -50,17 +59,21 @@ internal fun CompactSettingsSection(
     subtitle: String,
     content: @Composable () -> Unit,
 ) {
+    val spacious = usesTelevisionSpacing()
     Surface(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(14.dp),
+        shape = MaterialTheme.shapes.medium,
         color = MaterialTheme.colorScheme.surface,
         tonalElevation = 1.dp,
     ) {
         Column(
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
-            verticalArrangement = Arrangement.spacedBy(7.dp),
+            modifier = Modifier.padding(
+                horizontal = if (spacious) 18.dp else 12.dp,
+                vertical = if (spacious) 14.dp else 10.dp,
+            ),
+            verticalArrangement = Arrangement.spacedBy(if (spacious) 10.dp else 7.dp),
         ) {
-            Column(verticalArrangement = Arrangement.spacedBy(1.dp)) {
+            Column(verticalArrangement = Arrangement.spacedBy(if (spacious) 3.dp else 1.dp)) {
                 Text(
                     text = title,
                     style = MaterialTheme.typography.titleSmall,
@@ -82,12 +95,13 @@ internal fun SettingValueRow(
     label: String,
     value: String,
 ) {
+    val spacious = usesTelevisionSpacing()
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = 1.dp),
+            .padding(vertical = if (spacious) 4.dp else 1.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        horizontalArrangement = Arrangement.spacedBy(if (spacious) 16.dp else 12.dp),
     ) {
         Text(
             text = label,
@@ -112,14 +126,17 @@ internal fun SettingsActionRow(
     actionLabel: String,
     onClick: () -> Unit,
 ) {
+    val spacious = usesTelevisionSpacing()
     Row(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = if (spacious) 3.dp else 0.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        horizontalArrangement = Arrangement.spacedBy(if (spacious) 12.dp else 8.dp),
     ) {
         Column(
             modifier = Modifier.weight(1f),
-            verticalArrangement = Arrangement.spacedBy(1.dp),
+            verticalArrangement = Arrangement.spacedBy(if (spacious) 3.dp else 1.dp),
         ) {
             Text(
                 text = title,
