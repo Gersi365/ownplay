@@ -52,7 +52,8 @@ internal object OfflineDownloadResponsePolicy {
         if (normalizedLength != null && normalizedLength != bodyBytes) {
             return invalidPartialResponse(normalizedExisting)
         }
-        if (parsed.total != null && parsed.total <= parsed.end) {
+        val totalBytes = parsed.total ?: return invalidPartialResponse(normalizedExisting)
+        if (totalBytes <= parsed.end) {
             return invalidPartialResponse(normalizedExisting)
         }
 
@@ -62,9 +63,7 @@ internal object OfflineDownloadResponsePolicy {
             } else {
                 OfflineDownloadWriteDisposition.WRITE_FROM_ZERO
             },
-            expectedTotalBytes = parsed.total ?: normalizedLength?.let { length ->
-                safeAdd(normalizedExisting, length)
-            },
+            expectedTotalBytes = totalBytes,
         )
     }
 
@@ -88,11 +87,6 @@ internal object OfflineDownloadResponsePolicy {
             ?.toLongOrNull()
             ?: if (match.groupValues[3] == "*") null else return null
         return ParsedContentRange(start = start, end = end, total = total)
-    }
-
-    private fun safeAdd(left: Long, right: Long): Long? {
-        if (right > Long.MAX_VALUE - left) return null
-        return left + right
     }
 
     private data class ParsedContentRange(
