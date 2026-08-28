@@ -230,97 +230,103 @@ class OwnPlayAppRuntime(
         password: String,
         allowCleartext: Boolean = false,
     ): SourceOnboardingResult = withContext(Dispatchers.IO) {
-        _sourceSyncState.value = SourceSyncState(
-            sourceName = name.trim().ifBlank { "Xtream" },
-            stage = SourceSyncStage.LoadingChannels,
-        )
-        val result = sourceOnboardingService.addXtream(
-            name = name,
-            serverUrl = serverUrl,
-            username = username,
-            password = password,
-            allowCleartext = allowCleartext,
-        )
-        when (result) {
-            is SourceOnboardingResult.Success -> {
-                loadEpgAfterChannels(
-                    sourceId = result.sourceId,
-                    sourceName = name.trim(),
-                    channelCount = result.channelCount,
-                )
-                runtimeScope.launch {
-                    refreshMutex.withLock {
-                        if (sourceExists(result.sourceId)) {
-                            refreshXtreamMediaCatalogs(result.sourceId)
+        refreshMutex.withLock {
+            _sourceSyncState.value = SourceSyncState(
+                sourceName = name.trim().ifBlank { "Xtream" },
+                stage = SourceSyncStage.LoadingChannels,
+            )
+            val result = sourceOnboardingService.addXtream(
+                name = name,
+                serverUrl = serverUrl,
+                username = username,
+                password = password,
+                allowCleartext = allowCleartext,
+            )
+            when (result) {
+                is SourceOnboardingResult.Success -> {
+                    loadEpgAfterChannels(
+                        sourceId = result.sourceId,
+                        sourceName = name.trim(),
+                        channelCount = result.channelCount,
+                    )
+                    runtimeScope.launch {
+                        refreshMutex.withLock {
+                            if (sourceExists(result.sourceId)) {
+                                refreshXtreamMediaCatalogs(result.sourceId)
+                            }
                         }
                     }
                 }
+                is SourceOnboardingResult.Failure -> {
+                    _sourceSyncState.value = SourceSyncState(
+                        sourceName = name.trim().ifBlank { "Xtream" },
+                        stage = SourceSyncStage.ChannelsFailed,
+                        failure = result.reason.toSourceSyncFailure(),
+                    )
+                }
             }
-            is SourceOnboardingResult.Failure -> {
-                _sourceSyncState.value = SourceSyncState(
-                    sourceName = name.trim().ifBlank { "Xtream" },
-                    stage = SourceSyncStage.ChannelsFailed,
-                    failure = result.reason.toSourceSyncFailure(),
-                )
-            }
+            result
         }
-        result
     }
 
     suspend fun addRemoteM3uSource(
         name: String,
         playlistUrl: String,
     ): SourceOnboardingResult = withContext(Dispatchers.IO) {
-        _sourceSyncState.value = SourceSyncState(
-            sourceName = name.trim().ifBlank { "M3U" },
-            stage = SourceSyncStage.LoadingChannels,
-        )
-        val result = sourceOnboardingService.addRemoteM3u(
-            name = name,
-            playlistUrl = playlistUrl,
-        )
-        _sourceSyncState.value = when (result) {
-            is SourceOnboardingResult.Success -> SourceSyncState(
-                sourceId = result.sourceId,
-                sourceName = name.trim(),
-                stage = SourceSyncStage.Ready,
-                channelCount = result.channelCount,
-            )
-            is SourceOnboardingResult.Failure -> SourceSyncState(
+        refreshMutex.withLock {
+            _sourceSyncState.value = SourceSyncState(
                 sourceName = name.trim().ifBlank { "M3U" },
-                stage = SourceSyncStage.ChannelsFailed,
-                failure = result.reason.toSourceSyncFailure(),
+                stage = SourceSyncStage.LoadingChannels,
             )
+            val result = sourceOnboardingService.addRemoteM3u(
+                name = name,
+                playlistUrl = playlistUrl,
+            )
+            _sourceSyncState.value = when (result) {
+                is SourceOnboardingResult.Success -> SourceSyncState(
+                    sourceId = result.sourceId,
+                    sourceName = name.trim(),
+                    stage = SourceSyncStage.Ready,
+                    channelCount = result.channelCount,
+                )
+                is SourceOnboardingResult.Failure -> SourceSyncState(
+                    sourceName = name.trim().ifBlank { "M3U" },
+                    stage = SourceSyncStage.ChannelsFailed,
+                    failure = result.reason.toSourceSyncFailure(),
+                )
+            }
+            result
         }
-        result
     }
 
     suspend fun addLocalM3uSource(
         name: String,
         documentUri: String,
     ): SourceOnboardingResult = withContext(Dispatchers.IO) {
-        _sourceSyncState.value = SourceSyncState(
-            sourceName = name.trim().ifBlank { "Local M3U" },
-            stage = SourceSyncStage.LoadingChannels,
-        )
-        val result = sourceOnboardingService.addLocalM3u(
-            name = name,
-            documentUri = documentUri,
-        )
-        _sourceSyncState.value = when (result) {
-            is SourceOnboardingResult.Success -> SourceSyncState(
-                sourceId = result.sourceId,
-                sourceName = name.trim(),
-                stage = SourceSyncStage.Ready,
-                channelCount = result.channelCount,
-            )
-            is SourceOnboardingResult.Failure -> SourceSyncState(
+        refreshMutex.withLock {
+            _sourceSyncState.value = SourceSyncState(
                 sourceName = name.trim().ifBlank { "Local M3U" },
-                stage = SourceSyncStage.ChannelsFailed,
-                failure = result.reason.toSourceSyncFailure(),
+                stage = SourceSyncStage.LoadingChannels,
             )
+            val result = sourceOnboardingService.addLocalM3u(
+                name = name,
+                documentUri = documentUri,
+            )
+            _sourceSyncState.value = when (result) {
+                is SourceOnboardingResult.Success -> SourceSyncState(
+                    sourceId = result.sourceId,
+                    sourceName = name.trim(),
+                    stage = SourceSyncStage.Ready,
+                    channelCount = result.channelCount,
+                )
+                is SourceOnboardingResult.Failure -> SourceSyncState(
+                    sourceName = name.trim().ifBlank { "Local M3U" },
+                    stage = SourceSyncStage.ChannelsFailed,
+                    failure = result.reason.toSourceSyncFailure(),
+                )
+            }
+            result
         }
-        result
     }
 
     suspend fun refreshSource(sourceId: String) {
@@ -519,7 +525,9 @@ class OwnPlayAppRuntime(
     suspend fun renameSource(
         sourceId: String,
         name: String,
-    ): SourceMutationResult = sourceManagementService.rename(sourceId, name)
+    ): SourceMutationResult = refreshMutex.withLock {
+        sourceManagementService.rename(sourceId, name)
+    }
 
     suspend fun updateXtreamSource(
         sourceId: String,
@@ -529,14 +537,16 @@ class OwnPlayAppRuntime(
         replacementPassword: String,
         allowCleartext: Boolean,
     ): SourceMutationResult {
-        val result = sourceManagementService.updateXtream(
-            sourceId = sourceId,
-            name = name,
-            serverUrl = serverUrl,
-            replacementUsername = replacementUsername,
-            replacementPassword = replacementPassword,
-            allowCleartext = allowCleartext,
-        )
+        val result = refreshMutex.withLock {
+            sourceManagementService.updateXtream(
+                sourceId = sourceId,
+                name = name,
+                serverUrl = serverUrl,
+                replacementUsername = replacementUsername,
+                replacementPassword = replacementPassword,
+                allowCleartext = allowCleartext,
+            )
+        }
         if (result is SourceMutationResult.Success) {
             refreshSource(sourceId)
         }
