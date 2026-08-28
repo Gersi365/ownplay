@@ -71,8 +71,9 @@ class PlaybackWindowController(
         detachWindowRoot()
         windowRoot = view
         val listener = View.OnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
-            updateSourceRectHint()
-            updatePictureInPictureParams()
+            if (updateSourceRectHint()) {
+                updatePictureInPictureParams()
+            }
         }
         layoutListener = listener
         view.addOnLayoutChangeListener(listener)
@@ -80,6 +81,7 @@ class PlaybackWindowController(
     }
 
     fun updatePlaybackState(isPlaying: Boolean) {
+        if (this.isPlaying == isPlaying) return
         this.isPlaying = isPlaying
         updatePictureInPictureParams()
     }
@@ -167,16 +169,24 @@ class PlaybackWindowController(
 
     private fun updatePictureInPictureParams() {
         if (!pipSupported || activity.isFinishing) return
-        activity.setPictureInPictureParams(buildPictureInPictureParams())
+        try {
+            activity.setPictureInPictureParams(buildPictureInPictureParams())
+        } catch (_: IllegalStateException) {
+            // Window transitions can temporarily reject PiP parameter updates.
+        }
     }
 
-    private fun updateSourceRectHint() {
-        val view = windowRoot ?: return
-        if (!view.isAttachedToWindow) return
-        val rect = Rect()
-        if (view.getGlobalVisibleRect(rect) && !rect.isEmpty()) {
-            sourceRectHint = Rect(rect)
+    private fun updateSourceRectHint(): Boolean {
+        val view = windowRoot
+        val nextRect = if (view != null && view.isAttachedToWindow) {
+            val rect = Rect()
+            if (view.getGlobalVisibleRect(rect) && !rect.isEmpty()) Rect(rect) else null
+        } else {
+            null
         }
+        if (sourceRectHint == nextRect) return false
+        sourceRectHint = nextRect
+        return true
     }
 
     private fun detachWindowRoot() {
