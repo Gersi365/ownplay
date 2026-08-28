@@ -28,6 +28,15 @@ internal fun offlineDownloadResponseMode(
     }
 }
 
+internal fun offlineDownloadTotalBytes(
+    startBytes: Long,
+    bodyLength: Long,
+): Long? {
+    if (startBytes < 0L || bodyLength < 0L) return null
+    if (startBytes > Long.MAX_VALUE - bodyLength) return null
+    return startBytes + bodyLength
+}
+
 private fun contentRangeStart(value: String?): Long? {
     val normalized = value?.trim().orEmpty()
     val match = CONTENT_RANGE_PATTERN.matchEntire(normalized) ?: return null
