@@ -179,6 +179,7 @@ class MainActivity : ComponentActivity() {
                                             smartphoneOrientation = smartphoneOrientation,
                                         )
                                     ) {
+                                        playbackWindowController.updateTelevisionMode(profile.usesDpad)
                                         playbackWindowController.updateAppOrientation(
                                             configuredOrientation(
                                                 profile = profile,
@@ -273,6 +274,7 @@ class MainActivity : ComponentActivity() {
         activityScope.launch {
             appDeviceProfileStore.observeSelection().collectLatest { selection ->
                 if (selection is AppDeviceProfileSelection.Configured) {
+                    playbackWindowController.updateTelevisionMode(selection.settings.profile.usesDpad)
                     playbackWindowController.updateAppOrientation(
                         selection.settings.effectiveOrientation,
                     )
