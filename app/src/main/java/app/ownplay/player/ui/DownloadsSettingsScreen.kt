@@ -21,6 +21,7 @@ import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.VideoLibrary
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
@@ -75,6 +76,17 @@ internal fun DownloadsSettingsScreen(
     val downloads by runtime.observeAll().collectAsState(initial = emptyList())
     val scope = rememberCoroutineScope()
     var removeError by remember { mutableStateOf<String?>(null) }
+    var completedRemovalTarget by remember { mutableStateOf<OfflineDownload?>(null) }
+
+    fun removeDownload(download: OfflineDownload) {
+        scope.launch {
+            removeError = if (runtime.remove(download.downloadId)) {
+                null
+            } else {
+                "Could not remove the offline file. Check storage access and try again."
+            }
+        }
+    }
 
     LaunchedEffect(isTelevision, focusBackOnEntry) {
         if (isTelevision && focusBackOnEntry && onBack != null) {
@@ -226,17 +238,43 @@ internal fun DownloadsSettingsScreen(
                         scope.launch { runtime.retry(download.downloadId) }
                     },
                     onRemove = {
-                        scope.launch {
-                            removeError = if (runtime.remove(download.downloadId)) {
-                                null
-                            } else {
-                                "Could not remove the offline file. Check storage access and try again."
-                            }
+                        if (download.state == DownloadStates.COMPLETED) {
+                            completedRemovalTarget = download
+                        } else {
+                            removeDownload(download)
                         }
                     },
                 )
             }
         }
+    }
+
+    completedRemovalTarget?.let { target ->
+        AlertDialog(
+            onDismissRequest = { completedRemovalTarget = null },
+            title = { Text("Remove offline copy?") },
+            text = {
+                Text(
+                    "${target.title} will be deleted from this device. " +
+                        "You can download it again later.",
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        completedRemovalTarget = null
+                        removeDownload(target)
+                    },
+                ) {
+                    Text("Remove", color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { completedRemovalTarget = null }) {
+                    Text("Cancel")
+                }
+            },
+        )
     }
 }
 
@@ -385,7 +423,7 @@ private fun downloadSecondaryLabel(download: OfflineDownload): String {
 }
 
 private fun downloadStorageLabel(download: OfflineDownload): String =
-    if (download.savedToDownloads) "Phone Downloads" else "OwnPlay private storage"
+    if (download.savedToDownloads) "Device Downloads" else "OwnPlay private storage"
 
 private fun humanBytes(bytes: Long): String {
     val safe = bytes.coerceAtLeast(0L)
