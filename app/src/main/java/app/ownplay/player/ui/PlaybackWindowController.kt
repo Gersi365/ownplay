@@ -103,7 +103,7 @@ class PlaybackWindowController(
     fun updatePictureInPictureEnabled(enabled: Boolean) {
         if (pictureInPictureEnabled == enabled) return
         pictureInPictureEnabled = enabled
-        updatePictureInPictureParams()
+        updatePictureInPictureParams(force = true)
     }
 
     fun updatePlaybackSurfaceState(active: Boolean) {
@@ -175,8 +175,14 @@ class PlaybackWindowController(
         return builder.build()
     }
 
-    private fun updatePictureInPictureParams() {
-        if (!pipSupported || activity.isFinishing) return
+    private fun updatePictureInPictureParams(force: Boolean = false) {
+        if (
+            !pipSupported ||
+            activity.isFinishing ||
+            (!pictureInPictureEnabled && !force)
+        ) {
+            return
+        }
         try {
             activity.setPictureInPictureParams(buildPictureInPictureParams())
         } catch (_: IllegalStateException) {
