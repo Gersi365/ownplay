@@ -47,4 +47,21 @@ class SourceSyncStatusTest {
             ),
         )
     }
+
+    @Test
+    fun missingFailureCauseDoesNotLeaveAwkwardSpacing() {
+        assertEquals(
+            "Could not load channels.",
+            sourceSyncStatus(SourceSyncState(stage = SourceSyncStage.ChannelsFailed)),
+        )
+        assertEquals(
+            "Channel refresh failed. Existing channels were kept.",
+            sourceSyncStatus(
+                SourceSyncState(
+                    stage = SourceSyncStage.ChannelsFailed,
+                    channelCount = 7,
+                ),
+            ),
+        )
+    }
 }
