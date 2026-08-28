@@ -42,7 +42,7 @@ interface RecentChannelDao {
         WHERE channelId NOT IN (
             SELECT channelId
             FROM recent_channels
-            ORDER BY watchedAtEpochMillis DESC
+            ORDER BY watchedAtEpochMillis DESC, channelId ASC
             LIMIT :limit
         )
         """,
@@ -52,7 +52,7 @@ interface RecentChannelDao {
     @Query(
         """
         SELECT * FROM recent_channels
-        ORDER BY watchedAtEpochMillis DESC
+        ORDER BY watchedAtEpochMillis DESC, channelId ASC
         LIMIT :limit
         """,
     )
