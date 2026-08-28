@@ -51,6 +51,7 @@ import app.ownplay.player.OwnPlayAppRuntime
 import app.ownplay.player.download.OfflineDownload
 import app.ownplay.player.persistence.download.DownloadMediaKinds
 import app.ownplay.player.playback.PlaybackInteractionBridge
+import app.ownplay.player.playback.PlaybackPresentationPolicy
 import app.ownplay.player.playback.PlaybackState
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
@@ -73,6 +74,7 @@ internal fun LibraryPlaybackScreen(
     contextLabel: String = "Library · offline copy",
 ) {
     val playbackState by runtime.playbackController.state.collectAsState()
+    val playbackControls = PlaybackPresentationPolicy.controlsFor(playbackState)
     val configuration = LocalConfiguration.current
     val isTelevision =
         configuration.uiMode and Configuration.UI_MODE_TYPE_MASK == Configuration.UI_MODE_TYPE_TELEVISION
@@ -211,12 +213,14 @@ internal fun LibraryPlaybackScreen(
                 Spacer(Modifier.width(82.dp))
             }
 
-            when (playbackState) {
-                is PlaybackState.Loading -> CircularProgressIndicator(
+            if (playbackControls.showLoading) {
+                CircularProgressIndicator(
                     modifier = Modifier.align(Alignment.Center),
                 )
+            }
 
-                is PlaybackState.Failed -> Surface(
+            if (playbackState is PlaybackState.Failed) {
+                Surface(
                     modifier = Modifier.align(Alignment.Center),
                     shape = RoundedCornerShape(14.dp),
                     color = Color.Black.copy(alpha = 0.80f),
@@ -227,15 +231,15 @@ internal fun LibraryPlaybackScreen(
                         verticalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
                         Text("Playback failed", color = Color.White)
-                        FilledTonalButton(onClick = runtime.playbackController::retry) {
-                            Icon(Icons.Filled.Refresh, contentDescription = null)
-                            Spacer(Modifier.width(4.dp))
-                            Text("Retry")
+                        if (playbackControls.canRetry) {
+                            FilledTonalButton(onClick = runtime.playbackController::retry) {
+                                Icon(Icons.Filled.Refresh, contentDescription = null)
+                                Spacer(Modifier.width(4.dp))
+                                Text("Retry")
+                            }
                         }
                     }
                 }
-
-                else -> Unit
             }
         }
     }
