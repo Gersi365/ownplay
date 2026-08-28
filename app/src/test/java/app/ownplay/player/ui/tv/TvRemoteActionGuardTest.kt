@@ -24,6 +24,28 @@ class TvRemoteActionGuardTest {
     }
 
     @Test
+    fun extendingTransitionLockOverridesShorterExistingDeadline() {
+        val guard = TvRemoteActionGuard()
+
+        assertTrue(guard.tryAcquire(3_000L, TvRemoteActionKind.STANDARD))
+        guard.extendBlock(3_050L, TvRemoteActionKind.TRANSITION)
+
+        assertFalse(guard.tryAcquire(3_949L, TvRemoteActionKind.STANDARD))
+        assertTrue(guard.tryAcquire(3_950L, TvRemoteActionKind.STANDARD))
+    }
+
+    @Test
+    fun extendingBlockNeverShortensExistingDeadline() {
+        val guard = TvRemoteActionGuard()
+
+        assertTrue(guard.tryAcquire(4_000L, TvRemoteActionKind.TRANSITION))
+        guard.extendBlock(4_050L, TvRemoteActionKind.STANDARD)
+
+        assertFalse(guard.tryAcquire(4_899L, TvRemoteActionKind.STANDARD))
+        assertTrue(guard.tryAcquire(4_900L, TvRemoteActionKind.STANDARD))
+    }
+
+    @Test
     fun lockDeadlineSaturatesInsteadOfOverflowing() {
         val guard = TvRemoteActionGuard()
 
