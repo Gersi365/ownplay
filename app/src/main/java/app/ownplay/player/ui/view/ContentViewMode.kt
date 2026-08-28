@@ -96,8 +96,12 @@ internal class ContentViewModeStore(context: Context) {
         key: Preferences.Key<String>,
         mode: ContentViewMode,
     ) {
-        appContext.contentViewModeDataStore.edit { preferences ->
-            preferences[key] = mode.storageValue
+        try {
+            appContext.contentViewModeDataStore.edit { preferences ->
+                preferences[key] = mode.storageValue
+            }
+        } catch (_: IOException) {
+            // Keep the current in-memory/default view mode when preference storage is unavailable.
         }
     }
 
