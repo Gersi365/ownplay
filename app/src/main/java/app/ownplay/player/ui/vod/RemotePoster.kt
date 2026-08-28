@@ -18,8 +18,10 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import app.ownplay.player.source.network.SourceHttpClient
+import app.ownplay.player.source.network.awaitResponse
 import java.io.ByteArrayOutputStream
 import java.io.InputStream
+import java.util.concurrent.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.Request
@@ -48,10 +50,10 @@ internal fun RemotePoster(
         if (value != null) return@produceState
         value = normalizedUrl?.let { posterUrl ->
             withContext(Dispatchers.IO) {
-                runCatching {
+                val poster = try {
                     SourceHttpClient.shared.newCall(
                         Request.Builder().url(posterUrl).get().build(),
-                    ).execute().use { response ->
+                    ).awaitResponse().use { response ->
                         if (!response.isSuccessful) return@use null
                         val body = response.body
                         val contentLength = body.contentLength()
@@ -62,8 +64,13 @@ internal fun RemotePoster(
                         ) ?: return@use null
                         decodePoster(bytes)
                     }
-                }.getOrNull()?.also { poster ->
-                    posterMemoryCache.put(posterUrl, poster)
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (_: Exception) {
+                    null
+                }
+                poster?.also { decoded ->
+                    posterMemoryCache.put(posterUrl, decoded)
                 }
             }
         }
