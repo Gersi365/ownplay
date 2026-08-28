@@ -185,7 +185,7 @@ class OfflineDownloadRepository(
             failureReason = null,
             updatedAtEpochMillis = System.currentTimeMillis(),
         )
-        workManager.cancelUniqueWork(workName(downloadId))
+        workManager.cancelUniqueWork(workName(downloadId)).await()
     }
 
     suspend fun resume(downloadId: String) {
