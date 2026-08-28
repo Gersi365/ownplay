@@ -640,15 +640,6 @@ private fun sourceKindLabel(kind: String): String = when (kind) {
     else -> "Playlist"
 }
 
-private fun sourceSyncStatus(state: SourceSyncState): String? = when (state.stage) {
-    SourceSyncStage.Idle -> null
-    SourceSyncStage.LoadingChannels -> "Loading channels…"
-    SourceSyncStage.LoadingEpg -> "Channels loaded. Loading EPG…"
-    SourceSyncStage.Ready -> "Ready • ${state.channelCount} channels • ${state.epgChannelCount} with EPG"
-    SourceSyncStage.ChannelsFailed -> "Channel refresh failed. Existing channels were kept."
-    SourceSyncStage.EpgFailed -> "Channels are ready. EPG refresh failed."
-}
-
 private fun mutationFailureMessage(failure: SourceMutationFailure): String = when (failure) {
     SourceMutationFailure.NotFound -> "Playlist no longer exists."
     SourceMutationFailure.InvalidName -> "Enter a playlist name."
