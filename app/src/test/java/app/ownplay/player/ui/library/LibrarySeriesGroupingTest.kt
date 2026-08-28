@@ -3,8 +3,11 @@ package app.ownplay.player.ui.library
 import app.ownplay.player.download.OfflineDownload
 import app.ownplay.player.persistence.download.DownloadMediaKinds
 import app.ownplay.player.persistence.download.DownloadStates
+import java.util.Locale
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class LibrarySeriesGroupingTest {
@@ -121,6 +124,93 @@ class LibrarySeriesGroupingTest {
     }
 
     @Test
+    fun offlineCountOnlyIncludesCompletedEpisodes() {
+        val group = groupLibrarySeries(
+            listOf(
+                episode("done", "source-1", "ep-1", "Done", "Atlas", 1, 1, 100L),
+                episode(
+                    "paused",
+                    "source-1",
+                    "ep-2",
+                    "Paused",
+                    "Atlas",
+                    1,
+                    2,
+                    200L,
+                    state = DownloadStates.PAUSED,
+                ),
+                episode(
+                    "failed",
+                    "source-1",
+                    "ep-3",
+                    "Failed",
+                    "Atlas",
+                    1,
+                    3,
+                    300L,
+                    state = DownloadStates.FAILED,
+                ),
+            ),
+        ).single()
+
+        assertEquals(3, group.episodeCount)
+        assertEquals(1, group.offlineEpisodeCount)
+        assertTrue(group.hasOfflineEpisodes)
+    }
+
+    @Test
+    fun groupWithoutCompletedEpisodesIsManagedButNotOffline() {
+        val group = groupLibrarySeries(
+            listOf(
+                episode(
+                    "queued",
+                    "source-1",
+                    "ep-1",
+                    "Queued",
+                    "Atlas",
+                    1,
+                    1,
+                    100L,
+                    state = DownloadStates.QUEUED,
+                ),
+                episode(
+                    "paused",
+                    "source-1",
+                    "ep-2",
+                    "Paused",
+                    "Atlas",
+                    1,
+                    2,
+                    200L,
+                    state = DownloadStates.PAUSED,
+                ),
+            ),
+        ).single()
+
+        assertEquals(2, group.episodeCount)
+        assertEquals(0, group.offlineEpisodeCount)
+        assertFalse(group.hasOfflineEpisodes)
+    }
+
+    @Test
+    fun fallbackSeriesIdentityIsStableAcrossDeviceLocales() {
+        val originalLocale = Locale.getDefault()
+        try {
+            Locale.setDefault(Locale("tr", "TR"))
+            val groups = groupLibrarySeries(
+                listOf(
+                    episode("a", "source-1", "ep-1", "One", "INDIGO", 1, 1, 100L),
+                    episode("b", "source-1", "ep-2", "Two", "indigo", 1, 2, 200L),
+                ),
+            )
+
+            assertEquals(1, groups.size)
+        } finally {
+            Locale.setDefault(originalLocale)
+        }
+    }
+
+    @Test
     fun extractsSeriesIdFromStableEpisodeContentId() {
         assertEquals(
             "source-1:series:42",
@@ -151,6 +241,7 @@ class LibrarySeriesGroupingTest {
         season: Int?,
         episode: Int?,
         updatedAt: Long,
+        state: String = DownloadStates.COMPLETED,
     ): OfflineDownload = OfflineDownload(
         downloadId = downloadId,
         sourceId = sourceId,
@@ -161,7 +252,7 @@ class LibrarySeriesGroupingTest {
         seasonNumber = season,
         episodeNumber = episode,
         posterUrl = "poster-$downloadId",
-        state = DownloadStates.COMPLETED,
+        state = state,
         bytesDownloaded = 100L,
         totalBytes = 100L,
         failureReason = null,
