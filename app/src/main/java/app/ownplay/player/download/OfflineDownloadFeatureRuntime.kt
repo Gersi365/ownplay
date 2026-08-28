@@ -41,6 +41,13 @@ class OfflineDownloadFeatureRuntime(
             } catch (_: Exception) {
                 Unit
             }
+            try {
+                repository.reconcilePendingWork()
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                Unit
+            }
         }
 
     suspend fun enqueue(spec: OfflineDownloadSpec): String = repository.enqueue(spec)
