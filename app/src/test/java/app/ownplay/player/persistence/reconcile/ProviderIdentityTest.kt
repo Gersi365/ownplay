@@ -29,6 +29,38 @@ class ProviderIdentityTest {
     }
 
     @Test
+    fun m3uVariantIdentityIgnoresChangingQueryToken() {
+        val first = M3uEntry(
+            displayName = "News HD",
+            streamUrl = "https://example.test/live/news-hd.m3u8?token=secret-one",
+            tvgId = "NEWS.ONE",
+            groupTitle = "News",
+        )
+        val refreshed = first.copy(
+            streamUrl = "https://example.test/live/news-hd.m3u8?token=secret-two",
+        )
+
+        assertEquals(ProviderIdentity.m3uVariant(first), ProviderIdentity.m3uVariant(refreshed))
+        assertFalse(ProviderIdentity.m3uVariant(first).contains("secret-one"))
+    }
+
+    @Test
+    fun m3uVariantIdentitySeparatesDifferentStreamPathsForSameTvgId() {
+        val hd = M3uEntry(
+            displayName = "News HD",
+            streamUrl = "https://example.test/live/news-hd.m3u8",
+            tvgId = "NEWS.ONE",
+        )
+        val sd = hd.copy(
+            displayName = "News SD",
+            streamUrl = "https://example.test/live/news-sd.m3u8",
+        )
+
+        assertEquals(ProviderIdentity.m3u(hd), ProviderIdentity.m3u(sd))
+        assertNotEquals(ProviderIdentity.m3uVariant(hd), ProviderIdentity.m3uVariant(sd))
+    }
+
+    @Test
     fun m3uMetadataFallbackIsCaseAndWhitespaceStable() {
         val first = M3uEntry(
             displayName = " News   One ",
