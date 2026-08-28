@@ -38,11 +38,16 @@ class SourceValidatorTest {
     }
 
     @Test
-    fun remoteUrls_rejectOutOfRangePortsBeforeNetworkAccess() {
-        assertEquals(
-            UrlValidationResult.Invalid(SourceError.InvalidUrl),
-            SourceValidator.validateXtreamServer("https://example.com:70000"),
-        )
+    fun remoteUrls_rejectInvalidPortsBeforeNetworkAccess() {
+        listOf(
+            "https://example.com:0",
+            "https://example.com:70000",
+        ).forEach { url ->
+            assertEquals(
+                UrlValidationResult.Invalid(SourceError.InvalidUrl),
+                SourceValidator.validateXtreamServer(url),
+            )
+        }
         assertEquals(
             UrlValidationResult.Invalid(SourceError.InvalidUrl),
             SourceValidator.validateRemotePlaylistUrl("https://example.com:70000/list.m3u"),
