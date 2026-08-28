@@ -1,24 +1,33 @@
 package app.ownplay.player.ui
 
 import app.ownplay.player.OwnPlayAppRuntime
+import java.util.WeakHashMap
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
 /**
- * Owns source-submission work independently from the Add Playlist dialog lifecycle.
+ * Owns source-submission work independently from the Add Playlist dialog lifecycle,
+ * while remaining bounded to the OwnPlay runtime that initiated the submission.
  *
  * The dialog can close immediately after local validation while the network/catalog
- * import continues. Submissions are serialized so the runtime's single visible sync
- * state remains deterministic.
+ * import continues. Submissions are serialized per runtime so its single visible sync
+ * state remains deterministic. Releasing a runtime cancels any unfinished submission
+ * before that runtime closes its database and playback resources.
  */
 internal object SourceSubmissionCoordinator {
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-    private val submissionMutex = Mutex()
+    private data class RuntimeQueue(
+        val scope: CoroutineScope,
+        val mutex: Mutex = Mutex(),
+    )
+
+    private val queueLock = Any()
+    private val queues = WeakHashMap<OwnPlayAppRuntime, RuntimeQueue>()
 
     fun submitXtream(
         runtime: OwnPlayAppRuntime,
@@ -28,18 +37,14 @@ internal object SourceSubmissionCoordinator {
         password: String,
         allowCleartext: Boolean,
     ) {
-        scope.launch {
-            submissionMutex.withLock {
-                runSubmission {
-                    runtime.addXtreamSource(
-                        name = name,
-                        serverUrl = serverUrl,
-                        username = username,
-                        password = password,
-                        allowCleartext = allowCleartext,
-                    )
-                }
-            }
+        submit(runtime) {
+            runtime.addXtreamSource(
+                name = name,
+                serverUrl = serverUrl,
+                username = username,
+                password = password,
+                allowCleartext = allowCleartext,
+            )
         }
     }
 
@@ -48,15 +53,11 @@ internal object SourceSubmissionCoordinator {
         name: String,
         playlistUrl: String,
     ) {
-        scope.launch {
-            submissionMutex.withLock {
-                runSubmission {
-                    runtime.addRemoteM3uSource(
-                        name = name,
-                        playlistUrl = playlistUrl,
-                    )
-                }
-            }
+        submit(runtime) {
+            runtime.addRemoteM3uSource(
+                name = name,
+                playlistUrl = playlistUrl,
+            )
         }
     }
 
@@ -65,15 +66,36 @@ internal object SourceSubmissionCoordinator {
         name: String,
         documentUri: String,
     ) {
-        scope.launch {
-            submissionMutex.withLock {
-                runSubmission {
-                    runtime.addLocalM3uSource(
-                        name = name,
-                        documentUri = documentUri,
-                    )
-                }
+        submit(runtime) {
+            runtime.addLocalM3uSource(
+                name = name,
+                documentUri = documentUri,
+            )
+        }
+    }
+
+    fun release(runtime: OwnPlayAppRuntime) {
+        val queue = synchronized(queueLock) { queues.remove(runtime) }
+        queue?.scope?.cancel()
+    }
+
+    private fun submit(
+        runtime: OwnPlayAppRuntime,
+        block: suspend () -> Unit,
+    ) {
+        val queue = queueFor(runtime)
+        queue.scope.launch {
+            queue.mutex.withLock {
+                runSubmission(block)
             }
+        }
+    }
+
+    private fun queueFor(runtime: OwnPlayAppRuntime): RuntimeQueue = synchronized(queueLock) {
+        queues.getOrPut(runtime) {
+            RuntimeQueue(
+                scope = CoroutineScope(SupervisorJob() + Dispatchers.IO),
+            )
         }
     }
 
