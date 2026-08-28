@@ -4,6 +4,7 @@ import android.app.Activity
 import android.app.PictureInPictureParams
 import android.content.pm.ActivityInfo
 import android.content.pm.PackageManager
+import android.content.res.Configuration
 import android.graphics.Rect
 import android.os.Build
 import android.view.View
@@ -30,8 +31,10 @@ internal object PlaybackWindowPolicy {
         fullscreen: Boolean,
         appOrientation: AppOrientationMode,
         inPictureInPicture: Boolean,
+        isTelevision: Boolean = false,
     ): PlaybackOrientationIntent = when {
         inPictureInPicture -> PlaybackOrientationIntent.FOLLOW_SYSTEM
+        fullscreen && isTelevision -> PlaybackOrientationIntent.LANDSCAPE
         fullscreen -> PlaybackOrientationIntent.SENSOR
         appOrientation == AppOrientationMode.LANDSCAPE -> PlaybackOrientationIntent.LANDSCAPE
         else -> PlaybackOrientationIntent.PORTRAIT
@@ -43,6 +46,10 @@ class PlaybackWindowController(
 ) {
     val pipSupported: Boolean =
         activity.packageManager.hasSystemFeature(PackageManager.FEATURE_PICTURE_IN_PICTURE)
+
+    private val isTelevision: Boolean =
+        activity.resources.configuration.uiMode and Configuration.UI_MODE_TYPE_MASK ==
+            Configuration.UI_MODE_TYPE_TELEVISION
 
     private val _isInPictureInPictureMode =
         MutableStateFlow(activity.isInPictureInPictureMode)
@@ -186,6 +193,7 @@ class PlaybackWindowController(
                 fullscreen = fullscreenRequested,
                 appOrientation = appOrientation,
                 inPictureInPicture = _isInPictureInPictureMode.value,
+                isTelevision = isTelevision,
             )
         ) {
             PlaybackOrientationIntent.PORTRAIT -> ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
