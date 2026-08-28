@@ -99,4 +99,46 @@ class XtreamInvalidMediaIdTest {
         assertEquals(listOf(1001), episodes.map(XtreamSeriesEpisode::episodeId))
         assertEquals(listOf("Valid Episode"), episodes.map(XtreamSeriesEpisode::title))
     }
+
+    @Test
+    fun seriesInfoRejectsInvalidNumberingButKeepsSpecialsSeasonZero() = runBlocking {
+        server.enqueue(
+            MockResponse.Builder()
+                .body(
+                    """
+                    {
+                      "info":{"name":"Series"},
+                      "seasons":[
+                        {"season_number":-1,"name":"Invalid"},
+                        {"season_number":0,"name":"Specials"}
+                      ],
+                      "episodes":{
+                        "-1":[
+                          {"id":2001,"episode_num":1,"title":"Invalid season"}
+                        ],
+                        "0":[
+                          {"id":2002,"episode_num":0,"title":"Invalid episode number"},
+                          {"id":2003,"episode_num":1,"title":"Valid special"}
+                        ]
+                      }
+                    }
+                    """.trimIndent(),
+                )
+                .build(),
+        )
+        val client = XtreamSeriesClient(allowCleartext = true)
+
+        val result = client.getSeriesInfo(
+            serverUrl = server.url("/").toString(),
+            credentials = credentials,
+            seriesId = 501,
+        )
+
+        assertTrue(result is SourceResult.Success)
+        val info = (result as SourceResult.Success).value
+        assertEquals(listOf(0), info.seasons.map(XtreamSeriesSeason::seasonNumber))
+        assertEquals(listOf(2003), info.episodes.map(XtreamSeriesEpisode::episodeId))
+        assertEquals(listOf(0), info.episodes.map(XtreamSeriesEpisode::seasonNumber))
+        assertEquals(listOf(1), info.episodes.map(XtreamSeriesEpisode::episodeNumber))
+    }
 }
