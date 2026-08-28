@@ -60,7 +60,18 @@ data class MediaDownloadEntity(
     val failureReason: String?,
     val createdAtEpochMillis: Long,
     val updatedAtEpochMillis: Long,
-)
+) {
+    override fun toString(): String =
+        "MediaDownloadEntity(downloadId=<opaque>, sourceId=<opaque>, mediaKind=$mediaKind, " +
+            "contentId=<opaque>, providerStreamId=$providerStreamId, title=$title, " +
+            "seriesTitle=$seriesTitle, seasonNumber=$seasonNumber, episodeNumber=$episodeNumber, " +
+            "posterUrl=${redactedPresence(posterUrl)}, containerExtension=$containerExtension, " +
+            "state=$state, bytesDownloaded=$bytesDownloaded, totalBytes=$totalBytes, " +
+            "localRelativePath=${redactedPresence(localRelativePath)}, failureReason=$failureReason, " +
+            "createdAtEpochMillis=$createdAtEpochMillis, updatedAtEpochMillis=$updatedAtEpochMillis)"
+
+    private fun redactedPresence(value: String?): String = if (value == null) "null" else "<redacted>"
+}
 
 @Dao
 interface MediaDownloadDao {
