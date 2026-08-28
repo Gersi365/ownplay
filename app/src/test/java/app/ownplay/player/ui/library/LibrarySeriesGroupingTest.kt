@@ -156,6 +156,7 @@ class LibrarySeriesGroupingTest {
         assertEquals(3, group.episodeCount)
         assertEquals(1, group.offlineEpisodeCount)
         assertTrue(group.hasOfflineEpisodes)
+        assertEquals(LibrarySeriesAvailability.OFFLINE, group.availability)
     }
 
     @Test
@@ -190,6 +191,7 @@ class LibrarySeriesGroupingTest {
         assertEquals(2, group.episodeCount)
         assertEquals(0, group.offlineEpisodeCount)
         assertFalse(group.hasOfflineEpisodes)
+        assertEquals(LibrarySeriesAvailability.MANAGED, group.availability)
     }
 
     @Test
