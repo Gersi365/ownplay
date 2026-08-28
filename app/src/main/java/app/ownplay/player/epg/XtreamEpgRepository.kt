@@ -14,9 +14,6 @@ import app.ownplay.player.source.xtream.XtreamEpgProgram
 import app.ownplay.player.source.xtream.XtreamSourceLocatorCodec
 import app.ownplay.player.source.xtream.XtreamXmlTvClient
 import app.ownplay.player.source.xtream.XtreamXmlTvProgram
-import java.time.Instant
-import java.time.ZoneId
-import java.time.format.DateTimeFormatter
 import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -273,8 +270,8 @@ class XtreamEpgRepository(
         description = program.description,
         startEpochSeconds = program.startEpochSeconds,
         endEpochSeconds = program.endEpochSeconds,
-        startLabel = program.startEpochSeconds?.let(::formatTime),
-        endLabel = program.endEpochSeconds?.let(::formatTime),
+        startLabel = program.startEpochSeconds?.let(::epgTimeLabel),
+        endLabel = program.endEpochSeconds?.let(::epgTimeLabel),
     )
 
     private fun toProgram(program: XtreamEpgProgram): EpgProgram = EpgProgram(
@@ -282,16 +279,12 @@ class XtreamEpgRepository(
         description = program.description,
         startEpochSeconds = program.startEpochSeconds,
         endEpochSeconds = program.endEpochSeconds,
-        startLabel = program.startEpochSeconds?.let(::formatTime) ?: program.startLabel,
-        endLabel = program.endEpochSeconds?.let(::formatTime) ?: program.endLabel,
+        startLabel = program.startEpochSeconds?.let(::epgTimeLabel) ?: program.startLabel,
+        endLabel = program.endEpochSeconds?.let(::epgTimeLabel) ?: program.endLabel,
     )
-
-    private fun formatTime(epochSeconds: Long): String =
-        TIME_FORMATTER.format(Instant.ofEpochSecond(epochSeconds).atZone(ZoneId.systemDefault()))
 
     private companion object {
         const val SHORT_EPG_LIMIT = 12
         const val SHORT_CACHE_TTL_SECONDS = 5L * 60L
-        val TIME_FORMATTER: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm")
     }
 }
