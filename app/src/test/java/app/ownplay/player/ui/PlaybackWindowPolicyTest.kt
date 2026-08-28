@@ -40,6 +40,18 @@ class PlaybackWindowPolicyTest {
     }
 
     @Test
+    fun tvStartsLandscapeBeforeSavedProfileIsLoaded() {
+        assertEquals(
+            AppOrientationMode.LANDSCAPE,
+            PlaybackWindowPolicy.defaultAppOrientation(isTelevision = true),
+        )
+        assertEquals(
+            AppOrientationMode.PORTRAIT,
+            PlaybackWindowPolicy.defaultAppOrientation(isTelevision = false),
+        )
+    }
+
+    @Test
     fun portraitSettingLocksNormalAppShellToPortrait() {
         assertEquals(
             PlaybackOrientationIntent.PORTRAIT,
