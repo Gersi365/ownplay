@@ -94,6 +94,7 @@ class XtreamEpgRepository(
                 channelIdsByEpgChannelId = emptyMap(),
                 programsByEpgChannelId = emptyMap(),
             )
+            clearShortCache(sourceId)
             return@withContext EpgRefreshResult(0, 0)
         }
 
@@ -117,6 +118,7 @@ class XtreamEpgRepository(
             channelIdsByEpgChannelId = channelIdsByEpgChannelId,
             programsByEpgChannelId = mapped,
         )
+        clearShortCache(sourceId)
         EpgRefreshResult(
             matchedChannelCount = EpgCoverage.matchedChannelCount(
                 channelIdsByEpgChannelId = channelIdsByEpgChannelId,
@@ -190,6 +192,10 @@ class XtreamEpgRepository(
 
     fun invalidateSource(sourceId: String) {
         cache.remove(sourceId)
+        clearShortCache(sourceId)
+    }
+
+    private fun clearShortCache(sourceId: String) {
         shortCache.entries.removeIf { entry -> entry.key.sourceId == sourceId }
     }
 
