@@ -46,6 +46,7 @@ import app.ownplay.player.ui.library.LibraryPlaybackScreen
 import app.ownplay.player.ui.library.LibraryPlaybackSession
 import app.ownplay.player.ui.theme.OwnPlayTheme
 import app.ownplay.player.ui.tv.TvRemoteActionGuard
+import app.ownplay.player.ui.tv.TvRemoteActionKind
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -193,6 +194,7 @@ class MainActivity : ComponentActivity() {
                             OwnPlayRoot(
                                 runtime = runtime,
                                 onPlaybackFullscreenChanged = { isFullscreen ->
+                                    holdTvRemoteTransitionLock()
                                     playbackFullscreen = isFullscreen
                                     playbackWindowController.updateFullscreenState(isFullscreen)
                                     if (!isFullscreen) hideStatusBar()
@@ -244,6 +246,7 @@ class MainActivity : ComponentActivity() {
                                             }
                                         },
                                         onFullscreenStateChanged = { isFullscreen ->
+                                            holdTvRemoteTransitionLock()
                                             playbackFullscreen = isFullscreen
                                             playbackWindowController.updateFullscreenState(isFullscreen)
                                             playbackWindowController.updatePlaybackSurfaceState(isFullscreen)
@@ -361,6 +364,14 @@ class MainActivity : ComponentActivity() {
             is PlaybackState.Paused -> state.request.mediaKind
             is PlaybackState.Failed -> state.request.mediaKind
         }
+
+    private fun holdTvRemoteTransitionLock() {
+        if (!tvRemoteGuardEnabled) return
+        tvRemoteActionGuard.extendBlock(
+            nowMillis = SystemClock.elapsedRealtime(),
+            kind = TvRemoteActionKind.TRANSITION,
+        )
+    }
 
     private fun hideStatusBar() {
         WindowCompat.getInsetsController(window, window.decorView).apply {
