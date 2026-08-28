@@ -11,7 +11,10 @@ interface PlaylistSourceDao {
     @Upsert
     suspend fun upsert(source: PlaylistSourceEntity)
 
-    @Query("SELECT * FROM playlist_sources WHERE enabled = 1 ORDER BY createdAtEpochMillis ASC")
+    @Query(
+        "SELECT * FROM playlist_sources " +
+            "WHERE enabled = 1 ORDER BY createdAtEpochMillis ASC, sourceId ASC",
+    )
     fun observeAll(): Flow<List<PlaylistSourceEntity>>
 
     @Query("SELECT * FROM playlist_sources ORDER BY createdAtEpochMillis ASC, sourceId ASC")
@@ -46,7 +49,7 @@ interface PlaylistSourceDao {
             AND channel.availability != 'removed'
         WHERE source.enabled = 1
         GROUP BY source.sourceId
-        ORDER BY source.createdAtEpochMillis ASC
+        ORDER BY source.createdAtEpochMillis ASC, source.sourceId ASC
         """,
     )
     fun observeSummaries(): Flow<List<PlaylistSourceSummary>>
@@ -68,7 +71,7 @@ interface ProviderCatalogDao {
 
     @Query(
         "SELECT * FROM provider_channels " +
-            "WHERE sourceId = :sourceId ORDER BY providerOrder ASC",
+            "WHERE sourceId = :sourceId ORDER BY providerOrder ASC, channelId ASC",
     )
     suspend fun channelsForSource(sourceId: String): List<ProviderChannelEntity>
 
@@ -244,10 +247,16 @@ interface PersonalizationDao {
         channelId: String,
     )
 
-    @Query("SELECT * FROM favorite_entries ORDER BY favoriteOrder ASC")
+    @Query(
+        "SELECT * FROM favorite_entries " +
+            "ORDER BY favoriteOrder ASC, addedAtEpochMillis ASC, channelId ASC",
+    )
     fun observeFavorites(): Flow<List<FavoriteEntryEntity>>
 
-    @Query("SELECT * FROM custom_groups ORDER BY groupOrder ASC")
+    @Query(
+        "SELECT * FROM custom_groups " +
+            "ORDER BY groupOrder ASC, createdAtEpochMillis ASC, groupId ASC",
+    )
     fun observeGroups(): Flow<List<CustomGroupEntity>>
 }
 
