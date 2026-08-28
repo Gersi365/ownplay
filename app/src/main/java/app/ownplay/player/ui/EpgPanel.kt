@@ -11,6 +11,8 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.produceState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -19,6 +21,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import app.ownplay.player.epg.EpgProgram
 import app.ownplay.player.epg.EpgSnapshot
+import kotlinx.coroutines.delay
 
 @Composable
 internal fun EpgPanel(
@@ -31,6 +34,16 @@ internal fun EpgPanel(
     val current = snapshot?.current
     val next = snapshot?.next
     val guideAvailable = snapshot?.programs?.isNotEmpty() == true
+    val nowEpochSeconds by produceState(
+        initialValue = System.currentTimeMillis() / 1_000L,
+        key1 = current?.startEpochSeconds,
+        key2 = current?.endEpochSeconds,
+    ) {
+        while (true) {
+            value = System.currentTimeMillis() / 1_000L
+            delay(30_000L)
+        }
+    }
 
     Column(
         modifier = modifier
@@ -71,7 +84,7 @@ internal fun EpgPanel(
                     program = current,
                     emphasized = true,
                 )
-                programProgressFraction(current)?.let { progress ->
+                programProgressFraction(current, nowEpochSeconds)?.let { progress ->
                     LinearProgressIndicator(
                         progress = { progress },
                         modifier = Modifier.fillMaxWidth(),
@@ -156,13 +169,15 @@ private fun ProgramLine(
     }
 }
 
-private fun programProgressFraction(program: EpgProgram): Float? {
+private fun programProgressFraction(
+    program: EpgProgram,
+    nowEpochSeconds: Long,
+): Float? {
     val start = program.startEpochSeconds ?: return null
     val end = program.endEpochSeconds ?: return null
     if (end <= start) return null
-    val now = System.currentTimeMillis() / 1_000L
-    if (now < start || now > end) return null
-    return ((now - start).toDouble() / (end - start).toDouble())
+    if (nowEpochSeconds < start || nowEpochSeconds > end) return null
+    return ((nowEpochSeconds - start).toDouble() / (end - start).toDouble())
         .toFloat()
         .coerceIn(0f, 1f)
 }
