@@ -68,4 +68,23 @@ class PlaybackProgressPolicyTest {
         assertFalse(beforeThreshold.completed)
         assertTrue(atThreshold.completed)
     }
+
+    @Test
+    fun completionThresholdRemainsExactAtLongMaxDuration() {
+        val duration = Long.MAX_VALUE
+        val threshold = duration - (duration / 20L)
+
+        assertFalse(
+            normalizePlaybackProgress(
+                positionMs = threshold - 1L,
+                reportedDurationMs = duration,
+            ).completed,
+        )
+        assertTrue(
+            normalizePlaybackProgress(
+                positionMs = threshold,
+                reportedDurationMs = duration,
+            ).completed,
+        )
+    }
 }
