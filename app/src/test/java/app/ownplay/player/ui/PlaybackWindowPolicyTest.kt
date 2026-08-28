@@ -76,6 +76,19 @@ class PlaybackWindowPolicyTest {
     }
 
     @Test
+    fun tvProfileKeepsAppShellLandscapeEvenOutsideFullscreen() {
+        assertEquals(
+            PlaybackOrientationIntent.LANDSCAPE,
+            PlaybackWindowPolicy.orientationIntent(
+                fullscreen = false,
+                appOrientation = AppOrientationMode.PORTRAIT,
+                inPictureInPicture = false,
+                isTelevision = true,
+            ),
+        )
+    }
+
+    @Test
     fun fullscreenFollowsPhysicalSensorOutsideTv() {
         assertEquals(
             PlaybackOrientationIntent.SENSOR,
