@@ -45,6 +45,8 @@ import app.ownplay.player.ui.PlaybackWindowController
 import app.ownplay.player.ui.library.LibraryPlaybackScreen
 import app.ownplay.player.ui.library.LibraryPlaybackSession
 import app.ownplay.player.ui.theme.OwnPlayTheme
+import app.ownplay.player.ui.tv.TvBackgroundPlaybackAction
+import app.ownplay.player.ui.tv.TvPlaybackLifecyclePolicy
 import app.ownplay.player.ui.tv.TvRemoteActionGuard
 import app.ownplay.player.ui.tv.TvRemoteActionKind
 import kotlinx.coroutines.CoroutineScope
@@ -66,6 +68,7 @@ class MainActivity : ComponentActivity() {
     private val tvRemoteActionGuard = TvRemoteActionGuard()
     private var playbackFullscreen = false
     private var tvRemoteGuardEnabled = false
+    private var resumeOnDemandAfterBackground = false
     private var suppressedRemoteActivationKeyCode: Int? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -324,6 +327,10 @@ class MainActivity : ComponentActivity() {
         super.onResume()
         if (::runtime.isInitialized && tvRemoteGuardEnabled) {
             runtime.playbackController.resumeAfterBackground()
+            if (resumeOnDemandAfterBackground) {
+                resumeOnDemandAfterBackground = false
+                runtime.playbackController.play()
+            }
         }
         hideStatusBar()
         if (::offlineDownloadRuntime.isInitialized) {
@@ -340,7 +347,23 @@ class MainActivity : ComponentActivity() {
             !isInPictureInPictureMode &&
             !isChangingConfigurations
         ) {
-            runtime.playbackController.suspendForBackground()
+            when (
+                TvPlaybackLifecyclePolicy.backgroundAction(
+                    runtime.playbackController.state.value,
+                )
+            ) {
+                TvBackgroundPlaybackAction.NONE -> {
+                    resumeOnDemandAfterBackground = false
+                }
+                TvBackgroundPlaybackAction.SUSPEND -> {
+                    resumeOnDemandAfterBackground = false
+                    runtime.playbackController.suspendForBackground()
+                }
+                TvBackgroundPlaybackAction.PAUSE_AND_RESUME -> {
+                    resumeOnDemandAfterBackground = true
+                    runtime.playbackController.pause()
+                }
+            }
         }
         super.onStop()
     }
