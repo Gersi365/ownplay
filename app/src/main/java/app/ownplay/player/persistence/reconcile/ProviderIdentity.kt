@@ -29,6 +29,21 @@ object ProviderIdentity {
         return "m3u:${sha256(stableMetadata)}"
     }
 
+    fun m3uVariant(entry: M3uEntry): String {
+        val base = m3u(entry)
+        val stableVariant = buildString {
+            append("base:")
+            append(base)
+            append("|locator:")
+            append(fallbackLocatorSignature(entry.streamUrl))
+            append("|group:")
+            append(normalize(entry.groupTitle.orEmpty()))
+            append("|name:")
+            append(normalize(entry.displayName))
+        }
+        return "$base:variant:${sha256(stableVariant)}"
+    }
+
     private fun fallbackLocatorSignature(rawUrl: String): String {
         val uri = runCatching { URI(rawUrl) }.getOrNull()
         if (uri == null) return sha256(rawUrl.trim())
