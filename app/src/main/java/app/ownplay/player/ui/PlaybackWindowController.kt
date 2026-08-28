@@ -37,7 +37,7 @@ internal object PlaybackWindowPolicy {
         isTelevision: Boolean = false,
     ): PlaybackOrientationIntent = when {
         inPictureInPicture -> PlaybackOrientationIntent.FOLLOW_SYSTEM
-        fullscreen && isTelevision -> PlaybackOrientationIntent.LANDSCAPE
+        isTelevision -> PlaybackOrientationIntent.LANDSCAPE
         fullscreen -> PlaybackOrientationIntent.SENSOR
         appOrientation == AppOrientationMode.LANDSCAPE -> PlaybackOrientationIntent.LANDSCAPE
         else -> PlaybackOrientationIntent.PORTRAIT
@@ -50,9 +50,12 @@ class PlaybackWindowController(
     val pipSupported: Boolean =
         activity.packageManager.hasSystemFeature(PackageManager.FEATURE_PICTURE_IN_PICTURE)
 
-    private val isTelevision: Boolean =
+    private val hardwareIsTelevision: Boolean =
         activity.resources.configuration.uiMode and Configuration.UI_MODE_TYPE_MASK ==
             Configuration.UI_MODE_TYPE_TELEVISION
+    private var profileUsesDpad = false
+    private val isTelevision: Boolean
+        get() = hardwareIsTelevision || profileUsesDpad
 
     private val _isInPictureInPictureMode =
         MutableStateFlow(activity.isInPictureInPictureMode)
@@ -62,7 +65,7 @@ class PlaybackWindowController(
     private var isPlaying = false
     private var fullscreenRequested = false
     private var playbackSurfaceActive = false
-    private var appOrientation = PlaybackWindowPolicy.defaultAppOrientation(isTelevision)
+    private var appOrientation = PlaybackWindowPolicy.defaultAppOrientation(hardwareIsTelevision)
     private var sourceRectHint: Rect? = null
     private var windowRoot: View? = null
     private var layoutListener: View.OnLayoutChangeListener? = null
@@ -107,6 +110,12 @@ class PlaybackWindowController(
     fun updateAppOrientation(mode: AppOrientationMode) {
         if (appOrientation == mode) return
         appOrientation = mode
+        applyOrientationPolicy()
+    }
+
+    fun updateTelevisionMode(usesDpadProfile: Boolean) {
+        if (profileUsesDpad == usesDpadProfile) return
+        profileUsesDpad = usesDpadProfile
         applyOrientationPolicy()
     }
 
