@@ -52,6 +52,9 @@ class XtreamXmlTvClient(
         if (channelIds.isEmpty()) {
             return SourceResult.Success(XtreamXmlTvSnapshot(emptyMap()))
         }
+        if (credentials.username.isBlank() || credentials.password.isBlank()) {
+            return SourceResult.Failure(SourceError.InvalidCredentials)
+        }
 
         val validation = SourceValidator.validateXtreamServer(serverUrl)
         if (validation is UrlValidationResult.Invalid) {
