@@ -36,6 +36,21 @@ class PlaybackPresentationTest {
     }
 
     @Test
+    fun bufferingInsidePlayingStateShowsLoadingWithoutLosingPauseControl() {
+        val buffering = PlaybackPresentationPolicy.controlsFor(
+            PlaybackState.Playing(
+                request = request,
+                buffering = true,
+            ),
+        )
+
+        assertTrue(buffering.showLoading)
+        assertTrue(buffering.canPause)
+        assertFalse(buffering.canPlay)
+        assertFalse(buffering.canRetry)
+    }
+
+    @Test
     fun retryIsShownOnlyForRetryableFailures() {
         val retryable = PlaybackPresentationPolicy.controlsFor(
             PlaybackState.Failed(
