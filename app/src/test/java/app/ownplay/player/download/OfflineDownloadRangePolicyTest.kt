@@ -1,7 +1,9 @@
 package app.ownplay.player.download
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class OfflineDownloadRangePolicyTest {
@@ -74,11 +76,26 @@ class OfflineDownloadRangePolicyTest {
         assertEquals(
             OfflineDownloadResponseMode.RETRY_FROM_ZERO,
             offlineDownloadResponseMode(
+                existingBytes = 1_024L,
+                responseCode = 206,
+                contentRangeHeader = "bytes 1024-2047/2000",
+            ),
+        )
+        assertEquals(
+            OfflineDownloadResponseMode.RETRY_FROM_ZERO,
+            offlineDownloadResponseMode(
                 existingBytes = 0L,
                 responseCode = 206,
                 contentRangeHeader = "not-a-range",
             ),
         )
+    }
+
+    @Test
+    fun rangeNotSatisfiableRestartsOnlyWhenThereIsPartialData() {
+        assertTrue(shouldRestartOfflineDownloadFromZero(existingBytes = 1_024L, responseCode = 416))
+        assertFalse(shouldRestartOfflineDownloadFromZero(existingBytes = 0L, responseCode = 416))
+        assertFalse(shouldRestartOfflineDownloadFromZero(existingBytes = 1_024L, responseCode = 500))
     }
 
     @Test
