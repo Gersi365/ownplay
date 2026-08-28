@@ -57,6 +57,7 @@ import app.ownplay.player.persistence.download.DownloadMediaKinds
 import app.ownplay.player.persistence.download.DownloadStates
 import app.ownplay.player.playback.PlaybackInteractionBridge
 import app.ownplay.player.series.SeriesEpisode
+import app.ownplay.player.ui.DownloadRemovalConfirmationDialog
 import app.ownplay.player.ui.vod.RemotePoster
 import kotlinx.coroutines.launch
 
@@ -87,6 +88,18 @@ internal fun LibraryRoute(
     var playbackSession by remember { mutableStateOf<LibraryPlaybackSession?>(null) }
     var playbackRequestError by remember { mutableStateOf<String?>(null) }
     var selectedSeriesKey by remember { mutableStateOf<LibrarySeriesKey?>(null) }
+    var pendingRemoval by remember { mutableStateOf<OfflineDownload?>(null) }
+
+    pendingRemoval?.let { download ->
+        DownloadRemovalConfirmationDialog(
+            download = download,
+            onConfirm = {
+                pendingRemoval = null
+                scope.launch { downloadRuntime.remove(download.downloadId) }
+            },
+            onDismiss = { pendingRemoval = null },
+        )
+    }
 
     val session = playbackSession
     if (session != null) {
@@ -190,7 +203,7 @@ internal fun LibraryRoute(
                 scope.launch { downloadRuntime.retry(download.downloadId) }
             },
             onRemove = { download ->
-                scope.launch { downloadRuntime.remove(download.downloadId) }
+                pendingRemoval = download
             },
         )
         return
@@ -325,7 +338,7 @@ internal fun LibraryRoute(
                             scope.launch { downloadRuntime.retry(download.downloadId) }
                         },
                         onRemove = {
-                            scope.launch { downloadRuntime.remove(download.downloadId) }
+                            pendingRemoval = download
                         },
                     )
                 }
