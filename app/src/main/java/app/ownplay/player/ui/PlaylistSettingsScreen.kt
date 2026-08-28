@@ -217,7 +217,10 @@ internal fun PlaylistSettingsScreen(
             onDismissRequest = { deleteTarget = null },
             title = { Text("Delete playlist?") },
             text = {
-                Text("${target.name} and its imported catalog will be removed from OwnPlay.")
+                Text(
+                    "${target.name}, its imported catalog, and offline downloads from this playlist " +
+                        "will be removed from OwnPlay and this device.",
+                )
             },
             confirmButton = {
                 Button(
@@ -413,6 +416,20 @@ private fun AddPlaylistDialog(
                             singleLine = true,
                             modifier = Modifier.fillMaxWidth(),
                         )
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Checkbox(
+                                checked = allowCleartext,
+                                onCheckedChange = { allowCleartext = it },
+                            )
+                            Text("Allow HTTP for this playlist URL")
+                        }
+                        if (allowCleartext) {
+                            Text(
+                                text = "HTTP playlist and stream traffic is not encrypted.",
+                                color = MaterialTheme.colorScheme.error,
+                                style = MaterialTheme.typography.bodySmall,
+                            )
+                        }
                     }
                     AddPlaylistMode.LOCAL_M3U -> {
                         OutlinedButton(
@@ -421,10 +438,25 @@ private fun AddPlaylistDialog(
                         ) {
                             Text(if (localUri == null) "Choose file" else "File selected")
                         }
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Checkbox(
+                                checked = allowCleartext,
+                                onCheckedChange = { allowCleartext = it },
+                            )
+                            Text("Allow HTTP streams listed in this file")
+                        }
+                        if (allowCleartext) {
+                            Text(
+                                text = "HTTP stream traffic is not encrypted.",
+                                color = MaterialTheme.colorScheme.error,
+                                style = MaterialTheme.typography.bodySmall,
+                            )
+                        }
                     }
                 }
                 Text(
-                    text = "After you tap Add, this form closes immediately. Channel and EPG import continue in the background.",
+                    text = "After you tap Add, this form closes immediately. Catalog import continues " +
+                        "in the background; EPG follows when supported.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -461,11 +493,13 @@ private fun AddPlaylistDialog(
                             runtime = runtime,
                             name = name,
                             playlistUrl = endpoint,
+                            allowCleartext = allowCleartext,
                         )
                         AddPlaylistMode.LOCAL_M3U -> SourceSubmissionCoordinator.submitLocalM3u(
                             runtime = runtime,
                             name = name,
                             documentUri = checkNotNull(localUri),
+                            allowCleartext = allowCleartext,
                         )
                     }
                     onCompleted()
@@ -620,7 +654,11 @@ private fun validateAddPlaylistInput(
         AddPlaylistMode.REMOTE_M3U -> {
             when (val validation = SourceValidator.validateRemotePlaylistUrl(endpoint)) {
                 is UrlValidationResult.Invalid -> sourceErrorMessage(validation.error)
-                is UrlValidationResult.Valid -> null
+                is UrlValidationResult.Valid -> if (validation.usesCleartext && !allowCleartext) {
+                    sourceErrorMessage(SourceError.CleartextTransportRequiresOptIn)
+                } else {
+                    null
+                }
             }
         }
         AddPlaylistMode.LOCAL_M3U -> {
@@ -672,7 +710,7 @@ private fun sourceErrorMessage(error: SourceError): String = when (error) {
     SourceError.CredentialUnavailable,
     -> "Invalid or unavailable credentials."
     SourceError.AuthenticationFailed -> "Authentication failed."
-    SourceError.CleartextTransportRequiresOptIn -> "Enable HTTP for this provider."
+    SourceError.CleartextTransportRequiresOptIn -> "Enable HTTP for this source."
     SourceError.SecureConnectionFailed -> "Secure connection failed."
     SourceError.NetworkUnavailable -> "Network unavailable."
     SourceError.Timeout -> "Provider timed out."
