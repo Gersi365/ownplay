@@ -185,7 +185,13 @@ class XtreamEpgRepository(
 
         shortCache.forEach { (key, entry) ->
             if (key.sourceId != sourceId) return@forEach
-            if (nowEpochSeconds - entry.loadedAtEpochSeconds >= SHORT_CACHE_TTL_SECONDS) {
+            if (
+                !EpgCacheFreshness.isFresh(
+                    loadedAtEpochSeconds = entry.loadedAtEpochSeconds,
+                    nowEpochSeconds = nowEpochSeconds,
+                    ttlSeconds = SHORT_CACHE_TTL_SECONDS,
+                )
+            ) {
                 shortCache.remove(key, entry)
                 return@forEach
             }
@@ -217,7 +223,13 @@ class XtreamEpgRepository(
         val nowEpochSeconds = System.currentTimeMillis() / 1_000L
         val key = ShortCacheKey(sourceId = sourceId, channelId = channelId)
         shortCache[key]
-            ?.takeIf { entry -> nowEpochSeconds - entry.loadedAtEpochSeconds < SHORT_CACHE_TTL_SECONDS }
+            ?.takeIf { entry ->
+                EpgCacheFreshness.isFresh(
+                    loadedAtEpochSeconds = entry.loadedAtEpochSeconds,
+                    nowEpochSeconds = nowEpochSeconds,
+                    ttlSeconds = SHORT_CACHE_TTL_SECONDS,
+                )
+            }
             ?.let { entry -> return entry.programs }
 
         val streamId = providerStreamId?.trim()?.takeIf(String::isNotBlank) ?: return emptyList()
