@@ -63,9 +63,12 @@ class SourceManagementService(
 ) {
     suspend fun load(sourceId: String): SourceEditSnapshot? = withContext(Dispatchers.IO) {
         val source = database.playlistSourceDao().getById(sourceId) ?: return@withContext null
-        val locatorValue = runCatching {
+        val locatorValue = try {
             sensitiveValueStore.get(SensitiveValueRef(source.locatorRef))
-        }.getOrNull()
+        } catch (error: Exception) {
+            error.rethrowCancellation()
+            null
+        }
 
         when (source.sourceKind) {
             SourceKinds.XTREAM -> {
