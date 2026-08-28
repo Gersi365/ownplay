@@ -17,7 +17,10 @@ import java.time.OffsetDateTime
 import java.time.format.DateTimeFormatter
 import java.time.format.DateTimeParseException
 import javax.net.ssl.SSLException
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.OkHttpClient
@@ -91,7 +94,7 @@ class XtreamXmlTvClient(
                             if (body == null) {
                                 SourceResult.Failure(SourceError.MalformedResponse)
                             } else {
-                                val snapshot = runCatching {
+                                val snapshot = try {
                                     body.byteStream().use { input ->
                                         parseXmlTv(
                                             input = input,
@@ -99,7 +102,9 @@ class XtreamXmlTvClient(
                                             nowEpochSeconds = nowEpochSeconds,
                                         )
                                     }
-                                }.getOrElse {
+                                } catch (cancelled: CancellationException) {
+                                    throw cancelled
+                                } catch (_: Exception) {
                                     return@withContext SourceResult.Failure(
                                         SourceError.MalformedResponse,
                                     )
@@ -127,7 +132,7 @@ class XtreamXmlTvClient(
         }
     }
 
-    private fun parseXmlTv(
+    private suspend fun parseXmlTv(
         input: java.io.InputStream,
         channelIds: Set<String>,
         nowEpochSeconds: Long,
@@ -142,6 +147,7 @@ class XtreamXmlTvClient(
 
         var event = parser.eventType
         while (event != XmlPullParser.END_DOCUMENT) {
+            currentCoroutineContext().ensureActive()
             if (event == XmlPullParser.START_TAG && parser.name == "programme") {
                 val channelId = parser.getAttributeValue(null, "channel")?.trim()
                 val start = parseXmlTvTime(parser.getAttributeValue(null, "start"))
@@ -155,6 +161,7 @@ class XtreamXmlTvClient(
                     var description: String? = null
                     val programmeDepth = parser.depth
                     while (parser.next().also { event = it } != XmlPullParser.END_DOCUMENT) {
+                        currentCoroutineContext().ensureActive()
                         if (
                             event == XmlPullParser.END_TAG &&
                             parser.name == "programme" &&
