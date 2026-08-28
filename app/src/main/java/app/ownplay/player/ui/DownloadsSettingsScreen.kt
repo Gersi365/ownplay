@@ -33,8 +33,10 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
@@ -72,6 +74,7 @@ internal fun DownloadsSettingsScreen(
     }
     val downloads by runtime.observeAll().collectAsState(initial = emptyList())
     val scope = rememberCoroutineScope()
+    var removeError by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(isTelevision, focusBackOnEntry) {
         if (isTelevision && focusBackOnEntry && onBack != null) {
@@ -189,6 +192,18 @@ internal fun DownloadsSettingsScreen(
             }
         }
 
+        removeError?.let { message ->
+            Text(
+                text = message,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .widthIn(max = contentMaxWidth)
+                    .align(Alignment.CenterHorizontally),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.error,
+            )
+        }
+
         LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
@@ -211,7 +226,13 @@ internal fun DownloadsSettingsScreen(
                         scope.launch { runtime.retry(download.downloadId) }
                     },
                     onRemove = {
-                        scope.launch { runtime.remove(download.downloadId) }
+                        scope.launch {
+                            removeError = if (runtime.remove(download.downloadId)) {
+                                null
+                            } else {
+                                "Could not remove the offline file. Check storage access and try again."
+                            }
+                        }
                     },
                 )
             }
