@@ -288,13 +288,6 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    override fun onStart() {
-        super.onStart()
-        if (::runtime.isInitialized && tvRemoteGuardEnabled) {
-            runtime.playbackController.resumeAfterBackground()
-        }
-    }
-
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
         if (tvRemoteGuardEnabled && event.isRemoteActivationKey()) {
             when (event.action) {
@@ -329,6 +322,9 @@ class MainActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
+        if (::runtime.isInitialized && tvRemoteGuardEnabled) {
+            runtime.playbackController.resumeAfterBackground()
+        }
         hideStatusBar()
         if (::offlineDownloadRuntime.isInitialized) {
             activityScope.launch {
