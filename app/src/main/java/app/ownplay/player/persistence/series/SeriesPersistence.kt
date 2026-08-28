@@ -8,6 +8,7 @@ import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import androidx.room.Transaction
+import androidx.room.Upsert
 import app.ownplay.player.persistence.PlaylistSourceEntity
 import app.ownplay.player.persistence.vod.MediaFavoriteEntity
 import app.ownplay.player.persistence.vod.PlaybackProgressEntity
@@ -281,7 +282,7 @@ interface SeriesCatalogDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsertCategories(categories: List<ProviderSeriesCategoryEntity>)
 
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    @Upsert
     suspend fun upsertSeries(series: List<ProviderSeriesEntity>)
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
