@@ -1,5 +1,6 @@
 package app.ownplay.player.ui.library
 
+import android.content.res.Configuration
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -44,6 +45,9 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -89,6 +93,7 @@ internal fun LibraryRoute(
     var playbackRequestError by remember { mutableStateOf<String?>(null) }
     var selectedSeriesKey by remember { mutableStateOf<LibrarySeriesKey?>(null) }
     var pendingRemoval by remember { mutableStateOf<OfflineDownload?>(null) }
+    var restoreLibraryFocusAfterPlayback by remember { mutableStateOf(false) }
 
     pendingRemoval?.let { download ->
         DownloadRemovalConfirmationDialog(
@@ -107,7 +112,7 @@ internal fun LibraryRoute(
             runtime = runtime,
             session = session,
             onExit = {
-                runtime.playbackController.stop()
+                restoreLibraryFocusAfterPlayback = selectedSeriesKey == null
                 playbackSession = null
             },
             onProgress = { positionMs, durationMs ->
@@ -151,6 +156,7 @@ internal fun LibraryRoute(
     }
 
     fun playDownload(download: OfflineDownload) {
+        restoreLibraryFocusAfterPlayback = false
         scope.launch {
             val request = downloadRuntime.playbackRequest(download.downloadId)
             if (request == null) {
@@ -209,6 +215,20 @@ internal fun LibraryRoute(
         return
     }
 
+    val configuration = LocalConfiguration.current
+    val isTelevision =
+        configuration.uiMode and Configuration.UI_MODE_TYPE_MASK == Configuration.UI_MODE_TYPE_TELEVISION
+    val libraryReturnFocusRequester = remember { FocusRequester() }
+
+    LaunchedEffect(isTelevision, restoreLibraryFocusAfterPlayback) {
+        if (isTelevision && restoreLibraryFocusAfterPlayback) {
+            libraryReturnFocusRequester.requestFocus()
+        }
+        if (restoreLibraryFocusAfterPlayback) {
+            restoreLibraryFocusAfterPlayback = false
+        }
+    }
+
     val hasVisibleItems = when (filter) {
         LibraryFilter.ALL -> movieDownloads.isNotEmpty() || seriesGroups.isNotEmpty()
         LibraryFilter.MOVIES -> movieDownloads.isNotEmpty()
@@ -246,6 +266,11 @@ internal fun LibraryRoute(
 
         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             LibraryFilter.entries.forEach { option ->
+                val focusModifier = if (option == LibraryFilter.ALL) {
+                    Modifier.focusRequester(libraryReturnFocusRequester)
+                } else {
+                    Modifier
+                }
                 FilterChip(
                     selected = filter == option,
                     onClick = { filter = option },
@@ -258,6 +283,7 @@ internal fun LibraryRoute(
                             },
                         )
                     },
+                    modifier = focusModifier,
                 )
             }
         }
