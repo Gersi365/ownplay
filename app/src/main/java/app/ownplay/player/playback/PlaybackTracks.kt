@@ -140,9 +140,7 @@ internal object PlaybackTrackSelectionPolicy {
         -> state.copy(subtitleSelection = selection)
 
         is PlaybackSubtitleSelection.Specific -> if (
-            state.subtitleTracks.any { option ->
-                option.id == selection.trackId && option.supported
-            }
+            state.subtitleTracks.any { option -> option.id == selection.trackId && option.supported }
         ) {
             state.copy(subtitleSelection = selection)
         } else {
@@ -151,6 +149,9 @@ internal object PlaybackTrackSelectionPolicy {
     }
 
     fun resetForNewMedia(): PlaybackTrackState = PlaybackTrackState()
+
+    fun resetAfterPlayerFailure(state: PlaybackTrackState): PlaybackTrackState =
+        PlaybackTrackState(diagnostics = state.diagnostics)
 
     private fun normalizeAudioSelection(
         selection: PlaybackAudioSelection,
