@@ -182,9 +182,11 @@ internal fun VodRoute(
     var detailsLoading by remember(sourceId) { mutableStateOf(false) }
     var detailsError by remember(sourceId) { mutableStateOf<SourceError?>(null) }
     var playingMovie by remember(sourceId) { mutableStateOf<VodMovie?>(null) }
+    var restoreDetailFocusAfterPlayback by remember(sourceId) { mutableStateOf(false) }
     val detailsBackOwner = remember(sourceId) { Any() }
 
     fun closeMovieDetails() {
+        restoreDetailFocusAfterPlayback = false
         if (returnToLibraryOnDetailBack) {
             onReturnToLibrary()
         } else {
@@ -308,6 +310,7 @@ internal fun VodRoute(
         query = ""
         selectedCategoryKey = null
         favoritesOnly = false
+        restoreDetailFocusAfterPlayback = false
         selectedMovie = target
         onRequestedMovieConsumed()
     }
@@ -373,6 +376,7 @@ internal fun VodRoute(
             movie = movieToPlay,
             onExit = {
                 playingMovie = null
+                restoreDetailFocusAfterPlayback = true
             },
             onFullscreenStateChanged = onFullscreenStateChanged,
         )
@@ -395,6 +399,7 @@ internal fun VodRoute(
                 onResumeDownload = ::resumeDownload,
                 onClearProgress = { clearMovieProgress(movie) },
                 onPlay = { target ->
+                    restoreDetailFocusAfterPlayback = false
                     runtime.playbackController.start(
                         PlaybackRequest(
                             sourceId = sourceId,
@@ -440,7 +445,10 @@ internal fun VodRoute(
                 onFavoritesChanged = { favoritesOnly = it },
                 onSortChanged = { sortOrder = it },
                 onRefresh = ::refresh,
-                onMovieSelected = { selectedMovie = it },
+                onMovieSelected = {
+                    restoreDetailFocusAfterPlayback = false
+                    selectedMovie = it
+                },
                 showCategoryStrip = false,
                 selectedCategoryKey = selectedCategoryKey,
                 onCategorySelected = { selectedCategoryKey = it },
@@ -453,7 +461,7 @@ internal fun VodRoute(
                     loading = detailsLoading,
                     error = detailsError,
                     download = downloadFor(movie),
-                    focusBackOnEntry = returnToLibraryOnDetailBack,
+                    focusBackOnEntry = returnToLibraryOnDetailBack || restoreDetailFocusAfterPlayback,
                     onDismiss = ::closeMovieDetails,
                     onFavoriteChanged = { favorite -> setMovieFavorite(movie, favorite) },
                     onDownload = ::enqueueMovieDownload,
@@ -461,6 +469,7 @@ internal fun VodRoute(
                     onResumeDownload = ::resumeDownload,
                     onClearProgress = { clearMovieProgress(movie) },
                     onPlay = { target ->
+                        restoreDetailFocusAfterPlayback = false
                         runtime.playbackController.start(
                             PlaybackRequest(
                                 sourceId = sourceId,
@@ -489,7 +498,10 @@ internal fun VodRoute(
             onFavoritesChanged = { favoritesOnly = it },
             onSortChanged = { sortOrder = it },
             onRefresh = ::refresh,
-            onMovieSelected = { selectedMovie = it },
+            onMovieSelected = {
+                restoreDetailFocusAfterPlayback = false
+                selectedMovie = it
+            },
             showCategoryStrip = true,
             selectedCategoryKey = selectedCategoryKey,
             onCategorySelected = { selectedCategoryKey = it },
