@@ -270,8 +270,8 @@ class XtreamEpgRepository(
         description = program.description,
         startEpochSeconds = program.startEpochSeconds,
         endEpochSeconds = program.endEpochSeconds,
-        startLabel = program.startEpochSeconds?.let(::epgTimeLabel),
-        endLabel = program.endEpochSeconds?.let(::epgTimeLabel),
+        startLabel = program.startEpochSeconds?.let { epoch -> epgTimeLabel(epoch) },
+        endLabel = program.endEpochSeconds?.let { epoch -> epgTimeLabel(epoch) },
     )
 
     private fun toProgram(program: XtreamEpgProgram): EpgProgram = EpgProgram(
@@ -279,8 +279,8 @@ class XtreamEpgRepository(
         description = program.description,
         startEpochSeconds = program.startEpochSeconds,
         endEpochSeconds = program.endEpochSeconds,
-        startLabel = program.startEpochSeconds?.let(::epgTimeLabel) ?: program.startLabel,
-        endLabel = program.endEpochSeconds?.let(::epgTimeLabel) ?: program.endLabel,
+        startLabel = program.startEpochSeconds?.let { epoch -> epgTimeLabel(epoch) } ?: program.startLabel,
+        endLabel = program.endEpochSeconds?.let { epoch -> epgTimeLabel(epoch) } ?: program.endLabel,
     )
 
     private companion object {
