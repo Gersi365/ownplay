@@ -96,6 +96,7 @@ import app.ownplay.player.persistence.download.DownloadMediaKinds
 import app.ownplay.player.persistence.download.DownloadStates
 import app.ownplay.player.playback.PlaybackInteractionBridge
 import app.ownplay.player.playback.PlaybackMediaKind
+import app.ownplay.player.playback.PlaybackPresentationPolicy
 import app.ownplay.player.playback.PlaybackRequest
 import app.ownplay.player.playback.PlaybackState
 import app.ownplay.player.source.SourceError
@@ -1182,12 +1183,14 @@ private fun VodPlaybackScreen(
     onFullscreenStateChanged: (Boolean) -> Unit,
 ) {
     val playbackState by runtime.playbackController.state.collectAsState()
+    val playbackControls = PlaybackPresentationPolicy.controlsFor(playbackState)
     val configuration = LocalConfiguration.current
     val isTelevision =
         configuration.uiMode and android.content.res.Configuration.UI_MODE_TYPE_MASK ==
             android.content.res.Configuration.UI_MODE_TYPE_TELEVISION
     val scope = rememberCoroutineScope()
     val backOwner = remember(movie.movieId) { Any() }
+    val backFocusRequester = remember(movie.movieId) { FocusRequester() }
     val controlsFocusRequester = remember(movie.movieId) { FocusRequester() }
     val wakeFocusRequester = remember(movie.movieId) { FocusRequester() }
     var playerView by remember(movie.movieId) { mutableStateOf<PlayerView?>(null) }
@@ -1271,12 +1274,12 @@ private fun VodPlaybackScreen(
         }
     }
 
-    LaunchedEffect(isTelevision, controlsVisible, movie.movieId) {
+    LaunchedEffect(isTelevision, controlsVisible, playbackState, movie.movieId) {
         if (!isTelevision) return@LaunchedEffect
-        if (controlsVisible) {
-            controlsFocusRequester.requestFocus()
-        } else {
-            wakeFocusRequester.requestFocus()
+        when {
+            playbackState is PlaybackState.Failed -> backFocusRequester.requestFocus()
+            controlsVisible -> controlsFocusRequester.requestFocus()
+            else -> wakeFocusRequester.requestFocus()
         }
     }
 
@@ -1360,7 +1363,10 @@ private fun VodPlaybackScreen(
                         .padding(horizontal = 8.dp, vertical = 5.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    IconButton(onClick = onExit) {
+                    IconButton(
+                        modifier = Modifier.focusRequester(backFocusRequester),
+                        onClick = onExit,
+                    ) {
                         Icon(Icons.Filled.ArrowBack, contentDescription = "Back", tint = Color.White)
                     }
                     Text(
@@ -1396,23 +1402,43 @@ private fun VodPlaybackScreen(
                         valueRange = 0f..maxDuration.toFloat(),
                     )
                     Row(verticalAlignment = Alignment.CenterVertically) {
+                        val playbackActionEnabled =
+                            playbackState is PlaybackState.Playing ||
+                                playbackState is PlaybackState.Paused ||
+                                (playbackState is PlaybackState.Failed && playbackControls.canRetry)
                         IconButton(
                             modifier = Modifier.focusRequester(controlsFocusRequester),
+                            enabled = playbackActionEnabled,
                             onClick = {
                                 when (playbackState) {
                                     is PlaybackState.Playing -> runtime.playbackController.pause()
                                     is PlaybackState.Paused -> runtime.playbackController.play()
-                                    is PlaybackState.Failed -> runtime.playbackController.retry()
+                                    is PlaybackState.Failed -> if (playbackControls.canRetry) {
+                                        runtime.playbackController.retry()
+                                    }
                                     else -> Unit
                                 }
                                 revealControls()
                             },
                         ) {
                             val playing = playbackState is PlaybackState.Playing
+                            val failed = playbackState is PlaybackState.Failed
                             Icon(
-                                if (playing) Icons.Filled.Pause else Icons.Filled.PlayArrow,
-                                contentDescription = if (playing) "Pause" else "Play",
-                                tint = Color.White,
+                                when {
+                                    failed -> Icons.Filled.Refresh
+                                    playing -> Icons.Filled.Pause
+                                    else -> Icons.Filled.PlayArrow
+                                },
+                                contentDescription = when {
+                                    failed -> "Retry"
+                                    playing -> "Pause"
+                                    else -> "Play"
+                                },
+                                tint = if (playbackActionEnabled) {
+                                    Color.White
+                                } else {
+                                    Color.White.copy(alpha = 0.38f)
+                                },
                             )
                         }
                         Text(
