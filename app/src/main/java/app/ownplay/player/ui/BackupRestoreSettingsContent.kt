@@ -17,6 +17,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import app.ownplay.player.backup.BackupExportResult
@@ -30,6 +31,17 @@ import kotlinx.coroutines.withContext
 
 private const val MAX_BACKUP_CHARS = 5_000_000
 
+private enum class BackupStatusTone {
+    PROGRESS,
+    SUCCESS,
+    ERROR,
+}
+
+private data class BackupUiStatus(
+    val message: String,
+    val tone: BackupStatusTone,
+)
+
 @Composable
 internal fun BackupRestoreSettingsContent() {
     val context = LocalContext.current
@@ -37,37 +49,46 @@ internal fun BackupRestoreSettingsContent() {
     val service = remember(context.applicationContext) {
         PersonalizationBackupService(context.applicationContext)
     }
-    var status by remember { mutableStateOf<String?>(null) }
+    var status by remember { mutableStateOf<BackupUiStatus?>(null) }
 
     val exportLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.CreateDocument("application/json"),
     ) { uri ->
         if (uri == null) return@rememberLauncherForActivityResult
         scope.launch {
-            status = "Creating backup…"
+            status = BackupUiStatus("Creating backup…", BackupStatusTone.PROGRESS)
             status = when (val result = service.exportBackup()) {
                 is BackupExportResult.Success -> {
                     val written = writeBackup(context, uri, result.content)
                     if (!written) {
-                        "Backup could not be written."
+                        BackupUiStatus(
+                            message = "Backup could not be written.",
+                            tone = BackupStatusTone.ERROR,
+                        )
                     } else {
-                        buildString {
-                            append("Backup exported: ")
-                            append(result.channelRecords)
-                            append(" channel records, ")
-                            append(result.groups)
-                            append(" groups, ")
-                            append(result.memberships)
-                            append(" memberships.")
-                            if (result.omittedLogoOverrides > 0) {
-                                append(" ")
-                                append(result.omittedLogoOverrides)
-                                append(" secure logo override(s) were intentionally omitted.")
-                            }
-                        }
+                        BackupUiStatus(
+                            message = buildString {
+                                append("Backup saved: ")
+                                append(result.channelRecords)
+                                append(" channel records, ")
+                                append(result.groups)
+                                append(" groups, ")
+                                append(result.memberships)
+                                append(" memberships.")
+                                if (result.omittedLogoOverrides > 0) {
+                                    append(" ")
+                                    append(result.omittedLogoOverrides)
+                                    append(" secure logo override(s) were intentionally omitted.")
+                                }
+                            },
+                            tone = BackupStatusTone.SUCCESS,
+                        )
                     }
                 }
-                BackupExportResult.Failure -> "Backup export failed safely. No file data was written."
+                BackupExportResult.Failure -> BackupUiStatus(
+                    message = "Backup export failed safely. No file data was written.",
+                    tone = BackupStatusTone.ERROR,
+                )
             }
         }
     }
@@ -77,10 +98,13 @@ internal fun BackupRestoreSettingsContent() {
     ) { uri ->
         if (uri == null) return@rememberLauncherForActivityResult
         scope.launch {
-            status = "Validating backup…"
+            status = BackupUiStatus("Validating backup…", BackupStatusTone.PROGRESS)
             val raw = readBackup(context, uri)
             status = if (raw == null) {
-                "Backup could not be read or is larger than 5 MB."
+                BackupUiStatus(
+                    message = "Backup could not be read or is larger than 5 MB.",
+                    tone = BackupStatusTone.ERROR,
+                )
             } else {
                 restoreStatus(service.restoreBackup(raw))
             }
@@ -92,28 +116,35 @@ internal fun BackupRestoreSettingsContent() {
         verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
         SettingsActionRow(
-            title = "Backup personalization",
-            detail = "Versioned JSON · credentials and secure values excluded",
+            title = "Export personalization",
+            detail = "Favorites · order · hidden channels · groups · no credentials",
             actionLabel = "Export",
             onClick = { exportLauncher.launch("ownplay-personalization-v1.json") },
         )
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
         SettingsActionRow(
             title = "Restore personalization",
-            detail = "Validates V1 first · additive restore · unmatched items skipped",
+            detail = "Validated before apply · existing data kept · unmatched items skipped",
             actionLabel = "Import",
             onClick = {
                 importLauncher.launch(arrayOf("application/json", "text/plain"))
             },
         )
-        status?.let { message ->
+        status?.let { current ->
             Text(
-                text = message,
+                text = current.message,
                 style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                color = backupStatusColor(current.tone),
             )
         }
     }
+}
+
+@Composable
+private fun backupStatusColor(tone: BackupStatusTone): Color = when (tone) {
+    BackupStatusTone.PROGRESS -> MaterialTheme.colorScheme.onSurfaceVariant
+    BackupStatusTone.SUCCESS -> MaterialTheme.colorScheme.primary
+    BackupStatusTone.ERROR -> MaterialTheme.colorScheme.error
 }
 
 private suspend fun writeBackup(
@@ -154,34 +185,40 @@ private suspend fun readBackup(
     }
 }
 
-private fun restoreStatus(result: BackupRestoreResult): String = when (result) {
-    is BackupRestoreResult.Success -> buildString {
-        append("Restore complete: ")
-        append(result.appliedChannelRecords)
-        append(" channel records, ")
-        append(result.appliedGroups)
-        append(" groups, ")
-        append(result.appliedMemberships)
-        append(" memberships applied.")
-        if (result.unmatchedChannelIdentities > 0 || result.ambiguousChannelIdentities > 0) {
-            append(" Skipped identities: ")
-            append(result.unmatchedChannelIdentities)
-            append(" unmatched, ")
-            append(result.ambiguousChannelIdentities)
-            append(" ambiguous.")
-        }
-        if (result.omittedLogoOverrides > 0) {
-            append(" ")
-            append(result.omittedLogoOverrides)
-            append(" secure logo override(s) were not restored.")
-        }
-    }
-    is BackupRestoreResult.Failure -> when (result.reason) {
-        BackupRestoreFailureReason.INVALID_JSON -> "Restore rejected: file is not valid JSON."
-        BackupRestoreFailureReason.UNSUPPORTED_FORMAT -> "Restore rejected: unsupported backup format."
-        BackupRestoreFailureReason.UNSUPPORTED_VERSION -> "Restore rejected: unsupported backup version."
-        BackupRestoreFailureReason.INVALID_PAYLOAD -> "Restore rejected: backup payload is invalid."
-        BackupRestoreFailureReason.PERSISTENCE_FAILURE ->
-            "Restore failed safely while applying data; the database transaction was rolled back."
-    }
+private fun restoreStatus(result: BackupRestoreResult): BackupUiStatus = when (result) {
+    is BackupRestoreResult.Success -> BackupUiStatus(
+        message = buildString {
+            append("Restore complete: ")
+            append(result.appliedChannelRecords)
+            append(" channel records, ")
+            append(result.appliedGroups)
+            append(" groups, ")
+            append(result.appliedMemberships)
+            append(" memberships applied.")
+            if (result.unmatchedChannelIdentities > 0 || result.ambiguousChannelIdentities > 0) {
+                append(" Skipped identities: ")
+                append(result.unmatchedChannelIdentities)
+                append(" unmatched, ")
+                append(result.ambiguousChannelIdentities)
+                append(" ambiguous.")
+            }
+            if (result.omittedLogoOverrides > 0) {
+                append(" ")
+                append(result.omittedLogoOverrides)
+                append(" secure logo override(s) were not restored.")
+            }
+        },
+        tone = BackupStatusTone.SUCCESS,
+    )
+    is BackupRestoreResult.Failure -> BackupUiStatus(
+        message = when (result.reason) {
+            BackupRestoreFailureReason.INVALID_JSON -> "Restore rejected: file is not valid JSON."
+            BackupRestoreFailureReason.UNSUPPORTED_FORMAT -> "Restore rejected: unsupported backup format."
+            BackupRestoreFailureReason.UNSUPPORTED_VERSION -> "Restore rejected: unsupported backup version."
+            BackupRestoreFailureReason.INVALID_PAYLOAD -> "Restore rejected: backup payload is invalid."
+            BackupRestoreFailureReason.PERSISTENCE_FAILURE ->
+                "Restore failed safely while applying data; the database transaction was rolled back."
+        },
+        tone = BackupStatusTone.ERROR,
+    )
 }
