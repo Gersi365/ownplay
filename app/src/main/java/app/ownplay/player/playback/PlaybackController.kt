@@ -470,7 +470,9 @@ private fun PlaybackState.requestOrNull(): PlaybackRequest? = when (this) {
 
 internal fun PlaybackResolutionFailureReason.toPlaybackFailure(): PlaybackFailure {
     val category = when (this) {
-        PlaybackResolutionFailureReason.CLEARTEXT_NOT_ALLOWED,
+        PlaybackResolutionFailureReason.CLEARTEXT_NOT_ALLOWED ->
+            PlaybackFailureCategory.INSECURE_TRANSPORT_BLOCKED
+
         PlaybackResolutionFailureReason.UNSUPPORTED_SOURCE_KIND,
         PlaybackResolutionFailureReason.DESCRIPTOR_INVALID,
         PlaybackResolutionFailureReason.SOURCE_LOCATOR_INVALID,
