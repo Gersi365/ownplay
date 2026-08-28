@@ -6,10 +6,15 @@ internal enum class OfflineDownloadFailureDisposition {
 }
 
 internal object OfflineDownloadRetryPolicy {
-    fun forHttpStatus(statusCode: Int): OfflineDownloadFailureDisposition = when {
-        statusCode == 408 -> OfflineDownloadFailureDisposition.RETRY
-        statusCode == 429 -> OfflineDownloadFailureDisposition.RETRY
-        statusCode in 500..599 -> OfflineDownloadFailureDisposition.RETRY
+    fun forHttpStatus(statusCode: Int): OfflineDownloadFailureDisposition = when (statusCode) {
+        408,
+        425,
+        429,
+        500,
+        502,
+        503,
+        504,
+        -> OfflineDownloadFailureDisposition.RETRY
         else -> OfflineDownloadFailureDisposition.FAIL
     }
 }
