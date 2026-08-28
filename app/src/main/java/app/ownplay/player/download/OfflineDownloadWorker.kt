@@ -132,8 +132,44 @@ class OfflineDownloadWorker(
                     }
                     return if (retry) Result.retry() else Result.failure()
                 }
+
+                val responseMode = offlineDownloadResponseMode(
+                    existingBytes = existingBytes,
+                    responseCode = opened.code,
+                    contentRangeHeader = opened.header("Content-Range"),
+                )
+                if (responseMode == OfflineDownloadResponseMode.RETRY_FROM_ZERO) {
+                    resetPartialTransfer(
+                        partFile = partFile,
+                        localLocation = destinationLocation,
+                    )
+                    val retry = shouldRetryDownload(
+                        runAttemptCount = runAttemptCount,
+                        retryableFailure = true,
+                    )
+                    if (retry) {
+                        markRetryQueued(
+                            dao = dao,
+                            row = initialRow,
+                            bytesDownloaded = 0L,
+                            totalBytes = null,
+                            localLocation = null,
+                        )
+                    } else {
+                        markFailed(
+                            dao = dao,
+                            row = initialRow,
+                            reason = "Provider returned an invalid resume response",
+                            bytesDownloaded = 0L,
+                            totalBytes = null,
+                            localLocation = null,
+                        )
+                    }
+                    return if (retry) Result.retry() else Result.failure()
+                }
+
                 val body = opened.body
-                val append = existingBytes > 0L && opened.code == 206
+                val append = responseMode == OfflineDownloadResponseMode.APPEND
                 val startBytes = if (append) existingBytes else 0L
                 if (!usePublicDownloads && !append && partFile.exists()) {
                     partFile.delete()
@@ -206,6 +242,9 @@ class OfflineDownloadWorker(
 
                 if (dao.getById(downloadId)?.state == DownloadStates.PAUSED) {
                     throw CancellationException("Download paused before finalization")
+                }
+                if (downloaded <= startBytes) {
+                    throw IOException("Download returned no media bytes")
                 }
                 if (totalBytes != null && downloaded < totalBytes) {
                     throw IOException("Download ended before the expected content length")
@@ -291,6 +330,14 @@ class OfflineDownloadWorker(
         } finally {
             database.close()
         }
+    }
+
+    private fun resetPartialTransfer(
+        partFile: File,
+        localLocation: String?,
+    ) {
+        OfflineDownloadStorage.deleteLocation(applicationContext, localLocation)
+        partFile.delete()
     }
 
     private fun currentTransferBytes(row: MediaDownloadEntity): Long {
