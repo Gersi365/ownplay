@@ -21,7 +21,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Fullscreen
@@ -84,6 +83,10 @@ internal fun LivePreviewPanel(
     var controlsVisible by remember(selection.request.channelId) { mutableStateOf(true) }
     var interactionToken by remember(selection.request.channelId) { mutableStateOf(0) }
     val fullscreenFocusRequester = remember(selection.request.channelId) { FocusRequester() }
+    val controlSize = if (isTelevision) 48.dp else 38.dp
+    val primaryControlSize = if (isTelevision) 52.dp else 42.dp
+    val controlIconSize = if (isTelevision) 24.dp else 20.dp
+    val primaryIconSize = if (isTelevision) 26.dp else 22.dp
 
     fun revealControls() {
         controlsVisible = true
@@ -117,7 +120,7 @@ internal fun LivePreviewPanel(
 
     Surface(
         modifier = modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(16.dp),
+        shape = MaterialTheme.shapes.medium,
         color = Color.Black,
         tonalElevation = 3.dp,
     ) {
@@ -148,13 +151,16 @@ internal fun LivePreviewPanel(
             Surface(
                 modifier = Modifier
                     .align(Alignment.TopStart)
-                    .padding(8.dp),
-                shape = RoundedCornerShape(999.dp),
+                    .padding(if (isTelevision) 10.dp else 8.dp),
+                shape = MaterialTheme.shapes.extraLarge,
                 color = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.92f),
             ) {
                 Text(
                     text = "LIVE",
-                    modifier = Modifier.padding(horizontal = 9.dp, vertical = 3.dp),
+                    modifier = Modifier.padding(
+                        horizontal = if (isTelevision) 11.dp else 9.dp,
+                        vertical = if (isTelevision) 4.dp else 3.dp,
+                    ),
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onErrorContainer,
                     fontWeight = FontWeight.Bold,
@@ -165,7 +171,7 @@ internal fun LivePreviewPanel(
                 CircularProgressIndicator(
                     modifier = Modifier
                         .align(Alignment.Center)
-                        .size(30.dp),
+                        .size(if (isTelevision) 36.dp else 30.dp),
                     strokeWidth = 2.dp,
                 )
             }
@@ -174,14 +180,14 @@ internal fun LivePreviewPanel(
                 Surface(
                     modifier = Modifier
                         .align(Alignment.Center)
-                        .padding(16.dp),
-                    shape = RoundedCornerShape(14.dp),
-                    color = MaterialTheme.colorScheme.surface.copy(alpha = 0.92f),
+                        .padding(if (isTelevision) 20.dp else 16.dp),
+                    shape = MaterialTheme.shapes.medium,
+                    color = MaterialTheme.colorScheme.surface.copy(alpha = 0.94f),
                 ) {
                     Column(
-                        modifier = Modifier.padding(12.dp),
+                        modifier = Modifier.padding(if (isTelevision) 16.dp else 12.dp),
                         horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.spacedBy(4.dp),
+                        verticalArrangement = Arrangement.spacedBy(if (isTelevision) 7.dp else 4.dp),
                     ) {
                         Text(
                             text = playbackStatusLabel(state),
@@ -219,9 +225,12 @@ internal fun LivePreviewPanel(
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .background(Color.Black.copy(alpha = 0.70f))
-                        .padding(horizontal = 10.dp, vertical = 5.dp),
-                    verticalArrangement = Arrangement.spacedBy(2.dp),
+                        .background(Color.Black.copy(alpha = 0.72f))
+                        .padding(
+                            horizontal = if (isTelevision) 14.dp else 10.dp,
+                            vertical = if (isTelevision) 8.dp else 5.dp,
+                        ),
+                    verticalArrangement = Arrangement.spacedBy(if (isTelevision) 5.dp else 2.dp),
                 ) {
                     Column(
                         modifier = Modifier.fillMaxWidth(),
@@ -238,7 +247,7 @@ internal fun LivePreviewPanel(
                         Text(
                             text = playbackStatusLabel(state),
                             style = MaterialTheme.typography.labelSmall,
-                            color = Color.White.copy(alpha = 0.70f),
+                            color = Color.White.copy(alpha = 0.72f),
                             maxLines = 1,
                         )
                     }
@@ -256,13 +265,13 @@ internal fun LivePreviewPanel(
                                 enabled = selection.request.navigationTarget(
                                     PlaybackNavigationDirection.PREVIOUS,
                                 ) != null,
-                                modifier = Modifier.size(38.dp),
+                                modifier = Modifier.size(controlSize),
                             ) {
                                 Icon(
                                     Icons.Filled.SkipPrevious,
                                     contentDescription = "Previous channel",
                                     tint = Color.White,
-                                    modifier = Modifier.size(20.dp),
+                                    modifier = Modifier.size(controlIconSize),
                                 )
                             }
                         }
@@ -280,7 +289,7 @@ internal fun LivePreviewPanel(
                                     }
                                 },
                                 enabled = controls.canPause || controls.canPlay,
-                                modifier = Modifier.size(42.dp),
+                                modifier = Modifier.size(primaryControlSize),
                             ) {
                                 Icon(
                                     imageVector = if (controls.canPause) {
@@ -289,7 +298,7 @@ internal fun LivePreviewPanel(
                                         Icons.Filled.PlayArrow
                                     },
                                     contentDescription = if (controls.canPause) "Pause" else "Play",
-                                    modifier = Modifier.size(22.dp),
+                                    modifier = Modifier.size(primaryIconSize),
                                 )
                             }
                         }
@@ -302,13 +311,13 @@ internal fun LivePreviewPanel(
                                 enabled = selection.request.navigationTarget(
                                     PlaybackNavigationDirection.NEXT,
                                 ) != null,
-                                modifier = Modifier.size(38.dp),
+                                modifier = Modifier.size(controlSize),
                             ) {
                                 Icon(
                                     Icons.Filled.SkipNext,
                                     contentDescription = "Next channel",
                                     tint = Color.White,
-                                    modifier = Modifier.size(20.dp),
+                                    modifier = Modifier.size(controlIconSize),
                                 )
                             }
                         }
@@ -316,27 +325,27 @@ internal fun LivePreviewPanel(
                             IconButton(
                                 onClick = onOpenFullscreen,
                                 modifier = Modifier
-                                    .size(38.dp)
+                                    .size(controlSize)
                                     .focusRequester(fullscreenFocusRequester),
                             ) {
                                 Icon(
                                     Icons.Filled.Fullscreen,
                                     contentDescription = "Open full player",
                                     tint = Color.White,
-                                    modifier = Modifier.size(20.dp),
+                                    modifier = Modifier.size(controlIconSize),
                                 )
                             }
                         }
                         PreviewControlSlot {
                             IconButton(
                                 onClick = onClose,
-                                modifier = Modifier.size(38.dp),
+                                modifier = Modifier.size(controlSize),
                             ) {
                                 Icon(
                                     Icons.Filled.Close,
                                     contentDescription = "Close preview",
                                     tint = Color.White,
-                                    modifier = Modifier.size(20.dp),
+                                    modifier = Modifier.size(controlIconSize),
                                 )
                             }
                         }
