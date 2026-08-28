@@ -62,6 +62,8 @@ class PlaybackController(
     private var currentPlaybackUsesNetwork: Boolean? = null
     private var automaticRetryAttempt: Int = 0
     private var desiredPlayWhenReady: Boolean = true
+    private var backgroundSuspendedRequest: PlaybackRequest? = null
+    private var backgroundSuspendedPlayWhenReady: Boolean = false
     private var networkAvailable: Boolean =
         networkState?.value != PlaybackNetworkState.UNAVAILABLE
     @Volatile
@@ -145,6 +147,7 @@ class PlaybackController(
     fun start(request: PlaybackRequest) {
         check(!released) { "PlaybackController is released" }
         scope.launch {
+            clearBackgroundSuspension()
             startOnControllerDispatcher(
                 request = request,
                 resetRetryBudget = true,
@@ -156,6 +159,10 @@ class PlaybackController(
         check(!released) { "PlaybackController is released" }
         scope.launch {
             desiredPlayWhenReady = true
+            if (backgroundSuspendedRequest != null) {
+                backgroundSuspendedPlayWhenReady = true
+                return@launch
+            }
             mutableState.value = PlaybackReducer.reduce(mutableState.value, PlaybackEvent.Play)
             engine.play()
         }
@@ -167,8 +174,58 @@ class PlaybackController(
             desiredPlayWhenReady = false
             bufferingTimeoutJob?.cancel()
             bufferingTimeoutJob = null
+            if (backgroundSuspendedRequest != null) {
+                backgroundSuspendedPlayWhenReady = false
+                mutableState.value = PlaybackState.Paused(backgroundSuspendedRequest!!)
+                return@launch
+            }
             mutableState.value = PlaybackReducer.reduce(mutableState.value, PlaybackEvent.Pause)
             engine.pause()
+        }
+    }
+
+    fun suspendForBackground() {
+        check(!released) { "PlaybackController is released" }
+        scope.launch {
+            if (backgroundSuspendedRequest != null) return@launch
+            val request = when (val current = mutableState.value) {
+                is PlaybackState.Loading -> current.request
+                is PlaybackState.Playing -> current.request
+                is PlaybackState.Paused -> current.request
+                PlaybackState.Idle,
+                is PlaybackState.Failed,
+                -> null
+            } ?: return@launch
+
+            backgroundSuspendedRequest = request
+            backgroundSuspendedPlayWhenReady = desiredPlayWhenReady
+            generation += 1
+            preparedGeneration = null
+            currentPlaybackUsesNetwork = null
+            mutableResolvedOrigin.value = null
+            resolutionJob?.cancel()
+            timeoutJob?.cancel()
+            bufferingTimeoutJob?.cancel()
+            bufferingTimeoutJob = null
+            retryJob?.cancel()
+            retryJob = null
+            engine.stop()
+            desiredPlayWhenReady = false
+            mutableState.value = PlaybackState.Paused(request)
+        }
+    }
+
+    fun resumeAfterBackground() {
+        check(!released) { "PlaybackController is released" }
+        scope.launch {
+            val request = backgroundSuspendedRequest ?: return@launch
+            val playWhenReady = backgroundSuspendedPlayWhenReady
+            clearBackgroundSuspension()
+            startOnControllerDispatcher(
+                request = request,
+                resetRetryBudget = false,
+                playWhenReady = playWhenReady,
+            )
         }
     }
 
@@ -177,6 +234,7 @@ class PlaybackController(
         scope.launch {
             val failed = mutableState.value as? PlaybackState.Failed ?: return@launch
             if (!failed.failure.retryable) return@launch
+            clearBackgroundSuspension()
             retryJob?.cancel()
             retryJob = null
             automaticRetryAttempt = 0
@@ -190,6 +248,7 @@ class PlaybackController(
     fun stop() {
         check(!released) { "PlaybackController is released" }
         scope.launch {
+            clearBackgroundSuspension()
             stopOnControllerDispatcher()
         }
     }
@@ -197,6 +256,7 @@ class PlaybackController(
     override fun close() {
         if (released) return
         released = true
+        clearBackgroundSuspension()
         generation += 1
         preparedGeneration = null
         currentPlaybackUsesNetwork = null
@@ -217,6 +277,7 @@ class PlaybackController(
     private fun startOnControllerDispatcher(
         request: PlaybackRequest,
         resetRetryBudget: Boolean,
+        playWhenReady: Boolean = true,
     ) {
         generation += 1
         val requestGeneration = generation
@@ -235,7 +296,7 @@ class PlaybackController(
         if (resetRetryBudget) {
             automaticRetryAttempt = 0
         }
-        desiredPlayWhenReady = true
+        desiredPlayWhenReady = playWhenReady
         mutableState.value = PlaybackReducer.reduce(
             mutableState.value,
             PlaybackEvent.Start(request),
@@ -332,7 +393,11 @@ class PlaybackController(
         mutableResolvedOrigin.value = locator.origin
         preparedGeneration = requestGeneration
         engine.prepare(locator)
-        engine.play()
+        if (desiredPlayWhenReady) {
+            engine.play()
+        } else {
+            engine.pause()
+        }
     }
 
     private fun stopOnControllerDispatcher() {
@@ -349,6 +414,11 @@ class PlaybackController(
         automaticRetryAttempt = 0
         engine.stop()
         mutableState.value = PlaybackReducer.reduce(mutableState.value, PlaybackEvent.Stop)
+    }
+
+    private fun clearBackgroundSuspension() {
+        backgroundSuspendedRequest = null
+        backgroundSuspendedPlayWhenReady = false
     }
 
     private fun handleNetworkUnavailable() {
