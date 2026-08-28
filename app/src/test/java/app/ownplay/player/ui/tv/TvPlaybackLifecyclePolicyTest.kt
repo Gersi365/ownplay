@@ -10,33 +10,23 @@ import org.junit.Test
 
 class TvPlaybackLifecyclePolicyTest {
     @Test
-    fun livePlaybackSuspendsWhenActivityStops() {
-        val request = request(PlaybackMediaKind.LIVE)
-
-        assertEquals(
-            TvBackgroundPlaybackAction.SUSPEND,
-            TvPlaybackLifecyclePolicy.backgroundAction(PlaybackState.Loading(request)),
-        )
-        assertEquals(
-            TvBackgroundPlaybackAction.SUSPEND,
-            TvPlaybackLifecyclePolicy.backgroundAction(PlaybackState.Playing(request)),
-        )
-        assertEquals(
-            TvBackgroundPlaybackAction.SUSPEND,
-            TvPlaybackLifecyclePolicy.backgroundAction(PlaybackState.Paused(request)),
-        )
-    }
-
-    @Test
-    fun onDemandPlaybackPausesWithoutDiscardingPosition() {
-        listOf(PlaybackMediaKind.MOVIE, PlaybackMediaKind.SERIES_EPISODE).forEach { kind ->
+    fun activePlaybackSuspendsWhenActivityStops() {
+        listOf(
+            PlaybackMediaKind.LIVE,
+            PlaybackMediaKind.MOVIE,
+            PlaybackMediaKind.SERIES_EPISODE,
+        ).forEach { kind ->
             val request = request(kind)
             assertEquals(
-                TvBackgroundPlaybackAction.PAUSE_AND_RESUME,
+                TvBackgroundPlaybackAction.SUSPEND,
+                TvPlaybackLifecyclePolicy.backgroundAction(PlaybackState.Loading(request)),
+            )
+            assertEquals(
+                TvBackgroundPlaybackAction.SUSPEND,
                 TvPlaybackLifecyclePolicy.backgroundAction(PlaybackState.Playing(request)),
             )
             assertEquals(
-                TvBackgroundPlaybackAction.NONE,
+                TvBackgroundPlaybackAction.SUSPEND,
                 TvPlaybackLifecyclePolicy.backgroundAction(PlaybackState.Paused(request)),
             )
         }
