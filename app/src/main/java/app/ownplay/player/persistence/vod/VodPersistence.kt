@@ -214,7 +214,7 @@ interface VodCatalogDao {
         WHERE m.sourceId = :sourceId
             AND p.positionMs > 0
             AND p.completed = 0
-        ORDER BY p.updatedAtEpochMillis DESC
+        ORDER BY p.updatedAtEpochMillis DESC, m.providerOrder ASC, m.movieId ASC
         LIMIT :limit
         """,
     )
