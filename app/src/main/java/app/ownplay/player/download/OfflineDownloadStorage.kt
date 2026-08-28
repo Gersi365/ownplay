@@ -12,6 +12,7 @@ import android.webkit.MimeTypeMap
 import app.ownplay.player.persistence.download.MediaDownloadEntity
 import java.io.BufferedOutputStream
 import java.io.File
+import java.io.FileNotFoundException
 import java.io.IOException
 
 internal object OfflineDownloadStorage {
@@ -130,16 +131,19 @@ internal object OfflineDownloadStorage {
         }
     }
 
-    fun deleteLocation(context: Context, location: String?) {
-        if (location.isNullOrBlank()) return
-        if (isPublicDownloadsLocation(location)) {
-            try {
-                context.contentResolver.delete(Uri.parse(location), null, null)
+    fun deleteLocation(context: Context, location: String?): Boolean {
+        if (location.isNullOrBlank()) return true
+        return if (isPublicDownloadsLocation(location)) {
+            val uri = Uri.parse(location)
+            val deleted = try {
+                context.contentResolver.delete(uri, null, null)
             } catch (_: Exception) {
-                Unit
+                return false
             }
+            deleted > 0 || publicLocationIsConfirmedMissing(context, uri)
         } else {
-            resolvePrivateRelativePath(context, location)?.delete()
+            val file = resolvePrivateRelativePath(context, location) ?: return false
+            !file.exists() || file.delete() || !file.exists()
         }
     }
 
@@ -166,6 +170,16 @@ internal object OfflineDownloadStorage {
             .trim()
             .trim('.')
         return cleaned.take(120).ifBlank { "OwnPlay" }
+    }
+
+    private fun publicLocationIsConfirmedMissing(context: Context, uri: Uri): Boolean = try {
+        context.contentResolver.openFileDescriptor(uri, "r")?.use { false } ?: true
+    } catch (_: FileNotFoundException) {
+        true
+    } catch (_: SecurityException) {
+        false
+    } catch (_: Exception) {
+        false
     }
 
     private fun privateDirectory(context: Context): File =
