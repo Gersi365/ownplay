@@ -317,6 +317,21 @@ interface SeriesCatalogDao {
     )
     suspend fun deleteFavorite(sourceId: String, mediaKind: String, contentId: String)
 
+    @Query(
+        """
+        SELECT * FROM playback_progress
+        WHERE sourceId = :sourceId
+            AND mediaKind = :mediaKind
+            AND contentId = :contentId
+        LIMIT 1
+        """,
+    )
+    suspend fun progress(
+        sourceId: String,
+        mediaKind: String,
+        contentId: String,
+    ): PlaybackProgressEntity?
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsertProgress(progress: PlaybackProgressEntity)
 
