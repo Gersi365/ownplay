@@ -1,6 +1,7 @@
 package app.ownplay.player.playback
 
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -63,7 +64,29 @@ class PlaybackBackgroundSuspensionTest {
         controller.close()
     }
 
-    private fun controller(engine: FakeEngine) = PlaybackController(
+    @Test
+    fun networkLossWhileSuspendedFailsBeforePreparingDecoderOnResume() = runBlocking {
+        val engine = FakeEngine()
+        val networkState = MutableStateFlow(PlaybackNetworkState.AVAILABLE)
+        val controller = controller(engine, networkState)
+
+        controller.start(request())
+        engine.emitReady()
+        controller.suspendForBackground()
+        networkState.value = PlaybackNetworkState.UNAVAILABLE
+
+        controller.resumeAfterBackground()
+
+        val failed = controller.state.value as PlaybackState.Failed
+        assertEquals(PlaybackFailureCategory.NETWORK_UNAVAILABLE, failed.failure.category)
+        assertNull(engine.preparedLocator)
+        controller.close()
+    }
+
+    private fun controller(
+        engine: FakeEngine,
+        networkState: MutableStateFlow<PlaybackNetworkState>? = null,
+    ) = PlaybackController(
         resolveLocator = {
             PlaybackResolutionResult.Success(
                 ResolvedPlaybackLocator(
@@ -75,6 +98,7 @@ class PlaybackBackgroundSuspensionTest {
         engine = engine,
         mainDispatcher = Dispatchers.Unconfined,
         ioDispatcher = Dispatchers.Unconfined,
+        networkState = networkState,
     )
 
     private fun request() = PlaybackRequest(
