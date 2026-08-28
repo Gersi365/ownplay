@@ -1,11 +1,11 @@
 package app.ownplay.player.ui.vod
 
 import android.graphics.BitmapFactory
+import android.util.LruCache
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -17,7 +17,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.unit.dp
 import app.ownplay.player.source.network.SourceHttpClient
 import java.io.ByteArrayOutputStream
 import java.io.InputStream
@@ -27,6 +26,9 @@ import okhttp3.Request
 
 private const val MAX_POSTER_BYTES = 8 * 1024 * 1024
 private const val MAX_POSTER_LONG_EDGE_PX = 768
+private const val POSTER_MEMORY_CACHE_ENTRIES = 12
+
+private val posterMemoryCache = LruCache<String, ImageBitmap>(POSTER_MEMORY_CACHE_ENTRIES)
 
 @Composable
 internal fun RemotePoster(
@@ -34,40 +36,46 @@ internal fun RemotePoster(
     title: String,
     modifier: Modifier = Modifier,
 ) {
-    val image by produceState<ImageBitmap?>(initialValue = null, key1 = url) {
-        value = url
-            ?.takeIf(String::isNotBlank)
-            ?.let { posterUrl ->
-                withContext(Dispatchers.IO) {
-                    runCatching {
-                        SourceHttpClient.shared.newCall(
-                            Request.Builder().url(posterUrl).get().build(),
-                        ).execute().use { response ->
-                            if (!response.isSuccessful) return@use null
-                            val body = response.body
-                            val contentLength = body.contentLength()
-                            if (contentLength > MAX_POSTER_BYTES.toLong()) return@use null
-                            val bytes = readPosterBytes(
-                                input = body.byteStream(),
-                                maxBytes = MAX_POSTER_BYTES,
-                            ) ?: return@use null
-                            decodePoster(bytes)
-                        }
-                    }.getOrNull()
+    val normalizedUrl = url?.trim()?.takeIf(String::isNotBlank)
+    val cachedPoster = normalizedUrl?.let(posterMemoryCache::get)
+    val image by produceState<ImageBitmap?>(
+        initialValue = cachedPoster,
+        key1 = normalizedUrl,
+    ) {
+        if (value != null) return@produceState
+        value = normalizedUrl?.let { posterUrl ->
+            withContext(Dispatchers.IO) {
+                runCatching {
+                    SourceHttpClient.shared.newCall(
+                        Request.Builder().url(posterUrl).get().build(),
+                    ).execute().use { response ->
+                        if (!response.isSuccessful) return@use null
+                        val body = response.body
+                        val contentLength = body.contentLength()
+                        if (contentLength > MAX_POSTER_BYTES.toLong()) return@use null
+                        val bytes = readPosterBytes(
+                            input = body.byteStream(),
+                            maxBytes = MAX_POSTER_BYTES,
+                        ) ?: return@use null
+                        decodePoster(bytes)
+                    }
+                }.getOrNull()?.also { poster ->
+                    posterMemoryCache.put(posterUrl, poster)
                 }
             }
+        }
     }
 
     Box(
         modifier = modifier
-            .clip(RoundedCornerShape(12.dp))
+            .clip(MaterialTheme.shapes.small)
             .background(MaterialTheme.colorScheme.surfaceVariant),
         contentAlignment = Alignment.Center,
     ) {
         image?.let { poster ->
             Image(
                 bitmap = poster,
-                contentDescription = title,
+                contentDescription = null,
                 modifier = Modifier.fillMaxSize(),
                 contentScale = ContentScale.Crop,
             )
