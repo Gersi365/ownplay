@@ -9,6 +9,7 @@ data class EpgTimeline(
 
 object EpgTimelineProjector {
     fun normalize(programs: List<EpgProgram>): List<EpgProgram> = programs
+        .filter(::hasValidInterval)
         .distinctBy { program ->
             listOf(
                 program.startEpochSeconds,
@@ -52,5 +53,11 @@ object EpgTimelineProjector {
             current = current,
             future = future,
         )
+    }
+
+    private fun hasValidInterval(program: EpgProgram): Boolean {
+        val start = program.startEpochSeconds
+        val end = program.endEpochSeconds
+        return start == null || end == null || end > start
     }
 }
