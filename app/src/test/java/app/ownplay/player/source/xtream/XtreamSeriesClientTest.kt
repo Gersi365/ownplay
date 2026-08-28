@@ -51,6 +51,31 @@ class XtreamSeriesClientTest {
     }
 
     @Test
+    fun getSeriesCategories_duplicateProviderIdsKeepFirstRow() = runBlocking {
+        server.enqueue(
+            MockResponse.Builder()
+                .body(
+                    """
+                    [
+                      {"category_id":"10","category_name":"Drama First"},
+                      {"category_id":"10","category_name":"Drama Duplicate"},
+                      {"category_id":"20","category_name":"Comedy"}
+                    ]
+                    """.trimIndent(),
+                )
+                .build(),
+        )
+        val client = XtreamSeriesClient(allowCleartext = true)
+
+        val result = client.getSeriesCategories(server.url("/").toString(), credentials)
+
+        assertTrue(result is SourceResult.Success)
+        val categories = (result as SourceResult.Success).value
+        assertEquals(listOf("10", "20"), categories.map(XtreamCategory::id))
+        assertEquals(listOf("Drama First", "Comedy"), categories.map(XtreamCategory::name))
+    }
+
+    @Test
     fun getSeries_parsesCatalogAndCategoryQuery() = runBlocking {
         server.enqueue(
             MockResponse.Builder()
@@ -116,6 +141,32 @@ class XtreamSeriesClientTest {
             listOf(502),
             (result as SourceResult.Success).value.map(XtreamSeriesSummary::seriesId),
         )
+    }
+
+    @Test
+    fun getSeries_duplicateProviderIdsKeepFirstRow() = runBlocking {
+        server.enqueue(
+            MockResponse.Builder()
+                .body(
+                    """
+                    [
+                      {"series_id": 501, "name": "First", "category_id": "10"},
+                      {"series_id": 501, "name": "Duplicate", "category_id": "20"},
+                      {"series_id": 502, "name": "Second", "category_id": "20"}
+                    ]
+                    """.trimIndent(),
+                )
+                .build(),
+        )
+        val client = XtreamSeriesClient(allowCleartext = true)
+
+        val result = client.getSeries(server.url("/").toString(), credentials)
+
+        assertTrue(result is SourceResult.Success)
+        val series = (result as SourceResult.Success).value
+        assertEquals(listOf(501, 502), series.map(XtreamSeriesSummary::seriesId))
+        assertEquals(listOf("First", "Second"), series.map(XtreamSeriesSummary::name))
+        assertEquals(listOf("10", "20"), series.map(XtreamSeriesSummary::categoryId))
     }
 
     @Test
@@ -233,5 +284,48 @@ class XtreamSeriesClientTest {
         assertEquals(listOf(2002), info.episodes.map(XtreamSeriesEpisode::episodeId))
         assertEquals(0, info.episodes.single().seasonNumber)
         assertEquals(1, info.episodes.single().episodeNumber)
+    }
+
+    @Test
+    fun getSeriesInfo_duplicateSeasonAndEpisodeIdsKeepFirstRows() = runBlocking {
+        server.enqueue(
+            MockResponse.Builder()
+                .body(
+                    """
+                    {
+                      "info": {"name": "Series One"},
+                      "seasons": [
+                        {"season_number": 1, "name": "Season First"},
+                        {"season_number": 1, "name": "Season Duplicate"},
+                        {"season_number": 2, "name": "Season Two"}
+                      ],
+                      "episodes": {
+                        "1": [
+                          {"id": "1001", "episode_num": 1, "season": 1, "title": "Pilot First"},
+                          {"id": "1001", "episode_num": 2, "season": 1, "title": "Pilot Duplicate"}
+                        ],
+                        "2": [
+                          {"id": "2001", "episode_num": 1, "season": 2, "title": "Second Season"}
+                        ]
+                      }
+                    }
+                    """.trimIndent(),
+                )
+                .build(),
+        )
+        val client = XtreamSeriesClient(allowCleartext = true)
+
+        val result = client.getSeriesInfo(
+            serverUrl = server.url("/").toString(),
+            credentials = credentials,
+            seriesId = 501,
+        )
+
+        assertTrue(result is SourceResult.Success)
+        val info = (result as SourceResult.Success).value
+        assertEquals(listOf(1, 2), info.seasons.map(XtreamSeriesSeason::seasonNumber))
+        assertEquals(listOf("Season First", "Season Two"), info.seasons.map(XtreamSeriesSeason::name))
+        assertEquals(listOf(1001, 2001), info.episodes.map(XtreamSeriesEpisode::episodeId))
+        assertEquals(listOf("Pilot First", "Second Season"), info.episodes.map(XtreamSeriesEpisode::title))
     }
 }
