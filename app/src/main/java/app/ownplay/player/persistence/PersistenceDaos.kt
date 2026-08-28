@@ -195,33 +195,48 @@ interface PersonalizationDao {
     @Query("DELETE FROM favorite_entries WHERE channelId = :channelId")
     suspend fun removeFavorite(channelId: String)
 
+    @Upsert
+    suspend fun upsertGroup(group: CustomGroupEntity)
+
     @Query("SELECT * FROM custom_groups ORDER BY groupOrder ASC, createdAtEpochMillis ASC, groupId ASC")
     suspend fun customGroupsForMutation(): List<CustomGroupEntity>
 
     @Query("SELECT * FROM custom_groups WHERE groupId = :groupId LIMIT 1")
     suspend fun customGroupById(groupId: String): CustomGroupEntity?
 
-    @Upsert
-    suspend fun upsertGroup(group: CustomGroupEntity)
-
     @Query("DELETE FROM custom_groups WHERE groupId = :groupId")
-    suspend fun deleteGroup(groupId: String)
-
-    @Query(
-        """
-        SELECT * FROM custom_group_memberships
-        WHERE groupId = :groupId
-        ORDER BY groupOrder ASC, channelId ASC
-        """,
-    )
-    suspend fun groupMemberships(groupId: String): List<CustomGroupMembershipEntity>
+    suspend fun deleteCustomGroup(groupId: String): Int
 
     @Upsert
     suspend fun upsertGroupMembership(membership: CustomGroupMembershipEntity)
 
-    @Query("DELETE FROM custom_group_memberships WHERE groupId = :groupId AND channelId = :channelId")
-    suspend fun removeGroupMembership(groupId: String, channelId: String)
+    @Upsert
+    suspend fun upsertGroupMemberships(memberships: List<CustomGroupMembershipEntity>)
 
-    @Query("DELETE FROM custom_group_memberships WHERE groupId = :groupId")
-    suspend fun removeGroupMemberships(groupId: String)
+    @Query(
+        "SELECT * FROM custom_group_memberships " +
+            "WHERE groupId = :groupId ORDER BY groupOrder ASC, channelId ASC",
+    )
+    suspend fun groupMemberships(groupId: String): List<CustomGroupMembershipEntity>
+
+    @Query("DELETE FROM custom_group_memberships WHERE groupId = :groupId AND channelId = :channelId")
+    suspend fun removeGroupMembership(
+        groupId: String,
+        channelId: String,
+    )
+
+    @Query("SELECT * FROM favorite_entries ORDER BY favoriteOrder ASC")
+    fun observeFavorites(): Flow<List<FavoriteEntryEntity>>
+
+    @Query("SELECT * FROM custom_groups ORDER BY groupOrder ASC")
+    fun observeGroups(): Flow<List<CustomGroupEntity>>
+}
+
+@Dao
+interface RefreshStateDao {
+    @Upsert
+    suspend fun upsert(state: PlaylistRefreshStateEntity)
+
+    @Query("SELECT * FROM playlist_refresh_state WHERE sourceId = :sourceId LIMIT 1")
+    suspend fun get(sourceId: String): PlaylistRefreshStateEntity?
 }
