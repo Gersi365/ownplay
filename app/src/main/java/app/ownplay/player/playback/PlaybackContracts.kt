@@ -1,5 +1,7 @@
 package app.ownplay.player.playback
 
+import java.util.Locale
+
 enum class PlaybackMediaKind {
     LIVE,
     MOVIE,
@@ -60,7 +62,7 @@ data class PlaybackRequest(
         }
         require(
             containerExtension == null ||
-                containerExtension.trim().lowercase().matches(Regex("[a-z0-9]{1,8}")),
+                containerExtension.trim().lowercase(Locale.ROOT).matches(Regex("[a-z0-9]{1,8}")),
         ) { "Container extension is invalid" }
     }
 
