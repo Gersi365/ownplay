@@ -68,6 +68,7 @@ object PlaybackLocatorParser {
         }
 
         val streamId = payload.toIntOrNull()
+            ?.takeIf { it > 0 }
             ?: return PlaybackLocatorParseResult.Failure(PlaybackLocatorParseFailureReason.INVALID_PAYLOAD)
 
         return PlaybackLocatorParseResult.Success(ParsedPlaybackLocator.XtreamLive(streamId))
