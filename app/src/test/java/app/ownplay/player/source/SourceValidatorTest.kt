@@ -38,6 +38,18 @@ class SourceValidatorTest {
     }
 
     @Test
+    fun remoteUrls_rejectOutOfRangePortsBeforeNetworkAccess() {
+        assertEquals(
+            UrlValidationResult.Invalid(SourceError.InvalidUrl),
+            SourceValidator.validateXtreamServer("https://example.com:70000"),
+        )
+        assertEquals(
+            UrlValidationResult.Invalid(SourceError.InvalidUrl),
+            SourceValidator.validateRemotePlaylistUrl("https://example.com:70000/list.m3u"),
+        )
+    }
+
+    @Test
     fun remotePlaylist_allowsQueryAndFlagsCleartext() {
         val result = SourceValidator.validateRemotePlaylistUrl(
             "http://example.com/playlist.m3u?token=opaque",
