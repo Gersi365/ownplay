@@ -59,4 +59,48 @@ class PlaybackProgressPolicyTest {
             ).completed,
         )
     }
+
+    @Test
+    fun zeroStartupSnapshotPreservesExistingResumePosition() {
+        assertEquals(
+            42_000L,
+            PlaybackProgressPolicy.positionForSave(
+                positionMs = 0L,
+                fallbackPositionMs = 42_000L,
+            ),
+        )
+    }
+
+    @Test
+    fun negativeStartupSnapshotPreservesExistingResumePosition() {
+        assertEquals(
+            42_000L,
+            PlaybackProgressPolicy.positionForSave(
+                positionMs = -1L,
+                fallbackPositionMs = 42_000L,
+            ),
+        )
+    }
+
+    @Test
+    fun positiveBackwardSeekRemainsAuthoritative() {
+        assertEquals(
+            5_000L,
+            PlaybackProgressPolicy.positionForSave(
+                positionMs = 5_000L,
+                fallbackPositionMs = 42_000L,
+            ),
+        )
+    }
+
+    @Test
+    fun zeroPositionRemainsZeroWithoutExistingResume() {
+        assertEquals(
+            0L,
+            PlaybackProgressPolicy.positionForSave(
+                positionMs = 0L,
+                fallbackPositionMs = null,
+            ),
+        )
+    }
 }
