@@ -35,13 +35,6 @@ internal fun ContentSettingsContent(
         onClick = onOpenPlaylists,
     )
     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-    SettingsActionRow(
-        title = "Downloads",
-        detail = "Movies · series episodes · offline storage",
-        actionLabel = "Open",
-        onClick = onOpenDownloads,
-    )
-    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
     BackupRestoreSettingsContent()
 }
 
@@ -52,11 +45,7 @@ internal fun PlaybackSettingsContent(
     onOpenLive: () -> Unit,
     onStopPlayback: () -> Unit,
 ) {
-    SettingValueRow(label = "Channel tap", value = "Preview")
-    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-    SettingValueRow(label = "Fullscreen", value = "Manual · Sensor")
     activeSourceName?.let { name ->
-        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
         SettingValueRow(label = "Active playlist", value = name)
     }
     if (hasActivePlayback) {
@@ -78,16 +67,6 @@ internal fun PlaybackSettingsContent(
             ) { Text("Stop") }
         }
     }
-}
-
-@Composable
-internal fun RefreshSettingsContent() {
-    SettingValueRow(label = "Sequence", value = "Channels → EPG")
-    Text(
-        text = "Existing content remains usable while refresh runs. Downloads continue independently through WorkManager.",
-        style = MaterialTheme.typography.labelSmall,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-    )
 }
 
 @Composable
