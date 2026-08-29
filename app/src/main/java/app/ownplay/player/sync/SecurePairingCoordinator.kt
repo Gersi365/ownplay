@@ -48,7 +48,7 @@ internal data class SecurePairingResponderVerification(
  * Runtime owner for one secure device-pairing session.
  *
  * This class deliberately knows nothing about UI or transport. Callers pass pairing messages in and
- * out, while this coordinator serializes state transitions, owns ephemeral session material and
+ * out, while this coordinator serializes state transitions, owns ephemeral session references and
  * delegates durable identity/trust/key state to SecureDevicePairingState.
  */
 internal class SecurePairingCoordinator(
@@ -103,7 +103,10 @@ internal class SecurePairingCoordinator(
         } catch (_: GeneralSecurityException) {
             return@withLock SecurePairingCallResult.InvalidRemoteMessage
         }
-        activeSession = ActiveSession.InitiatorReadyToProvision(result.candidate)
+        activeSession = ActiveSession.InitiatorReadyToProvision(
+            sessionId = session.context.offer.sessionId,
+            candidate = result.candidate,
+        )
         SecurePairingCallResult.Success(
             SecurePairingInitiatorVerification(
                 verification = result.candidate.verification,
@@ -126,7 +129,10 @@ internal class SecurePairingCoordinator(
         } catch (_: GeneralSecurityException) {
             return@withLock SecurePairingCallResult.InvalidRemoteMessage
         }
-        activeSession = ActiveSession.ResponderReadyToProvision(candidate)
+        activeSession = ActiveSession.ResponderReadyToProvision(
+            sessionId = session.context.offer.sessionId,
+            candidate = candidate,
+        )
         SecurePairingCallResult.Success(
             SecurePairingResponderVerification(candidate.verification),
         )
@@ -193,7 +199,6 @@ internal class SecurePairingCoordinator(
     }
 
     private fun clearActiveSessionLocked() {
-        activeSession?.wipe()
         activeSession = null
     }
 
@@ -201,7 +206,6 @@ internal class SecurePairingCoordinator(
         fun status(): SecurePairingSessionStatus
         fun peerDeviceId(): String?
         fun readyCandidate(): DevicePairingCandidate? = null
-        fun wipe() = Unit
 
         data class InitiatorAwaitingAnswer(
             val context: DevicePairingInitiatorContext,
@@ -216,17 +220,17 @@ internal class SecurePairingCoordinator(
         }
 
         data class InitiatorReadyToProvision(
+            val sessionId: String,
             val candidate: DevicePairingCandidate,
         ) : ActiveSession {
             override fun status() = SecurePairingSessionStatus(
-                sessionId = candidate.transcriptHashBase64Url,
+                sessionId = sessionId,
                 peerDeviceId = candidate.peer.deviceId,
                 stage = SecurePairingStage.INITIATOR_READY_TO_PROVISION,
             )
 
             override fun peerDeviceId(): String = candidate.peer.deviceId
             override fun readyCandidate(): DevicePairingCandidate = candidate
-            override fun wipe() = candidate.sessionKey.wipe()
         }
 
         data class ResponderAwaitingConfirmation(
@@ -242,17 +246,17 @@ internal class SecurePairingCoordinator(
         }
 
         data class ResponderReadyToProvision(
+            val sessionId: String,
             val candidate: DevicePairingCandidate,
         ) : ActiveSession {
             override fun status() = SecurePairingSessionStatus(
-                sessionId = candidate.transcriptHashBase64Url,
+                sessionId = sessionId,
                 peerDeviceId = candidate.peer.deviceId,
                 stage = SecurePairingStage.RESPONDER_READY_TO_PROVISION,
             )
 
             override fun peerDeviceId(): String = candidate.peer.deviceId
             override fun readyCandidate(): DevicePairingCandidate = candidate
-            override fun wipe() = candidate.sessionKey.wipe()
         }
     }
 }
