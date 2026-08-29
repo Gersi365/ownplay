@@ -37,12 +37,16 @@ internal object DeviceSyncMergePolicy {
         require(left.identity.sourceKind == right.identity.sourceKind) {
             "Source kind cannot change for an existing sync source"
         }
-        val identity = when {
-            left.identity.locatorFingerprint == null -> right.identity
-            right.identity.locatorFingerprint == null -> left.identity
-            left.identity.locatorFingerprint == right.identity.locatorFingerprint -> left.identity
-            else -> left.identity
+        val leftFingerprint = left.identity.locatorFingerprint
+        val rightFingerprint = right.identity.locatorFingerprint
+        require(
+            leftFingerprint == null ||
+                rightFingerprint == null ||
+                leftFingerprint == rightFingerprint,
+        ) {
+            "Conflicting locator fingerprints for the same sync source"
         }
+        val identity = if (leftFingerprint != null) left.identity else right.identity
         return SyncSourceState(
             identity = identity,
             displayName = requireNotNull(newer(left.displayName, right.displayName)),
