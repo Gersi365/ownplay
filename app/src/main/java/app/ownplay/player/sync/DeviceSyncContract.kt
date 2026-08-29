@@ -23,7 +23,8 @@ data class SyncClock(
 
 /**
  * A null value is an explicit tombstone. Tombstones are required so removing a favorite,
- * unhiding a channel, or clearing a local override can win over an older remote value.
+ * unhiding a channel, clearing an override, or removing a group membership can win over an
+ * older remote value.
  */
 data class SyncValue<T>(
     val value: T?,
@@ -48,8 +49,11 @@ data class SyncSourceState(
     val identity: SyncSourceIdentity,
     val displayName: SyncValue<String>,
     val enabled: SyncValue<Boolean>,
+    /** true means this source was explicitly removed and must not be resurrected by older data. */
+    val deleted: SyncValue<Boolean>,
     /**
-     * Reference to an encrypted transport envelope. It must never contain plaintext credentials.
+     * Reference to an encrypted transport envelope containing portable locator/credential data.
+     * The referenced payload must never contain plaintext credentials outside the encrypted body.
      */
     val encryptedSecretRef: String? = null,
 )
@@ -99,6 +103,8 @@ data class SyncGroupState(
     val key: SyncGroupKey,
     val name: SyncValue<String>,
     val groupOrder: SyncValue<Long>,
+    /** true means the group was explicitly removed. */
+    val deleted: SyncValue<Boolean>,
 ) {
     init {
         name.value?.let { require(it.isNotBlank()) }
