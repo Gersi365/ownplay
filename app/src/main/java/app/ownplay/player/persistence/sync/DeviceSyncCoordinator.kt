@@ -23,6 +23,14 @@ internal class DeviceSyncCoordinator(
         now = now,
     )
 
+    /**
+     * Returns the current local transport snapshot without modifying Room state.
+     *
+     * This is used only when a transport has no remote envelope yet. Conflict resolution remains
+     * inside [synchronize]; transports must never merge snapshots themselves.
+     */
+    suspend fun readLocalSnapshot(): DeviceSyncEnvelope = readLocalEnvelope()
+
     suspend fun synchronize(remoteEnvelope: DeviceSyncEnvelope): DeviceSyncCycleResult {
         val localEnvelope = readLocalEnvelope()
         val generatedAt = maxOf(
