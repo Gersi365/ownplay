@@ -36,6 +36,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -50,7 +51,8 @@ import app.ownplay.player.OwnPlayAppRuntime
 import app.ownplay.player.playback.LiveFullscreenEntryReason
 import app.ownplay.player.playback.LivePlaybackPresentationPolicy
 import app.ownplay.player.playback.LivePlaybackSelection
-import app.ownplay.player.playback.LivePlaybackSurfaceHandoff
+import app.ownplay.player.playback.LivePlaybackTransitionGate
+import app.ownplay.player.playback.LivePlaybackTransitionTarget
 import app.ownplay.player.playback.PlaybackInteractionBridge
 import app.ownplay.player.source.SourceSyncStage
 import app.ownplay.player.source.SourceSyncState
@@ -95,12 +97,14 @@ fun OwnPlayApp(
     var vodFullscreen by remember { mutableStateOf(false) }
     var seriesFullscreen by remember { mutableStateOf(false) }
     var libraryFullscreen by remember { mutableStateOf(false) }
+    val liveTransitionGate = remember { LivePlaybackTransitionGate() }
 
     fun openLiveFullscreen(
         selection: LivePlaybackSelection,
         reason: LiveFullscreenEntryReason,
     ) {
-        LivePlaybackSurfaceHandoff.restartAcrossPresentation(
+        liveTransitionGate.requestHandoff(
+            target = LivePlaybackTransitionTarget.fullscreen(selection),
             detachCurrentSurface = {
                 PlaybackInteractionBridge.detachCurrent(runtime.playbackVideoOutput)
             },
@@ -115,7 +119,8 @@ fun OwnPlayApp(
     }
 
     fun returnLiveToPreview(selection: LivePlaybackSelection) {
-        LivePlaybackSurfaceHandoff.restartAcrossPresentation(
+        liveTransitionGate.requestHandoff(
+            target = LivePlaybackTransitionTarget.preview(selection),
             detachCurrentSurface = {
                 PlaybackInteractionBridge.detachCurrent(runtime.playbackVideoOutput)
             },
@@ -199,6 +204,17 @@ fun OwnPlayApp(
     val contentLandscape =
         isLandscape &&
             (section == OwnPlaySection.LIVE || section == OwnPlaySection.MOVIES)
+    val observedLiveTransitionTarget =
+        fullscreenSelection?.let(LivePlaybackTransitionTarget::fullscreen)
+            ?: if (previewActive) {
+                activeSelection?.let(LivePlaybackTransitionTarget::preview)
+            } else {
+                null
+            }
+
+    SideEffect {
+        liveTransitionGate.reconcileObserved(observedLiveTransitionTarget)
+    }
 
     LaunchedEffect(playbackSurfaceActive) {
         onPlaybackSurfaceActiveChanged(playbackSurfaceActive)
@@ -261,14 +277,18 @@ fun OwnPlayApp(
             onAudioSelection = runtime.playbackTrackController::selectAudio,
             onSubtitleSelection = runtime.playbackTrackController::selectSubtitle,
             onNavigate = { direction ->
-                openedFullscreen.navigate(direction)?.let { target ->
-                    activeSelection = target
-                    fullscreenSelection = target
-                    runtime.playbackController.start(target.request)
-                }
+                (fullscreenSelection ?: openedFullscreen)
+                    .navigate(direction)
+                    ?.let { target ->
+                        activeSelection = target
+                        fullscreenSelection = target
+                        runtime.playbackController.start(target.request)
+                    }
             },
             onReturnToChannels = {
-                returnLiveToPreview(openedFullscreen)
+                returnLiveToPreview(
+                    fullscreenSelection ?: activeSelection ?: openedFullscreen,
+                )
             },
             onFullscreenStateChanged = {},
         )
@@ -409,7 +429,7 @@ fun OwnPlayApp(
                                 },
                                 onOpenFullscreen = { selection ->
                                     openLiveFullscreen(
-                                        selection = selection,
+                                        selection = activeSelection ?: selection,
                                         reason = LiveFullscreenEntryReason.USER,
                                     )
                                 },
