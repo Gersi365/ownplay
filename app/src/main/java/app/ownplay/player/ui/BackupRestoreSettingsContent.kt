@@ -94,14 +94,14 @@ internal fun BackupRestoreSettingsContent() {
     ) {
         SettingsActionRow(
             title = "Backup personalization",
-            detail = "Versioned JSON · credentials and secure values excluded",
+            detail = "Personalization only · credentials excluded",
             actionLabel = "Export",
             onClick = { exportLauncher.launch("ownplay-personalization-v1.json") },
         )
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
         SettingsActionRow(
             title = "Restore personalization",
-            detail = "Validates V1 first · additive restore · unmatched items skipped",
+            detail = "Import a previous OwnPlay personalization backup",
             actionLabel = "Import",
             onClick = {
                 importLauncher.launch(arrayOf("application/json", "text/plain"))
