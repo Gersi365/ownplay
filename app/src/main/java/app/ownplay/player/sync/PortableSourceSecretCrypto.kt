@@ -126,6 +126,7 @@ internal object PortableSourceSecretCodec {
                         output.writeBoundedString(secret.serverUrl)
                         output.writeBoundedString(secret.username)
                         output.writeBoundedString(secret.password)
+                        output.writeBoolean(secret.allowCleartext)
                     }
 
                     is PortableSourceSecret.RemoteM3u -> {
@@ -148,6 +149,7 @@ internal object PortableSourceSecretCodec {
                     serverUrl = input.readBoundedString(),
                     username = input.readBoundedString(),
                     password = input.readBoundedString(),
+                    allowCleartext = input.readBoolean(),
                 )
 
                 TYPE_REMOTE_M3U -> PortableSourceSecret.RemoteM3u(
