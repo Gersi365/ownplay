@@ -23,8 +23,6 @@ internal enum class SettingsDestination {
     INTERFACE,
     CONTENT,
     DOWNLOADS,
-    PLAYBACK,
-    REFRESH,
     ABOUT,
     LIVE_MANAGEMENT,
     PLAYLISTS,
@@ -140,4 +138,3 @@ internal fun SettingsScreen(
         onOpenDownloads = { destination = SettingsDestination.DOWNLOADS },
     )
 }
-
