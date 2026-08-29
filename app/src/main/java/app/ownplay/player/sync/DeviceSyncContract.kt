@@ -34,13 +34,12 @@ data class SyncValue<T>(
 data class SyncSourceIdentity(
     val syncSourceId: String,
     val sourceKind: String,
-    val sourceName: String,
+    /** Optional non-secret hash used only to reconcile a source independently added on a device. */
     val locatorFingerprint: String? = null,
 ) {
     init {
         require(syncSourceId.isNotBlank())
         require(sourceKind.isNotBlank())
-        require(sourceName.isNotBlank())
         locatorFingerprint?.let { require(it.isNotBlank()) }
     }
 }
@@ -53,10 +52,15 @@ data class SyncSourceState(
     val deleted: SyncValue<Boolean>,
     /**
      * Reference to an encrypted transport envelope containing portable locator/credential data.
-     * The referenced payload must never contain plaintext credentials outside the encrypted body.
+     * The reference itself is versioned because endpoint/credentials can be replaced.
      */
-    val encryptedSecretRef: String? = null,
-)
+    val encryptedSecretRef: SyncValue<String>? = null,
+) {
+    init {
+        displayName.value?.let { require(it.isNotBlank()) }
+        encryptedSecretRef?.value?.let { require(it.isNotBlank()) }
+    }
+}
 
 data class SyncChannelKey(
     val syncSourceId: String,
