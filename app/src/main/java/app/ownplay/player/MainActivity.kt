@@ -205,8 +205,11 @@ class MainActivity : ComponentActivity() {
                         Box(modifier = Modifier.fillMaxSize()) {
                             OwnPlayRoot(
                                 runtime = runtime,
-                                rotationFullscreenEnabled =
-                                    configuredProfile == AppDeviceProfile.SMARTPHONE,
+                                rotationFullscreenEnabled = liveRotationFullscreenEnabled(
+                                    isSmartphone =
+                                        configuredProfile == AppDeviceProfile.SMARTPHONE,
+                                    inPictureInPicture = isInPictureInPictureMode,
+                                ),
                                 onPlaybackFullscreenChanged = { isFullscreen ->
                                     holdTvRemoteTransitionLock()
                                     playbackFullscreen = isFullscreen
@@ -491,3 +494,12 @@ private fun configuredOrientation(
 } else {
     AppOrientationMode.LANDSCAPE
 }
+
+/**
+ * PiP owns the active playback surface. Rotation-triggered Live presentation changes must stay
+ * inert until PiP exits so the hidden Preview/Fullscreen tree cannot steal the video surface.
+ */
+internal fun liveRotationFullscreenEnabled(
+    isSmartphone: Boolean,
+    inPictureInPicture: Boolean,
+): Boolean = isSmartphone && !inPictureInPicture
