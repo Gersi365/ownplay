@@ -62,7 +62,7 @@ internal fun PortraitSettingsMenu(
                     fontWeight = FontWeight.Bold,
                 )
                 Text(
-                    text = "Interface, content, downloads and playback.",
+                    text = "Device, content, downloads and app information.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -70,7 +70,7 @@ internal fun PortraitSettingsMenu(
 
             CompactSettingsSection(
                 title = "Interface",
-                subtitle = "How OwnPlay is presented",
+                subtitle = "Device profile and orientation",
             ) {
                 InterfaceSettingsContent(
                     deviceProfile = deviceProfile,
@@ -82,7 +82,7 @@ internal fun PortraitSettingsMenu(
 
             CompactSettingsSection(
                 title = "Content",
-                subtitle = "Manage what appears in OwnPlay",
+                subtitle = "Live organization, playlists and backup",
             ) {
                 ContentSettingsContent(
                     summaries = summaries,
@@ -105,27 +105,8 @@ internal fun PortraitSettingsMenu(
             }
 
             CompactSettingsSection(
-                title = "Playback",
-                subtitle = "Live preview and full player behavior",
-            ) {
-                PlaybackSettingsContent(
-                    activeSourceName = activeSourceName,
-                    hasActivePlayback = hasActivePlayback,
-                    onOpenLive = onOpenLive,
-                    onStopPlayback = onStopPlayback,
-                )
-            }
-
-            CompactSettingsSection(
-                title = "Refresh",
-                subtitle = "Automatic source update when OwnPlay opens",
-            ) {
-                RefreshSettingsContent()
-            }
-
-            CompactSettingsSection(
                 title = "About",
-                subtitle = "OwnPlay media player and organizer",
+                subtitle = "OwnPlay information",
             ) {
                 AboutSettingsContent()
             }
@@ -214,10 +195,12 @@ internal fun InterfaceSettingsContent(
     Text(
         text = when (deviceProfile) {
             AppDeviceProfile.SMARTPHONE ->
-                "Smartphone can use Portrait or Landscape. Fullscreen playback follows the device sensor."
+                "This controls the browsing layout. With an active Live preview, rotating to landscape can open the full player."
             null -> "Loading device profile…"
+            AppDeviceProfile.TABLET ->
+                "Tablet uses the Landscape touch layout."
             else ->
-                "Tablet uses touch in Landscape. Android TV and TV Box use Landscape with D-pad/remote UX."
+                "Android TV and TV Box use the Landscape D-pad/remote layout."
         },
         style = MaterialTheme.typography.labelSmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -231,4 +214,3 @@ internal fun deviceProfileLabel(profile: AppDeviceProfile?): String = when (prof
     AppDeviceProfile.TV_BOX -> "TV Box"
     null -> "Loading…"
 }
-
