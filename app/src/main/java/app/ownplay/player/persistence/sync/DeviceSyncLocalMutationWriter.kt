@@ -222,40 +222,50 @@ class DeviceSyncLocalMutationWriter(
     }
 
     suspend fun recordMemberships(
-        sourceId: String,
         groupId: String,
         activeMemberships: List<CustomGroupMembershipEntity>,
         removedChannelIds: Collection<String> = emptyList(),
     ) {
         if (activeMemberships.isEmpty() && removedChannelIds.isEmpty()) return
         val clock = allocateClock()
-        val syncSource = ensureSource(sourceId)
         val activeRows = activeMemberships.map { membership ->
-            val providerKey = providerKey(sourceId, membership.channelId)
-            DeviceSyncGroupMembershipEntity(
-                syncGroupId = groupId,
-                syncSourceId = syncSource.syncSourceId,
-                providerKey = providerKey,
+            membershipRow(
+                groupId = groupId,
+                channelId = membership.channelId,
                 groupOrder = membership.groupOrder,
-                updatedAtEpochMillis = clock.updatedAtEpochMillis,
-                revision = clock.revision,
-                deviceId = clock.deviceId,
+                clock = clock,
             )
         }
         val removedRows = removedChannelIds.map { channelId ->
-            DeviceSyncGroupMembershipEntity(
-                syncGroupId = groupId,
-                syncSourceId = syncSource.syncSourceId,
-                providerKey = providerKey(sourceId, channelId),
+            membershipRow(
+                groupId = groupId,
+                channelId = channelId,
                 groupOrder = null,
-                updatedAtEpochMillis = clock.updatedAtEpochMillis,
-                revision = clock.revision,
-                deviceId = clock.deviceId,
+                clock = clock,
             )
         }
         database.deviceSyncDao().upsertMemberships((activeRows + removedRows).distinctBy { row ->
             Triple(row.syncGroupId, row.syncSourceId, row.providerKey)
         })
+    }
+
+    private suspend fun membershipRow(
+        groupId: String,
+        channelId: String,
+        groupOrder: Long?,
+        clock: LocalSyncClock,
+    ): DeviceSyncGroupMembershipEntity {
+        val channel = requireNotNull(database.providerCatalogDao().channelById(channelId))
+        val syncSource = ensureSource(channel.sourceId)
+        return DeviceSyncGroupMembershipEntity(
+            syncGroupId = groupId,
+            syncSourceId = syncSource.syncSourceId,
+            providerKey = channel.providerKey,
+            groupOrder = groupOrder,
+            updatedAtEpochMillis = clock.updatedAtEpochMillis,
+            revision = clock.revision,
+            deviceId = clock.deviceId,
+        )
     }
 
     private suspend fun channelSyncRow(sourceId: String, channelId: String): DeviceSyncChannelEntity {
