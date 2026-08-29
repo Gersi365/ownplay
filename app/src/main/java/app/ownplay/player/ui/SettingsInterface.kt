@@ -84,7 +84,6 @@ internal fun PortraitSettingsMenu(
                     summaries = summaries,
                     onOpenLiveManagement = onOpenLiveManagement,
                     onOpenPlaylists = onOpenPlaylists,
-                    onOpenDownloads = onOpenDownloads,
                 )
             }
 
