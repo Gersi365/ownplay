@@ -1,6 +1,5 @@
 package app.ownplay.player.ui
 
-import android.view.KeyEvent as AndroidKeyEvent
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -32,9 +31,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.onFocusChanged
-import androidx.compose.ui.input.key.KeyEventType
-import androidx.compose.ui.input.key.onPreviewKeyEvent
-import androidx.compose.ui.input.key.type
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import app.ownplay.player.OwnPlayAppRuntime
@@ -421,40 +417,19 @@ private fun TvLiveFullscreenPlayer(
     onNavigate: (PlaybackNavigationDirection) -> Unit,
     onReturnToChannels: () -> Unit,
 ) {
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .onPreviewKeyEvent { event ->
-                val arrow = when (event.nativeKeyEvent.keyCode) {
-                    AndroidKeyEvent.KEYCODE_DPAD_UP -> TvLiveRemoteArrow.UP
-                    AndroidKeyEvent.KEYCODE_DPAD_DOWN -> TvLiveRemoteArrow.DOWN
-                    else -> TvLiveRemoteArrow.OTHER
-                }
-                val direction = tvLiveRemoteNavigation(
-                    arrow = arrow,
-                    keyDown = event.type == KeyEventType.KeyDown,
-                )
-                if (direction != null) {
-                    onNavigate(direction)
-                    true
-                } else {
-                    false
-                }
-            },
-    ) {
-        PlaybackScreen(
-            selection = selection,
-            state = state,
-            trackState = trackState,
-            videoOutput = videoOutput,
-            onPlay = onPlay,
-            onPause = onPause,
-            onRetry = onRetry,
-            onAudioSelection = onAudioSelection,
-            onSubtitleSelection = onSubtitleSelection,
-            onNavigate = onNavigate,
-            onReturnToChannels = onReturnToChannels,
-            onFullscreenStateChanged = {},
-        )
-    }
+    PlaybackScreen(
+        selection = selection,
+        state = state,
+        trackState = trackState,
+        videoOutput = videoOutput,
+        onPlay = onPlay,
+        onPause = onPause,
+        onRetry = onRetry,
+        onAudioSelection = onAudioSelection,
+        onSubtitleSelection = onSubtitleSelection,
+        onNavigate = onNavigate,
+        onReturnToChannels = onReturnToChannels,
+        onFullscreenStateChanged = {},
+        onRemoteChannelNavigate = onNavigate,
+    )
 }
