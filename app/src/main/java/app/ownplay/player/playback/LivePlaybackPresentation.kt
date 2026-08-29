@@ -66,6 +66,25 @@ object LivePlaybackSurfaceHandoff {
     }
 }
 
+/**
+ * Stops Live while leaving its current presentation instead of handing off to another surface.
+ * The departing PlayerView is detached before the stream is stopped and before Compose clears the
+ * presentation state. This prevents a stale Live surface from being reused by a later bind.
+ * VOD, Series, and PiP do not use this helper.
+ */
+object LivePlaybackSurfaceTeardown {
+    fun stopAfterDetaching(
+        detachCurrentSurface: () -> Boolean,
+        stopPlayback: () -> Unit,
+        clearPresentation: () -> Unit,
+    ): Boolean {
+        val detached = detachCurrentSurface()
+        stopPlayback()
+        clearPresentation()
+        return detached
+    }
+}
+
 enum class LivePlaybackPresentationSurface {
     PREVIEW,
     FULLSCREEN,

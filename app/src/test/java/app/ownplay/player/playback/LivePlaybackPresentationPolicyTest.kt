@@ -107,6 +107,40 @@ class LivePlaybackPresentationPolicyTest {
     }
 
     @Test
+    fun `live teardown detaches before stop and presentation clear`() {
+        val events = mutableListOf<String>()
+
+        val detached = LivePlaybackSurfaceTeardown.stopAfterDetaching(
+            detachCurrentSurface = {
+                events += "detach"
+                true
+            },
+            stopPlayback = { events += "stop" },
+            clearPresentation = { events += "clear" },
+        )
+
+        assertTrue(detached)
+        assertEquals(listOf("detach", "stop", "clear"), events)
+    }
+
+    @Test
+    fun `live teardown still stops and clears when no surface is bound`() {
+        val events = mutableListOf<String>()
+
+        val detached = LivePlaybackSurfaceTeardown.stopAfterDetaching(
+            detachCurrentSurface = {
+                events += "detach"
+                false
+            },
+            stopPlayback = { events += "stop" },
+            clearPresentation = { events += "clear" },
+        )
+
+        assertFalse(detached)
+        assertEquals(listOf("detach", "stop", "clear"), events)
+    }
+
+    @Test
     fun `transition gate ignores repeated request before compose acknowledgement`() {
         val gate = LivePlaybackTransitionGate()
         val target = LivePlaybackTransitionTarget(

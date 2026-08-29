@@ -51,6 +51,7 @@ import app.ownplay.player.OwnPlayAppRuntime
 import app.ownplay.player.playback.LiveFullscreenEntryReason
 import app.ownplay.player.playback.LivePlaybackPresentationPolicy
 import app.ownplay.player.playback.LivePlaybackSelection
+import app.ownplay.player.playback.LivePlaybackSurfaceTeardown
 import app.ownplay.player.playback.LivePlaybackTransitionGate
 import app.ownplay.player.playback.LivePlaybackTransitionTarget
 import app.ownplay.player.playback.PlaybackInteractionBridge
@@ -136,6 +137,16 @@ fun OwnPlayApp(
         )
     }
 
+    fun stopLivePlaybackSurface(clearPresentation: () -> Unit) {
+        LivePlaybackSurfaceTeardown.stopAfterDetaching(
+            detachCurrentSurface = {
+                PlaybackInteractionBridge.detachCurrent(runtime.playbackVideoOutput)
+            },
+            stopPlayback = runtime.playbackController::stop,
+            clearPresentation = clearPresentation,
+        )
+    }
+
     LaunchedEffect(summaries) {
         val ids = summaries.map { it.sourceId }.toSet()
         activeSourceId = when {
@@ -145,10 +156,11 @@ fun OwnPlayApp(
         }
         val selectionSourceId = activeSelection?.request?.sourceId
         if (selectionSourceId != null && selectionSourceId !in ids) {
-            activeSelection = null
-            fullscreenSelection = null
-            fullscreenEntryReason = null
-            runtime.playbackController.stop()
+            stopLivePlaybackSurface {
+                activeSelection = null
+                fullscreenSelection = null
+                fullscreenEntryReason = null
+            }
         }
         if (activeSourceId !in ids) {
             requestedVodMovieId = null
@@ -160,10 +172,11 @@ fun OwnPlayApp(
 
     fun openContentSection(target: OwnPlaySection) {
         if (target != OwnPlaySection.LIVE && activeSelection != null) {
-            activeSelection = null
-            fullscreenSelection = null
-            fullscreenEntryReason = null
-            runtime.playbackController.stop()
+            stopLivePlaybackSurface {
+                activeSelection = null
+                fullscreenSelection = null
+                fullscreenEntryReason = null
+            }
         }
         if (target != OwnPlaySection.MOVIES) {
             requestedVodMovieId = null
@@ -418,14 +431,15 @@ fun OwnPlayApp(
                                 onRetry = runtime.playbackController::retry,
                                 onOpenMovies = { openContentSection(OwnPlaySection.MOVIES) },
                                 onOpenSeries = { openContentSection(OwnPlaySection.SERIES) },
-                                onOpenSettings = { section = OwnPlaySection.SETTINGS },
+                                onOpenSettings = { openContentSection(OwnPlaySection.SETTINGS) },
                                 onPreviewRequested = { selection ->
                                     activeSelection = selection
                                     runtime.playbackController.start(selection.request)
                                 },
                                 onPreviewClosed = {
-                                    activeSelection = null
-                                    runtime.playbackController.stop()
+                                    stopLivePlaybackSurface {
+                                        activeSelection = null
+                                    }
                                 },
                                 onOpenFullscreen = { selection ->
                                     openLiveFullscreen(
@@ -512,19 +526,27 @@ fun OwnPlayApp(
                         onOpenLive = { section = OwnPlaySection.LIVE },
                         onOpenSourceInLive = { sourceId ->
                             if (sourceId != activeSourceId) {
-                                activeSelection = null
-                                fullscreenSelection = null
-                                fullscreenEntryReason = null
-                                runtime.playbackController.stop()
+                                if (activeSelection != null || fullscreenSelection != null) {
+                                    stopLivePlaybackSurface {
+                                        activeSelection = null
+                                        fullscreenSelection = null
+                                        fullscreenEntryReason = null
+                                    }
+                                }
                             }
                             activeSourceId = sourceId
                             section = OwnPlaySection.LIVE
                         },
                         onStopPlayback = {
-                            activeSelection = null
-                            fullscreenSelection = null
-                            fullscreenEntryReason = null
-                            runtime.playbackController.stop()
+                            if (activeSelection != null || fullscreenSelection != null) {
+                                stopLivePlaybackSurface {
+                                    activeSelection = null
+                                    fullscreenSelection = null
+                                    fullscreenEntryReason = null
+                                }
+                            } else {
+                                runtime.playbackController.stop()
+                            }
                         },
                     )
                 }
