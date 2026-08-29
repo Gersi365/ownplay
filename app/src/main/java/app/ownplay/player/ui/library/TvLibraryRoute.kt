@@ -17,8 +17,9 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.items as gridItems
+import androidx.compose.foundation.lazy.grid.itemsIndexed as gridItemsIndexed
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.DownloadDone
@@ -42,7 +43,14 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -84,6 +92,8 @@ internal fun TvLibraryRoute(
     val vodRuntime = remember(context) { VodFeatureRuntime(context.applicationContext) }
     val seriesRuntime = remember(context) { SeriesFeatureRuntime(context.applicationContext) }
     val viewModeStore = remember(context) { ContentViewModeStore(context.applicationContext) }
+    val railFocusRequester = remember { FocusRequester() }
+    val firstContentFocusRequester = remember { FocusRequester() }
 
     DisposableEffect(downloadsRuntime, vodRuntime, seriesRuntime) {
         onDispose {
@@ -110,6 +120,7 @@ internal fun TvLibraryRoute(
     var query by remember { mutableStateOf("") }
     var playbackSession by remember { mutableStateOf<LibraryPlaybackSession?>(null) }
     var playbackError by remember { mutableStateOf<String?>(null) }
+    var initialRailFocusRequested by remember { mutableStateOf(false) }
 
     LaunchedEffect(vodCatalog.categories, movieCategoryKey) {
         val categories = vodCatalog.categories
@@ -125,6 +136,12 @@ internal fun TvLibraryRoute(
             categories.isEmpty() -> null
             seriesCategoryKey != null && categories.any { it.providerCategoryKey == seriesCategoryKey } -> seriesCategoryKey
             else -> categories.first().providerCategoryKey
+        }
+    }
+    LaunchedEffect(initialRailFocusRequested) {
+        if (!initialRailFocusRequested) {
+            railFocusRequester.requestFocus()
+            initialRailFocusRequested = true
         }
     }
 
@@ -173,6 +190,11 @@ internal fun TvLibraryRoute(
             val queryMatch = normalizedQuery.isBlank() || item.name.lowercase().contains(normalizedQuery)
             categoryMatch && queryMatch
         }
+    }
+    val hasContent = when (section) {
+        TvLibrarySection.OFFLINE -> offlineItems.isNotEmpty()
+        TvLibrarySection.MOVIES -> movies.isNotEmpty()
+        TvLibrarySection.SERIES -> series.isNotEmpty()
     }
 
     fun playOffline(download: OfflineDownload) {
@@ -255,6 +277,9 @@ internal fun TvLibraryRoute(
                 seriesCategories = seriesCatalog.categories.map { it.providerCategoryKey to it.name },
                 movieCategoryKey = movieCategoryKey,
                 seriesCategoryKey = seriesCategoryKey,
+                hasContent = hasContent,
+                railFocusRequester = railFocusRequester,
+                onMoveToContent = { firstContentFocusRequester.requestFocus() },
                 onSectionSelected = {
                     section = it
                     query = ""
@@ -270,18 +295,24 @@ internal fun TvLibraryRoute(
                 TvLibrarySection.OFFLINE -> TvOfflineContent(
                     downloads = offlineItems,
                     viewMode = viewMode,
+                    firstItemFocusRequester = firstContentFocusRequester,
+                    onMoveToRail = { railFocusRequester.requestFocus() },
                     onOpen = ::playOffline,
                     modifier = Modifier.weight(1f).fillMaxHeight(),
                 )
                 TvLibrarySection.MOVIES -> TvMovieContent(
                     movies = movies,
                     viewMode = viewMode,
+                    firstItemFocusRequester = firstContentFocusRequester,
+                    onMoveToRail = { railFocusRequester.requestFocus() },
                     onOpen = { movie -> sourceId?.let { onOpenMovieDetails(it, movie.movieId) } },
                     modifier = Modifier.weight(1f).fillMaxHeight(),
                 )
                 TvLibrarySection.SERIES -> TvSeriesContent(
                     series = series,
                     viewMode = viewMode,
+                    firstItemFocusRequester = firstContentFocusRequester,
+                    onMoveToRail = { railFocusRequester.requestFocus() },
                     onOpen = { item -> sourceId?.let { onOpenSeriesDetails(it, item.seriesId) } },
                     modifier = Modifier.weight(1f).fillMaxHeight(),
                 )
@@ -297,11 +328,16 @@ private fun TvLibraryNavigationRail(
     seriesCategories: List<Pair<String, String>>,
     movieCategoryKey: String?,
     seriesCategoryKey: String?,
+    hasContent: Boolean,
+    railFocusRequester: FocusRequester,
+    onMoveToContent: () -> Unit,
     onSectionSelected: (TvLibrarySection) -> Unit,
     onMovieCategorySelected: (String) -> Unit,
     onSeriesCategorySelected: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val hasMovieCategories = movieCategories.isNotEmpty()
+    val hasSeriesCategories = seriesCategories.isNotEmpty()
     Surface(
         modifier = modifier,
         shape = RoundedCornerShape(18.dp),
@@ -313,17 +349,42 @@ private fun TvLibraryNavigationRail(
         ) {
             item { Text("Library", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold) }
             item {
-                TvLibraryRailItem("Offline", Icons.Filled.DownloadDone, section == TvLibrarySection.OFFLINE) {
+                TvLibraryRailItem(
+                    label = "Offline",
+                    icon = Icons.Filled.DownloadDone,
+                    selected = section == TvLibrarySection.OFFLINE,
+                    focusRequester = railFocusRequester.takeIf { section == TvLibrarySection.OFFLINE },
+                    hasContent = hasContent,
+                    onMoveToContent = onMoveToContent,
+                ) {
                     onSectionSelected(TvLibrarySection.OFFLINE)
                 }
             }
             item {
-                TvLibraryRailItem("Movies", Icons.Filled.Movie, section == TvLibrarySection.MOVIES) {
+                TvLibraryRailItem(
+                    label = "Movies",
+                    icon = Icons.Filled.Movie,
+                    selected = section == TvLibrarySection.MOVIES,
+                    focusRequester = railFocusRequester.takeIf {
+                        section == TvLibrarySection.MOVIES && !hasMovieCategories
+                    },
+                    hasContent = hasContent,
+                    onMoveToContent = onMoveToContent,
+                ) {
                     onSectionSelected(TvLibrarySection.MOVIES)
                 }
             }
             item {
-                TvLibraryRailItem("Series", Icons.Filled.Tv, section == TvLibrarySection.SERIES) {
+                TvLibraryRailItem(
+                    label = "Series",
+                    icon = Icons.Filled.Tv,
+                    selected = section == TvLibrarySection.SERIES,
+                    focusRequester = railFocusRequester.takeIf {
+                        section == TvLibrarySection.SERIES && !hasSeriesCategories
+                    },
+                    hasContent = hasContent,
+                    onMoveToContent = onMoveToContent,
+                ) {
                     onSectionSelected(TvLibrarySection.SERIES)
                 }
             }
@@ -348,7 +409,13 @@ private fun TvLibraryNavigationRail(
                         TvLibrarySection.SERIES -> seriesCategoryKey == key
                         TvLibrarySection.OFFLINE -> false
                     }
-                    TvCategoryRailItem(name = name, selected = selected) {
+                    TvCategoryRailItem(
+                        name = name,
+                        selected = selected,
+                        focusRequester = railFocusRequester.takeIf { selected },
+                        hasContent = hasContent,
+                        onMoveToContent = onMoveToContent,
+                    ) {
                         when (section) {
                             TvLibrarySection.MOVIES -> onMovieCategorySelected(key)
                             TvLibrarySection.SERIES -> onSeriesCategorySelected(key)
@@ -366,13 +433,29 @@ private fun TvLibraryRailItem(
     label: String,
     icon: androidx.compose.ui.graphics.vector.ImageVector,
     selected: Boolean,
+    focusRequester: FocusRequester?,
+    hasContent: Boolean,
+    onMoveToContent: () -> Unit,
     onClick: () -> Unit,
 ) {
     var focused by remember { mutableStateOf(false) }
     Surface(
         modifier = Modifier
             .fillMaxWidth()
+            .then(focusRequester?.let { Modifier.focusRequester(it) } ?: Modifier)
             .onFocusChanged { focused = it.isFocused }
+            .onPreviewKeyEvent { event ->
+                if (
+                    hasContent &&
+                    event.type == KeyEventType.KeyDown &&
+                    event.key == Key.DirectionRight
+                ) {
+                    onMoveToContent()
+                    true
+                } else {
+                    false
+                }
+            }
             .clickable(onClick = onClick),
         shape = RoundedCornerShape(12.dp),
         color = if (selected || focused) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface,
@@ -389,12 +472,32 @@ private fun TvLibraryRailItem(
 }
 
 @Composable
-private fun TvCategoryRailItem(name: String, selected: Boolean, onClick: () -> Unit) {
+private fun TvCategoryRailItem(
+    name: String,
+    selected: Boolean,
+    focusRequester: FocusRequester?,
+    hasContent: Boolean,
+    onMoveToContent: () -> Unit,
+    onClick: () -> Unit,
+) {
     var focused by remember { mutableStateOf(false) }
     Surface(
         modifier = Modifier
             .fillMaxWidth()
+            .then(focusRequester?.let { Modifier.focusRequester(it) } ?: Modifier)
             .onFocusChanged { focused = it.isFocused }
+            .onPreviewKeyEvent { event ->
+                if (
+                    hasContent &&
+                    event.type == KeyEventType.KeyDown &&
+                    event.key == Key.DirectionRight
+                ) {
+                    onMoveToContent()
+                    true
+                } else {
+                    false
+                }
+            }
             .clickable(onClick = onClick),
         shape = RoundedCornerShape(10.dp),
         color = if (selected || focused) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surface,
@@ -414,6 +517,8 @@ private fun TvCategoryRailItem(name: String, selected: Boolean, onClick: () -> U
 private fun TvOfflineContent(
     downloads: List<OfflineDownload>,
     viewMode: ContentViewMode,
+    firstItemFocusRequester: FocusRequester,
+    onMoveToRail: () -> Unit,
     onOpen: (OfflineDownload) -> Unit,
     modifier: Modifier,
 ) {
@@ -434,6 +539,8 @@ private fun TvOfflineContent(
             if (item.savedToDownloads) "OFFLINE · Phone Downloads" else "OFFLINE · OwnPlay private storage"
         },
         poster = { it.posterUrl },
+        firstItemFocusRequester = firstItemFocusRequester,
+        onMoveToRail = onMoveToRail,
         onOpen = onOpen,
         modifier = modifier,
     )
@@ -443,6 +550,8 @@ private fun TvOfflineContent(
 private fun TvMovieContent(
     movies: List<VodMovie>,
     viewMode: ContentViewMode,
+    firstItemFocusRequester: FocusRequester,
+    onMoveToRail: () -> Unit,
     onOpen: (VodMovie) -> Unit,
     modifier: Modifier,
 ) {
@@ -457,6 +566,8 @@ private fun TvMovieContent(
         title = { it.name },
         subtitle = { movie -> movie.rating?.let { "★ $it" }.orEmpty() },
         poster = { it.posterUrl },
+        firstItemFocusRequester = firstItemFocusRequester,
+        onMoveToRail = onMoveToRail,
         onOpen = onOpen,
         modifier = modifier,
     )
@@ -466,6 +577,8 @@ private fun TvMovieContent(
 private fun TvSeriesContent(
     series: List<SeriesSummary>,
     viewMode: ContentViewMode,
+    firstItemFocusRequester: FocusRequester,
+    onMoveToRail: () -> Unit,
     onOpen: (SeriesSummary) -> Unit,
     modifier: Modifier,
 ) {
@@ -480,6 +593,8 @@ private fun TvSeriesContent(
         title = { it.name },
         subtitle = { item -> item.rating?.let { "★ $it" }.orEmpty() },
         poster = { it.posterUrl },
+        firstItemFocusRequester = firstItemFocusRequester,
+        onMoveToRail = onMoveToRail,
         onOpen = onOpen,
         modifier = modifier,
     )
@@ -493,6 +608,8 @@ private fun <T> TvMediaCollection(
     title: (T) -> String,
     subtitle: (T) -> String,
     poster: (T) -> String?,
+    firstItemFocusRequester: FocusRequester,
+    onMoveToRail: () -> Unit,
     onOpen: (T) -> Unit,
     modifier: Modifier,
 ) {
@@ -502,12 +619,14 @@ private fun <T> TvMediaCollection(
             verticalArrangement = Arrangement.spacedBy(6.dp),
             contentPadding = PaddingValues(bottom = 14.dp),
         ) {
-            items(items, key = key) { item ->
+            itemsIndexed(items, key = { _, item -> key(item) }) { index, item ->
                 TvMediaRow(
                     title = title(item),
                     subtitle = subtitle(item),
                     posterUrl = poster(item),
+                    onMoveToRail = onMoveToRail,
                     onClick = { onOpen(item) },
+                    modifier = if (index == 0) Modifier.focusRequester(firstItemFocusRequester) else Modifier,
                 )
             }
         }
@@ -520,13 +639,15 @@ private fun <T> TvMediaCollection(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalArrangement = Arrangement.spacedBy(9.dp),
         ) {
-            gridItems(items, key = key) { item ->
+            gridItemsIndexed(items, key = { _, item -> key(item) }) { index, item ->
                 TvMediaTile(
                     title = title(item),
                     subtitle = subtitle(item),
                     posterUrl = poster(item),
                     compact = viewMode == ContentViewMode.COMPACT,
+                    onMoveToRail = onMoveToRail,
                     onClick = { onOpen(item) },
+                    modifier = if (index == 0) Modifier.focusRequester(firstItemFocusRequester) else Modifier,
                 )
             }
         }
@@ -539,14 +660,24 @@ private fun TvMediaTile(
     subtitle: String,
     posterUrl: String?,
     compact: Boolean,
+    onMoveToRail: () -> Unit,
     onClick: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     var focused by remember { mutableStateOf(false) }
     val shape = RoundedCornerShape(12.dp)
     Surface(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .onFocusChanged { focused = it.isFocused }
+            .onPreviewKeyEvent { event ->
+                if (event.type == KeyEventType.KeyDown && event.key == Key.DirectionLeft) {
+                    onMoveToRail()
+                    true
+                } else {
+                    false
+                }
+            }
             .then(if (focused) Modifier.border(2.dp, MaterialTheme.colorScheme.primary, shape) else Modifier)
             .clickable(onClick = onClick),
         shape = shape,
@@ -588,13 +719,23 @@ private fun TvMediaRow(
     title: String,
     subtitle: String,
     posterUrl: String?,
+    onMoveToRail: () -> Unit,
     onClick: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     var focused by remember { mutableStateOf(false) }
     Surface(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .onFocusChanged { focused = it.isFocused }
+            .onPreviewKeyEvent { event ->
+                if (event.type == KeyEventType.KeyDown && event.key == Key.DirectionLeft) {
+                    onMoveToRail()
+                    true
+                } else {
+                    false
+                }
+            }
             .clickable(onClick = onClick),
         shape = RoundedCornerShape(12.dp),
         color = if (focused) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface,
