@@ -102,6 +102,7 @@ internal fun PlaybackScreen(
     onNavigate: (PlaybackNavigationDirection) -> Unit,
     onReturnToChannels: () -> Unit,
     onFullscreenStateChanged: (Boolean) -> Unit,
+    onRemoteChannelNavigate: ((PlaybackNavigationDirection) -> Unit)? = null,
 ) {
     val configuration = LocalConfiguration.current
     val isTelevision =
@@ -179,11 +180,26 @@ internal fun PlaybackScreen(
         Modifier
             .focusRequester(wakeFocusRequester)
             .onKeyEvent { event ->
-                if (event.nativeKeyEvent.isRemoteNavigationKeyDown()) {
-                    revealControls()
-                    true
-                } else {
-                    false
+                val channelDirection = onRemoteChannelNavigate?.let {
+                    tvLiveRemoteNavigation(
+                        arrow = when (event.nativeKeyEvent.keyCode) {
+                            KeyEvent.KEYCODE_DPAD_UP -> TvLiveRemoteArrow.UP
+                            KeyEvent.KEYCODE_DPAD_DOWN -> TvLiveRemoteArrow.DOWN
+                            else -> TvLiveRemoteArrow.OTHER
+                        },
+                        keyDown = event.nativeKeyEvent.action == KeyEvent.ACTION_DOWN,
+                    )
+                }
+                when {
+                    channelDirection != null -> {
+                        onRemoteChannelNavigate(channelDirection)
+                        true
+                    }
+                    event.nativeKeyEvent.isRemoteNavigationKeyDown() -> {
+                        revealControls()
+                        true
+                    }
+                    else -> false
                 }
             }
             .focusable()
