@@ -22,7 +22,9 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items as gridItems
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
@@ -41,14 +43,19 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
@@ -88,6 +95,9 @@ internal fun PortraitLiveBrowseWithViewModes(
     onOrderChanged: (LiveBrowseOrder) -> Unit,
     onCustomGroupSelected: (String?) -> Unit,
     onChannelSelected: (String) -> Unit,
+    focusChannelId: String? = null,
+    focusRequestGeneration: Int = 0,
+    channelFocusRequester: FocusRequester? = null,
     modifier: Modifier = Modifier,
 ) {
     var searchExpanded by remember { mutableStateOf(false) }
@@ -143,6 +153,9 @@ internal fun PortraitLiveBrowseWithViewModes(
             currentEpgByChannelId = currentEpgByChannelId,
             viewMode = viewMode,
             onChannelSelected = onChannelSelected,
+            focusChannelId = focusChannelId,
+            focusRequestGeneration = focusRequestGeneration,
+            channelFocusRequester = channelFocusRequester,
             modifier = Modifier.weight(1f),
         )
     }
@@ -323,6 +336,9 @@ private fun LiveChannelView(
     currentEpgByChannelId: Map<String, EpgProgram>,
     viewMode: ContentViewMode,
     onChannelSelected: (String) -> Unit,
+    focusChannelId: String?,
+    focusRequestGeneration: Int,
+    channelFocusRequester: FocusRequester?,
     modifier: Modifier = Modifier,
 ) {
     if (channels.isEmpty()) {
@@ -339,37 +355,82 @@ private fun LiveChannelView(
         return
     }
 
+    val listState = rememberLazyListState()
+    val gridState = rememberLazyGridState()
+    val focusIndex = remember(channels, focusChannelId) {
+        channels.indexOfFirst { channel -> channel.channelId == focusChannelId }
+    }
+
+    LaunchedEffect(
+        viewMode,
+        focusChannelId,
+        focusRequestGeneration,
+        focusIndex,
+        channelFocusRequester,
+    ) {
+        val requester = channelFocusRequester ?: return@LaunchedEffect
+        if (focusRequestGeneration <= 0 || focusIndex < 0) return@LaunchedEffect
+        when (viewMode) {
+            ContentViewMode.LIST,
+            ContentViewMode.COMPACT,
+            -> listState.scrollToItem(focusIndex)
+
+            ContentViewMode.CARDS -> gridState.scrollToItem(focusIndex)
+        }
+        withFrameNanos { }
+        requester.requestFocus()
+    }
+
     when (viewMode) {
         ContentViewMode.LIST -> LazyColumn(
+            state = listState,
             modifier = modifier.fillMaxSize(),
             contentPadding = PaddingValues(vertical = 2.dp),
         ) {
             items(channels, key = LiveChannelItem::channelId) { channel ->
+                val channelModifier = if (
+                    channel.channelId == focusChannelId && channelFocusRequester != null
+                ) {
+                    Modifier.focusRequester(channelFocusRequester)
+                } else {
+                    Modifier
+                }
                 LiveChannelListRow(
                     channel = channel,
                     playing = channel.channelId == playingChannelId,
                     currentProgram = currentEpgByChannelId[channel.channelId],
                     onClick = { onChannelSelected(channel.channelId) },
+                    modifier = channelModifier,
                 )
                 HorizontalDivider(modifier = Modifier.padding(start = 66.dp))
             }
         }
 
         ContentViewMode.COMPACT -> LazyColumn(
+            state = listState,
             modifier = modifier.fillMaxSize(),
         ) {
             items(channels, key = LiveChannelItem::channelId) { channel ->
+                val channelModifier = if (
+                    channel.channelId == focusChannelId && channelFocusRequester != null
+                ) {
+                    Modifier.focusRequester(channelFocusRequester)
+                } else {
+                    Modifier
+                }
                 LiveChannelCompactRow(
                     channel = channel,
                     playing = channel.channelId == playingChannelId,
                     currentProgram = currentEpgByChannelId[channel.channelId],
                     onClick = { onChannelSelected(channel.channelId) },
+                    modifier = channelModifier,
                 )
                 HorizontalDivider(modifier = Modifier.padding(start = 48.dp))
             }
         }
 
         ContentViewMode.CARDS -> LazyVerticalGrid(
+            state = gridState,
             columns = GridCells.Adaptive(minSize = 156.dp),
             modifier = modifier.fillMaxSize(),
             contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp),
@@ -377,11 +438,19 @@ private fun LiveChannelView(
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             gridItems(channels, key = LiveChannelItem::channelId) { channel ->
+                val channelModifier = if (
+                    channel.channelId == focusChannelId && channelFocusRequester != null
+                ) {
+                    Modifier.focusRequester(channelFocusRequester)
+                } else {
+                    Modifier
+                }
                 LiveChannelCard(
                     channel = channel,
                     playing = channel.channelId == playingChannelId,
                     currentProgram = currentEpgByChannelId[channel.channelId],
                     onClick = { onChannelSelected(channel.channelId) },
+                    modifier = channelModifier,
                 )
             }
         }
@@ -394,11 +463,14 @@ private fun LiveChannelCompactRow(
     playing: Boolean,
     currentProgram: EpgProgram?,
     onClick: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
+    var focused by remember(channel.channelId) { mutableStateOf(false) }
     Row(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
-            .background(liveSelectionBackground(playing))
+            .onFocusChanged { focused = it.isFocused }
+            .background(liveSelectionBackground(playing || focused))
             .clickable(onClick = onClick)
             .padding(horizontal = 10.dp, vertical = 7.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -437,11 +509,14 @@ private fun LiveChannelListRow(
     playing: Boolean,
     currentProgram: EpgProgram?,
     onClick: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
+    var focused by remember(channel.channelId) { mutableStateOf(false) }
     Row(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
-            .background(liveSelectionBackground(playing))
+            .onFocusChanged { focused = it.isFocused }
+            .background(liveSelectionBackground(playing || focused))
             .clickable(onClick = onClick)
             .padding(horizontal = 12.dp, vertical = 9.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -480,13 +555,16 @@ private fun LiveChannelCard(
     playing: Boolean,
     currentProgram: EpgProgram?,
     onClick: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
+    var focused by remember(channel.channelId) { mutableStateOf(false) }
     Surface(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
+            .onFocusChanged { focused = it.isFocused }
             .clickable(onClick = onClick),
         shape = RoundedCornerShape(14.dp),
-        color = if (playing) {
+        color = if (playing || focused) {
             MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.42f)
         } else {
             MaterialTheme.colorScheme.surface
