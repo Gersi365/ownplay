@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -151,10 +152,9 @@ internal fun TvLibraryRoute(
     }
 
     val normalizedQuery = query.trim().lowercase()
-    val offlineItems = remember(downloads, sourceId, normalizedQuery) {
+    val offlineItems = remember(downloads, normalizedQuery) {
         downloads.filter { download ->
-            download.sourceId == sourceId &&
-                download.state == DownloadStates.COMPLETED &&
+            download.state == DownloadStates.COMPLETED &&
                 (normalizedQuery.isBlank() ||
                     download.title.lowercase().contains(normalizedQuery) ||
                     download.seriesTitle.orEmpty().lowercase().contains(normalizedQuery))
@@ -244,7 +244,9 @@ internal fun TvLibraryRoute(
         }
 
         Row(
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(14.dp),
         ) {
             TvLibraryNavigationRail(
@@ -428,7 +430,9 @@ private fun TvOfflineContent(
                 item.seriesTitle?.let { "$it · ${item.title}" } ?: item.title
             } else item.title
         },
-        subtitle = { item -> if (item.savedToDownloads) "OFFLINE · Phone Downloads" else "OFFLINE · OwnPlay storage" },
+        subtitle = { item ->
+            if (item.savedToDownloads) "OFFLINE · Phone Downloads" else "OFFLINE · OwnPlay private storage"
+        },
         poster = { it.posterUrl },
         onOpen = onOpen,
         modifier = modifier,
@@ -557,7 +561,7 @@ private fun TvMediaTile(
                 title = title,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .then(if (compact) Modifier else Modifier),
+                    .aspectRatio(2f / 3f),
             )
             Text(
                 title,
