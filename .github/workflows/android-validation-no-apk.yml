@@ -1,5 +1,6 @@
 name: Android Validation No APK
 
+# Validation lane for source/schema checks only. It must never assemble or upload an APK.
 on:
   push:
     branches:
