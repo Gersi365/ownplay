@@ -53,12 +53,21 @@ fun OwnPlayRoot(
                 initialScale = 0.985f,
             ),
     ) {
-        OwnPlayApp(
-            runtime = runtime,
-            rotationFullscreenEnabled = rotationFullscreenEnabled,
-            onPlaybackFullscreenChanged = onPlaybackFullscreenChanged,
-            onPlaybackSurfaceActiveChanged = onPlaybackSurfaceActiveChanged,
-            onLivePreviewActiveChanged = onLivePreviewActiveChanged,
-        )
+        if (isTelevision) {
+            OwnPlayTvApp(
+                runtime = runtime,
+                onPlaybackFullscreenChanged = onPlaybackFullscreenChanged,
+                onPlaybackSurfaceActiveChanged = onPlaybackSurfaceActiveChanged,
+                onLivePreviewActiveChanged = onLivePreviewActiveChanged,
+            )
+        } else {
+            OwnPlayApp(
+                runtime = runtime,
+                rotationFullscreenEnabled = rotationFullscreenEnabled,
+                onPlaybackFullscreenChanged = onPlaybackFullscreenChanged,
+                onPlaybackSurfaceActiveChanged = onPlaybackSurfaceActiveChanged,
+                onLivePreviewActiveChanged = onLivePreviewActiveChanged,
+            )
+        }
     }
 }
