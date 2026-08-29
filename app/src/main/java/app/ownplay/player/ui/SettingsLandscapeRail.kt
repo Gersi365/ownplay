@@ -25,78 +25,64 @@ internal fun LandscapeSettingsRail(
     selectedRailFocusRequester: FocusRequester,
     onDestinationChange: (SettingsDestination) -> Unit,
 ) {
-        Surface(
-            modifier = Modifier
-                .width(220.dp)
-                .fillMaxHeight(),
-            shape = RoundedCornerShape(18.dp),
-            color = MaterialTheme.colorScheme.surface,
-            tonalElevation = 1.dp,
+    Surface(
+        modifier = Modifier
+            .width(220.dp)
+            .fillMaxHeight(),
+        shape = RoundedCornerShape(18.dp),
+        color = MaterialTheme.colorScheme.surface,
+        tonalElevation = 1.dp,
+    ) {
+        Column(
+            modifier = Modifier.padding(10.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
             Column(
-                modifier = Modifier.padding(10.dp),
-                verticalArrangement = Arrangement.spacedBy(4.dp),
+                modifier = Modifier.padding(horizontal = 8.dp, vertical = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(2.dp),
             ) {
-                Column(
-                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 8.dp),
-                    verticalArrangement = Arrangement.spacedBy(2.dp),
-                ) {
-                    Text(
-                        text = "Settings",
-                        style = MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.Bold,
-                    )
-                    Text(
-                        text = "OwnPlay preferences",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-
-                SettingsRailItem(
-                    label = "Interface",
-                    detail = "Device profile & layout",
-                    selected = selectedRailDestination == SettingsDestination.INTERFACE,
-                    focusRequester = selectedRailFocusRequester,
-                    onClick = { onDestinationChange(SettingsDestination.INTERFACE) },
+                Text(
+                    text = "Settings",
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold,
                 )
-                SettingsRailItem(
-                    label = "Content",
-                    detail = "Live & playlists",
-                    selected = selectedRailDestination == SettingsDestination.CONTENT,
-                    focusRequester = selectedRailFocusRequester,
-                    onClick = { onDestinationChange(SettingsDestination.CONTENT) },
-                )
-                SettingsRailItem(
-                    label = "Downloads",
-                    detail = "Offline movies & episodes",
-                    selected = selectedRailDestination == SettingsDestination.DOWNLOADS,
-                    focusRequester = selectedRailFocusRequester,
-                    onClick = { onDestinationChange(SettingsDestination.DOWNLOADS) },
-                )
-                SettingsRailItem(
-                    label = "Playback",
-                    detail = "Preview & fullscreen",
-                    selected = selectedRailDestination == SettingsDestination.PLAYBACK,
-                    focusRequester = selectedRailFocusRequester,
-                    onClick = { onDestinationChange(SettingsDestination.PLAYBACK) },
-                )
-                SettingsRailItem(
-                    label = "Refresh",
-                    detail = "Source updates",
-                    selected = selectedRailDestination == SettingsDestination.REFRESH,
-                    focusRequester = selectedRailFocusRequester,
-                    onClick = { onDestinationChange(SettingsDestination.REFRESH) },
-                )
-                SettingsRailItem(
-                    label = "About",
-                    detail = "OwnPlay information",
-                    selected = selectedRailDestination == SettingsDestination.ABOUT,
-                    focusRequester = selectedRailFocusRequester,
-                    onClick = { onDestinationChange(SettingsDestination.ABOUT) },
+                Text(
+                    text = "OwnPlay preferences",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
+
+            SettingsRailItem(
+                label = "Interface",
+                detail = "Device profile & orientation",
+                selected = selectedRailDestination == SettingsDestination.INTERFACE,
+                focusRequester = selectedRailFocusRequester,
+                onClick = { onDestinationChange(SettingsDestination.INTERFACE) },
+            )
+            SettingsRailItem(
+                label = "Content",
+                detail = "Live, playlists & backup",
+                selected = selectedRailDestination == SettingsDestination.CONTENT,
+                focusRequester = selectedRailFocusRequester,
+                onClick = { onDestinationChange(SettingsDestination.CONTENT) },
+            )
+            SettingsRailItem(
+                label = "Downloads",
+                detail = "Offline movies & episodes",
+                selected = selectedRailDestination == SettingsDestination.DOWNLOADS,
+                focusRequester = selectedRailFocusRequester,
+                onClick = { onDestinationChange(SettingsDestination.DOWNLOADS) },
+            )
+            SettingsRailItem(
+                label = "About",
+                detail = "OwnPlay information",
+                selected = selectedRailDestination == SettingsDestination.ABOUT,
+                focusRequester = selectedRailFocusRequester,
+                onClick = { onDestinationChange(SettingsDestination.ABOUT) },
+            )
         }
+    }
 }
 
 @Composable
