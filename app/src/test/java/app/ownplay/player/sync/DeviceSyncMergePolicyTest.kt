@@ -2,6 +2,7 @@ package app.ownplay.player.sync
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class DeviceSyncMergePolicyTest {
@@ -80,6 +81,38 @@ class DeviceSyncMergePolicyTest {
     }
 
     @Test
+    fun `newer encrypted source secret wins without exposing plaintext`() {
+        val phone = source(
+            fingerprint = "fingerprint-1",
+            secretRef = SyncValue(
+                value = "ciphertext-ref-old",
+                clock = clock(100L, 1L, "phone"),
+            ),
+        )
+        val tv = source(
+            fingerprint = "fingerprint-1",
+            secretRef = SyncValue(
+                value = "ciphertext-ref-new",
+                clock = clock(200L, 1L, "tv"),
+            ),
+        )
+
+        val merged = DeviceSyncMergePolicy.mergeSource(phone, tv)
+
+        assertEquals("ciphertext-ref-new", merged.encryptedSecretRef?.value)
+    }
+
+    @Test
+    fun `same sync source id rejects conflicting locator fingerprint`() {
+        val phone = source(fingerprint = "fingerprint-a")
+        val tv = source(fingerprint = "fingerprint-b")
+
+        val result = runCatching { DeviceSyncMergePolicy.mergeSource(phone, tv) }
+
+        assertTrue(result.isFailure)
+    }
+
+    @Test
     fun `duplicate manual positions remain deterministically ordered`() {
         val channelB = SyncChannelState(
             key = SyncChannelKey("source-1", "channel-b"),
@@ -102,6 +135,21 @@ class DeviceSyncMergePolicyTest {
             ordered.map { it.key.providerKey },
         )
     }
+
+    private fun source(
+        fingerprint: String?,
+        secretRef: SyncValue<String>? = null,
+    ) = SyncSourceState(
+        identity = SyncSourceIdentity(
+            syncSourceId = "source-1",
+            sourceKind = "xtream",
+            locatorFingerprint = fingerprint,
+        ),
+        displayName = SyncValue("Home TV", clock(100L, 1L, "phone")),
+        enabled = SyncValue(true, clock(100L, 1L, "phone")),
+        deleted = SyncValue(false, clock(100L, 1L, "phone")),
+        encryptedSecretRef = secretRef,
+    )
 
     private fun clock(
         time: Long,
