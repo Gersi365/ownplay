@@ -1,17 +1,11 @@
 name: Android Validation No APK
 
-# Temporary push trigger is scoped to this workflow file so the validated source commit does not
-# recursively trigger another run. This lane must never assemble or upload an APK.
+# Manual validation lane for source/schema checks only. It must never assemble or upload an APK.
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - agent/live-playback-restructure-no-apk
-    paths:
-      - .github/workflows/android-validation-no-apk.yml
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: android-validation-no-apk-${{ github.ref }}
@@ -25,13 +19,6 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v6
-
-      - name: Apply Live teardown hardening patch
-        shell: bash
-        run: |
-          python3 .github/scripts/apply_live_teardown_hardening.py
-          git diff --check
-          git status --short
 
       - name: Set up JDK 17
         uses: actions/setup-java@v5
@@ -128,20 +115,3 @@ jobs:
               print('\n'.join(problems))
               sys.exit(2)
           PY
-
-      - name: Commit validated Live teardown hardening
-        if: success()
-        shell: bash
-        run: |
-          git config user.name "OwnPlay Validation"
-          git config user.email "actions@users.noreply.github.com"
-          git add \
-            app/src/main/java/app/ownplay/player/playback/LivePlaybackPresentation.kt \
-            app/src/main/java/app/ownplay/player/ui/OwnPlayApp.kt \
-            app/src/test/java/app/ownplay/player/playback/LivePlaybackPresentationPolicyTest.kt
-          if git diff --cached --quiet; then
-            echo 'No validated source changes to commit.'
-            exit 0
-          fi
-          git commit -m "Harden Live playback surface teardown"
-          git push origin HEAD:agent/live-playback-restructure-no-apk
