@@ -88,6 +88,9 @@ internal class PortableSourceSecretKey(
     init {
         require(keyId.isNotBlank())
         require(secretKey.algorithm.equals("AES", ignoreCase = true))
+        secretKey.encoded?.let { encoded ->
+            require(encoded.size == 32) { "Portable source secret key must be 256-bit AES" }
+        }
     }
 
     override fun toString(): String = "PortableSourceSecretKey(keyId=<opaque>, secretKey=<redacted>)"
