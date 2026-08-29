@@ -65,3 +65,87 @@ object LivePlaybackSurfaceHandoff {
         return detached
     }
 }
+
+enum class LivePlaybackPresentationSurface {
+    PREVIEW,
+    FULLSCREEN,
+}
+
+data class LivePlaybackTransitionTarget(
+    val surface: LivePlaybackPresentationSurface,
+    val sourceId: String,
+    val channelId: String,
+) {
+    companion object {
+        fun preview(selection: LivePlaybackSelection): LivePlaybackTransitionTarget =
+            from(selection, LivePlaybackPresentationSurface.PREVIEW)
+
+        fun fullscreen(selection: LivePlaybackSelection): LivePlaybackTransitionTarget =
+            from(selection, LivePlaybackPresentationSurface.FULLSCREEN)
+
+        private fun from(
+            selection: LivePlaybackSelection,
+            surface: LivePlaybackPresentationSurface,
+        ): LivePlaybackTransitionTarget = LivePlaybackTransitionTarget(
+            surface = surface,
+            sourceId = selection.request.sourceId,
+            channelId = selection.request.channelId,
+        )
+    }
+}
+
+enum class LivePlaybackTransitionDecision {
+    APPLIED,
+    DUPLICATE,
+}
+
+/**
+ * Deduplicates overlapping Live presentation requests without introducing a second playback queue.
+ *
+ * PlaybackController already cancels stale resolver work through its generation counter. This gate
+ * therefore owns only presentation intent: the last presentation observed by Compose and the most
+ * recent handoff requested but not yet acknowledged by composition. Repeated Back/ESC, duplicate
+ * rotation callbacks, or manual + rotation fullscreen requests for the same channel are ignored.
+ * A request toward the opposite destination is still accepted immediately; PlaybackController then
+ * invalidates the older start through its normal generation semantics.
+ */
+class LivePlaybackTransitionGate {
+    private var observedTarget: LivePlaybackTransitionTarget? = null
+    private var requestedTarget: LivePlaybackTransitionTarget? = null
+
+    fun reconcileObserved(target: LivePlaybackTransitionTarget?) {
+        observedTarget = target
+        if (target == null || requestedTarget == target) {
+            requestedTarget = null
+        }
+    }
+
+    fun requestHandoff(
+        target: LivePlaybackTransitionTarget,
+        detachCurrentSurface: () -> Boolean,
+        stopPlayback: () -> Unit,
+        switchPresentation: () -> Unit,
+        startPlayback: () -> Unit,
+    ): LivePlaybackTransitionDecision {
+        if (target == observedTarget || target == requestedTarget) {
+            return LivePlaybackTransitionDecision.DUPLICATE
+        }
+
+        val previousRequestedTarget = requestedTarget
+        requestedTarget = target
+        return try {
+            LivePlaybackSurfaceHandoff.restartAcrossPresentation(
+                detachCurrentSurface = detachCurrentSurface,
+                stopPlayback = stopPlayback,
+                switchPresentation = switchPresentation,
+                startPlayback = startPlayback,
+            )
+            LivePlaybackTransitionDecision.APPLIED
+        } catch (failure: Throwable) {
+            if (requestedTarget == target) {
+                requestedTarget = previousRequestedTarget
+            }
+            throw failure
+        }
+    }
+}
