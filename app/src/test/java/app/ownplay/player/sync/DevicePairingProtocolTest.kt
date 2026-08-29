@@ -210,6 +210,41 @@ class DevicePairingProtocolTest {
     }
 
     @Test
+    fun `same epoch with different group key is rejected as fork`() {
+        val pairing = pair("phone", "tv")
+        val primaryPhone = ProvisionedPortableSourceSecretKeyRing("phone")
+        val forkedPhone = ProvisionedPortableSourceSecretKeyRing("phone")
+        val tvRing = ProvisionedPortableSourceSecretKeyRing("tv")
+
+        val primaryPackage = primaryPhone.createProvisioningPackage(
+            pairing.phone,
+            pairing.phone.verification,
+        ) as SyncKeyPackageCreationResult.Created
+        val accepted = tvRing.acceptProvisioningPackage(
+            pairing.tv,
+            pairing.tv.verification,
+            primaryPackage.value,
+        ) as SyncKeyPackageAcceptanceResult.Accepted
+
+        val forkPackage = forkedPhone.createProvisioningPackage(
+            pairing.phone,
+            pairing.phone.verification,
+        ) as SyncKeyPackageCreationResult.Created
+
+        assertEquals(1L, primaryPackage.value.keyEpoch)
+        assertEquals(1L, forkPackage.value.keyEpoch)
+        assertNotEquals(accepted.keyId, forkPackage.value.keyId)
+
+        val conflict = tvRing.acceptProvisioningPackage(
+            pairing.tv,
+            pairing.tv.verification,
+            forkPackage.value,
+        )
+        assertEquals(SyncKeyPackageAcceptanceResult.EpochConflict, conflict)
+        assertEquals(accepted.keyId, tvRing.currentKey().keyId)
+    }
+
+    @Test
     fun `revoked peer is blocked and signals group key rotation requirement`() {
         val pairing = pair("phone", "tv")
         val phoneRing = ProvisionedPortableSourceSecretKeyRing("phone")
