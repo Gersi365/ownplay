@@ -81,7 +81,7 @@ internal object ProvisionedSyncKeyRingStateCodec {
             DataOutputStream(bytes).use { output ->
                 output.writeInt(snapshot.version)
                 output.writeBoolean(snapshot.currentKeyId != null)
-                snapshot.currentKeyId?.let(output::writeString)
+                snapshot.currentKeyId?.let { output.writeString(it) }
 
                 output.writeInt(snapshot.keys.size)
                 snapshot.keys.forEach { key ->
@@ -97,7 +97,7 @@ internal object ProvisionedSyncKeyRingStateCodec {
                     output.writeString(peer.identityFingerprint)
                     output.writeBoolean(peer.revoked)
                     output.writeInt(peer.knownKeyIds.size)
-                    peer.knownKeyIds.sorted().forEach(output::writeString)
+                    peer.knownKeyIds.sorted().forEach { output.writeString(it) }
                 }
             }
             bytes.toByteArray()
