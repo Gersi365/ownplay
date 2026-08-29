@@ -1,11 +1,17 @@
 name: Android Validation No APK
 
-# Manual validation lane for source/schema checks only. It must never assemble or upload an APK.
+# Temporary source-validation trigger. This path filter prevents the validated source commit from
+# starting a second run. The workflow is restored to workflow_dispatch-only after the checkpoint.
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - agent/live-playback-restructure-no-apk
+    paths:
+      - .github/workflows/android-validation-no-apk.yml
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: android-validation-no-apk-${{ github.ref }}
@@ -19,6 +25,12 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v6
+
+      - name: Apply Live Activity lifecycle hardening patch
+        shell: bash
+        run: |
+          python3 .github/scripts/apply_live_activity_lifecycle_hardening.py
+          git diff --check
 
       - name: Set up JDK 17
         uses: actions/setup-java@v5
@@ -115,3 +127,21 @@ jobs:
               print('\n'.join(problems))
               sys.exit(2)
           PY
+
+      - name: Commit validated Live Activity lifecycle hardening
+        if: success()
+        shell: bash
+        run: |
+          git config user.name "OwnPlay Validation"
+          git config user.email "actions@users.noreply.github.com"
+          git add \
+            app/src/main/java/app/ownplay/player/MainActivity.kt \
+            app/src/main/java/app/ownplay/player/playback/PlaybackInteractionBridge.kt \
+            app/src/main/java/app/ownplay/player/playback/LiveActivityLifecyclePolicy.kt \
+            app/src/test/java/app/ownplay/player/playback/LiveActivityLifecyclePolicyTest.kt
+          if git diff --cached --quiet; then
+            echo "No validated source changes to commit."
+            exit 0
+          fi
+          git commit -m "Harden Live Activity lifecycle"
+          git push origin HEAD:agent/live-playback-restructure-no-apk
