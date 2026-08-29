@@ -107,6 +107,9 @@ internal sealed interface SyncKeyPackageAcceptanceResult {
  * 256-bit OwnPlay group sync key, allowing a new TV to receive the existing key instead of forcing
  * every already-paired device to adopt a different pairwise content-encryption key.
  *
+ * Key provisioning requires the full verification receipt (short code + transcript fingerprint),
+ * preventing a future UI integration from silently reducing manual verification to the short code.
+ *
  * Revocation is intentionally two-phase: the peer is blocked immediately, then callers rotate the
  * current group key and re-encrypt blobs before retiring the old key.
  */
@@ -168,12 +171,12 @@ internal class ProvisionedPortableSourceSecretKeyRing(
 
     fun createProvisioningPackage(
         candidate: DevicePairingCandidate,
-        verifiedShortCode: String,
+        verified: DevicePairingVerification,
     ): SyncKeyPackageCreationResult {
         if (candidate.localDeviceId != localDeviceId) {
             return SyncKeyPackageCreationResult.LocalIdentityMismatch
         }
-        if (candidate.verification.shortCode != verifiedShortCode) {
+        if (candidate.verification != verified) {
             return SyncKeyPackageCreationResult.VerificationMismatch
         }
         val trust = trust(candidate.peer)
@@ -226,13 +229,13 @@ internal class ProvisionedPortableSourceSecretKeyRing(
 
     fun acceptProvisioningPackage(
         candidate: DevicePairingCandidate,
-        verifiedShortCode: String,
+        verified: DevicePairingVerification,
         provision: SyncKeyProvisioningPackage,
     ): SyncKeyPackageAcceptanceResult {
         if (candidate.localDeviceId != localDeviceId || provision.recipientDeviceId != localDeviceId) {
             return SyncKeyPackageAcceptanceResult.LocalIdentityMismatch
         }
-        if (candidate.verification.shortCode != verifiedShortCode) {
+        if (candidate.verification != verified) {
             return SyncKeyPackageAcceptanceResult.VerificationMismatch
         }
         if (provision.providerDeviceId != candidate.peer.deviceId) {
