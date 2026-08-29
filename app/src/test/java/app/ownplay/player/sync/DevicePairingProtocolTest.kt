@@ -62,8 +62,10 @@ class DevicePairingProtocolTest {
 
     @Test
     fun `verification is bound to fresh pairing transcript`() {
-        val first = pair("phone", "tv")
-        val second = pair("phone", "tv")
+        val phone = PairingIdentityKey.generate("phone")
+        val tv = PairingIdentityKey.generate("tv")
+        val first = pair(phone, tv)
+        val second = pair(phone, tv)
 
         assertNotEquals(first.phone.transcriptHashBase64Url, second.phone.transcriptHashBase64Url)
         assertNotEquals(first.phone.verification.fingerprint, second.phone.verification.fingerprint)
@@ -78,11 +80,11 @@ class DevicePairingProtocolTest {
 
         val created = phoneRing.createProvisioningPackage(
             pairing.phone,
-            pairing.phone.verification.shortCode,
+            pairing.phone.verification,
         ) as SyncKeyPackageCreationResult.Created
         val accepted = tvRing.acceptProvisioningPackage(
             pairing.tv,
-            pairing.tv.verification.shortCode,
+            pairing.tv.verification,
             created.value,
         ) as SyncKeyPackageAcceptanceResult.Accepted
 
@@ -104,14 +106,28 @@ class DevicePairingProtocolTest {
     fun `wrong human verification code cannot provision key`() {
         val pairing = pair("phone", "tv")
         val phoneRing = ProvisionedPortableSourceSecretKeyRing("phone")
+        val wrongCode = if (pairing.phone.verification.shortCode == "00000000") "00000001" else "00000000"
+        val receipt = pairing.phone.verification.copy(shortCode = wrongCode)
 
-        val result = phoneRing.createProvisioningPackage(pairing.phone, "00000000")
+        val result = phoneRing.createProvisioningPackage(pairing.phone, receipt)
 
-        if (pairing.phone.verification.shortCode == "00000000") {
-            assertTrue(result is SyncKeyPackageCreationResult.Created)
+        assertEquals(SyncKeyPackageCreationResult.VerificationMismatch, result)
+    }
+
+    @Test
+    fun `wrong transcript fingerprint cannot provision key`() {
+        val pairing = pair("phone", "tv")
+        val phoneRing = ProvisionedPortableSourceSecretKeyRing("phone")
+        val wrongFingerprint = if (pairing.phone.verification.fingerprint == "0000-0000-0000-0000") {
+            "0000-0000-0000-0001"
         } else {
-            assertEquals(SyncKeyPackageCreationResult.VerificationMismatch, result)
+            "0000-0000-0000-0000"
         }
+        val receipt = pairing.phone.verification.copy(fingerprint = wrongFingerprint)
+
+        val result = phoneRing.createProvisioningPackage(pairing.phone, receipt)
+
+        assertEquals(SyncKeyPackageCreationResult.VerificationMismatch, result)
     }
 
     @Test
@@ -122,12 +138,12 @@ class DevicePairingProtocolTest {
         val tvRing = ProvisionedPortableSourceSecretKeyRing("tv")
         val created = phoneRing.createProvisioningPackage(
             first.phone,
-            first.phone.verification.shortCode,
+            first.phone.verification,
         ) as SyncKeyPackageCreationResult.Created
 
         val replay = tvRing.acceptProvisioningPackage(
             second.tv,
-            second.tv.verification.shortCode,
+            second.tv.verification,
             created.value,
         )
 
@@ -142,7 +158,7 @@ class DevicePairingProtocolTest {
         val tvRing = ProvisionedPortableSourceSecretKeyRing("tv")
         val created = phoneRing.createProvisioningPackage(
             pairing.phone,
-            pairing.phone.verification.shortCode,
+            pairing.phone.verification,
         ) as SyncKeyPackageCreationResult.Created
         val tampered = created.value.copy(
             ciphertextBase64Url = mutateBase64Url(created.value.ciphertextBase64Url),
@@ -150,7 +166,7 @@ class DevicePairingProtocolTest {
 
         val result = tvRing.acceptProvisioningPackage(
             pairing.tv,
-            pairing.tv.verification.shortCode,
+            pairing.tv.verification,
             tampered,
         )
 
@@ -164,11 +180,11 @@ class DevicePairingProtocolTest {
         val tvRing = ProvisionedPortableSourceSecretKeyRing("tv")
         val initialPackage = phoneRing.createProvisioningPackage(
             pairing.phone,
-            pairing.phone.verification.shortCode,
+            pairing.phone.verification,
         ) as SyncKeyPackageCreationResult.Created
         val initialAccepted = tvRing.acceptProvisioningPackage(
             pairing.tv,
-            pairing.tv.verification.shortCode,
+            pairing.tv.verification,
             initialPackage.value,
         ) as SyncKeyPackageAcceptanceResult.Accepted
         val oldKeyId = initialAccepted.keyId
@@ -178,11 +194,11 @@ class DevicePairingProtocolTest {
         assertEquals(2L, rotation.newEpoch)
         val rotatedPackage = phoneRing.createProvisioningPackage(
             pairing.phone,
-            pairing.phone.verification.shortCode,
+            pairing.phone.verification,
         ) as SyncKeyPackageCreationResult.Created
         val rotatedAccepted = tvRing.acceptProvisioningPackage(
             pairing.tv,
-            pairing.tv.verification.shortCode,
+            pairing.tv.verification,
             rotatedPackage.value,
         ) as SyncKeyPackageAcceptanceResult.Accepted
 
@@ -199,7 +215,7 @@ class DevicePairingProtocolTest {
         val phoneRing = ProvisionedPortableSourceSecretKeyRing("phone")
         val initial = phoneRing.createProvisioningPackage(
             pairing.phone,
-            pairing.phone.verification.shortCode,
+            pairing.phone.verification,
         ) as SyncKeyPackageCreationResult.Created
         val currentBeforeRevocation = phoneRing.currentKey().keyId
         assertEquals(currentBeforeRevocation, initial.value.keyId)
@@ -207,7 +223,7 @@ class DevicePairingProtocolTest {
         val revoked = phoneRing.revokePeer("tv")
         val blocked = phoneRing.createProvisioningPackage(
             pairing.phone,
-            pairing.phone.verification.shortCode,
+            pairing.phone.verification,
         )
 
         assertTrue(revoked.revoked)
@@ -228,14 +244,14 @@ class DevicePairingProtocolTest {
         val phoneRing = ProvisionedPortableSourceSecretKeyRing("phone")
         val trusted = phoneRing.createProvisioningPackage(
             first.phone,
-            first.phone.verification.shortCode,
+            first.phone.verification,
         )
         assertTrue(trusted is SyncKeyPackageCreationResult.Created)
 
         val replacement = pair(phoneIdentity, replacementTvIdentity)
         val result = phoneRing.createProvisioningPackage(
             replacement.phone,
-            replacement.phone.verification.shortCode,
+            replacement.phone.verification,
         )
 
         assertEquals(SyncKeyPackageCreationResult.PeerIdentityConflict, result)
@@ -248,7 +264,7 @@ class DevicePairingProtocolTest {
         val phoneRing = ProvisionedPortableSourceSecretKeyRing("phone")
         val created = phoneRing.createProvisioningPackage(
             pairing.phone,
-            pairing.phone.verification.shortCode,
+            pairing.phone.verification,
         ) as SyncKeyPackageCreationResult.Created
         val raw = requireNotNull(phoneRing.currentKey().secretKey.encoded)
         val rawBase64 = try {
