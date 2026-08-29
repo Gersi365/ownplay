@@ -98,6 +98,7 @@ internal sealed interface SyncKeyPackageAcceptanceResult {
     data object DecryptionFailure : SyncKeyPackageAcceptanceResult
     data object KeyIdMismatch : SyncKeyPackageAcceptanceResult
     data object StaleEpoch : SyncKeyPackageAcceptanceResult
+    data object EpochConflict : SyncKeyPackageAcceptanceResult
 }
 
 /**
@@ -256,6 +257,10 @@ internal class ProvisionedPortableSourceSecretKeyRing(
         val highestEpoch = keys.values.maxOfOrNull(KeyRecord::epoch) ?: 0L
         if (provision.keyEpoch < highestEpoch) {
             return SyncKeyPackageAcceptanceResult.StaleEpoch
+        }
+        val sameEpoch = keys.values.filter { it.epoch == provision.keyEpoch }
+        if (sameEpoch.isNotEmpty() && sameEpoch.none { it.key.keyId == provision.keyId }) {
+            return SyncKeyPackageAcceptanceResult.EpochConflict
         }
 
         val nonce = runCatching { decode(provision.nonceBase64Url) }.getOrNull()
