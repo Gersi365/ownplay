@@ -39,7 +39,7 @@ import app.ownplay.player.playback.PlaybackState
 import app.ownplay.player.playback.PlaybackVideoOutput
 import app.ownplay.player.source.SourceSyncStage
 import app.ownplay.player.source.SourceSyncState
-import app.ownplay.player.ui.live.LandscapeLiveWorkspaceSimple
+import app.ownplay.player.ui.live.LandscapeLiveWorkspaceAdaptive
 import app.ownplay.player.ui.live.PortraitLiveBrowseWithViewModes
 import app.ownplay.player.ui.view.ContentViewMode
 import app.ownplay.player.ui.view.ContentViewModeStore
@@ -170,7 +170,7 @@ internal fun LiveRoute(
     }
 
     if (isLandscape) {
-        LandscapeLiveWorkspaceSimple(
+        LandscapeLiveWorkspaceAdaptive(
             state = browseState,
             preview = preview,
             playbackState = playbackState,
@@ -179,6 +179,10 @@ internal fun LiveRoute(
             currentEpgByChannelId = currentEpgByChannelId,
             epgLoading = loadingEpg || epgLookupLoading,
             epgFailed = selectedEpgFailed,
+            viewMode = liveViewMode,
+            onViewModeSelected = { mode ->
+                mutationScope.launch { viewModeStore.setLiveMode(mode) }
+            },
             onSearchChange = browseSession::updateSearch,
             onCategorySelected = browseSession::selectCategory,
             onFavoritesOnlyChanged = browseSession::setFavoritesOnly,
@@ -192,9 +196,6 @@ internal fun LiveRoute(
             onOpenFullscreen = onOpenFullscreen,
             onPreviewClosed = onPreviewClosed,
             onOpenEpgGuide = { showEpgGuide = true },
-            onOpenMovies = onOpenMovies,
-            onOpenSeries = onOpenSeries,
-            onOpenSettings = onOpenSettings,
         )
     } else {
         Column(modifier = Modifier.fillMaxSize()) {
