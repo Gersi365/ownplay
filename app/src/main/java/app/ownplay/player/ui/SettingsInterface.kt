@@ -30,10 +30,6 @@ internal fun PortraitSettingsMenu(
     onSetDeviceProfile: (AppDeviceProfile) -> Unit,
     onSetOrientation: (AppOrientationMode) -> Unit,
     summaries: List<PlaylistSourceSummary>,
-    activeSourceName: String?,
-    hasActivePlayback: Boolean,
-    onOpenLive: () -> Unit,
-    onStopPlayback: () -> Unit,
     onOpenLiveManagement: () -> Unit,
     onOpenPlaylists: () -> Unit,
     onOpenDownloads: () -> Unit,
@@ -88,6 +84,7 @@ internal fun PortraitSettingsMenu(
                     summaries = summaries,
                     onOpenLiveManagement = onOpenLiveManagement,
                     onOpenPlaylists = onOpenPlaylists,
+                    onOpenDownloads = onOpenDownloads,
                 )
             }
 
