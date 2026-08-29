@@ -101,6 +101,7 @@ import app.ownplay.player.playback.PlaybackRequest
 import app.ownplay.player.playback.PlaybackState
 import app.ownplay.player.source.SourceError
 import app.ownplay.player.source.SourceResult
+import app.ownplay.player.ui.PlaybackOriginBadge
 import app.ownplay.player.ui.library.libraryOfflineStorageLabel
 import app.ownplay.player.vod.VodCatalog
 import app.ownplay.player.vod.VodFeatureRuntime
@@ -1193,6 +1194,7 @@ private fun VodPlaybackScreen(
     onFullscreenStateChanged: (Boolean) -> Unit,
 ) {
     val playbackState by runtime.playbackController.state.collectAsState()
+    val playbackOrigin by runtime.playbackController.resolvedOrigin.collectAsState()
     val playbackControls = PlaybackPresentationPolicy.controlsFor(playbackState)
     val configuration = LocalConfiguration.current
     val isTelevision =
@@ -1377,6 +1379,15 @@ private fun VodPlaybackScreen(
                     }
                     .then(remoteWakeModifier),
             )
+
+            playbackOrigin?.let { origin ->
+                PlaybackOriginBadge(
+                    origin = origin,
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(top = 52.dp, end = 12.dp),
+                )
+            }
 
             if (controlsVisible) {
                 Row(

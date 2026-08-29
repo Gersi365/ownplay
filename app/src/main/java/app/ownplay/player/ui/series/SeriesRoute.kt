@@ -73,6 +73,7 @@ import app.ownplay.player.series.SeriesSeason
 import app.ownplay.player.series.SeriesSummary
 import app.ownplay.player.source.SourceError
 import app.ownplay.player.source.SourceResult
+import app.ownplay.player.ui.PlaybackOriginBadge
 import app.ownplay.player.ui.library.libraryOfflineStorageLabel
 import app.ownplay.player.ui.playbackStatusLabel
 import app.ownplay.player.ui.vod.RemotePoster
@@ -1129,6 +1130,7 @@ private fun SeriesPlaybackScreen(
     onFullscreenStateChanged: (Boolean) -> Unit,
 ) {
     val playbackState by runtime.playbackController.state.collectAsState()
+    val playbackOrigin by runtime.playbackController.resolvedOrigin.collectAsState()
     val playbackControls = PlaybackPresentationPolicy.controlsFor(playbackState)
     val configuration = LocalConfiguration.current
     val isTelevision =
@@ -1260,6 +1262,14 @@ private fun SeriesPlaybackScreen(
                     if (playerView === view) playerView = null
                 },
             )
+            playbackOrigin?.let { origin ->
+                PlaybackOriginBadge(
+                    origin = origin,
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(top = 10.dp, end = 12.dp),
+                )
+            }
             if (playbackState is PlaybackState.Loading) {
                 CircularProgressIndicator()
             }

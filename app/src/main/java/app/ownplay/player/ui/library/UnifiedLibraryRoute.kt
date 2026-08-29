@@ -447,6 +447,21 @@ internal fun UnifiedLibraryRoute(
         )
     }
 
+    fun playOfflineMovieFromLibrary(download: OfflineDownload) {
+        seriesReturnEpisodeId = null
+        val catalogKey = libraryCatalogMovieFocusKey(
+            sourceId = download.sourceId,
+            movieId = download.contentId,
+        )
+        val offlineKey = libraryOfflineMovieFocusKey(download.downloadId)
+        pendingMovieReturnFocusKey = when {
+            catalogKey in visibleFocusKeys -> catalogKey
+            offlineKey in visibleFocusKeys -> offlineKey
+            else -> rememberedFocusItemKey
+        }
+        playDownload(download)
+    }
+
     LaunchedEffect(isTelevision, visibleFocusKeys, libraryViewMode) {
         if (!isTelevision || visibleFocusKeys.isEmpty()) return@LaunchedEffect
         val currentTargetStillVisible = focusItemKey?.let(visibleFocusKeys::contains) == true
@@ -614,29 +629,40 @@ internal fun UnifiedLibraryRoute(
             gridState = libraryGridState,
             onItemFocused = { itemKey -> rememberedFocusItemKey = itemKey },
             onOpenMovie = { movieSourceId, movieId ->
-                onOpenMovieDetails(movieSourceId, movieId)
+                val download = movieDownloadsByKey["$movieSourceId:$movieId"]
+                if (
+                    download != null &&
+                    shouldUseOfflineMoviePrimaryAction(
+                        offlineOnly = offlineOnly,
+                        verifiedOffline = download.countsForOfflineFilter(),
+                    )
+                ) {
+                    playOfflineMovieFromLibrary(download)
+                } else {
+                    onOpenMovieDetails(movieSourceId, movieId)
+                }
             },
-            onOpenCatalogSeries = { seriesSourceId, seriesId, _ ->
-                onOpenSeriesDetails(seriesSourceId, seriesId)
+            onOpenCatalogSeries = { seriesSourceId, seriesId, group ->
+                val offlineEpisodeCount =
+                    group?.episodes?.count(OfflineDownload::countsForOfflineFilter) ?: 0
+                if (
+                    group != null &&
+                    shouldUseOfflineSeriesPrimaryAction(
+                        offlineOnly = offlineOnly,
+                        offlineEpisodeCount = offlineEpisodeCount,
+                    )
+                ) {
+                    playbackError = null
+                    selectedSeriesKey = group.key
+                } else {
+                    onOpenSeriesDetails(seriesSourceId, seriesId)
+                }
             },
             onOpenOfflineSeries = { group ->
                 playbackError = null
                 selectedSeriesKey = group.key
             },
-            onPlayOfflineMovie = { download ->
-                seriesReturnEpisodeId = null
-                val catalogKey = libraryCatalogMovieFocusKey(
-                    sourceId = download.sourceId,
-                    movieId = download.contentId,
-                )
-                val offlineKey = libraryOfflineMovieFocusKey(download.downloadId)
-                pendingMovieReturnFocusKey = when {
-                    catalogKey in visibleFocusKeys -> catalogKey
-                    offlineKey in visibleFocusKeys -> offlineKey
-                    else -> rememberedFocusItemKey
-                }
-                playDownload(download)
-            },
+            onPlayOfflineMovie = ::playOfflineMovieFromLibrary,
             onPauseMovie = { download -> scope.launch { downloadRuntime.pause(download.downloadId) } },
             onResumeMovie = { download -> scope.launch { downloadRuntime.resume(download.downloadId) } },
             onRetryMovie = { download -> scope.launch { downloadRuntime.retry(download.downloadId) } },
