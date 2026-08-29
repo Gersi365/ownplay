@@ -236,7 +236,6 @@ class CustomGroupMutator(
                         dao.upsertGroupMemberships(plan.memberships)
                         when (syncMode) {
                             GroupMembershipSyncMode.ADD -> syncWriter.recordMemberships(
-                                sourceId = sourceId,
                                 groupId = groupId,
                                 activeMemberships = plan.memberships.filter { membership ->
                                     membership.channelId in validation.channelIds &&
@@ -244,7 +243,6 @@ class CustomGroupMutator(
                                 },
                             )
                             GroupMembershipSyncMode.REMOVE -> syncWriter.recordMemberships(
-                                sourceId = sourceId,
                                 groupId = groupId,
                                 activeMemberships = plan.memberships,
                                 removedChannelIds = validation.channelIds,
