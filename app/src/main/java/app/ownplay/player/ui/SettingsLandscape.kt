@@ -108,9 +108,6 @@ internal fun LandscapeSettingsShell(
                         onOpenPlaylists = {
                             onDestinationChange(SettingsDestination.PLAYLISTS)
                         },
-                        onOpenDownloads = {
-                            onDestinationChange(SettingsDestination.DOWNLOADS)
-                        },
                     )
                 }
 
