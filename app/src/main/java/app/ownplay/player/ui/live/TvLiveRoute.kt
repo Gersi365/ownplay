@@ -20,8 +20,9 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.items as gridItems
+import androidx.compose.foundation.lazy.grid.itemsIndexed as gridItemsIndexed
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
@@ -51,9 +52,16 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -77,6 +85,7 @@ import app.ownplay.player.playback.PlaybackVideoOutput
 import app.ownplay.player.source.SourceSyncStage
 import app.ownplay.player.source.SourceSyncState
 import app.ownplay.player.source.network.SourceHttpClient
+import app.ownplay.player.ui.EpgGuideSheet
 import app.ownplay.player.ui.EpgPanel
 import app.ownplay.player.ui.LivePreviewPanel
 import app.ownplay.player.ui.view.ContentViewMode
@@ -118,11 +127,15 @@ internal fun TvLiveRoute(
     val viewStore = remember(context) { ContentViewModeStore(context.applicationContext) }
     val viewMode by viewStore.liveMode.collectAsState(initial = ContentViewMode.COMPACT)
     val preview = activeSelection?.takeIf { it.request.sourceId == sourceId }
+    val categoryFocusRequester = remember(sourceId) { FocusRequester() }
+    val firstChannelFocusRequester = remember(sourceId) { FocusRequester() }
 
     var epgSnapshot by remember(sourceId, preview?.request?.channelId) { mutableStateOf<EpgSnapshot?>(null) }
     var currentEpgByChannelId by remember(sourceId) { mutableStateOf<Map<String, EpgProgram>>(emptyMap()) }
     var epgLookupLoading by remember(sourceId, preview?.request?.channelId) { mutableStateOf(false) }
     var epgLookupFailed by remember(sourceId, preview?.request?.channelId) { mutableStateOf(false) }
+    var showEpgGuide by remember(sourceId, preview?.request?.channelId) { mutableStateOf(false) }
+    var initialCategoryFocusRequested by remember(sourceId) { mutableStateOf(false) }
 
     val syncForSource = syncState.sourceId == sourceId
     val loadingChannels = syncForSource && syncState.stage == SourceSyncStage.LoadingChannels
@@ -134,6 +147,16 @@ internal fun TvLiveRoute(
         val selected = state.query.categoryKey
         if (categories.isNotEmpty() && categories.none { it.providerCategoryKey == selected }) {
             browseSession.selectCategory(categories.first().providerCategoryKey)
+        }
+    }
+
+    LaunchedEffect(state.categories, state.query.categoryKey, initialCategoryFocusRequested) {
+        if (
+            !initialCategoryFocusRequested &&
+            state.categories.any { it.providerCategoryKey == state.query.categoryKey }
+        ) {
+            categoryFocusRequester.requestFocus()
+            initialCategoryFocusRequested = true
         }
     }
 
@@ -186,6 +209,9 @@ internal fun TvLiveRoute(
         TvLiveCategoryRail(
             categories = state.categories,
             selectedCategoryKey = state.query.categoryKey,
+            hasChannels = state.channels.isNotEmpty(),
+            selectedFocusRequester = categoryFocusRequester,
+            onMoveToChannels = { firstChannelFocusRequester.requestFocus() },
             onCategorySelected = browseSession::selectCategory,
             modifier = Modifier
                 .width(216.dp)
@@ -225,6 +251,8 @@ internal fun TvLiveRoute(
                     playingChannelId = preview?.request?.channelId,
                     currentEpgByChannelId = currentEpgByChannelId,
                     viewMode = viewMode,
+                    firstItemFocusRequester = firstChannelFocusRequester,
+                    onMoveToCategories = { categoryFocusRequester.requestFocus() },
                     onChannelSelected = ::selectChannel,
                     modifier = Modifier
                         .weight(if (preview == null) 1f else 0.64f)
@@ -258,7 +286,7 @@ internal fun TvLiveRoute(
                                 snapshot = epgSnapshot,
                                 loading = loadingEpg || epgLookupLoading,
                                 failed = epgLookupFailed,
-                                onOpenGuide = {},
+                                onOpenGuide = { showEpgGuide = true },
                                 modifier = Modifier.fillMaxWidth(),
                             )
                         }
@@ -267,12 +295,25 @@ internal fun TvLiveRoute(
             }
         }
     }
+
+    if (showEpgGuide && preview != null) {
+        EpgGuideSheet(
+            channelName = preview.displayName,
+            snapshot = epgSnapshot,
+            loading = loadingEpg || epgLookupLoading,
+            failed = epgLookupFailed,
+            onDismiss = { showEpgGuide = false },
+        )
+    }
 }
 
 @Composable
 private fun TvLiveCategoryRail(
     categories: List<LiveCategory>,
     selectedCategoryKey: String?,
+    hasChannels: Boolean,
+    selectedFocusRequester: FocusRequester,
+    onMoveToChannels: () -> Unit,
     onCategorySelected: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -294,7 +335,20 @@ private fun TvLiveCategoryRail(
                     Surface(
                         modifier = Modifier
                             .fillMaxWidth()
+                            .then(if (selected) Modifier.focusRequester(selectedFocusRequester) else Modifier)
                             .onFocusChanged { focused = it.isFocused }
+                            .onPreviewKeyEvent { event ->
+                                if (
+                                    hasChannels &&
+                                    event.type == KeyEventType.KeyDown &&
+                                    event.key == Key.DirectionRight
+                                ) {
+                                    onMoveToChannels()
+                                    true
+                                } else {
+                                    false
+                                }
+                            }
                             .clickable { onCategorySelected(category.providerCategoryKey) },
                         shape = RoundedCornerShape(11.dp),
                         color = if (selected || focused) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface,
@@ -413,6 +467,8 @@ private fun TvLiveChannelView(
     playingChannelId: String?,
     currentEpgByChannelId: Map<String, EpgProgram>,
     viewMode: ContentViewMode,
+    firstItemFocusRequester: FocusRequester,
+    onMoveToCategories: () -> Unit,
     onChannelSelected: (String) -> Unit,
     modifier: Modifier,
 ) {
@@ -430,13 +486,15 @@ private fun TvLiveChannelView(
             contentPadding = PaddingValues(bottom = 12.dp),
             verticalArrangement = Arrangement.spacedBy(if (viewMode == ContentViewMode.COMPACT) 3.dp else 6.dp),
         ) {
-            items(channels, key = LiveChannelItem::channelId) { channel ->
+            itemsIndexed(channels, key = { _, channel -> channel.channelId }) { index, channel ->
                 TvLiveChannelRow(
                     channel = channel,
                     playing = channel.channelId == playingChannelId,
                     currentProgram = currentEpgByChannelId[channel.channelId],
                     compact = viewMode == ContentViewMode.COMPACT,
+                    onMoveToCategories = onMoveToCategories,
                     onClick = { onChannelSelected(channel.channelId) },
+                    modifier = if (index == 0) Modifier.focusRequester(firstItemFocusRequester) else Modifier,
                 )
             }
         }
@@ -447,12 +505,14 @@ private fun TvLiveChannelView(
             horizontalArrangement = Arrangement.spacedBy(7.dp),
             verticalArrangement = Arrangement.spacedBy(7.dp),
         ) {
-            gridItems(channels, key = LiveChannelItem::channelId) { channel ->
+            gridItemsIndexed(channels, key = { _, channel -> channel.channelId }) { index, channel ->
                 TvLiveChannelCard(
                     channel = channel,
                     playing = channel.channelId == playingChannelId,
                     currentProgram = currentEpgByChannelId[channel.channelId],
+                    onMoveToCategories = onMoveToCategories,
                     onClick = { onChannelSelected(channel.channelId) },
+                    modifier = if (index == 0) Modifier.focusRequester(firstItemFocusRequester) else Modifier,
                 )
             }
         }
@@ -465,14 +525,24 @@ private fun TvLiveChannelRow(
     playing: Boolean,
     currentProgram: EpgProgram?,
     compact: Boolean,
+    onMoveToCategories: () -> Unit,
     onClick: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     var focused by remember(channel.channelId) { mutableStateOf(false) }
     val shape = RoundedCornerShape(11.dp)
     Surface(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .onFocusChanged { focused = it.isFocused }
+            .onPreviewKeyEvent { event ->
+                if (event.type == KeyEventType.KeyDown && event.key == Key.DirectionLeft) {
+                    onMoveToCategories()
+                    true
+                } else {
+                    false
+                }
+            }
             .then(if (focused) Modifier.border(2.dp, MaterialTheme.colorScheme.primary, shape) else Modifier)
             .clickable(onClick = onClick),
         shape = shape,
@@ -501,14 +571,24 @@ private fun TvLiveChannelCard(
     channel: LiveChannelItem,
     playing: Boolean,
     currentProgram: EpgProgram?,
+    onMoveToCategories: () -> Unit,
     onClick: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     var focused by remember(channel.channelId) { mutableStateOf(false) }
     val shape = RoundedCornerShape(12.dp)
     Surface(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .onFocusChanged { focused = it.isFocused }
+            .onPreviewKeyEvent { event ->
+                if (event.type == KeyEventType.KeyDown && event.key == Key.DirectionLeft) {
+                    onMoveToCategories()
+                    true
+                } else {
+                    false
+                }
+            }
             .then(if (focused) Modifier.border(2.dp, MaterialTheme.colorScheme.primary, shape) else Modifier)
             .clickable(onClick = onClick),
         shape = shape,
@@ -554,10 +634,10 @@ private fun TvRemoteChannelLogo(url: String?, title: String, modifier: Modifier 
 
 private suspend fun loadTvChannelLogo(url: String): ImageBitmap? = withContext(Dispatchers.IO) {
     try {
-        SourceHttpClient.shared.newCall(Request.Builder().url(url).get().build()).execute().use { response ->
-            if (!response.isSuccessful) return@use null
+        SourceHttpClient.shared.newCall(Request.Builder().url(url).get().build()).execute().use responseUse@ { response ->
+            if (!response.isSuccessful) return@responseUse null
             val body = response.body
-            if (body.contentLength() > TV_MAX_CHANNEL_LOGO_BYTES.toLong()) return@use null
+            if (body.contentLength() > TV_MAX_CHANNEL_LOGO_BYTES.toLong()) return@responseUse null
             val output = ByteArrayOutputStream()
             val buffer = ByteArray(8 * 1024)
             var total = 0
@@ -566,7 +646,7 @@ private suspend fun loadTvChannelLogo(url: String): ImageBitmap? = withContext(D
                     val read = input.read(buffer)
                     if (read < 0) break
                     total += read
-                    if (total > TV_MAX_CHANNEL_LOGO_BYTES) return@use null
+                    if (total > TV_MAX_CHANNEL_LOGO_BYTES) return@responseUse null
                     output.write(buffer, 0, read)
                 }
             }
