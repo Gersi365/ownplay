@@ -1,10 +1,7 @@
 name: Android Validation No APK
 
-# Validation lane for source/schema checks only. It must never assemble or upload an APK.
+# Manual validation lane for source/schema checks only. It must never assemble or upload an APK.
 on:
-  push:
-    branches:
-      - agent/live-playback-restructure-no-apk
   workflow_dispatch:
 
 permissions:
