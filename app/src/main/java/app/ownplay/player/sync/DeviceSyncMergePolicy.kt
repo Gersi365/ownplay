@@ -34,23 +34,21 @@ internal object DeviceSyncMergePolicy {
         require(left.identity.syncSourceId == right.identity.syncSourceId) {
             "Cannot merge different source identities"
         }
-        val newestIdentity = if (
-            compare(left.displayName.clock, right.displayName.clock) >= 0
-        ) {
-            left.identity
-        } else {
-            right.identity
+        require(left.identity.sourceKind == right.identity.sourceKind) {
+            "Source kind cannot change for an existing sync source"
+        }
+        val identity = when {
+            left.identity.locatorFingerprint == null -> right.identity
+            right.identity.locatorFingerprint == null -> left.identity
+            left.identity.locatorFingerprint == right.identity.locatorFingerprint -> left.identity
+            else -> left.identity
         }
         return SyncSourceState(
-            identity = newestIdentity,
+            identity = identity,
             displayName = requireNotNull(newer(left.displayName, right.displayName)),
             enabled = requireNotNull(newer(left.enabled, right.enabled)),
             deleted = requireNotNull(newer(left.deleted, right.deleted)),
-            encryptedSecretRef = when {
-                left.encryptedSecretRef == right.encryptedSecretRef -> left.encryptedSecretRef
-                compare(left.displayName.clock, right.displayName.clock) >= 0 -> left.encryptedSecretRef
-                else -> right.encryptedSecretRef
-            },
+            encryptedSecretRef = newer(left.encryptedSecretRef, right.encryptedSecretRef),
         )
     }
 
