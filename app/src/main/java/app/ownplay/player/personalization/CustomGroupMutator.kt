@@ -2,7 +2,9 @@ package app.ownplay.player.personalization
 
 import androidx.room.withTransaction
 import app.ownplay.player.persistence.CustomGroupEntity
+import app.ownplay.player.persistence.CustomGroupMembershipEntity
 import app.ownplay.player.persistence.OwnPlayDatabase
+import app.ownplay.player.persistence.sync.DeviceSyncLocalMutationWriter
 import java.util.UUID
 import kotlinx.coroutines.CancellationException
 
@@ -34,6 +36,8 @@ sealed interface CustomGroupMutationResult {
 class CustomGroupMutator(
     private val database: OwnPlayDatabase,
 ) {
+    private val syncWriter = DeviceSyncLocalMutationWriter(database)
+
     suspend fun createGroup(
         name: String,
         createdAtEpochMillis: Long,
@@ -67,14 +71,14 @@ class CustomGroupMutator(
                     )
                 }
                 val nextOrder = (groups.maxOfOrNull(CustomGroupEntity::groupOrder) ?: -1L) + 1L
-                dao.upsertGroup(
-                    CustomGroupEntity(
-                        groupId = groupId,
-                        name = normalizedName,
-                        groupOrder = nextOrder,
-                        createdAtEpochMillis = createdAtEpochMillis,
-                    ),
+                val group = CustomGroupEntity(
+                    groupId = groupId,
+                    name = normalizedName,
+                    groupOrder = nextOrder,
+                    createdAtEpochMillis = createdAtEpochMillis,
                 )
+                dao.upsertGroup(group)
+                syncWriter.recordGroupCreated(group)
                 CustomGroupMutationResult.Success(groupId = groupId)
             }
         } catch (error: Exception) {
@@ -108,7 +112,9 @@ class CustomGroupMutator(
                         reason = CustomGroupFailureReason.GROUP_NOT_FOUND,
                         groupId = groupId,
                     )
-                dao.upsertGroup(existing.copy(name = normalizedName))
+                val updated = existing.copy(name = normalizedName)
+                dao.upsertGroup(updated)
+                syncWriter.recordGroupRenamed(updated)
                 CustomGroupMutationResult.Success(groupId = groupId)
             }
         } catch (error: Exception) {
@@ -126,13 +132,20 @@ class CustomGroupMutator(
         }
         return try {
             database.withTransaction {
-                val deleted = database.personalizationDao().deleteCustomGroup(groupId)
+                val dao = database.personalizationDao()
+                val existing = dao.customGroupById(groupId)
+                    ?: return@withTransaction CustomGroupMutationResult.Failure(
+                        reason = CustomGroupFailureReason.GROUP_NOT_FOUND,
+                        groupId = groupId,
+                    )
+                val deleted = dao.deleteCustomGroup(groupId)
                 if (deleted == 0) {
                     CustomGroupMutationResult.Failure(
                         reason = CustomGroupFailureReason.GROUP_NOT_FOUND,
                         groupId = groupId,
                     )
                 } else {
+                    syncWriter.recordGroupDeleted(existing)
                     CustomGroupMutationResult.Success(groupId = groupId)
                 }
             }
@@ -153,6 +166,7 @@ class CustomGroupMutator(
         sourceId = sourceId,
         groupId = groupId,
         requestedChannelIds = channelIds,
+        syncMode = GroupMembershipSyncMode.ADD,
     ) { orderedSelection, existing ->
         CustomGroupMembershipPlanner.add(
             groupId = groupId,
@@ -169,6 +183,7 @@ class CustomGroupMutator(
         sourceId = sourceId,
         groupId = groupId,
         requestedChannelIds = channelIds,
+        syncMode = GroupMembershipSyncMode.REMOVE,
     ) { orderedSelection, existing ->
         val dao = database.personalizationDao()
         orderedSelection.forEach { channelId ->
@@ -185,9 +200,10 @@ class CustomGroupMutator(
         sourceId: String,
         groupId: String,
         requestedChannelIds: Set<String>,
+        syncMode: GroupMembershipSyncMode,
         operation: suspend (
             orderedSelection: List<String>,
-            existing: List<app.ownplay.player.persistence.CustomGroupMembershipEntity>,
+            existing: List<CustomGroupMembershipEntity>,
         ) -> CustomGroupMembershipPlan,
     ): CustomGroupMutationResult {
         if (sourceId.isBlank()) {
@@ -215,8 +231,25 @@ class CustomGroupMutator(
                     is ChannelSelectionValidationResult.Failure -> validation.toCustomGroupFailure(groupId)
                     is ChannelSelectionValidationResult.Success -> {
                         val existing = dao.groupMemberships(groupId)
+                        val existingIds = existing.mapTo(hashSetOf()) { it.channelId }
                         val plan = operation(validation.channelIds, existing)
                         dao.upsertGroupMemberships(plan.memberships)
+                        when (syncMode) {
+                            GroupMembershipSyncMode.ADD -> syncWriter.recordMemberships(
+                                sourceId = sourceId,
+                                groupId = groupId,
+                                activeMemberships = plan.memberships.filter { membership ->
+                                    membership.channelId in validation.channelIds &&
+                                        membership.channelId !in existingIds
+                                },
+                            )
+                            GroupMembershipSyncMode.REMOVE -> syncWriter.recordMemberships(
+                                sourceId = sourceId,
+                                groupId = groupId,
+                                activeMemberships = plan.memberships,
+                                removedChannelIds = validation.channelIds,
+                            )
+                        }
                         CustomGroupMutationResult.Success(
                             groupId = groupId,
                             channelIds = plan.channelIds,
@@ -232,6 +265,11 @@ class CustomGroupMutator(
             )
         }
     }
+}
+
+private enum class GroupMembershipSyncMode {
+    ADD,
+    REMOVE,
 }
 
 private fun ChannelSelectionValidationResult.Failure.toCustomGroupFailure(
