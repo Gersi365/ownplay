@@ -128,6 +128,7 @@ class MainActivity : ComponentActivity() {
                     ?.settings
                     ?.profile
             val playbackOrigin by runtime.playbackController.resolvedOrigin.collectAsState()
+            var playbackFullscreenForUi by remember { mutableStateOf(false) }
             var downloadPlaybackSession by remember {
                 mutableStateOf<LibraryPlaybackSession?>(null)
             }
@@ -213,6 +214,7 @@ class MainActivity : ComponentActivity() {
                                 onPlaybackFullscreenChanged = { isFullscreen ->
                                     holdTvRemoteTransitionLock()
                                     playbackFullscreen = isFullscreen
+                                    playbackFullscreenForUi = isFullscreen
                                     playbackWindowController.updateFullscreenState(isFullscreen)
                                     if (!isFullscreen) hideStatusBar()
                                 },
@@ -274,6 +276,7 @@ class MainActivity : ComponentActivity() {
                                         onFullscreenStateChanged = { isFullscreen ->
                                             holdTvRemoteTransitionLock()
                                             playbackFullscreen = isFullscreen
+                                            playbackFullscreenForUi = isFullscreen
                                             playbackWindowController.updateFullscreenState(isFullscreen)
                                             playbackWindowController.updatePlaybackSurfaceState(isFullscreen)
                                             if (!isFullscreen) hideStatusBar()
@@ -289,6 +292,24 @@ class MainActivity : ComponentActivity() {
                                                 .padding(top = 10.dp, end = 12.dp),
                                         )
                                     }
+                                }
+                            }
+
+                            if (
+                                downloadPlaybackSession == null &&
+                                shouldShowVodSeriesPlaybackOriginBadge(
+                                    mediaKind = currentPlaybackMediaKind(),
+                                    playbackFullscreen = playbackFullscreenForUi,
+                                    inPictureInPicture = isInPictureInPictureMode,
+                                )
+                            ) {
+                                playbackOrigin?.let { origin ->
+                                    PlaybackOriginBadge(
+                                        origin = origin,
+                                        modifier = Modifier
+                                            .align(Alignment.TopEnd)
+                                            .padding(top = 60.dp, end = 12.dp),
+                                    )
                                 }
                             }
                         }
@@ -503,3 +524,12 @@ internal fun liveRotationFullscreenEnabled(
     isSmartphone: Boolean,
     inPictureInPicture: Boolean,
 ): Boolean = isSmartphone && !inPictureInPicture
+
+internal fun shouldShowVodSeriesPlaybackOriginBadge(
+    mediaKind: PlaybackMediaKind?,
+    playbackFullscreen: Boolean,
+    inPictureInPicture: Boolean,
+): Boolean =
+    playbackFullscreen &&
+        !inPictureInPicture &&
+        (mediaKind == PlaybackMediaKind.MOVIE || mediaKind == PlaybackMediaKind.SERIES_EPISODE)

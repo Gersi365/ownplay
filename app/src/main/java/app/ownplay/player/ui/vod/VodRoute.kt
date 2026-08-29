@@ -101,6 +101,7 @@ import app.ownplay.player.playback.PlaybackRequest
 import app.ownplay.player.playback.PlaybackState
 import app.ownplay.player.source.SourceError
 import app.ownplay.player.source.SourceResult
+import app.ownplay.player.ui.library.libraryOfflineStorageLabel
 import app.ownplay.player.vod.VodCatalog
 import app.ownplay.player.vod.VodFeatureRuntime
 import app.ownplay.player.vod.VodMovie
@@ -1074,11 +1075,7 @@ private fun MovieDetailsPane(
                         Icon(Icons.Filled.DownloadDone, contentDescription = null)
                         Column(modifier = Modifier.weight(1f)) {
                             Text(
-                                text = if (download?.savedToDownloads == true) {
-                                    "Downloaded · Phone Downloads"
-                                } else {
-                                    "Downloaded · Offline copy"
-                                },
+                                text = "Downloaded · ${libraryOfflineStorageLabel(download?.savedToDownloads == true)}",
                                 style = MaterialTheme.typography.labelLarge,
                                 fontWeight = FontWeight.SemiBold,
                             )

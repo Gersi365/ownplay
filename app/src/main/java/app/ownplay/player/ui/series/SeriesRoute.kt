@@ -73,6 +73,7 @@ import app.ownplay.player.series.SeriesSeason
 import app.ownplay.player.series.SeriesSummary
 import app.ownplay.player.source.SourceError
 import app.ownplay.player.source.SourceResult
+import app.ownplay.player.ui.library.libraryOfflineStorageLabel
 import app.ownplay.player.ui.playbackStatusLabel
 import app.ownplay.player.ui.vod.RemotePoster
 import kotlinx.coroutines.currentCoroutineContext
@@ -1083,7 +1084,7 @@ private fun EpisodeRow(
         }
         if (offlineCopyAvailable) {
             Text(
-                text = "Downloaded · Offline copy",
+                text = "Downloaded · ${libraryOfflineStorageLabel(download?.savedToDownloads == true)}",
                 modifier = Modifier.padding(top = 5.dp),
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.primary,
