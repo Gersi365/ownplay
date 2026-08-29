@@ -50,6 +50,8 @@ import app.ownplay.player.OwnPlayAppRuntime
 import app.ownplay.player.playback.LiveFullscreenEntryReason
 import app.ownplay.player.playback.LivePlaybackPresentationPolicy
 import app.ownplay.player.playback.LivePlaybackSelection
+import app.ownplay.player.playback.LivePlaybackSurfaceHandoff
+import app.ownplay.player.playback.PlaybackInteractionBridge
 import app.ownplay.player.source.SourceSyncStage
 import app.ownplay.player.source.SourceSyncState
 import app.ownplay.player.ui.library.UnifiedLibraryRoute
@@ -98,21 +100,35 @@ fun OwnPlayApp(
         selection: LivePlaybackSelection,
         reason: LiveFullscreenEntryReason,
     ) {
-        runtime.playbackController.stop()
-        activeSelection = selection
-        fullscreenEntryReason = reason
-        fullscreenSelection = selection
-        runtime.playbackController.start(selection.request)
+        LivePlaybackSurfaceHandoff.restartAcrossPresentation(
+            detachCurrentSurface = {
+                PlaybackInteractionBridge.detachCurrent(runtime.playbackVideoOutput)
+            },
+            stopPlayback = runtime.playbackController::stop,
+            switchPresentation = {
+                activeSelection = selection
+                fullscreenEntryReason = reason
+                fullscreenSelection = selection
+            },
+            startPlayback = { runtime.playbackController.start(selection.request) },
+        )
     }
 
     fun returnLiveToPreview(selection: LivePlaybackSelection) {
-        runtime.playbackController.stop()
-        activeSourceId = selection.request.sourceId
-        section = OwnPlaySection.LIVE
-        activeSelection = selection
-        fullscreenSelection = null
-        fullscreenEntryReason = null
-        runtime.playbackController.start(selection.request)
+        LivePlaybackSurfaceHandoff.restartAcrossPresentation(
+            detachCurrentSurface = {
+                PlaybackInteractionBridge.detachCurrent(runtime.playbackVideoOutput)
+            },
+            stopPlayback = runtime.playbackController::stop,
+            switchPresentation = {
+                activeSourceId = selection.request.sourceId
+                section = OwnPlaySection.LIVE
+                activeSelection = selection
+                fullscreenSelection = null
+                fullscreenEntryReason = null
+            },
+            startPlayback = { runtime.playbackController.start(selection.request) },
+        )
     }
 
     LaunchedEffect(summaries) {
