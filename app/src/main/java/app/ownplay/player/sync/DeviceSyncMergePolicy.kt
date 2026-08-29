@@ -27,6 +27,33 @@ internal object DeviceSyncMergePolicy {
         else -> right
     }
 
+    fun mergeSource(
+        left: SyncSourceState,
+        right: SyncSourceState,
+    ): SyncSourceState {
+        require(left.identity.syncSourceId == right.identity.syncSourceId) {
+            "Cannot merge different source identities"
+        }
+        val newestIdentity = if (
+            compare(left.displayName.clock, right.displayName.clock) >= 0
+        ) {
+            left.identity
+        } else {
+            right.identity
+        }
+        return SyncSourceState(
+            identity = newestIdentity,
+            displayName = requireNotNull(newer(left.displayName, right.displayName)),
+            enabled = requireNotNull(newer(left.enabled, right.enabled)),
+            deleted = requireNotNull(newer(left.deleted, right.deleted)),
+            encryptedSecretRef = when {
+                left.encryptedSecretRef == right.encryptedSecretRef -> left.encryptedSecretRef
+                compare(left.displayName.clock, right.displayName.clock) >= 0 -> left.encryptedSecretRef
+                else -> right.encryptedSecretRef
+            },
+        )
+    }
+
     fun mergeChannel(
         left: SyncChannelState,
         right: SyncChannelState,
@@ -50,6 +77,7 @@ internal object DeviceSyncMergePolicy {
             key = left.key,
             name = requireNotNull(newer(left.name, right.name)),
             groupOrder = requireNotNull(newer(left.groupOrder, right.groupOrder)),
+            deleted = requireNotNull(newer(left.deleted, right.deleted)),
         )
     }
 
