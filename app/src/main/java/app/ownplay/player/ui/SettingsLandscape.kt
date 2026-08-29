@@ -86,7 +86,7 @@ internal fun LandscapeSettingsShell(
             when (destination) {
                 SettingsDestination.INTERFACE -> LandscapeSectionPage(
                     title = "Interface",
-                    subtitle = "Choose how OwnPlay is presented.",
+                    subtitle = "Device profile and orientation.",
                 ) {
                     InterfaceSettingsContent(
                         deviceProfile = deviceProfile,
@@ -98,7 +98,7 @@ internal fun LandscapeSettingsShell(
 
                 SettingsDestination.CONTENT -> LandscapeSectionPage(
                     title = "Content",
-                    subtitle = "Manage Live organization and playlist sources.",
+                    subtitle = "Live organization, playlists and backup.",
                 ) {
                     ContentSettingsContent(
                         summaries = summaries,
@@ -116,28 +116,9 @@ internal fun LandscapeSettingsShell(
 
                 SettingsDestination.DOWNLOADS -> DownloadsSettingsScreen()
 
-                SettingsDestination.PLAYBACK -> LandscapeSectionPage(
-                    title = "Playback",
-                    subtitle = "Preview and full player behavior.",
-                ) {
-                    PlaybackSettingsContent(
-                        activeSourceName = activeSourceName,
-                        hasActivePlayback = hasActivePlayback,
-                        onOpenLive = onOpenLive,
-                        onStopPlayback = onStopPlayback,
-                    )
-                }
-
-                SettingsDestination.REFRESH -> LandscapeSectionPage(
-                    title = "Refresh",
-                    subtitle = "How OwnPlay updates source content.",
-                ) {
-                    RefreshSettingsContent()
-                }
-
                 SettingsDestination.ABOUT -> LandscapeSectionPage(
                     title = "About",
-                    subtitle = "OwnPlay media player and organizer.",
+                    subtitle = "OwnPlay information.",
                 ) {
                     AboutSettingsContent()
                 }
@@ -188,4 +169,3 @@ internal fun LandscapeSectionPage(
         content()
     }
 }
-
