@@ -144,6 +144,9 @@ internal fun LibrarySeriesCard(
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+            if (completed > 0) {
+                LibraryOfflineBadge()
+            }
             Text(
                 text = seriesTransferSummary(
                     completed = completed,
@@ -934,7 +937,7 @@ private data class LibraryEpisodeCardModel(
 )
 
 private fun episodeDownloadStatus(download: OfflineDownload): String = when (download.state) {
-    DownloadStates.COMPLETED -> "Downloaded · ${humanBytes(download.bytesDownloaded)}"
+    DownloadStates.COMPLETED -> "OFFLINE · Downloaded · ${humanBytes(download.bytesDownloaded)}"
     DownloadStates.DOWNLOADING -> downloadProgressLabel(download)
     DownloadStates.QUEUED -> "Queued"
     DownloadStates.PAUSED -> "Paused · ${humanBytes(download.bytesDownloaded)}"
@@ -944,8 +947,8 @@ private fun episodeDownloadStatus(download: OfflineDownload): String = when (dow
 
 private fun episodeStorageLabel(download: OfflineDownload): String = when {
     download.state != DownloadStates.COMPLETED -> "Managed by OwnPlay"
-    download.savedToDownloads -> "Phone Downloads · available offline"
-    else -> "OwnPlay private storage · available offline"
+    download.savedToDownloads -> "Local file · Phone Downloads"
+    else -> "Local file · OwnPlay private storage"
 }
 
 private fun seriesTransferSummary(

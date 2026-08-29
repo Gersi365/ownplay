@@ -80,7 +80,7 @@ internal fun LibraryPlaybackScreen(
     val playbackState by runtime.playbackController.state.collectAsState()
     val playbackControls = PlaybackPresentationPolicy.controlsFor(playbackState)
     val failedState = playbackState as? PlaybackState.Failed
-    val playbackContextLabel = "$contextLabel · " + if (session.download.savedToDownloads) {
+    val playbackContextLabel = "$contextLabel · OFFLINE · Local file · " + if (session.download.savedToDownloads) {
         "Phone Downloads"
     } else {
         "OwnPlay private storage"
@@ -225,6 +225,7 @@ internal fun LibraryPlaybackScreen(
                     modifier = Modifier.size(18.dp),
                 )
                 Spacer(Modifier.width(6.dp))
+                LibraryOfflineBadge(modifier = Modifier.padding(end = 7.dp))
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
                         text = session.download.title,

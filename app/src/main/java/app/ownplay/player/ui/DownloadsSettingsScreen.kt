@@ -290,7 +290,7 @@ private fun DownloadRow(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 DownloadStates.COMPLETED -> Text(
-                    text = "Downloaded · ${downloadStorageLabel(download)} · ${humanBytes(download.bytesDownloaded)}",
+                    text = "OFFLINE · Local file · ${downloadStorageLabel(download)} · ${humanBytes(download.bytesDownloaded)}",
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.primary,
                 )

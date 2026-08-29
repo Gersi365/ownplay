@@ -400,7 +400,7 @@ internal fun UnifiedLibraryRoute(
                 )
                 Text(
                     text = if (offlineOnly) {
-                        "Offline media verified on this device"
+                        "Local files on this device · playback works without internet"
                     } else {
                         "Movies and Series from your active playlist"
                     },
@@ -842,6 +842,9 @@ private fun UnifiedMovieCard(
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
             )
+            if (download?.libraryOfflinePresentation()?.verifiedOffline == true) {
+                LibraryOfflineBadge()
+            }
             MovieStatusText(download = download)
             download?.let { managedDownload ->
                 MovieDownloadActions(
@@ -902,6 +905,9 @@ private fun UnifiedSeriesCard(
                     overflow = TextOverflow.Ellipsis,
                 )
             }
+            if (offlineEpisodes > 0) {
+                LibraryOfflineBadge()
+            }
             SeriesStatusText(
                 offlineEpisodes = offlineEpisodes,
                 offlineMode = offlineMode,
@@ -950,6 +956,7 @@ private fun OfflineOnlyMovieCard(
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
             )
+            LibraryOfflineBadge()
             Text(
                 text = "${movieOfflineLabel(download)} · no longer in the active catalog",
                 style = MaterialTheme.typography.labelSmall,
@@ -964,7 +971,7 @@ private fun OfflineOnlyMovieCard(
                     DownloadStates.COMPLETED -> Button(onClick = onPlay) {
                         Icon(Icons.Filled.PlayArrow, contentDescription = null, modifier = Modifier.size(18.dp))
                         Spacer(Modifier.width(5.dp))
-                        Text("Play")
+                        Text("Play Offline")
                     }
                     DownloadStates.FAILED -> Button(onClick = onRetry) { Text("Retry") }
                     else -> MovieStatusText(download = download)
@@ -1069,7 +1076,7 @@ private fun CompactOfflineMovieCard(
                 overflow = TextOverflow.Ellipsis,
             )
             Text(
-                text = "${movieOfflineLabel(download)} · Play",
+                text = "${movieOfflineLabel(download)} · Play Offline",
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.primary,
                 maxLines = 1,
@@ -1122,7 +1129,7 @@ private fun CompactSeriesCard(
                 overflow = TextOverflow.Ellipsis,
             )
             Text(
-                text = if (offlineEpisodes > 0) "$offlineEpisodes offline" else "Series",
+                text = librarySeriesOfflineLabel(offlineEpisodes) ?: "Series",
                 style = MaterialTheme.typography.labelSmall,
                 color = if (offlineEpisodes > 0) {
                     MaterialTheme.colorScheme.primary
@@ -1176,7 +1183,7 @@ private fun CompactOfflineSeriesCard(
                 overflow = TextOverflow.Ellipsis,
             )
             Text(
-                text = "$offlineEpisodes offline · local copy",
+                text = requireNotNull(librarySeriesOfflineLabel(offlineEpisodes)),
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.primary,
                 maxLines = 1,
@@ -1267,7 +1274,7 @@ private fun OfflineMovieListRow(
                 overflow = TextOverflow.Ellipsis,
             )
             Text(
-                text = "${movieOfflineLabel(download)} · no longer in active catalog · Play",
+                text = "${movieOfflineLabel(download)} · no longer in active catalog · Play Offline",
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.primary,
                 maxLines = 2,
@@ -1368,7 +1375,7 @@ private fun OfflineSeriesListRow(
                 overflow = TextOverflow.Ellipsis,
             )
             Text(
-                text = "$offlineEpisodes episode${if (offlineEpisodes == 1) "" else "s"} offline · local copy",
+                text = requireNotNull(librarySeriesOfflineLabel(offlineEpisodes)),
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.primary,
                 maxLines = 2,
@@ -1445,7 +1452,7 @@ private fun MovieDownloadActions(
             ) {
                 Icon(Icons.Filled.PlayArrow, contentDescription = null, modifier = Modifier.size(17.dp))
                 Spacer(Modifier.width(4.dp))
-                Text("Play", maxLines = 1, softWrap = false)
+                Text("Play Offline", maxLines = 1, softWrap = false)
             }
             DownloadStates.DOWNLOADING,
             DownloadStates.QUEUED,
@@ -1499,7 +1506,7 @@ private fun SeriesStatusText(
 ) {
     Text(
         text = when {
-            offlineEpisodes > 0 -> "$offlineEpisodes episode${if (offlineEpisodes == 1) "" else "s"} offline"
+            offlineEpisodes > 0 -> requireNotNull(librarySeriesOfflineLabel(offlineEpisodes))
             offlineMode -> "Not available offline"
             else -> "Series"
         },
@@ -1531,8 +1538,9 @@ private fun OfflineDownload.isMissingFile(): Boolean =
 private fun movieOfflineLabel(download: OfflineDownload?): String = when {
     download == null -> "Movie"
     download.isMissingFile() -> "File missing · Download again"
-    download.state == DownloadStates.COMPLETED && download.savedToDownloads -> "Phone Downloads · Offline"
-    download.state == DownloadStates.COMPLETED -> "OwnPlay private storage · Offline"
+    download.state == DownloadStates.COMPLETED -> download.libraryOfflinePresentation().let { presentation ->
+        "${presentation.badgeLabel} · ${presentation.storageLabel}"
+    }
     download.state == DownloadStates.DOWNLOADING -> "Downloading"
     download.state == DownloadStates.QUEUED -> "Queued for download"
     download.state == DownloadStates.PAUSED -> "Download paused"
