@@ -17,6 +17,7 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.ui.PlayerView
 import app.ownplay.player.playback.PlaybackInteractionBridge
+import app.ownplay.player.playback.PlaybackMediaKind
 import app.ownplay.player.playback.PlaybackVideoOutput
 import java.lang.ref.WeakReference
 import java.util.concurrent.atomic.AtomicReference
@@ -28,11 +29,13 @@ import kotlinx.coroutines.isActive
 @Composable
 fun PictureInPicturePlaybackSurface(
     videoOutput: PlaybackVideoOutput,
+    mediaKind: PlaybackMediaKind? = null,
     onProgress: ((positionMs: Long, durationMs: Long?) -> Unit)? = null,
 ) {
     var playerView by remember { mutableStateOf<PlayerView?>(null) }
     val returnTarget = remember { AtomicReference<WeakReference<PlayerView>?>(null) }
     val progressCallback by rememberUpdatedState(onProgress)
+    val handoffMode = PictureInPictureSurfaceHandoffPolicy.modeFor(mediaKind)
 
     fun reportProgress(view: PlayerView?) {
         val player = view?.player ?: return
@@ -66,7 +69,13 @@ fun PictureInPicturePlaybackSurface(
                 PlayerView(context).apply {
                     useController = false
                     setShutterBackgroundColor(AndroidColor.BLACK)
-                    videoOutput.bind(this)
+                    PictureInPictureSurfaceHandoffPolicy.handoff(
+                        mode = handoffMode,
+                        detachCurrentSurface = {
+                            PlaybackInteractionBridge.detachCurrent(videoOutput)
+                        },
+                        bindDestinationSurface = { videoOutput.bind(this) },
+                    )
                     playerView = this
                 }
             },
@@ -82,7 +91,17 @@ fun PictureInPicturePlaybackSurface(
                         ?.get()
                         ?.takeIf { candidate -> candidate.isAttachedToWindow }
                     if (target != null) {
-                        videoOutput.bind(target)
+                        PictureInPictureSurfaceHandoffPolicy.handoff(
+                            mode = handoffMode,
+                            detachCurrentSurface = {
+                                PlaybackInteractionBridge.detachCurrent(videoOutput)
+                            },
+                            bindDestinationSurface = { videoOutput.bind(target) },
+                        )
+                    } else if (
+                        handoffMode == PictureInPictureSurfaceBindingMode.DETACH_BEFORE_BIND
+                    ) {
+                        PlaybackInteractionBridge.detachCurrent(videoOutput)
                     } else {
                         videoOutput.unbind(view)
                     }

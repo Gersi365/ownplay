@@ -227,6 +227,7 @@ class MainActivity : ComponentActivity() {
                                 isInPictureInPictureMode -> {
                                     PictureInPicturePlaybackSurface(
                                         videoOutput = runtime.playbackVideoOutput,
+                                        mediaKind = currentPlaybackMediaKind(),
                                         onProgress = { positionMs, durationMs ->
                                             val request = when (
                                                 val state = runtime.playbackController.state.value
