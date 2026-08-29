@@ -63,33 +63,20 @@ internal fun LandscapeLiveWorkspaceAdaptive(
     onOpenEpgGuide: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val browseContent: @Composable (Modifier) -> Unit = { browseModifier ->
-        Surface(
-            modifier = browseModifier,
-            shape = RoundedCornerShape(16.dp),
-            color = MaterialTheme.colorScheme.background,
-            tonalElevation = 1.dp,
-        ) {
-            PortraitLiveBrowseWithViewModes(
-                state = state,
-                playingChannelId = preview?.request?.channelId,
-                currentEpgByChannelId = currentEpgByChannelId,
-                viewMode = viewMode,
-                onViewModeSelected = onViewModeSelected,
-                onSearchChange = onSearchChange,
-                onCategorySelected = onCategorySelected,
-                onFavoritesOnlyChanged = onFavoritesOnlyChanged,
-                onOrderChanged = onOrderChanged,
-                onCustomGroupSelected = onCustomGroupSelected,
-                onChannelSelected = onChannelSelected,
-                modifier = Modifier.fillMaxSize(),
-            )
-        }
-    }
-
     if (preview == null) {
-        browseContent(
-            modifier
+        LandscapeBrowseSurface(
+            state = state,
+            playingChannelId = null,
+            currentEpgByChannelId = currentEpgByChannelId,
+            viewMode = viewMode,
+            onViewModeSelected = onViewModeSelected,
+            onSearchChange = onSearchChange,
+            onCategorySelected = onCategorySelected,
+            onFavoritesOnlyChanged = onFavoritesOnlyChanged,
+            onOrderChanged = onOrderChanged,
+            onCustomGroupSelected = onCustomGroupSelected,
+            onChannelSelected = onChannelSelected,
+            modifier = modifier
                 .fillMaxSize()
                 .padding(horizontal = 8.dp, vertical = 6.dp),
         )
@@ -102,8 +89,19 @@ internal fun LandscapeLiveWorkspaceAdaptive(
             .padding(horizontal = 8.dp, vertical = 6.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        browseContent(
-            Modifier
+        LandscapeBrowseSurface(
+            state = state,
+            playingChannelId = preview.request.channelId,
+            currentEpgByChannelId = currentEpgByChannelId,
+            viewMode = viewMode,
+            onViewModeSelected = onViewModeSelected,
+            onSearchChange = onSearchChange,
+            onCategorySelected = onCategorySelected,
+            onFavoritesOnlyChanged = onFavoritesOnlyChanged,
+            onOrderChanged = onOrderChanged,
+            onCustomGroupSelected = onCustomGroupSelected,
+            onChannelSelected = onChannelSelected,
+            modifier = Modifier
                 .weight(0.62f)
                 .fillMaxHeight(),
         )
@@ -146,5 +144,43 @@ internal fun LandscapeLiveWorkspaceAdaptive(
                 )
             }
         }
+    }
+}
+
+@Composable
+private fun LandscapeBrowseSurface(
+    state: LiveBrowseState,
+    playingChannelId: String?,
+    currentEpgByChannelId: Map<String, EpgProgram>,
+    viewMode: ContentViewMode,
+    onViewModeSelected: (ContentViewMode) -> Unit,
+    onSearchChange: (String) -> Unit,
+    onCategorySelected: (String?) -> Unit,
+    onFavoritesOnlyChanged: (Boolean) -> Unit,
+    onOrderChanged: (LiveBrowseOrder) -> Unit,
+    onCustomGroupSelected: (String?) -> Unit,
+    onChannelSelected: (String) -> Unit,
+    modifier: Modifier,
+) {
+    Surface(
+        modifier = modifier,
+        shape = RoundedCornerShape(16.dp),
+        color = MaterialTheme.colorScheme.background,
+        tonalElevation = 1.dp,
+    ) {
+        PortraitLiveBrowseWithViewModes(
+            state = state,
+            playingChannelId = playingChannelId,
+            currentEpgByChannelId = currentEpgByChannelId,
+            viewMode = viewMode,
+            onViewModeSelected = onViewModeSelected,
+            onSearchChange = onSearchChange,
+            onCategorySelected = onCategorySelected,
+            onFavoritesOnlyChanged = onFavoritesOnlyChanged,
+            onOrderChanged = onOrderChanged,
+            onCustomGroupSelected = onCustomGroupSelected,
+            onChannelSelected = onChannelSelected,
+            modifier = Modifier.fillMaxSize(),
+        )
     }
 }
