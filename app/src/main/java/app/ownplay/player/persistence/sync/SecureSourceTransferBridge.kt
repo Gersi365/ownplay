@@ -41,7 +41,7 @@ import kotlinx.coroutines.withContext
  * local references on the receiving device and preserves the existing syncSourceId clocks rather
  * than recording a new local source mutation.
  */
-class SecureSourceTransferBridge(
+internal class SecureSourceTransferBridge(
     private val database: OwnPlayDatabase,
     private val sensitiveValueStore: SensitiveValueStore,
     private val credentialStore: CredentialStore,
@@ -141,9 +141,9 @@ class SecureSourceTransferBridge(
 
         val secret = try {
             PortableSourceSecretCrypto.decrypt(envelope, keyProvider)
-        } catch (error: GeneralSecurityException) {
+        } catch (_: GeneralSecurityException) {
             return SecureSourceImportResult.Failure(SecureSourceImportFailure.DecryptionFailure)
-        } catch (error: IllegalArgumentException) {
+        } catch (_: IllegalArgumentException) {
             return SecureSourceImportResult.Failure(SecureSourceImportFailure.DecryptionFailure)
         }
         if (secret.sourceKind != syncSource.sourceKind) {
@@ -263,7 +263,7 @@ class SecureSourceTransferBridge(
     }
 }
 
-sealed interface SecureSourceExportResult {
+internal sealed interface SecureSourceExportResult {
     data class Success(
         val syncSourceId: String,
         val envelope: PortableEncryptedSourceSecret,
@@ -272,7 +272,7 @@ sealed interface SecureSourceExportResult {
     data class Failure(val reason: SecureSourceExportFailure) : SecureSourceExportResult
 }
 
-enum class SecureSourceExportFailure {
+internal enum class SecureSourceExportFailure {
     NotFound,
     SyncIdentityMissing,
     SyncIdentityMismatch,
@@ -285,7 +285,7 @@ enum class SecureSourceExportFailure {
     EncryptionFailure,
 }
 
-sealed interface SecureSourceImportResult {
+internal sealed interface SecureSourceImportResult {
     data class Success(
         val sourceId: String,
         val channelCount: Int,
@@ -296,7 +296,7 @@ sealed interface SecureSourceImportResult {
     data class Failure(val reason: SecureSourceImportFailure) : SecureSourceImportResult
 }
 
-sealed interface SecureSourceImportFailure {
+internal sealed interface SecureSourceImportFailure {
     data object SyncIdentityMissing : SecureSourceImportFailure
     data object SyncIdentityMismatch : SecureSourceImportFailure
     data object SourceDeleted : SecureSourceImportFailure
@@ -313,7 +313,11 @@ internal data class ResolvedPortableSource(
     val locatorValue: String,
     val credentials: XtreamCredentials?,
     val catalog: IncomingLiveCatalog,
-)
+) {
+    override fun toString(): String =
+        "ResolvedPortableSource(sourceKind=$sourceKind, locatorValue=<redacted>, " +
+            "credentials=${if (credentials == null) "null" else "<redacted>"}, catalog=<redacted>)"
+}
 
 internal sealed interface PortableSourceCatalogResolution {
     data class Success(val value: ResolvedPortableSource) : PortableSourceCatalogResolution
@@ -432,7 +436,12 @@ internal data class SecureSourceMaterializationRequest(
     val locatorRef: SensitiveValueRef,
     val credentialRef: CredentialRef?,
     val catalog: IncomingLiveCatalog,
-)
+) {
+    override fun toString(): String =
+        "SecureSourceMaterializationRequest(syncSourceId=$syncSourceId, sourceKind=$sourceKind, " +
+            "locatorRef=<opaque>, credentialRef=${if (credentialRef == null) "null" else "<opaque>"}, " +
+            "catalog=<redacted>)"
+}
 
 internal sealed interface SecureSourceMaterializationResult {
     data class Success(
