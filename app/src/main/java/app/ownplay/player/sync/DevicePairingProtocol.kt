@@ -54,8 +54,8 @@ internal data class PairingDeviceIdentity(
         Base64.getUrlDecoder().decode(identityPublicKeyBase64Url)
 }
 
-/** Long-lived device identity. Production storage can back this with Android Keystore later. */
-internal class PairingIdentityKey private constructor(
+/** Long-lived device identity; production Android storage may supply a Keystore-backed key pair. */
+internal class PairingIdentityKey internal constructor(
     val identity: PairingDeviceIdentity,
     private val keyPair: KeyPair,
 ) {
