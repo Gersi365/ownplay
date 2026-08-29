@@ -118,6 +118,28 @@ class PlaybackBackgroundSuspensionTest {
         controller.close()
     }
 
+    @Test
+    fun resumeWithoutBackgroundSuspensionIsNoOpForActiveLivePlayback() = runBlocking {
+        val engine = FakeEngine()
+        val controller = controller(engine)
+
+        controller.start(request())
+        engine.emitReady()
+        assertTrue(controller.state.value is PlaybackState.Playing)
+
+        val preparesBeforeResume = engine.prepareCount
+        val stopsBeforeResume = engine.stopCount
+        val suspendsBeforeResume = engine.suspendCount
+
+        controller.resumeAfterBackground()
+
+        assertTrue(controller.state.value is PlaybackState.Playing)
+        assertEquals(preparesBeforeResume, engine.prepareCount)
+        assertEquals(stopsBeforeResume, engine.stopCount)
+        assertEquals(suspendsBeforeResume, engine.suspendCount)
+        controller.close()
+    }
+
     private fun controller(
         engine: FakeEngine,
         networkState: MutableStateFlow<PlaybackNetworkState>? = null,
