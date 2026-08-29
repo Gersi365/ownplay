@@ -28,7 +28,9 @@ jobs:
       - name: Apply TV focus hardening patch
         if: github.event_name == 'push'
         run: |
+          python3 .github/scripts/prepare_tv_focus_patch.py
           python3 .github/scripts/apply_tv_focus_patch.py
+          python3 .github/scripts/extend_download_bridge_focus_test.py
           git diff --check
           git status --short
 
