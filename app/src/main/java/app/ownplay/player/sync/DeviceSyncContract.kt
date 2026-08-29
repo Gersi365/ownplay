@@ -65,10 +65,15 @@ data class SyncSourceState(
 data class SyncChannelKey(
     val syncSourceId: String,
     val providerKey: String,
-) {
+) : Comparable<SyncChannelKey> {
     init {
         require(syncSourceId.isNotBlank())
         require(providerKey.isNotBlank())
+    }
+
+    override fun compareTo(other: SyncChannelKey): Int {
+        val source = syncSourceId.compareTo(other.syncSourceId)
+        return if (source != 0) source else providerKey.compareTo(other.providerKey)
     }
 }
 
@@ -97,10 +102,12 @@ data class SyncChannelState(
 
 data class SyncGroupKey(
     val syncGroupId: String,
-) {
+) : Comparable<SyncGroupKey> {
     init {
         require(syncGroupId.isNotBlank())
     }
+
+    override fun compareTo(other: SyncGroupKey): Int = syncGroupId.compareTo(other.syncGroupId)
 }
 
 data class SyncGroupState(
@@ -119,7 +126,12 @@ data class SyncGroupState(
 data class SyncGroupMembershipKey(
     val groupKey: SyncGroupKey,
     val channelKey: SyncChannelKey,
-)
+) : Comparable<SyncGroupMembershipKey> {
+    override fun compareTo(other: SyncGroupMembershipKey): Int {
+        val group = groupKey.compareTo(other.groupKey)
+        return if (group != 0) group else channelKey.compareTo(other.channelKey)
+    }
+}
 
 data class SyncGroupMembershipState(
     val key: SyncGroupMembershipKey,
