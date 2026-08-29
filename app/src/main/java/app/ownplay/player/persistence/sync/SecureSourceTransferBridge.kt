@@ -500,6 +500,7 @@ internal class RoomSecureSourceMaterializer(
         try {
             database.playlistSourceDao().upsert(pending)
         } catch (error: Exception) {
+            rollbackCandidate(sourceId)
             error.rethrowCancellation()
             return SecureSourceMaterializationResult.PersistenceFailure
         }
@@ -551,6 +552,9 @@ internal class RoomSecureSourceMaterializer(
                     channelCount = ingest.channelCount,
                 )
             }
+        } catch (cancelled: CancellationException) {
+            rollbackCandidate(sourceId)
+            throw cancelled
         } catch (changed: MaterializationStateChanged) {
             when (changed) {
                 MaterializationStateChanged.SyncIdentityMissing -> SecureSourceMaterializationResult.SyncIdentityMissing
@@ -560,8 +564,7 @@ internal class RoomSecureSourceMaterializer(
                     SecureSourceMaterializationResult.AlreadyMaterialized(changed.sourceId)
                 }
             }
-        } catch (error: Exception) {
-            error.rethrowCancellation()
+        } catch (_: Exception) {
             SecureSourceMaterializationResult.PersistenceFailure
         }
 
