@@ -17,6 +17,7 @@ private const val DEFAULT_CONTROLLER_TIMEOUT_MILLIS = 3_000
 @OptIn(UnstableApi::class)
 object PlaybackInteractionBridge {
     private var boundView = WeakReference<PlayerView>(null)
+    private var lifecycleSuspendedView = WeakReference<PlayerView>(null)
     private var backOwner: Any? = null
     private var backAction: (() -> Unit)? = null
     private var dpadMode = false
@@ -62,13 +63,40 @@ object PlaybackInteractionBridge {
      * selected by Media3 as the previous target when the next screen binds.
      */
     fun detachCurrent(output: PlaybackVideoOutput): Boolean {
+        lifecycleSuspendedView.clear()
         val view = boundView.get() ?: return false
         output.unbind(view)
         observeUnboundView(view)
         return true
     }
 
+    /**
+     * Temporarily detaches the visible Live surface while its Activity is backgrounded. Unlike an
+     * intentional presentation handoff, this keeps only a WeakReference to the same PlayerView so
+     * it can be rebound if the Activity returns without recreation.
+     */
+    fun suspendCurrentForLifecycle(output: PlaybackVideoOutput): Boolean {
+        val view = boundView.get() ?: return false
+        lifecycleSuspendedView = WeakReference(view)
+        output.unbind(view)
+        observeUnboundView(view)
+        return true
+    }
+
+    fun resumeLifecycleSuspended(output: PlaybackVideoOutput): Boolean {
+        val view = lifecycleSuspendedView.get() ?: return false
+        lifecycleSuspendedView.clear()
+        if (!view.isAttachedToWindow) return false
+        output.bind(view)
+        return true
+    }
+
+    fun discardLifecycleSuspendedSurface() {
+        lifecycleSuspendedView.clear()
+    }
+
     fun observeBoundView(view: PlayerView) {
+        lifecycleSuspendedView.clear()
         boundView = WeakReference(view)
     }
 

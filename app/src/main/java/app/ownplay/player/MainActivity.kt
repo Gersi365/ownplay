@@ -34,6 +34,8 @@ import app.ownplay.player.personalization.AppDeviceProfile
 import app.ownplay.player.personalization.AppDeviceProfileSelection
 import app.ownplay.player.personalization.AppDeviceProfileStore
 import app.ownplay.player.personalization.AppOrientationMode
+import app.ownplay.player.playback.LiveActivityBackgroundAction
+import app.ownplay.player.playback.LiveActivityLifecyclePolicy
 import app.ownplay.player.playback.PlaybackInteractionBridge
 import app.ownplay.player.playback.PlaybackMediaKind
 import app.ownplay.player.playback.PlaybackState
@@ -352,7 +354,8 @@ class MainActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
-        if (::runtime.isInitialized && tvRemoteGuardEnabled) {
+        if (::runtime.isInitialized) {
+            PlaybackInteractionBridge.resumeLifecycleSuspended(runtime.playbackVideoOutput)
             runtime.playbackController.resumeAfterBackground()
         }
         hideStatusBar()
@@ -364,20 +367,32 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onStop() {
-        if (
-            ::runtime.isInitialized &&
-            tvRemoteGuardEnabled &&
-            !isInPictureInPictureMode &&
-            !isChangingConfigurations
-        ) {
+        if (::runtime.isInitialized) {
+            val state = runtime.playbackController.state.value
             when (
-                TvPlaybackLifecyclePolicy.backgroundAction(
-                    runtime.playbackController.state.value,
+                LiveActivityLifecyclePolicy.backgroundAction(
+                    state = state,
+                    inPictureInPicture = isInPictureInPictureMode,
+                    changingConfigurations = isChangingConfigurations,
                 )
             ) {
-                TvBackgroundPlaybackAction.NONE -> Unit
-                TvBackgroundPlaybackAction.SUSPEND -> {
+                LiveActivityBackgroundAction.SUSPEND_AND_RETAIN_SURFACE -> {
+                    PlaybackInteractionBridge.suspendCurrentForLifecycle(runtime.playbackVideoOutput)
                     runtime.playbackController.suspendForBackground()
+                }
+                LiveActivityBackgroundAction.NONE -> {
+                    if (
+                        tvRemoteGuardEnabled &&
+                        !isInPictureInPictureMode &&
+                        !isChangingConfigurations
+                    ) {
+                        when (TvPlaybackLifecyclePolicy.backgroundAction(state)) {
+                            TvBackgroundPlaybackAction.NONE -> Unit
+                            TvBackgroundPlaybackAction.SUSPEND -> {
+                                runtime.playbackController.suspendForBackground()
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -412,6 +427,7 @@ class MainActivity : ComponentActivity() {
     override fun onDestroy() {
         exitConfirmationDialog?.dismiss()
         exitConfirmationDialog = null
+        PlaybackInteractionBridge.discardLifecycleSuspendedSurface()
         activityScope.cancel()
         offlineDownloadRuntime.close()
         playbackWindowController.release()
