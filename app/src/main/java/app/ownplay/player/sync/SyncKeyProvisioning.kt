@@ -102,7 +102,7 @@ internal sealed interface SyncKeyPackageAcceptanceResult {
 }
 
 /**
- * Local provisioning/trust ring used by pairing. It deliberately does not persist or transport keys.
+ * Local provisioning/trust ring used by pairing.
  *
  * A pairing session establishes a pairwise ephemeral session key. That session key wraps a separate
  * 256-bit OwnPlay group sync key, allowing a new TV to receive the existing key instead of forcing
@@ -113,10 +113,15 @@ internal sealed interface SyncKeyPackageAcceptanceResult {
  *
  * Revocation is intentionally two-phase: the peer is blocked immediately, then callers rotate the
  * current group key and re-encrypt blobs before retiring the old key.
+ *
+ * When a stateStore is supplied, trusted peers and all non-retired group keys are restored on
+ * construction and persisted after every durable mutation. Raw key bytes only exist transiently in
+ * the snapshot passed to that store and are wiped immediately afterwards.
  */
 internal class ProvisionedPortableSourceSecretKeyRing(
     val localDeviceId: String,
     private val secureRandom: SecureRandom = SecureRandom(),
+    private val stateStore: ProvisionedSyncKeyRingStateStore? = null,
 ) : PortableSourceSecretKeyProvider {
     private data class KeyRecord(
         val key: PortableSourceSecretKey,
@@ -135,6 +140,13 @@ internal class ProvisionedPortableSourceSecretKeyRing(
 
     init {
         require(localDeviceId.isNotBlank())
+        stateStore?.load()?.let { snapshot ->
+            try {
+                restore(snapshot)
+            } finally {
+                snapshot.wipe()
+            }
+        }
     }
 
     override fun currentKey(): PortableSourceSecretKey =
@@ -158,6 +170,7 @@ internal class ProvisionedPortableSourceSecretKeyRing(
         val record = generateKey(epoch = 1L)
         keys[record.key.keyId] = record
         currentKeyId = record.key.keyId
+        persistState()
         return record.key
     }
 
@@ -167,6 +180,7 @@ internal class ProvisionedPortableSourceSecretKeyRing(
         val record = generateKey(nextEpoch)
         keys[record.key.keyId] = record
         currentKeyId = record.key.keyId
+        persistState()
         return SyncKeyRotationResult(previous, record.key.keyId, nextEpoch)
     }
 
@@ -225,6 +239,7 @@ internal class ProvisionedPortableSourceSecretKeyRing(
             ciphertext.fill(0)
         }
         peers.getValue(candidate.peer.deviceId).knownKeyIds += current.keyId
+        persistState()
         return SyncKeyPackageCreationResult.Created(value, trust)
     }
 
@@ -313,6 +328,7 @@ internal class ProvisionedPortableSourceSecretKeyRing(
         keys[portableKey.keyId] = KeyRecord(portableKey, provision.keyEpoch)
         currentKeyId = portableKey.keyId
         peers.getValue(candidate.peer.deviceId).knownKeyIds += portableKey.keyId
+        persistState()
         return SyncKeyPackageAcceptanceResult.Accepted(portableKey.keyId, provision.keyEpoch, trust)
     }
 
@@ -320,16 +336,21 @@ internal class ProvisionedPortableSourceSecretKeyRing(
         val peer = peers[deviceId] ?: return PairingPeerRevocationResult(false, false)
         peer.revoked = true
         val current = currentKeyId
-        return PairingPeerRevocationResult(
+        val result = PairingPeerRevocationResult(
             revoked = true,
             rotationRequired = current != null && current in peer.knownKeyIds,
         )
+        persistState()
+        return result
     }
 
     fun retireKey(keyId: String): Boolean {
         require(keyId != currentKeyId) { "Current sync key cannot be retired" }
         val removed = keys.remove(keyId) != null
-        if (removed) peers.values.forEach { it.knownKeyIds.remove(keyId) }
+        if (removed) {
+            peers.values.forEach { it.knownKeyIds.remove(keyId) }
+            persistState()
+        }
         return removed
     }
 
@@ -356,6 +377,71 @@ internal class ProvisionedPortableSourceSecretKeyRing(
             )
         } finally {
             bytes.fill(0)
+        }
+    }
+
+    private fun restore(snapshot: ProvisionedSyncKeyRingSnapshot) {
+        val restoredKeys = linkedMapOf<String, KeyRecord>()
+        snapshot.keys.forEach { stored ->
+            require(syncKeyId(stored.keyBytes) == stored.keyId) {
+                "Persisted sync key id does not match key material"
+            }
+            restoredKeys[stored.keyId] = KeyRecord(
+                key = PortableSourceSecretKey(
+                    keyId = stored.keyId,
+                    secretKey = SecretKeySpec(stored.keyBytes, "AES"),
+                ),
+                epoch = stored.epoch,
+            )
+        }
+        snapshot.currentKeyId?.let { current ->
+            require(restoredKeys.containsKey(current)) { "Persisted current sync key is missing" }
+        }
+
+        val restoredPeers = linkedMapOf<String, MutablePeer>()
+        snapshot.peers.forEach { stored ->
+            require(stored.knownKeyIds.all(restoredKeys::containsKey)) {
+                "Persisted peer references an unknown sync key"
+            }
+            restoredPeers[stored.deviceId] = MutablePeer(
+                identityFingerprint = stored.identityFingerprint,
+                revoked = stored.revoked,
+                knownKeyIds = stored.knownKeyIds.toMutableSet(),
+            )
+        }
+
+        keys.clear()
+        keys.putAll(restoredKeys)
+        peers.clear()
+        peers.putAll(restoredPeers)
+        currentKeyId = snapshot.currentKeyId
+    }
+
+    private fun persistState() {
+        val store = stateStore ?: return
+        val keyStates = keys.values.map { record ->
+            val raw = requireNotNull(record.key.secretKey.encoded) {
+                "Persisted sync key must expose 256-bit key material"
+            }
+            require(raw.size == SYNC_KEY_BYTES) { "Persisted sync key has invalid length" }
+            ProvisionedSyncKeyState(record.key.keyId, record.epoch, raw)
+        }
+        val snapshot = ProvisionedSyncKeyRingSnapshot(
+            currentKeyId = currentKeyId,
+            keys = keyStates,
+            peers = peers.entries.map { (deviceId, peer) ->
+                ProvisionedPeerState(
+                    deviceId = deviceId,
+                    identityFingerprint = peer.identityFingerprint,
+                    revoked = peer.revoked,
+                    knownKeyIds = peer.knownKeyIds.toSet(),
+                )
+            },
+        )
+        try {
+            store.save(snapshot)
+        } finally {
+            snapshot.wipe()
         }
     }
 
