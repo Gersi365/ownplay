@@ -1,6 +1,9 @@
 package app.ownplay.player.ui.live
 
+import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -12,7 +15,22 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEvent
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.unit.dp
 import app.ownplay.player.epg.EpgProgram
 import app.ownplay.player.epg.EpgSnapshot
@@ -35,6 +53,12 @@ import app.ownplay.player.ui.view.ContentViewMode
  *
  * Settings deliberately does not live inside the channel workspace. App-level navigation owns
  * that destination instead of consuming permanent channel-list space.
+ *
+ * D-pad focus is split into three predictable zones: Browser -> Preview -> EPG. The channel
+ * browser owns initial focus, Right enters Preview, Down enters EPG, and Left/Back from either
+ * right-side zone returns to the currently active channel. The channel focus request scrolls the
+ * active row/card into the viewport before requesting focus, so Preview navigation cannot leave
+ * Back pointing at a stale channel.
  */
 @Composable
 internal fun LandscapeLiveWorkspaceAdaptive(
@@ -63,6 +87,72 @@ internal fun LandscapeLiveWorkspaceAdaptive(
     onOpenEpgGuide: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val channelFocusRequester = remember { FocusRequester() }
+    val previewFocusRequester = remember { FocusRequester() }
+    val epgFocusRequester = remember { FocusRequester() }
+    var focusChannelId by remember { mutableStateOf<String?>(null) }
+    var channelFocusRequestGeneration by remember { mutableIntStateOf(0) }
+    var initialBrowserFocusRequested by remember { mutableStateOf(false) }
+    var previousPreviewChannelId by remember { mutableStateOf<String?>(null) }
+    var lastPreviewChannelId by remember { mutableStateOf<String?>(null) }
+    var previewZoneHasFocus by remember { mutableStateOf(false) }
+    var epgZoneHasFocus by remember { mutableStateOf(false) }
+
+    fun requestChannelFocus(preferredChannelId: String?) {
+        val visibleTarget = preferredChannelId?.takeIf { candidate ->
+            state.channels.any { channel -> channel.channelId == candidate }
+        }
+        val target = visibleTarget ?: state.channels.firstOrNull()?.channelId ?: return
+        focusChannelId = target
+        channelFocusRequestGeneration += 1
+    }
+
+    fun applyFocusAction(
+        zone: LandscapeLiveFocusZone,
+        action: LandscapeLiveFocusAction,
+    ): Boolean {
+        val destination = LandscapeLiveFocusPolicy.destination(
+            current = zone,
+            action = action,
+            hasPreview = preview != null,
+        ) ?: return false
+        when (destination) {
+            LandscapeLiveFocusZone.BROWSER -> {
+                requestChannelFocus(preview?.request?.channelId ?: lastPreviewChannelId)
+            }
+            LandscapeLiveFocusZone.PREVIEW -> previewFocusRequester.requestFocus()
+            LandscapeLiveFocusZone.EPG -> epgFocusRequester.requestFocus()
+        }
+        return true
+    }
+
+    LaunchedEffect(
+        state.channels.firstOrNull()?.channelId,
+        preview?.request?.channelId,
+    ) {
+        val currentPreviewChannelId = preview?.request?.channelId
+        if (currentPreviewChannelId != null) {
+            lastPreviewChannelId = currentPreviewChannelId
+        }
+        if (!initialBrowserFocusRequested && state.channels.isNotEmpty()) {
+            initialBrowserFocusRequested = true
+            requestChannelFocus(currentPreviewChannelId ?: state.channels.first().channelId)
+        }
+        if (currentPreviewChannelId == null && previousPreviewChannelId != null) {
+            requestChannelFocus(previousPreviewChannelId)
+        }
+        previousPreviewChannelId = currentPreviewChannelId
+    }
+
+    BackHandler(
+        enabled = preview != null && (previewZoneHasFocus || epgZoneHasFocus),
+    ) {
+        applyFocusAction(
+            zone = if (epgZoneHasFocus) LandscapeLiveFocusZone.EPG else LandscapeLiveFocusZone.PREVIEW,
+            action = LandscapeLiveFocusAction.BACK,
+        )
+    }
+
     if (preview == null) {
         LandscapeBrowseSurface(
             state = state,
@@ -76,6 +166,10 @@ internal fun LandscapeLiveWorkspaceAdaptive(
             onOrderChanged = onOrderChanged,
             onCustomGroupSelected = onCustomGroupSelected,
             onChannelSelected = onChannelSelected,
+            focusChannelId = focusChannelId,
+            focusRequestGeneration = channelFocusRequestGeneration,
+            channelFocusRequester = channelFocusRequester,
+            onPreviewKeyEvent = { false },
             modifier = modifier
                 .fillMaxSize()
                 .padding(horizontal = 8.dp, vertical = 6.dp),
@@ -101,6 +195,19 @@ internal fun LandscapeLiveWorkspaceAdaptive(
             onOrderChanged = onOrderChanged,
             onCustomGroupSelected = onCustomGroupSelected,
             onChannelSelected = onChannelSelected,
+            focusChannelId = focusChannelId,
+            focusRequestGeneration = channelFocusRequestGeneration,
+            channelFocusRequester = channelFocusRequester,
+            onPreviewKeyEvent = { event ->
+                if (event.isKeyDown(Key.DirectionRight)) {
+                    applyFocusAction(
+                        zone = LandscapeLiveFocusZone.BROWSER,
+                        action = LandscapeLiveFocusAction.RIGHT,
+                    )
+                } else {
+                    false
+                }
+            },
             modifier = Modifier
                 .weight(0.62f)
                 .fillMaxHeight(),
@@ -120,28 +227,74 @@ internal fun LandscapeLiveWorkspaceAdaptive(
                     .padding(8.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                LivePreviewPanel(
-                    selection = preview,
-                    state = playbackState,
-                    videoOutput = videoOutput,
-                    onPlay = onPlay,
-                    onPause = onPause,
-                    onRetry = onRetry,
-                    onNavigate = onNavigatePreview,
-                    onOpenFullscreen = { onOpenFullscreen(preview) },
-                    onClose = onPreviewClosed,
-                    modifier = Modifier.fillMaxWidth(),
-                )
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .focusRequester(previewFocusRequester)
+                        .onFocusChanged { focusState ->
+                            previewZoneHasFocus = focusState.hasFocus
+                        }
+                        .onPreviewKeyEvent { event ->
+                            when {
+                                event.isKeyDown(Key.DirectionLeft) -> applyFocusAction(
+                                    zone = LandscapeLiveFocusZone.PREVIEW,
+                                    action = LandscapeLiveFocusAction.LEFT,
+                                )
+                                event.isKeyDown(Key.DirectionDown) -> applyFocusAction(
+                                    zone = LandscapeLiveFocusZone.PREVIEW,
+                                    action = LandscapeLiveFocusAction.DOWN,
+                                )
+                                else -> false
+                            }
+                        }
+                        .focusGroup(),
+                ) {
+                    LivePreviewPanel(
+                        selection = preview,
+                        state = playbackState,
+                        videoOutput = videoOutput,
+                        onPlay = onPlay,
+                        onPause = onPause,
+                        onRetry = onRetry,
+                        onNavigate = onNavigatePreview,
+                        onOpenFullscreen = { onOpenFullscreen(preview) },
+                        onClose = onPreviewClosed,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
 
                 HorizontalDivider()
 
-                EpgPanel(
-                    snapshot = epgSnapshot,
-                    loading = epgLoading,
-                    failed = epgFailed,
-                    onOpenGuide = onOpenEpgGuide,
-                    modifier = Modifier.fillMaxWidth(),
-                )
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .focusRequester(epgFocusRequester)
+                        .onFocusChanged { focusState ->
+                            epgZoneHasFocus = focusState.hasFocus
+                        }
+                        .onPreviewKeyEvent { event ->
+                            when {
+                                event.isKeyDown(Key.DirectionLeft) -> applyFocusAction(
+                                    zone = LandscapeLiveFocusZone.EPG,
+                                    action = LandscapeLiveFocusAction.LEFT,
+                                )
+                                event.isKeyDown(Key.DirectionUp) -> applyFocusAction(
+                                    zone = LandscapeLiveFocusZone.EPG,
+                                    action = LandscapeLiveFocusAction.UP,
+                                )
+                                else -> false
+                            }
+                        }
+                        .focusGroup(),
+                ) {
+                    EpgPanel(
+                        snapshot = epgSnapshot,
+                        loading = epgLoading,
+                        failed = epgFailed,
+                        onOpenGuide = onOpenEpgGuide,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
             }
         }
     }
@@ -160,10 +313,14 @@ private fun LandscapeBrowseSurface(
     onOrderChanged: (LiveBrowseOrder) -> Unit,
     onCustomGroupSelected: (String?) -> Unit,
     onChannelSelected: (String) -> Unit,
+    focusChannelId: String?,
+    focusRequestGeneration: Int,
+    channelFocusRequester: FocusRequester,
+    onPreviewKeyEvent: (KeyEvent) -> Boolean,
     modifier: Modifier,
 ) {
     Surface(
-        modifier = modifier,
+        modifier = modifier.onPreviewKeyEvent(onPreviewKeyEvent),
         shape = RoundedCornerShape(16.dp),
         color = MaterialTheme.colorScheme.background,
         tonalElevation = 1.dp,
@@ -180,7 +337,56 @@ private fun LandscapeBrowseSurface(
             onOrderChanged = onOrderChanged,
             onCustomGroupSelected = onCustomGroupSelected,
             onChannelSelected = onChannelSelected,
+            focusChannelId = focusChannelId,
+            focusRequestGeneration = focusRequestGeneration,
+            channelFocusRequester = channelFocusRequester,
             modifier = Modifier.fillMaxSize(),
         )
     }
 }
+
+internal enum class LandscapeLiveFocusZone {
+    BROWSER,
+    PREVIEW,
+    EPG,
+}
+
+internal enum class LandscapeLiveFocusAction {
+    LEFT,
+    RIGHT,
+    UP,
+    DOWN,
+    BACK,
+}
+
+internal object LandscapeLiveFocusPolicy {
+    fun destination(
+        current: LandscapeLiveFocusZone,
+        action: LandscapeLiveFocusAction,
+        hasPreview: Boolean,
+    ): LandscapeLiveFocusZone? = when (current) {
+        LandscapeLiveFocusZone.BROWSER -> when (action) {
+            LandscapeLiveFocusAction.RIGHT -> if (hasPreview) LandscapeLiveFocusZone.PREVIEW else null
+            else -> null
+        }
+        LandscapeLiveFocusZone.PREVIEW -> when (action) {
+            LandscapeLiveFocusAction.LEFT,
+            LandscapeLiveFocusAction.BACK,
+            -> LandscapeLiveFocusZone.BROWSER
+
+            LandscapeLiveFocusAction.DOWN -> LandscapeLiveFocusZone.EPG
+            else -> null
+        }
+        LandscapeLiveFocusZone.EPG -> when (action) {
+            LandscapeLiveFocusAction.LEFT,
+            LandscapeLiveFocusAction.BACK,
+            -> LandscapeLiveFocusZone.BROWSER
+
+            LandscapeLiveFocusAction.UP -> LandscapeLiveFocusZone.PREVIEW
+            else -> null
+        }
+    }
+}
+
+private fun KeyEvent.isKeyDown(expected: Key): Boolean =
+    type == KeyEventType.KeyDown && key == expected
