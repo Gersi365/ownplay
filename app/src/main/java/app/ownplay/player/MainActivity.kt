@@ -252,6 +252,9 @@ class MainActivity : ComponentActivity() {
                                         session = session,
                                         onExit = {
                                             downloadPlaybackSession = null
+                                            DownloadPlaybackBridge.notifyPlaybackClosed(
+                                                session.download.downloadId,
+                                            )
                                         },
                                         onProgress = { positionMs, durationMs ->
                                             activityScope.launch {

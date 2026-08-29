@@ -49,6 +49,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -73,6 +74,7 @@ import java.util.Locale
 internal fun LibrarySeriesCard(
     group: LibrarySeriesGroup,
     onOpenOfflineSeries: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     val completed = group.offlineEpisodeCount
     val active = group.episodes.count {
@@ -82,7 +84,7 @@ internal fun LibrarySeriesCard(
     val failed = group.episodes.count { it.state == DownloadStates.FAILED }
 
     Surface(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .clickable(onClick = onOpenOfflineSeries),
         shape = RoundedCornerShape(14.dp),
@@ -172,6 +174,8 @@ internal fun LibrarySeriesCard(
 internal fun LibrarySeriesDetailScreen(
     group: LibrarySeriesGroup,
     playbackError: String?,
+    returnFocusEpisodeId: String? = null,
+    returnFocusGeneration: Int = 0,
     onBack: () -> Unit,
     onOpenFullSeries: (() -> Unit)?,
     onDownloadEpisode: (SeriesEpisode) -> Unit,
@@ -194,6 +198,7 @@ internal fun LibrarySeriesDetailScreen(
 
     val seriesId = group.seriesId
     val detailBackFocusRequester = remember(group.key) { FocusRequester() }
+    val episodeActionFocusRequester = remember(group.key) { FocusRequester() }
     var showAll by remember(group.key) { mutableStateOf(false) }
     var fullDetails by remember(group.key) { mutableStateOf<SeriesDetails?>(null) }
     var catalogLoading by remember(group.key) { mutableStateOf(seriesId != null) }
@@ -320,6 +325,23 @@ internal fun LibrarySeriesDetailScreen(
     val selectedEpisode = visibleEpisodes.firstOrNull { it.episodeId == selectedEpisodeId }
     val totalCatalogEpisodes = fullDetails?.seasons?.sumOf { it.episodes.size }
 
+    LaunchedEffect(
+        isTelevision,
+        returnFocusEpisodeId,
+        returnFocusGeneration,
+        selectedEpisodeId,
+    ) {
+        if (
+            isTelevision &&
+            returnFocusGeneration > 0 &&
+            returnFocusEpisodeId != null &&
+            selectedEpisodeId == returnFocusEpisodeId
+        ) {
+            withFrameNanos { }
+            episodeActionFocusRequester.requestFocus()
+        }
+    }
+
     fun navigateBack() {
         when {
             selectedEpisodeId != null -> selectedEpisodeId = null
@@ -376,6 +398,12 @@ internal fun LibrarySeriesDetailScreen(
         when {
             selectedEpisode != null -> OfflineEpisodeHero(
                 model = selectedEpisode,
+                primaryActionFocusRequester = episodeActionFocusRequester
+                    .takeIf {
+                        isTelevision &&
+                            returnFocusGeneration > 0 &&
+                            selectedEpisode.episodeId == returnFocusEpisodeId
+                    },
                 onOpenFullSeries = onOpenFullSeries,
                 onDownload = selectedEpisode.catalogEpisode?.let { episode ->
                     { onDownloadEpisode(episode) }
@@ -627,6 +655,7 @@ private fun OfflineSeasonHero(
 @Composable
 private fun OfflineEpisodeHero(
     model: LibraryEpisodeCardModel,
+    primaryActionFocusRequester: FocusRequester?,
     onOpenFullSeries: (() -> Unit)?,
     onDownload: (() -> Unit)?,
     onPlay: (() -> Unit)?,
@@ -636,6 +665,9 @@ private fun OfflineEpisodeHero(
     onRemove: (() -> Unit)?,
 ) {
     val download = model.download
+    val primaryActionModifier = primaryActionFocusRequester
+        ?.let { requester -> Modifier.focusRequester(requester) }
+        ?: Modifier
     OfflineHeroShell(
         posterUrl = model.posterUrl,
         title = model.title,
@@ -646,7 +678,7 @@ private fun OfflineEpisodeHero(
         dimPoster = download == null,
     ) {
         when (download?.state) {
-            DownloadStates.COMPLETED -> Button(onClick = requireNotNull(onPlay)) {
+            DownloadStates.COMPLETED -> Button(onClick = requireNotNull(onPlay), modifier = primaryActionModifier) {
                 Icon(Icons.Filled.PlayArrow, contentDescription = null, modifier = Modifier.size(18.dp))
                 Spacer(Modifier.width(5.dp))
                 Text("Play Offline")
@@ -654,26 +686,26 @@ private fun OfflineEpisodeHero(
 
             DownloadStates.DOWNLOADING,
             DownloadStates.QUEUED,
-            -> FilledTonalButton(onClick = requireNotNull(onPause)) {
+            -> FilledTonalButton(onClick = requireNotNull(onPause), modifier = primaryActionModifier) {
                 Icon(Icons.Filled.Pause, contentDescription = null, modifier = Modifier.size(18.dp))
                 Spacer(Modifier.width(4.dp))
                 Text("Pause")
             }
 
-            DownloadStates.PAUSED -> FilledTonalButton(onClick = requireNotNull(onResume)) {
+            DownloadStates.PAUSED -> FilledTonalButton(onClick = requireNotNull(onResume), modifier = primaryActionModifier) {
                 Icon(Icons.Filled.PlayArrow, contentDescription = null, modifier = Modifier.size(18.dp))
                 Spacer(Modifier.width(4.dp))
                 Text("Resume")
             }
 
-            DownloadStates.FAILED -> FilledTonalButton(onClick = requireNotNull(onRetry)) {
+            DownloadStates.FAILED -> FilledTonalButton(onClick = requireNotNull(onRetry), modifier = primaryActionModifier) {
                 Icon(Icons.Filled.Refresh, contentDescription = null, modifier = Modifier.size(18.dp))
                 Spacer(Modifier.width(4.dp))
                 Text("Retry")
             }
 
             null -> if (onDownload != null) {
-                FilledTonalButton(onClick = onDownload) {
+                FilledTonalButton(onClick = onDownload, modifier = primaryActionModifier) {
                     Icon(Icons.Filled.Download, contentDescription = null, modifier = Modifier.size(18.dp))
                     Spacer(Modifier.width(4.dp))
                     Text("Download")

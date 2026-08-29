@@ -1,5 +1,7 @@
 package app.ownplay.player.ui.library
 
+import android.content.res.Configuration
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -14,11 +16,15 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items as gridItems
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.lazy.items as listItems
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Delete
@@ -44,12 +50,18 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -67,6 +79,7 @@ import app.ownplay.player.series.SeriesEpisode
 import app.ownplay.player.series.SeriesFeatureRuntime
 import app.ownplay.player.series.SeriesSummary
 import app.ownplay.player.source.SourceResult
+import app.ownplay.player.ui.OfflineMediaTvFocusPolicy
 import app.ownplay.player.ui.view.ContentViewMode
 import app.ownplay.player.ui.view.ContentViewModeMenu
 import app.ownplay.player.ui.view.ContentViewModeStore
@@ -95,6 +108,9 @@ internal fun UnifiedLibraryRoute(
     onFullscreenStateChanged: (Boolean) -> Unit,
 ) {
     val context = LocalContext.current
+    val configuration = LocalConfiguration.current
+    val isTelevision =
+        configuration.uiMode and Configuration.UI_MODE_TYPE_MASK == Configuration.UI_MODE_TYPE_TELEVISION
     val scope = rememberCoroutineScope()
     val downloadRuntime = remember(context) {
         OfflineDownloadFeatureRuntime(context.applicationContext)
@@ -104,6 +120,9 @@ internal fun UnifiedLibraryRoute(
     val viewModeStore = remember(context) {
         ContentViewModeStore(context.applicationContext)
     }
+    val libraryListState = rememberLazyListState()
+    val libraryGridState = rememberLazyGridState()
+    val libraryItemFocusRequester = remember { FocusRequester() }
 
     DisposableEffect(downloadRuntime, vodRuntime, seriesRuntime) {
         onDispose {
@@ -134,6 +153,13 @@ internal fun UnifiedLibraryRoute(
     var playbackSession by remember { mutableStateOf<LibraryPlaybackSession?>(null) }
     var playbackError by remember { mutableStateOf<String?>(null) }
     var selectedSeriesKey by remember { mutableStateOf<LibrarySeriesKey?>(null) }
+    var focusItemKey by remember(sourceId) { mutableStateOf<String?>(null) }
+    var focusRequestGeneration by remember(sourceId) { mutableIntStateOf(0) }
+    var rememberedFocusItemKey by remember(sourceId) { mutableStateOf<String?>(null) }
+    var initialLibraryItemFocusRequested by remember(sourceId) { mutableStateOf(false) }
+    var pendingMovieReturnFocusKey by remember(sourceId) { mutableStateOf<String?>(null) }
+    var seriesReturnEpisodeId by remember(sourceId) { mutableStateOf<String?>(null) }
+    var seriesReturnFocusGeneration by remember(sourceId) { mutableIntStateOf(0) }
 
     LaunchedEffect(vodCatalog.categories, movieCategoryKey) {
         val selected = movieCategoryKey
@@ -208,6 +234,15 @@ internal fun UnifiedLibraryRoute(
             onExit = {
                 runtime.playbackController.stop()
                 playbackSession = null
+                val movieReturnKey = pendingMovieReturnFocusKey
+                pendingMovieReturnFocusKey = null
+                if (selectedSeriesKey != null && seriesReturnEpisodeId != null) {
+                    seriesReturnFocusGeneration += 1
+                } else if (movieReturnKey != null) {
+                    focusItemKey = movieReturnKey
+                    rememberedFocusItemKey = movieReturnKey
+                    focusRequestGeneration += 1
+                }
             },
             onProgress = { positionMs, durationMs ->
                 scope.launch {
@@ -227,7 +262,16 @@ internal fun UnifiedLibraryRoute(
         LibrarySeriesDetailScreen(
             group = selectedSeriesGroup,
             playbackError = playbackError,
-            onBack = { selectedSeriesKey = null },
+            returnFocusEpisodeId = seriesReturnEpisodeId,
+            returnFocusGeneration = seriesReturnFocusGeneration,
+            onBack = {
+                selectedSeriesKey = null
+                seriesReturnEpisodeId = null
+                rememberedFocusItemKey?.let { target ->
+                    focusItemKey = target
+                    focusRequestGeneration += 1
+                }
+            },
             onOpenFullSeries = selectedSeriesGroup.seriesId?.let { seriesId ->
                 {
                     playbackError = null
@@ -243,7 +287,11 @@ internal fun UnifiedLibraryRoute(
                     )
                 }
             },
-            onPlay = ::playDownload,
+            onPlay = { download ->
+                pendingMovieReturnFocusKey = null
+                seriesReturnEpisodeId = download.contentId
+                playDownload(download)
+            },
             onPause = { download -> scope.launch { downloadRuntime.pause(download.downloadId) } },
             onResume = { download -> scope.launch { downloadRuntime.resume(download.downloadId) } },
             onRetry = { download -> scope.launch { downloadRuntime.retry(download.downloadId) } },
@@ -381,6 +429,36 @@ internal fun UnifiedLibraryRoute(
         visibleSeries.size + orphanedOfflineSeries.size
     }
     val hasItems = movieCount + seriesCount > 0
+    val visibleFocusKeys = remember(
+        filter,
+        sourceId,
+        visibleMovies,
+        orphanedOfflineMovies,
+        visibleSeries,
+        orphanedOfflineSeries,
+    ) {
+        libraryVisibleFocusKeys(
+            filter = filter,
+            sourceId = sourceId,
+            visibleMovies = visibleMovies,
+            orphanedOfflineMovies = orphanedOfflineMovies,
+            visibleSeries = visibleSeries,
+            orphanedOfflineSeries = orphanedOfflineSeries,
+        )
+    }
+
+    LaunchedEffect(isTelevision, visibleFocusKeys, libraryViewMode) {
+        if (!isTelevision || visibleFocusKeys.isEmpty()) return@LaunchedEffect
+        val currentTargetStillVisible = focusItemKey?.let(visibleFocusKeys::contains) == true
+        if (initialLibraryItemFocusRequested && currentTargetStillVisible) return@LaunchedEffect
+        val target = OfflineMediaTvFocusPolicy.preferredVisibleKey(
+            visibleKeys = visibleFocusKeys,
+            rememberedKey = rememberedFocusItemKey,
+        ) ?: return@LaunchedEffect
+        initialLibraryItemFocusRequested = true
+        focusItemKey = target
+        focusRequestGeneration += 1
+    }
 
     Column(
         modifier = Modifier
@@ -528,6 +606,13 @@ internal fun UnifiedLibraryRoute(
             orphanedOfflineSeries = orphanedOfflineSeries,
             movieDownloadsByKey = movieDownloadsByKey,
             seriesGroupByIdentity = seriesGroupByIdentity,
+            focusKeys = visibleFocusKeys,
+            focusItemKey = focusItemKey,
+            focusRequestGeneration = focusRequestGeneration,
+            itemFocusRequester = libraryItemFocusRequester,
+            listState = libraryListState,
+            gridState = libraryGridState,
+            onItemFocused = { itemKey -> rememberedFocusItemKey = itemKey },
             onOpenMovie = { movieSourceId, movieId ->
                 onOpenMovieDetails(movieSourceId, movieId)
             },
@@ -538,7 +623,20 @@ internal fun UnifiedLibraryRoute(
                 playbackError = null
                 selectedSeriesKey = group.key
             },
-            onPlayOfflineMovie = ::playDownload,
+            onPlayOfflineMovie = { download ->
+                seriesReturnEpisodeId = null
+                val catalogKey = libraryCatalogMovieFocusKey(
+                    sourceId = download.sourceId,
+                    movieId = download.contentId,
+                )
+                val offlineKey = libraryOfflineMovieFocusKey(download.downloadId)
+                pendingMovieReturnFocusKey = when {
+                    catalogKey in visibleFocusKeys -> catalogKey
+                    offlineKey in visibleFocusKeys -> offlineKey
+                    else -> rememberedFocusItemKey
+                }
+                playDownload(download)
+            },
             onPauseMovie = { download -> scope.launch { downloadRuntime.pause(download.downloadId) } },
             onResumeMovie = { download -> scope.launch { downloadRuntime.resume(download.downloadId) } },
             onRetryMovie = { download -> scope.launch { downloadRuntime.retry(download.downloadId) } },
@@ -639,6 +737,13 @@ private fun LibraryCatalogView(
     orphanedOfflineSeries: List<LibrarySeriesGroup>,
     movieDownloadsByKey: Map<String, OfflineDownload>,
     seriesGroupByIdentity: Map<String, LibrarySeriesGroup>,
+    focusKeys: List<String>,
+    focusItemKey: String?,
+    focusRequestGeneration: Int,
+    itemFocusRequester: FocusRequester,
+    listState: LazyListState,
+    gridState: LazyGridState,
+    onItemFocused: (String) -> Unit,
     onOpenMovie: (sourceId: String, movieId: String) -> Unit,
     onOpenCatalogSeries: (sourceId: String, seriesId: String, group: LibrarySeriesGroup?) -> Unit,
     onOpenOfflineSeries: (LibrarySeriesGroup) -> Unit,
@@ -649,8 +754,57 @@ private fun LibraryCatalogView(
     onRemoveMovie: (OfflineDownload) -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    var currentlyFocusedItemKey by remember { mutableStateOf<String?>(null) }
+    val focusRingColor = MaterialTheme.colorScheme.primary
+    val focusIndex = remember(focusKeys, focusItemKey) { focusKeys.indexOf(focusItemKey) }
+
+    LaunchedEffect(
+        viewMode,
+        focusItemKey,
+        focusRequestGeneration,
+        focusIndex,
+    ) {
+        if (focusRequestGeneration <= 0 || focusIndex < 0) return@LaunchedEffect
+        when (viewMode) {
+            ContentViewMode.LIST -> listState.scrollToItem(focusIndex)
+            ContentViewMode.COMPACT,
+            ContentViewMode.CARDS,
+            -> gridState.scrollToItem(focusIndex)
+        }
+        withFrameNanos { }
+        itemFocusRequester.requestFocus()
+    }
+
+    fun itemModifier(itemKey: String): Modifier {
+        val requesterModifier = if (itemKey == focusItemKey) {
+            Modifier.focusRequester(itemFocusRequester)
+        } else {
+            Modifier
+        }
+        val ringModifier = if (currentlyFocusedItemKey == itemKey) {
+            Modifier.border(
+                width = 2.dp,
+                color = focusRingColor,
+                shape = RoundedCornerShape(12.dp),
+            )
+        } else {
+            Modifier
+        }
+        return requesterModifier
+            .then(ringModifier)
+            .onFocusChanged { focusState ->
+                if (focusState.hasFocus) {
+                    currentlyFocusedItemKey = itemKey
+                    onItemFocused(itemKey)
+                } else if (currentlyFocusedItemKey == itemKey) {
+                    currentlyFocusedItemKey = null
+                }
+            }
+    }
+
     when (viewMode) {
         ContentViewMode.CARDS -> LazyVerticalGrid(
+            state = gridState,
             columns = GridCells.Adaptive(minSize = 150.dp),
             modifier = modifier.fillMaxSize(),
             contentPadding = PaddingValues(bottom = 14.dp),
@@ -669,6 +823,9 @@ private fun LibraryCatalogView(
                         onResume = onResumeMovie,
                         onRetry = onRetryMovie,
                         onRemove = onRemoveMovie,
+                        modifier = itemModifier(
+                            libraryCatalogMovieFocusKey(movieSourceId, movie.movieId),
+                        ),
                     )
                 }
                 gridItems(orphanedOfflineMovies, key = { "offline-movie:${it.downloadId}" }) { download ->
@@ -677,6 +834,7 @@ private fun LibraryCatalogView(
                         onPlay = { onPlayOfflineMovie(download) },
                         onRetry = { onRetryMovie(download) },
                         onRemove = { onRemoveMovie(download) },
+                        modifier = itemModifier(libraryOfflineMovieFocusKey(download.downloadId)),
                     )
                 }
             }
@@ -691,18 +849,23 @@ private fun LibraryCatalogView(
                         offlineMode = offlineOnly,
                         onOpen = { onOpenCatalogSeries(seriesSourceId, series.seriesId, group) },
                         onOpenOfflineSeries = onOpenOfflineSeries,
+                        modifier = itemModifier(
+                            libraryCatalogSeriesFocusKey(seriesSourceId, series.seriesId),
+                        ),
                     )
                 }
                 gridItems(orphanedOfflineSeries, key = { "offline-series:${it.key}" }) { group ->
                     LibrarySeriesCard(
                         group = group,
                         onOpenOfflineSeries = { onOpenOfflineSeries(group) },
+                        modifier = itemModifier(libraryOfflineSeriesFocusKey(group)),
                     )
                 }
             }
         }
 
         ContentViewMode.COMPACT -> LazyVerticalGrid(
+            state = gridState,
             columns = GridCells.Adaptive(minSize = 108.dp),
             modifier = modifier.fillMaxSize(),
             contentPadding = PaddingValues(bottom = 14.dp),
@@ -721,6 +884,9 @@ private fun LibraryCatalogView(
                         onResume = onResumeMovie,
                         onRetry = onRetryMovie,
                         onRemove = onRemoveMovie,
+                        modifier = itemModifier(
+                            libraryCatalogMovieFocusKey(movieSourceId, movie.movieId),
+                        ),
                     )
                 }
                 gridItems(orphanedOfflineMovies, key = { "compact-offline-movie:${it.downloadId}" }) { download ->
@@ -728,6 +894,7 @@ private fun LibraryCatalogView(
                         download = download,
                         onPlay = { onPlayOfflineMovie(download) },
                         onRemove = { onRemoveMovie(download) },
+                        modifier = itemModifier(libraryOfflineMovieFocusKey(download.downloadId)),
                     )
                 }
             }
@@ -741,18 +908,23 @@ private fun LibraryCatalogView(
                         group = group,
                         onOpen = { onOpenCatalogSeries(seriesSourceId, series.seriesId, group) },
                         onOpenOfflineSeries = onOpenOfflineSeries,
+                        modifier = itemModifier(
+                            libraryCatalogSeriesFocusKey(seriesSourceId, series.seriesId),
+                        ),
                     )
                 }
                 gridItems(orphanedOfflineSeries, key = { "compact-offline-series:${it.key}" }) { group ->
                     CompactOfflineSeriesCard(
                         group = group,
                         onOpen = { onOpenOfflineSeries(group) },
+                        modifier = itemModifier(libraryOfflineSeriesFocusKey(group)),
                     )
                 }
             }
         }
 
         ContentViewMode.LIST -> LazyColumn(
+            state = listState,
             modifier = modifier.fillMaxSize(),
             contentPadding = PaddingValues(bottom = 14.dp),
         ) {
@@ -768,6 +940,9 @@ private fun LibraryCatalogView(
                         onResume = onResumeMovie,
                         onRetry = onRetryMovie,
                         onRemove = onRemoveMovie,
+                        modifier = itemModifier(
+                            libraryCatalogMovieFocusKey(movieSourceId, movie.movieId),
+                        ),
                     )
                     HorizontalDivider(modifier = Modifier.padding(start = 70.dp))
                 }
@@ -776,6 +951,7 @@ private fun LibraryCatalogView(
                         download = download,
                         onPlay = { onPlayOfflineMovie(download) },
                         onRemove = { onRemoveMovie(download) },
+                        modifier = itemModifier(libraryOfflineMovieFocusKey(download.downloadId)),
                     )
                     HorizontalDivider(modifier = Modifier.padding(start = 70.dp))
                 }
@@ -791,6 +967,9 @@ private fun LibraryCatalogView(
                         offlineMode = offlineOnly,
                         onOpen = { onOpenCatalogSeries(seriesSourceId, series.seriesId, group) },
                         onOpenOfflineSeries = onOpenOfflineSeries,
+                        modifier = itemModifier(
+                            libraryCatalogSeriesFocusKey(seriesSourceId, series.seriesId),
+                        ),
                     )
                     HorizontalDivider(modifier = Modifier.padding(start = 70.dp))
                 }
@@ -798,6 +977,7 @@ private fun LibraryCatalogView(
                     OfflineSeriesListRow(
                         group = group,
                         onOpen = { onOpenOfflineSeries(group) },
+                        modifier = itemModifier(libraryOfflineSeriesFocusKey(group)),
                     )
                     HorizontalDivider(modifier = Modifier.padding(start = 70.dp))
                 }
@@ -816,9 +996,10 @@ private fun UnifiedMovieCard(
     onResume: (OfflineDownload) -> Unit,
     onRetry: (OfflineDownload) -> Unit,
     onRemove: (OfflineDownload) -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     Surface(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .clickable(onClick = onOpen),
         shape = RoundedCornerShape(14.dp),
@@ -869,10 +1050,11 @@ private fun UnifiedSeriesCard(
     offlineMode: Boolean,
     onOpen: () -> Unit,
     onOpenOfflineSeries: (LibrarySeriesGroup) -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     val offlineEpisodes = group?.episodes?.count(OfflineDownload::countsForOfflineFilter) ?: 0
     Surface(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .clickable(onClick = onOpen),
         shape = RoundedCornerShape(14.dp),
@@ -932,9 +1114,12 @@ private fun OfflineOnlyMovieCard(
     onPlay: () -> Unit,
     onRetry: () -> Unit,
     onRemove: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     Surface(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = modifier
+            .fillMaxWidth()
+            .clickable(onClick = onPlay),
         shape = RoundedCornerShape(14.dp),
         tonalElevation = 1.dp,
     ) {
@@ -995,9 +1180,10 @@ private fun CompactMovieCard(
     onResume: (OfflineDownload) -> Unit,
     onRetry: (OfflineDownload) -> Unit,
     onRemove: (OfflineDownload) -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     Surface(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .clickable(onClick = onOpen),
         shape = RoundedCornerShape(12.dp),
@@ -1049,9 +1235,10 @@ private fun CompactOfflineMovieCard(
     download: OfflineDownload,
     onPlay: () -> Unit,
     onRemove: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     Surface(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .clickable(onClick = onPlay),
         shape = RoundedCornerShape(12.dp),
@@ -1101,10 +1288,11 @@ private fun CompactSeriesCard(
     group: LibrarySeriesGroup?,
     onOpen: () -> Unit,
     onOpenOfflineSeries: (LibrarySeriesGroup) -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     val offlineEpisodes = group?.episodes?.count(OfflineDownload::countsForOfflineFilter) ?: 0
     Surface(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .clickable(onClick = onOpen),
         shape = RoundedCornerShape(12.dp),
@@ -1155,10 +1343,11 @@ private fun CompactSeriesCard(
 private fun CompactOfflineSeriesCard(
     group: LibrarySeriesGroup,
     onOpen: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     val offlineEpisodes = group.episodes.count(OfflineDownload::countsForOfflineFilter)
     Surface(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .clickable(onClick = onOpen),
         shape = RoundedCornerShape(12.dp),
@@ -1203,9 +1392,10 @@ private fun MovieListRow(
     onResume: (OfflineDownload) -> Unit,
     onRetry: (OfflineDownload) -> Unit,
     onRemove: (OfflineDownload) -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     Row(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .clickable(onClick = onOpen)
             .padding(horizontal = 4.dp, vertical = 8.dp),
@@ -1249,9 +1439,10 @@ private fun OfflineMovieListRow(
     download: OfflineDownload,
     onPlay: () -> Unit,
     onRemove: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     Row(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .clickable(onClick = onPlay)
             .padding(horizontal = 4.dp, vertical = 8.dp),
@@ -1295,10 +1486,11 @@ private fun SeriesListRow(
     offlineMode: Boolean,
     onOpen: () -> Unit,
     onOpenOfflineSeries: (LibrarySeriesGroup) -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     val offlineEpisodes = group?.episodes?.count(OfflineDownload::countsForOfflineFilter) ?: 0
     Row(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .clickable(onClick = onOpen)
             .padding(horizontal = 4.dp, vertical = 8.dp),
@@ -1349,10 +1541,11 @@ private fun SeriesListRow(
 private fun OfflineSeriesListRow(
     group: LibrarySeriesGroup,
     onOpen: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     val offlineEpisodes = group.episodes.count(OfflineDownload::countsForOfflineFilter)
     Row(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .clickable(onClick = onOpen)
             .padding(horizontal = 4.dp, vertical = 8.dp),
@@ -1548,6 +1741,45 @@ private fun movieOfflineLabel(download: OfflineDownload?): String = when {
     else -> "Movie"
 }
 
+
+private fun libraryCatalogMovieFocusKey(sourceId: String, movieId: String): String =
+    "movie:$sourceId:$movieId"
+
+private fun libraryOfflineMovieFocusKey(downloadId: String): String =
+    "offline-movie:$downloadId"
+
+private fun libraryCatalogSeriesFocusKey(sourceId: String, seriesId: String): String =
+    "series:$sourceId:$seriesId"
+
+private fun libraryOfflineSeriesFocusKey(group: LibrarySeriesGroup): String =
+    "offline-series:${group.key.sourceId}:${group.key.identity}"
+
+private fun libraryVisibleFocusKeys(
+    filter: UnifiedLibraryFilter,
+    sourceId: String?,
+    visibleMovies: List<VodMovie>,
+    orphanedOfflineMovies: List<OfflineDownload>,
+    visibleSeries: List<SeriesSummary>,
+    orphanedOfflineSeries: List<LibrarySeriesGroup>,
+): List<String> = buildList {
+    val resolvedSourceId = sourceId ?: return@buildList
+    if (filter != UnifiedLibraryFilter.SERIES) {
+        visibleMovies.forEach { movie ->
+            add(libraryCatalogMovieFocusKey(resolvedSourceId, movie.movieId))
+        }
+        orphanedOfflineMovies.forEach { download ->
+            add(libraryOfflineMovieFocusKey(download.downloadId))
+        }
+    }
+    if (filter != UnifiedLibraryFilter.MOVIES) {
+        visibleSeries.forEach { series ->
+            add(libraryCatalogSeriesFocusKey(resolvedSourceId, series.seriesId))
+        }
+        orphanedOfflineSeries.forEach { group ->
+            add(libraryOfflineSeriesFocusKey(group))
+        }
+    }
+}
 private suspend fun enqueueSeriesEpisode(
     downloadRuntime: OfflineDownloadFeatureRuntime,
     sourceId: String,
