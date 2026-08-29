@@ -39,11 +39,7 @@ internal fun LandscapeSettingsShell(
     orientationMode: AppOrientationMode,
     onSetDeviceProfile: (AppDeviceProfile) -> Unit,
     onSetOrientation: (AppOrientationMode) -> Unit,
-    activeSourceName: String?,
-    hasActivePlayback: Boolean,
-    onOpenLive: () -> Unit,
     onOpenSourceInLive: (String) -> Unit,
-    onStopPlayback: () -> Unit,
 ) {
     val configuration = LocalConfiguration.current
     val isTelevision =
@@ -107,6 +103,9 @@ internal fun LandscapeSettingsShell(
                         },
                         onOpenPlaylists = {
                             onDestinationChange(SettingsDestination.PLAYLISTS)
+                        },
+                        onOpenDownloads = {
+                            onDestinationChange(SettingsDestination.DOWNLOADS)
                         },
                     )
                 }
