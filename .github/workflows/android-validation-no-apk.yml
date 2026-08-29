@@ -1,11 +1,16 @@
 name: Android Validation No APK
 
-# Manual validation lane for source/schema checks only. It must never assemble or upload an APK.
+# Temporary source-patch validation lane. It must never assemble or upload an APK.
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - agent/live-playback-restructure-no-apk
+    paths:
+      - ".github/workflows/android-validation-no-apk.yml"
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: android-validation-no-apk-${{ github.ref }}
@@ -19,6 +24,127 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v6
+
+      - name: Apply Library offline UX patch
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          def replace_once(path: str, old: str, new: str) -> None:
+              file = Path(path)
+              text = file.read_text(encoding="utf-8")
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f"Expected exactly one match in {path}, found {count}: {old[:90]!r}")
+              file.write_text(text.replace(old, new, 1), encoding="utf-8")
+
+          unified = "app/src/main/java/app/ownplay/player/ui/library/UnifiedLibraryRoute.kt"
+          series = "app/src/main/java/app/ownplay/player/ui/library/LibrarySeriesComponents.kt"
+          playback = "app/src/main/java/app/ownplay/player/ui/library/LibraryPlaybackScreen.kt"
+          downloads = "app/src/main/java/app/ownplay/player/ui/DownloadsSettingsScreen.kt"
+
+          replace_once(
+              unified,
+              '"Offline media verified on this device"',
+              '"Local files on this device · playback works without internet"',
+          )
+          replace_once(
+              unified,
+              '                Text("Play", maxLines = 1, softWrap = false)\n',
+              '                Text("Play Offline", maxLines = 1, softWrap = false)\n',
+          )
+          replace_once(
+              unified,
+              '''                    DownloadStates.COMPLETED -> Button(onClick = onPlay) {\n                        Icon(Icons.Filled.PlayArrow, contentDescription = null, modifier = Modifier.size(18.dp))\n                        Spacer(Modifier.width(5.dp))\n                        Text("Play")\n                    }''',
+              '''                    DownloadStates.COMPLETED -> Button(onClick = onPlay) {\n                        Icon(Icons.Filled.PlayArrow, contentDescription = null, modifier = Modifier.size(18.dp))\n                        Spacer(Modifier.width(5.dp))\n                        Text("Play Offline")\n                    }''',
+          )
+          replace_once(
+              unified,
+              'text = "${movieOfflineLabel(download)} · Play",',
+              'text = "${movieOfflineLabel(download)} · Play Offline",',
+          )
+          replace_once(
+              unified,
+              'text = "${movieOfflineLabel(download)} · no longer in active catalog · Play",',
+              'text = "${movieOfflineLabel(download)} · no longer in active catalog · Play Offline",',
+          )
+          replace_once(
+              unified,
+              '''            MovieStatusText(download = download)\n            download?.let { managedDownload ->''',
+              '''            if (download?.libraryOfflinePresentation()?.verifiedOffline == true) {\n                LibraryOfflineBadge()\n            }\n            MovieStatusText(download = download)\n            download?.let { managedDownload ->''',
+          )
+          replace_once(
+              unified,
+              '''            Text(\n                text = "${movieOfflineLabel(download)} · no longer in the active catalog",''',
+              '''            LibraryOfflineBadge()\n            Text(\n                text = "${movieOfflineLabel(download)} · no longer in the active catalog",''',
+          )
+          replace_once(
+              unified,
+              '''            SeriesStatusText(\n                offlineEpisodes = offlineEpisodes,\n                offlineMode = offlineMode,\n            )\n            group?.let { managedGroup ->''',
+              '''            if (offlineEpisodes > 0) {\n                LibraryOfflineBadge()\n            }\n            SeriesStatusText(\n                offlineEpisodes = offlineEpisodes,\n                offlineMode = offlineMode,\n            )\n            group?.let { managedGroup ->''',
+          )
+          replace_once(
+              unified,
+              '            offlineEpisodes > 0 -> "$offlineEpisodes episode${if (offlineEpisodes == 1) "" else "s"} offline"',
+              '            offlineEpisodes > 0 -> requireNotNull(librarySeriesOfflineLabel(offlineEpisodes))',
+          )
+          replace_once(
+              unified,
+              'text = if (offlineEpisodes > 0) "$offlineEpisodes offline" else "Series",',
+              'text = librarySeriesOfflineLabel(offlineEpisodes) ?: "Series",',
+          )
+          replace_once(
+              unified,
+              'text = "$offlineEpisodes offline · local copy",',
+              'text = requireNotNull(librarySeriesOfflineLabel(offlineEpisodes)),',
+          )
+          replace_once(
+              unified,
+              'text = "$offlineEpisodes episode${if (offlineEpisodes == 1) "" else "s"} offline · local copy",',
+              'text = requireNotNull(librarySeriesOfflineLabel(offlineEpisodes)),',
+          )
+          replace_once(
+              unified,
+              '''    download.state == DownloadStates.COMPLETED && download.savedToDownloads -> "Phone Downloads · Offline"\n    download.state == DownloadStates.COMPLETED -> "OwnPlay private storage · Offline"''',
+              '''    download.state == DownloadStates.COMPLETED -> download.libraryOfflinePresentation().let { presentation ->\n        "${presentation.badgeLabel} · ${presentation.storageLabel}"\n    }''',
+          )
+
+          replace_once(
+              series,
+              '''            Text(\n                text = seriesTransferSummary(''',
+              '''            if (completed > 0) {\n                LibraryOfflineBadge()\n            }\n            Text(\n                text = seriesTransferSummary(''',
+          )
+          replace_once(
+              series,
+              '    DownloadStates.COMPLETED -> "Downloaded · ${humanBytes(download.bytesDownloaded)}"',
+              '    DownloadStates.COMPLETED -> "OFFLINE · Downloaded · ${humanBytes(download.bytesDownloaded)}"',
+          )
+          replace_once(
+              series,
+              '''private fun episodeStorageLabel(download: OfflineDownload): String = when {\n    download.state != DownloadStates.COMPLETED -> "Managed by OwnPlay"\n    download.savedToDownloads -> "Phone Downloads · available offline"\n    else -> "OwnPlay private storage · available offline"\n}''',
+              '''private fun episodeStorageLabel(download: OfflineDownload): String = when {\n    download.state != DownloadStates.COMPLETED -> "Managed by OwnPlay"\n    download.savedToDownloads -> "Local file · Phone Downloads"\n    else -> "Local file · OwnPlay private storage"\n}''',
+          )
+
+          replace_once(
+              playback,
+              '''    val playbackContextLabel = "$contextLabel · " + if (session.download.savedToDownloads) {\n        "Phone Downloads"\n    } else {\n        "OwnPlay private storage"\n    }''',
+              '''    val playbackContextLabel = "$contextLabel · OFFLINE · Local file · " + if (session.download.savedToDownloads) {\n        "Phone Downloads"\n    } else {\n        "OwnPlay private storage"\n    }''',
+          )
+          replace_once(
+              playback,
+              '''                Spacer(Modifier.width(6.dp))\n                Column(modifier = Modifier.weight(1f)) {''',
+              '''                Spacer(Modifier.width(6.dp))\n                LibraryOfflineBadge(modifier = Modifier.padding(end = 7.dp))\n                Column(modifier = Modifier.weight(1f)) {''',
+          )
+
+          replace_once(
+              downloads,
+              'text = "Downloaded · ${downloadStorageLabel(download)} · ${humanBytes(download.bytesDownloaded)}",',
+              'text = "OFFLINE · Local file · ${downloadStorageLabel(download)} · ${humanBytes(download.bytesDownloaded)}",',
+          )
+          PY
+
+          git diff --check
 
       - name: Set up JDK 17
         uses: actions/setup-java@v5
@@ -115,3 +241,21 @@ jobs:
               print('\n'.join(problems))
               sys.exit(2)
           PY
+
+      - name: Commit validated Library offline UX
+        if: success()
+        shell: bash
+        run: |
+          git config user.name "OwnPlay Validation"
+          git config user.email "actions@users.noreply.github.com"
+          git add \
+            app/src/main/java/app/ownplay/player/ui/library/UnifiedLibraryRoute.kt \
+            app/src/main/java/app/ownplay/player/ui/library/LibrarySeriesComponents.kt \
+            app/src/main/java/app/ownplay/player/ui/library/LibraryPlaybackScreen.kt \
+            app/src/main/java/app/ownplay/player/ui/DownloadsSettingsScreen.kt
+          if git diff --cached --quiet; then
+            echo 'Expected Library offline UX source changes were not staged.' >&2
+            exit 1
+          fi
+          git commit -m "Clarify Library offline playback UX"
+          git push origin "HEAD:${GITHUB_REF_NAME}"
