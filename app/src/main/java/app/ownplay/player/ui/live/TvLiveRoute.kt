@@ -258,7 +258,7 @@ internal fun TvLiveRoute(
                                 snapshot = epgSnapshot,
                                 loading = loadingEpg || epgLookupLoading,
                                 failed = epgLookupFailed,
-                                onOpenGuide = null,
+                                onOpenGuide = {},
                                 modifier = Modifier.fillMaxWidth(),
                             )
                         }
