@@ -77,6 +77,23 @@ class DeviceSyncLocalMutationWriter(
         )
     }
 
+    suspend fun recordEncryptedSecretRef(syncSourceId: String, encryptedSecretRef: String?) {
+        require(syncSourceId.isNotBlank())
+        encryptedSecretRef?.let { require(it.isNotBlank()) }
+        val existing = requireNotNull(database.deviceSyncDao().sourceBySyncId(syncSourceId)) {
+            "Sync source is missing: $syncSourceId"
+        }
+        val clock = allocateClock()
+        database.deviceSyncDao().upsertSource(
+            existing.copy(
+                encryptedSecretRef = encryptedSecretRef,
+                encryptedSecretUpdatedAtEpochMillis = clock.updatedAtEpochMillis,
+                encryptedSecretRevision = clock.revision,
+                encryptedSecretDeviceId = clock.deviceId,
+            ),
+        )
+    }
+
     suspend fun recordSourceDeleted(localSourceId: String) {
         val existing = ensureSource(localSourceId)
         val clock = allocateClock()
@@ -87,6 +104,10 @@ class DeviceSyncLocalMutationWriter(
                 deletedUpdatedAtEpochMillis = clock.updatedAtEpochMillis,
                 deletedRevision = clock.revision,
                 deletedDeviceId = clock.deviceId,
+                encryptedSecretRef = null,
+                encryptedSecretUpdatedAtEpochMillis = clock.updatedAtEpochMillis,
+                encryptedSecretRevision = clock.revision,
+                encryptedSecretDeviceId = clock.deviceId,
             ),
         )
     }
