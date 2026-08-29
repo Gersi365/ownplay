@@ -14,9 +14,10 @@ class PortableSourceSecretCryptoTest {
     fun xtreamRoundTripPreservesSecretWithoutLeakingToEnvelopeString() {
         val provider = TestKeyProvider(current = key("key-1"))
         val secret = PortableSourceSecret.Xtream(
-            serverUrl = "https://iptv.example.test:8443",
+            serverUrl = "http://iptv.example.test:8080",
             username = "alice@example.test",
             password = "correct horse battery staple",
+            allowCleartext = true,
         )
 
         val envelope = PortableSourceSecretCrypto.encrypt(
@@ -27,6 +28,7 @@ class PortableSourceSecretCryptoTest {
         val decrypted = PortableSourceSecretCrypto.decrypt(envelope, provider)
 
         assertEquals(secret, decrypted)
+        assertTrue((decrypted as PortableSourceSecret.Xtream).allowCleartext)
         assertEquals(PORTABLE_SOURCE_KIND_XTREAM, envelope.sourceKind)
         assertFalse(envelope.toString().contains(secret.serverUrl))
         assertFalse(envelope.toString().contains(secret.username))
