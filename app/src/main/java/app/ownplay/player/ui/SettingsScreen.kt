@@ -79,11 +79,7 @@ internal fun SettingsScreen(
             onSetOrientation = { mode ->
                 scope.launch { deviceProfileStore.setSmartphoneOrientation(mode) }
             },
-            activeSourceName = activeSourceName,
-            hasActivePlayback = hasActivePlayback,
-            onOpenLive = onOpenLive,
             onOpenSourceInLive = onOpenSourceInLive,
-            onStopPlayback = onStopPlayback,
         )
         return
     }
@@ -129,10 +125,6 @@ internal fun SettingsScreen(
             scope.launch { deviceProfileStore.setSmartphoneOrientation(mode) }
         },
         summaries = summaries,
-        activeSourceName = activeSourceName,
-        hasActivePlayback = hasActivePlayback,
-        onOpenLive = onOpenLive,
-        onStopPlayback = onStopPlayback,
         onOpenLiveManagement = { destination = SettingsDestination.LIVE_MANAGEMENT },
         onOpenPlaylists = { destination = SettingsDestination.PLAYLISTS },
         onOpenDownloads = { destination = SettingsDestination.DOWNLOADS },
