@@ -1,17 +1,9 @@
 package app.ownplay.player.ui
 
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.material3.Button
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.dp
 import app.ownplay.player.persistence.PlaylistSourceSummary
 
 @Composable
@@ -19,7 +11,6 @@ internal fun ContentSettingsContent(
     summaries: List<PlaylistSourceSummary>,
     onOpenLiveManagement: () -> Unit,
     onOpenPlaylists: () -> Unit,
-    onOpenDownloads: () -> Unit,
 ) {
     SettingsActionRow(
         title = "Live management",
@@ -36,37 +27,6 @@ internal fun ContentSettingsContent(
     )
     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
     BackupRestoreSettingsContent()
-}
-
-@Composable
-internal fun PlaybackSettingsContent(
-    activeSourceName: String?,
-    hasActivePlayback: Boolean,
-    onOpenLive: () -> Unit,
-    onStopPlayback: () -> Unit,
-) {
-    activeSourceName?.let { name ->
-        SettingValueRow(label = "Active playlist", value = name)
-    }
-    if (hasActivePlayback) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
-        ) {
-            Button(
-                onClick = onOpenLive,
-                modifier = Modifier
-                    .weight(1f)
-                    .height(38.dp),
-            ) { Text("Back to Live") }
-            OutlinedButton(
-                onClick = onStopPlayback,
-                modifier = Modifier
-                    .weight(1f)
-                    .height(38.dp),
-            ) { Text("Stop") }
-        }
-    }
 }
 
 @Composable
