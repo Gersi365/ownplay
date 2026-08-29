@@ -1,6 +1,7 @@
 package app.ownplay.player.source.onboarding
 
 import android.content.ContentResolver
+import androidx.room.withTransaction
 import app.ownplay.player.live.ingest.IncomingLiveCatalog
 import app.ownplay.player.live.ingest.InitialLiveCatalogFactory
 import app.ownplay.player.live.ingest.InitialLiveCatalogIngestResult
@@ -11,6 +12,7 @@ import app.ownplay.player.persistence.PlaylistSourceEntity
 import app.ownplay.player.persistence.SourceKinds
 import app.ownplay.player.persistence.secure.SensitiveValueRef
 import app.ownplay.player.persistence.secure.SensitiveValueStore
+import app.ownplay.player.persistence.sync.DeviceSyncLocalMutationWriter
 import app.ownplay.player.source.CredentialRef
 import app.ownplay.player.source.SourceError
 import app.ownplay.player.source.SourceResult
@@ -60,6 +62,7 @@ class SourceOnboardingService(
         persistence = RoomLiveCatalogPersistence(database),
         sensitiveValueStore = sensitiveValueStore,
     )
+    private val syncWriter = DeviceSyncLocalMutationWriter(database)
 
     suspend fun addRemoteM3u(
         name: String,
@@ -282,12 +285,15 @@ class SourceOnboardingService(
         return when (ingestResult) {
             is InitialLiveCatalogIngestResult.Success -> {
                 try {
-                    database.playlistSourceDao().upsert(
-                        pendingSource.copy(
-                            enabled = true,
-                            updatedAtEpochMillis = System.currentTimeMillis(),
-                        ),
-                    )
+                    database.withTransaction {
+                        database.playlistSourceDao().upsert(
+                            pendingSource.copy(
+                                enabled = true,
+                                updatedAtEpochMillis = System.currentTimeMillis(),
+                            ),
+                        )
+                        syncWriter.recordSourceCreatedOrRestored(sourceId)
+                    }
                 } catch (error: Exception) {
                     rollbackSource(sourceId, locatorRef)
                     error.rethrowCancellation()
