@@ -38,17 +38,16 @@ import androidx.compose.ui.input.key.type
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import app.ownplay.player.OwnPlayAppRuntime
-import app.ownplay.player.playback.LiveFullscreenEntryReason
 import app.ownplay.player.playback.LivePlaybackSelection
 import app.ownplay.player.playback.LivePlaybackSurfaceTeardown
 import app.ownplay.player.playback.LivePlaybackTransitionGate
 import app.ownplay.player.playback.LivePlaybackTransitionTarget
 import app.ownplay.player.playback.PlaybackInteractionBridge
 import app.ownplay.player.playback.PlaybackNavigationDirection
+import app.ownplay.player.ui.library.TvLibraryMovieDetailRoute
 import app.ownplay.player.ui.library.TvLibraryRoute
+import app.ownplay.player.ui.library.TvLibrarySeriesDetailRoute
 import app.ownplay.player.ui.live.TvLiveRoute
-import app.ownplay.player.ui.series.SeriesRoute
-import app.ownplay.player.ui.vod.VodRoute
 
 private enum class TvOwnPlaySection {
     HOME,
@@ -263,16 +262,13 @@ internal fun OwnPlayTvApp(
             },
         )
 
-        TvOwnPlaySection.MOVIE_DETAILS -> VodRoute(
+        TvOwnPlaySection.MOVIE_DETAILS -> TvLibraryMovieDetailRoute(
             runtime = runtime,
             sourceId = activeSourceId,
             sourceKind = activeSummary?.sourceKind,
-            requestedMovieId = requestedVodMovieId,
-            onRequestedMovieConsumed = { requestedVodMovieId = null },
-            returnToLibraryOnDetailBack = true,
-            onReturnToLibrary = { section = TvOwnPlaySection.LIBRARY },
-            onOpenLive = { section = TvOwnPlaySection.LIVE },
-            onOpenSeries = { section = TvOwnPlaySection.SERIES_DETAILS },
+            movieId = requestedVodMovieId,
+            onMovieConsumed = { requestedVodMovieId = null },
+            onBackToLibrary = { section = TvOwnPlaySection.LIBRARY },
             onOpenSettings = { section = TvOwnPlaySection.SETTINGS },
             onFullscreenStateChanged = { fullscreen ->
                 vodFullscreen = fullscreen
@@ -280,14 +276,13 @@ internal fun OwnPlayTvApp(
             },
         )
 
-        TvOwnPlaySection.SERIES_DETAILS -> SeriesRoute(
+        TvOwnPlaySection.SERIES_DETAILS -> TvLibrarySeriesDetailRoute(
             runtime = runtime,
             sourceId = activeSourceId,
             sourceKind = activeSummary?.sourceKind,
-            requestedSeriesId = requestedSeriesId,
-            onRequestedSeriesConsumed = { requestedSeriesId = null },
-            returnToLibraryOnDetailBack = true,
-            onReturnToLibrary = { section = TvOwnPlaySection.LIBRARY },
+            seriesId = requestedSeriesId,
+            onSeriesConsumed = { requestedSeriesId = null },
+            onBackToLibrary = { section = TvOwnPlaySection.LIBRARY },
             onOpenSettings = { section = TvOwnPlaySection.SETTINGS },
             onFullscreenStateChanged = { fullscreen ->
                 seriesFullscreen = fullscreen
