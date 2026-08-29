@@ -115,7 +115,9 @@ class SourceManagementService(
                         updatedAtEpochMillis = System.currentTimeMillis(),
                     ),
                 )
-                syncWriter.recordSourceRenamed(sourceId, normalizedName)
+                if (normalizedName != source.name) {
+                    syncWriter.recordSourceRenamed(sourceId, normalizedName)
+                }
             }
             SourceMutationResult.Success
         } catch (error: Exception) {
@@ -248,7 +250,9 @@ class SourceManagementService(
                 )
                 // Only non-secret source metadata is synchronized at this stage. Portable encrypted
                 // locator/credential transport remains intentionally unimplemented.
-                syncWriter.recordSourceRenamed(sourceId, normalizedName)
+                if (normalizedName != source.name) {
+                    syncWriter.recordSourceRenamed(sourceId, normalizedName)
+                }
             }
         } catch (error: Exception) {
             runCatching { sensitiveValueStore.delete(newLocatorRef) }
