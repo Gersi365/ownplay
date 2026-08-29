@@ -1,5 +1,6 @@
 package app.ownplay.player.ui
 
+import app.ownplay.player.liveRotationFullscreenEnabled
 import app.ownplay.player.playback.LiveActivityBackgroundAction
 import app.ownplay.player.playback.LiveActivityLifecyclePolicy
 import app.ownplay.player.playback.LivePlaybackPresentationSurface
@@ -57,6 +58,32 @@ class LiveSurfaceOwnershipRegressionHarnessTest {
 
         assertTrue(
             "Live playback must never have more than one bound video surface",
+            harness.maximumBoundSurfaceCount <= 1,
+        )
+    }
+
+    @Test
+    fun `preview pip rotations keep pip ownership until return to preview`() {
+        val harness = LiveSurfaceOwnershipHarness()
+
+        harness.openPreview(sourceId = "source-a", channelId = "channel-1")
+        harness.enterPictureInPicture()
+        harness.assertOnly(SurfaceId.PIP)
+        assertEquals(SurfaceId.PREVIEW, harness.pictureInPictureReturnTarget)
+
+        harness.rotateLandscape()
+        harness.assertOnly(SurfaceId.PIP)
+        assertEquals(SurfaceId.PREVIEW, harness.pictureInPictureReturnTarget)
+
+        harness.rotatePortrait()
+        harness.assertOnly(SurfaceId.PIP)
+        assertEquals(SurfaceId.PREVIEW, harness.pictureInPictureReturnTarget)
+
+        harness.returnFromPictureInPicture()
+        harness.assertOnly(SurfaceId.PREVIEW)
+        assertNull(harness.pictureInPictureReturnTarget)
+        assertTrue(
+            "PiP rotation must never create a competing Live surface",
             harness.maximumBoundSurfaceCount <= 1,
         )
     }
@@ -126,6 +153,7 @@ private class LiveSurfaceOwnershipHarness {
     private var sourceId: String? = null
     private var channelId: String? = null
     private var lifecycleRetainedSurface: SurfaceId? = null
+    private var inPictureInPicture: Boolean = false
 
     var pictureInPictureReturnTarget: SurfaceId? = null
         private set
@@ -161,12 +189,35 @@ private class LiveSurfaceOwnershipHarness {
         val currentSurface = boundSurfaces.singleOrNull()
         pictureInPictureReturnTarget = currentSurface
             ?.takeIf { it != SurfaceId.PIP && it in attachedSurfaces }
+        inPictureInPicture = true
 
         PictureInPictureSurfaceHandoffPolicy.handoff(
             mode = PictureInPictureSurfaceHandoffPolicy.modeFor(PlaybackMediaKind.LIVE),
             detachCurrentSurface = { detachCurrent() },
             bindDestinationSurface = { attachAndBind(SurfaceId.PIP) },
         )
+    }
+
+    fun rotateLandscape() {
+        if (
+            liveRotationFullscreenEnabled(
+                isSmartphone = true,
+                inPictureInPicture = inPictureInPicture,
+            ) && presentation == LivePlaybackPresentationSurface.PREVIEW
+        ) {
+            openFullscreen()
+        }
+    }
+
+    fun rotatePortrait() {
+        if (
+            liveRotationFullscreenEnabled(
+                isSmartphone = true,
+                inPictureInPicture = inPictureInPicture,
+            ) && presentation == LivePlaybackPresentationSurface.FULLSCREEN
+        ) {
+            returnToPreview()
+        }
     }
 
     fun returnFromPictureInPicture() {
@@ -186,6 +237,7 @@ private class LiveSurfaceOwnershipHarness {
 
         attachedSurfaces.remove(SurfaceId.PIP)
         pictureInPictureReturnTarget = null
+        inPictureInPicture = false
     }
 
     fun invalidatePictureInPictureReturnTarget() {
@@ -244,6 +296,7 @@ private class LiveSurfaceOwnershipHarness {
                 sourceId = null
                 channelId = null
                 pictureInPictureReturnTarget = null
+                inPictureInPicture = false
             },
         )
         gate.reconcileObserved(null)
@@ -259,6 +312,7 @@ private class LiveSurfaceOwnershipHarness {
                     presentation = null
                     channelId = null
                     pictureInPictureReturnTarget = null
+                    inPictureInPicture = false
                 },
             )
             gate.reconcileObserved(null)
