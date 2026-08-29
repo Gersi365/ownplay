@@ -56,6 +56,18 @@ object PlaybackInteractionBridge {
         observeUnboundView(view)
     }
 
+    /**
+     * Detaches the currently visible media surface before an intentional Live presentation
+     * handoff. Playback ownership stays with the engine, but the old PlayerView can no longer be
+     * selected by Media3 as the previous target when the next screen binds.
+     */
+    fun detachCurrent(output: PlaybackVideoOutput): Boolean {
+        val view = boundView.get() ?: return false
+        output.unbind(view)
+        observeUnboundView(view)
+        return true
+    }
+
     fun observeBoundView(view: PlayerView) {
         boundView = WeakReference(view)
     }
