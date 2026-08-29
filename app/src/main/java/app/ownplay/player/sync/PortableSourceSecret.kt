@@ -20,6 +20,7 @@ internal sealed interface PortableSourceSecret {
         val serverUrl: String,
         val username: String,
         val password: String,
+        val allowCleartext: Boolean = false,
     ) : PortableSourceSecret {
         init {
             require(serverUrl.isNotBlank())
@@ -29,7 +30,8 @@ internal sealed interface PortableSourceSecret {
         override val sourceKind: String = PORTABLE_SOURCE_KIND_XTREAM
 
         override fun toString(): String =
-            "PortableSourceSecret.Xtream(serverUrl=<redacted>, username=<redacted>, password=<redacted>)"
+            "PortableSourceSecret.Xtream(serverUrl=<redacted>, username=<redacted>, " +
+                "password=<redacted>, allowCleartext=$allowCleartext)"
     }
 
     data class RemoteM3u(
@@ -89,7 +91,11 @@ internal class PortableSourceSecretKey(
         require(keyId.isNotBlank())
         require(secretKey.algorithm.equals("AES", ignoreCase = true))
         secretKey.encoded?.let { encoded ->
-            require(encoded.size == 32) { "Portable source secret key must be 256-bit AES" }
+            try {
+                require(encoded.size == 32) { "Portable source secret key must be 256-bit AES" }
+            } finally {
+                encoded.fill(0)
+            }
         }
     }
 
