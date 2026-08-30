@@ -106,6 +106,14 @@ internal fun LiveRoute(
         epgRefreshFailed && epgSnapshot?.programs.isNullOrEmpty()
     )
 
+    LaunchedEffect(browseState.categories, browseState.query.categoryKey) {
+        val categories = browseState.categories
+        val selected = browseState.query.categoryKey
+        if (categories.isNotEmpty() && categories.none { it.providerCategoryKey == selected }) {
+            browseSession.selectCategory(categories.first().providerCategoryKey)
+        }
+    }
+
     LaunchedEffect(preview?.request?.channelId) {
         showEpgGuide = false
     }
