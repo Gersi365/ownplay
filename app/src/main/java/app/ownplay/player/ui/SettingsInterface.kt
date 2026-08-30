@@ -45,16 +45,16 @@ internal fun PortraitSettingsMenu(
                 .fillMaxWidth()
                 .widthIn(max = 760.dp)
                 .verticalScroll(rememberScrollState())
-                .padding(horizontal = 12.dp, vertical = 10.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
+                .padding(horizontal = 16.dp, vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             Column(
-                modifier = Modifier.padding(horizontal = 2.dp, vertical = 2.dp),
-                verticalArrangement = Arrangement.spacedBy(1.dp),
+                modifier = Modifier.padding(horizontal = 2.dp, vertical = 4.dp),
+                verticalArrangement = Arrangement.spacedBy(3.dp),
             ) {
                 Text(
                     text = "Settings",
-                    style = MaterialTheme.typography.titleLarge,
+                    style = MaterialTheme.typography.headlineSmall,
                     fontWeight = FontWeight.Bold,
                 )
                 Text(
@@ -122,7 +122,7 @@ internal fun InterfaceSettingsContent(
     )
     Row(
         modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         OrientationButton(
             label = "Smartphone",
@@ -139,7 +139,7 @@ internal fun InterfaceSettingsContent(
     }
     Row(
         modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         OrientationButton(
             label = "Android TV",
@@ -171,7 +171,7 @@ internal fun InterfaceSettingsContent(
     if (deviceProfile == AppDeviceProfile.SMARTPHONE) {
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             OrientationButton(
                 label = "Portrait",
