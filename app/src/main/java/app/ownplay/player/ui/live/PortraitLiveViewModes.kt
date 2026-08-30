@@ -195,7 +195,7 @@ private fun LiveViewModeToolbar(
                     Icons.Filled.FavoriteBorder
                 },
                 contentDescription = if (state.query.favoritesOnly) {
-                    "Show all channels"
+                    "Show channels"
                 } else {
                     "Favorites only"
                 },
@@ -261,7 +261,7 @@ private fun LiveBrowseOptionsMenu(
                 DropdownMenuItem(
                     text = {
                         Text(
-                            if (state.query.customGroupId == null) "All groups ✓" else "All groups",
+                            if (state.query.customGroupId == null) "No group filter ✓" else "No group filter",
                         )
                     },
                     onClick = {
@@ -303,13 +303,6 @@ private fun LiveViewCategoryStrip(
         contentPadding = PaddingValues(horizontal = 10.dp, vertical = 2.dp),
         horizontalArrangement = Arrangement.spacedBy(6.dp),
     ) {
-        item(key = "view-mode-all") {
-            FilterChip(
-                selected = selectedCategoryKey == null,
-                onClick = { onCategorySelected(null) },
-                label = { Text("All") },
-            )
-        }
         items(
             items = categories,
             key = LiveCategory::providerCategoryKey,
