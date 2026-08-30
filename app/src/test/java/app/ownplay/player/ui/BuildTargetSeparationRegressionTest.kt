@@ -34,6 +34,7 @@ class BuildTargetSeparationRegressionTest {
 
         assertTrue(tv.contains("android.intent.category.LEANBACK_LAUNCHER"))
         assertTrue(tv.contains("android.intent.category.LAUNCHER"))
+        assertTrue(tv.contains("android:exported=\"true\""))
         assertTrue(tv.contains("android:supportsPictureInPicture=\"false\""))
         assertTrue(tv.contains("android:screenOrientation=\"landscape\""))
     }
@@ -65,6 +66,18 @@ class BuildTargetSeparationRegressionTest {
         assertTrue(tvTarget.contains("AppDeviceProfile.ANDROID_TV"))
         assertTrue(tvRoot.contains("OwnPlayTvApp("))
         assertFalse(tvRoot.contains("OwnPlayApp("))
+    }
+
+    @Test
+    fun `Mobile rejects a legacy TV profile instead of entering the TV layout`() {
+        val mobileTarget = source("src/mobile/java/app/ownplay/player/target/OwnPlayBuildTarget.kt")
+        val profileStore = source(
+            "src/main/java/app/ownplay/player/personalization/AppOrientationStore.kt",
+        )
+
+        assertTrue(mobileTarget.contains("storedProfile?.takeIf(selectableProfiles::contains)"))
+        assertTrue(profileStore.contains("profile !in OwnPlayBuildTarget.selectableProfiles"))
+        assertTrue(profileStore.contains("AppDeviceProfileSelection.Unconfigured"))
     }
 
     @Test
