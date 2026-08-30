@@ -3,6 +3,7 @@ package app.ownplay.player.ui
 import app.ownplay.player.OwnPlayAppRuntime
 import app.ownplay.player.epg.EpgSnapshot
 import java.lang.ref.WeakReference
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -36,12 +37,18 @@ internal object LiveEpgPresentationBridge {
     suspend fun loadSnapshot(
         sourceId: String,
         channelId: String,
-    ): EpgSnapshot? = runtimeRef
-        ?.get()
-        ?.epgSnapshot(
-            sourceId = sourceId,
-            channelId = channelId,
-        )
+    ): EpgSnapshot? = try {
+        runtimeRef
+            ?.get()
+            ?.epgSnapshot(
+                sourceId = sourceId,
+                channelId = channelId,
+            )
+    } catch (cancelled: CancellationException) {
+        throw cancelled
+    } catch (_: Exception) {
+        null
+    }
 
     fun requestFullGuide() {
         fullGuideRequested = true
