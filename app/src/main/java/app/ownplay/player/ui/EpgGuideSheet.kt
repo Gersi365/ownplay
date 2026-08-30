@@ -1,5 +1,6 @@
 package app.ownplay.player.ui
 
+import android.content.res.Configuration
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -24,17 +25,18 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import app.ownplay.player.epg.EpgProgram
 import app.ownplay.player.epg.EpgSnapshot
 import app.ownplay.player.epg.EpgTimelineProjector
-import app.ownplay.player.target.OwnPlayBuildTarget
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
@@ -49,8 +51,11 @@ internal fun EpgGuideSheet(
     failed: Boolean,
     onDismiss: () -> Unit,
 ) {
-    val usesDpad = OwnPlayBuildTarget.usesDpad
+    val configuration = LocalConfiguration.current
+    val isTelevision =
+        configuration.uiMode and Configuration.UI_MODE_TYPE_MASK == Configuration.UI_MODE_TYPE_TELEVISION
     val doneFocusRequester = remember { FocusRequester() }
+    val programFocusRequester = remember { FocusRequester() }
     val nowEpochSeconds = System.currentTimeMillis() / 1_000L
     val timeline = remember(snapshot, nowEpochSeconds) {
         EpgTimelineProjector.project(
@@ -59,18 +64,35 @@ internal fun EpgGuideSheet(
         )
     }
     val currentIndex = timeline.current?.let(timeline.programs::indexOf)?.takeIf { it >= 0 }
+    val initialFocus = EpgGuideFocusPolicy.initialFocus(
+        isTelevision = isTelevision,
+        loading = loading,
+        failed = failed,
+        programCount = timeline.programs.size,
+        currentIndex = currentIndex,
+    )
     val listState = rememberLazyListState()
     var selectedProgram by remember { mutableStateOf<EpgProgram?>(null) }
 
-    LaunchedEffect(usesDpad) {
-        if (usesDpad) {
-            doneFocusRequester.requestFocus()
-        }
-    }
-
-    LaunchedEffect(currentIndex) {
-        if (currentIndex != null) {
-            listState.scrollToItem((currentIndex - 1).coerceAtLeast(0))
+    LaunchedEffect(
+        isTelevision,
+        loading,
+        failed,
+        timeline.programs.size,
+        currentIndex,
+    ) {
+        when (initialFocus.target) {
+            EpgGuideFocusTarget.NONE -> Unit
+            EpgGuideFocusTarget.DONE -> {
+                withFrameNanos { }
+                doneFocusRequester.requestFocus()
+            }
+            EpgGuideFocusTarget.PROGRAM -> {
+                val targetIndex = initialFocus.programIndex ?: return@LaunchedEffect
+                listState.scrollToItem((targetIndex - 1).coerceAtLeast(0))
+                withFrameNanos { }
+                programFocusRequester.requestFocus()
+            }
         }
     }
 
@@ -83,13 +105,13 @@ internal fun EpgGuideSheet(
                 .heightIn(min = 320.dp),
         ) {
             Column(
-                modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp),
-                verticalArrangement = Arrangement.spacedBy(2.dp),
+                modifier = Modifier.padding(horizontal = 22.dp, vertical = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(3.dp),
             ) {
                 Text(
-                    text = "Program guide",
+                    text = "Full EPG",
                     style = MaterialTheme.typography.headlineSmall,
-                    fontWeight = FontWeight.SemiBold,
+                    fontWeight = FontWeight.Bold,
                 )
                 Text(
                     text = channelName,
@@ -98,7 +120,7 @@ internal fun EpgGuideSheet(
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
-                if (usesDpad) {
+                if (isTelevision) {
                     TextButton(
                         onClick = onDismiss,
                         modifier = Modifier.focusRequester(doneFocusRequester),
@@ -114,7 +136,7 @@ internal fun EpgGuideSheet(
                     LazyColumn(
                         state = listState,
                         modifier = Modifier.fillMaxWidth(),
-                        verticalArrangement = Arrangement.spacedBy(2.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp),
                     ) {
                         itemsIndexed(
                             items = timeline.programs,
@@ -132,6 +154,14 @@ internal fun EpgGuideSheet(
                                 program = program,
                                 isCurrent = program == timeline.current,
                                 isPast = program in timeline.past,
+                                focusRequester = if (
+                                    initialFocus.target == EpgGuideFocusTarget.PROGRAM &&
+                                    index == initialFocus.programIndex
+                                ) {
+                                    programFocusRequester
+                                } else {
+                                    null
+                                },
                                 onClick = { selectedProgram = program },
                             )
                         }
@@ -153,7 +183,7 @@ internal fun EpgGuideSheet(
 private fun GuideMessage(text: String) {
     Text(
         text = text,
-        modifier = Modifier.padding(horizontal = 20.dp, vertical = 24.dp),
+        modifier = Modifier.padding(horizontal = 22.dp, vertical = 24.dp),
         style = MaterialTheme.typography.bodyMedium,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
@@ -170,7 +200,7 @@ private fun DayHeader(day: LocalDate) {
     }
     Text(
         text = label,
-        modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 14.dp, bottom = 6.dp),
+        modifier = Modifier.padding(start = 22.dp, end = 22.dp, top = 14.dp, bottom = 6.dp),
         style = MaterialTheme.typography.labelLarge,
         fontWeight = FontWeight.SemiBold,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -182,22 +212,27 @@ private fun ProgramGuideRow(
     program: EpgProgram,
     isCurrent: Boolean,
     isPast: Boolean,
+    focusRequester: FocusRequester? = null,
     onClick: () -> Unit,
 ) {
     Surface(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 12.dp)
+            .padding(horizontal = 14.dp)
+            .then(
+                focusRequester?.let { requester -> Modifier.focusRequester(requester) } ?: Modifier,
+            )
             .clickable(onClick = onClick),
-        shape = RoundedCornerShape(12.dp),
+        shape = RoundedCornerShape(10.dp),
         color = if (isCurrent) {
-            MaterialTheme.colorScheme.primaryContainer
+            MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.46f)
         } else {
             MaterialTheme.colorScheme.surface
         },
+        tonalElevation = 0.dp,
     ) {
         Row(
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
             horizontalArrangement = Arrangement.spacedBy(12.dp),
             verticalAlignment = Alignment.Top,
         ) {
@@ -205,11 +240,11 @@ private fun ProgramGuideRow(
                 Text(
                     text = program.startLabel ?: "—",
                     style = MaterialTheme.typography.labelLarge,
-                    fontWeight = if (isCurrent) FontWeight.Bold else FontWeight.Medium,
-                    color = if (isPast && !isCurrent) {
-                        MaterialTheme.colorScheme.onSurfaceVariant
-                    } else {
-                        MaterialTheme.colorScheme.onSurface
+                    fontWeight = FontWeight.Medium,
+                    color = when {
+                        isCurrent -> MaterialTheme.colorScheme.primary
+                        isPast -> MaterialTheme.colorScheme.onSurfaceVariant
+                        else -> MaterialTheme.colorScheme.onSurface
                     },
                 )
                 program.endLabel?.let { end ->
@@ -224,22 +259,14 @@ private fun ProgramGuideRow(
                 modifier = Modifier.weight(1f),
                 verticalArrangement = Arrangement.spacedBy(3.dp),
             ) {
-                if (isCurrent) {
-                    Text(
-                        text = "NOW",
-                        style = MaterialTheme.typography.labelSmall,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.primary,
-                    )
-                }
                 Text(
                     text = program.title,
                     style = MaterialTheme.typography.bodyLarge,
-                    fontWeight = if (isCurrent) FontWeight.SemiBold else FontWeight.Medium,
-                    color = if (isPast && !isCurrent) {
-                        MaterialTheme.colorScheme.onSurfaceVariant
-                    } else {
-                        MaterialTheme.colorScheme.onSurface
+                    fontWeight = FontWeight.Medium,
+                    color = when {
+                        isCurrent -> MaterialTheme.colorScheme.onPrimaryContainer
+                        isPast -> MaterialTheme.colorScheme.onSurfaceVariant
+                        else -> MaterialTheme.colorScheme.onSurface
                     },
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,

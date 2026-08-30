@@ -1,12 +1,13 @@
 package app.ownplay.player.ui.live
 
+import android.content.res.Configuration
 import android.graphics.BitmapFactory
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
-import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -59,7 +60,13 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -71,6 +78,8 @@ import app.ownplay.player.live.LiveCategory
 import app.ownplay.player.live.LiveChannelItem
 import app.ownplay.player.live.LiveChannelLogoResolver
 import app.ownplay.player.source.network.SourceHttpClient
+import app.ownplay.player.ui.tv.TvPopupFocusAction
+import app.ownplay.player.ui.tv.TvPopupFocusPolicy
 import app.ownplay.player.ui.view.ContentViewMode
 import app.ownplay.player.ui.view.ContentViewModeMenu
 import java.io.ByteArrayOutputStream
@@ -79,7 +88,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.Request
 
-private const val LIVE_VIEW_MOTION_MILLIS = 140
 private const val MAX_CHANNEL_LOGO_BYTES = 2 * 1024 * 1024
 private const val MAX_CHANNEL_LOGO_EDGE_PX = 256
 
@@ -99,16 +107,53 @@ internal fun PortraitLiveBrowseWithViewModes(
     focusChannelId: String? = null,
     focusRequestGeneration: Int = 0,
     channelFocusRequester: FocusRequester? = null,
+    showCategoryStrip: Boolean = true,
     modifier: Modifier = Modifier,
 ) {
+    val configuration = LocalConfiguration.current
+    val isTelevision =
+        configuration.uiMode and Configuration.UI_MODE_TYPE_MASK == Configuration.UI_MODE_TYPE_TELEVISION
+    val searchTriggerFocusRequester = remember { FocusRequester() }
+    val searchFieldFocusRequester = remember { FocusRequester() }
     var searchExpanded by remember { mutableStateOf(false) }
     val showSearch = searchExpanded || state.query.searchTerm.isNotBlank()
+
+    LaunchedEffect(showCategoryStrip, state.categories, state.query.categoryKey) {
+        if (!showCategoryStrip || state.categories.isEmpty()) return@LaunchedEffect
+        val selected = state.query.categoryKey
+        if (selected == null || state.categories.none { it.providerCategoryKey == selected }) {
+            onCategorySelected(state.categories.first().providerCategoryKey)
+        }
+    }
+
+    LaunchedEffect(searchExpanded, isTelevision) {
+        if (!isTelevision || !searchExpanded) return@LaunchedEffect
+        withFrameNanos { }
+        searchFieldFocusRequester.requestFocus()
+    }
+
+    LaunchedEffect(playingChannelId, isTelevision) {
+        if (isTelevision && playingChannelId != null) {
+            searchExpanded = false
+        }
+    }
+
+    BackHandler(
+        enabled = isTelevision && searchExpanded && playingChannelId == null,
+    ) {
+        onSearchChange("")
+        searchExpanded = false
+        searchTriggerFocusRequester.requestFocus()
+    }
 
     Column(modifier = modifier.fillMaxSize()) {
         LiveViewModeToolbar(
             state = state,
             viewMode = viewMode,
             showSearch = showSearch,
+            tvFocusManagement = isTelevision,
+            searchTriggerFocusRequester = searchTriggerFocusRequester,
+            channelFocusRequester = channelFocusRequester,
             onToggleSearch = {
                 if (showSearch) {
                     onSearchChange("")
@@ -133,20 +178,46 @@ internal fun PortraitLiveBrowseWithViewModes(
                 onValueChange = onSearchChange,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 12.dp, vertical = 2.dp),
+                    .padding(horizontal = 16.dp, vertical = 4.dp)
+                    .then(
+                        if (isTelevision) {
+                            Modifier
+                                .focusRequester(searchFieldFocusRequester)
+                                .onPreviewKeyEvent { event ->
+                                    when {
+                                        event.type == KeyEventType.KeyDown &&
+                                            event.key == Key.DirectionUp -> {
+                                            searchTriggerFocusRequester.requestFocus()
+                                            true
+                                        }
+                                        event.type == KeyEventType.KeyDown &&
+                                            event.key == Key.DirectionDown &&
+                                            state.channels.isNotEmpty() &&
+                                            channelFocusRequester != null -> {
+                                            channelFocusRequester.requestFocus()
+                                            true
+                                        }
+                                        else -> false
+                                    }
+                                }
+                        } else {
+                            Modifier
+                        },
+                    ),
                 singleLine = true,
                 placeholder = { Text("Search channels") },
-                shape = RoundedCornerShape(12.dp),
+                shape = RoundedCornerShape(10.dp),
             )
         }
 
-        LiveViewCategoryStrip(
-            categories = state.categories,
-            selectedCategoryKey = state.query.categoryKey,
-            onCategorySelected = onCategorySelected,
-        )
-
-        HorizontalDivider()
+        if (showCategoryStrip) {
+            LiveViewCategoryStrip(
+                categories = state.categories,
+                selectedCategoryKey = state.query.categoryKey,
+                onCategorySelected = onCategorySelected,
+            )
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+        }
 
         LiveChannelView(
             channels = state.channels,
@@ -167,6 +238,9 @@ private fun LiveViewModeToolbar(
     state: LiveBrowseState,
     viewMode: ContentViewMode,
     showSearch: Boolean,
+    tvFocusManagement: Boolean,
+    searchTriggerFocusRequester: FocusRequester,
+    channelFocusRequester: FocusRequester?,
     onToggleSearch: () -> Unit,
     onViewModeSelected: (ContentViewMode) -> Unit,
     onFavoritesOnlyChanged: (Boolean) -> Unit,
@@ -176,14 +250,28 @@ private fun LiveViewModeToolbar(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 8.dp, vertical = 1.dp),
+            .onPreviewKeyEvent { event ->
+                if (
+                    tvFocusManagement &&
+                    event.type == KeyEventType.KeyDown &&
+                    event.key == Key.DirectionDown &&
+                    state.channels.isNotEmpty() &&
+                    channelFocusRequester != null
+                ) {
+                    channelFocusRequester.requestFocus()
+                    true
+                } else {
+                    false
+                }
+            }
+            .padding(horizontal = 12.dp, vertical = 2.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(
             text = "${state.channels.size} channels",
             modifier = Modifier.weight(1f),
             style = MaterialTheme.typography.labelLarge,
-            fontWeight = FontWeight.SemiBold,
+            fontWeight = FontWeight.Medium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         IconButton(
@@ -196,7 +284,7 @@ private fun LiveViewModeToolbar(
                     Icons.Filled.FavoriteBorder
                 },
                 contentDescription = if (state.query.favoritesOnly) {
-                    "Show channels"
+                    "Show all channels"
                 } else {
                     "Favorites only"
                 },
@@ -209,14 +297,23 @@ private fun LiveViewModeToolbar(
         }
         LiveBrowseOptionsMenu(
             state = state,
+            tvFocusManagement = tvFocusManagement,
             onOrderChanged = onOrderChanged,
             onCustomGroupSelected = onCustomGroupSelected,
         )
         ContentViewModeMenu(
             mode = viewMode,
             onModeSelected = onViewModeSelected,
+            tvFocusManagement = tvFocusManagement,
         )
-        IconButton(onClick = onToggleSearch) {
+        IconButton(
+            onClick = onToggleSearch,
+            modifier = if (tvFocusManagement) {
+                Modifier.focusRequester(searchTriggerFocusRequester)
+            } else {
+                Modifier
+            },
+        ) {
             Icon(
                 imageVector = if (showSearch) Icons.Filled.Close else Icons.Filled.Search,
                 contentDescription = if (showSearch) "Close search" else "Search channels",
@@ -228,13 +325,48 @@ private fun LiveViewModeToolbar(
 @Composable
 private fun LiveBrowseOptionsMenu(
     state: LiveBrowseState,
+    tvFocusManagement: Boolean,
     onOrderChanged: (LiveBrowseOrder) -> Unit,
     onCustomGroupSelected: (String?) -> Unit,
 ) {
     var expanded by remember { mutableStateOf(false) }
+    var wasExpanded by remember { mutableStateOf(false) }
+    val triggerFocusRequester = remember { FocusRequester() }
+    val selectedOrderFocusRequester = remember(state.query.order) { FocusRequester() }
+
+    BackHandler(enabled = tvFocusManagement && expanded) {
+        expanded = false
+    }
+
+    LaunchedEffect(expanded, tvFocusManagement, state.query.order) {
+        val focusAction = TvPopupFocusPolicy.action(
+            enabled = tvFocusManagement,
+            expanded = expanded,
+            wasExpanded = wasExpanded,
+        )
+        wasExpanded = expanded
+        when (focusAction) {
+            TvPopupFocusAction.FOCUS_SELECTED_ITEM -> {
+                withFrameNanos { }
+                selectedOrderFocusRequester.requestFocus()
+            }
+            TvPopupFocusAction.RESTORE_TRIGGER -> {
+                withFrameNanos { }
+                triggerFocusRequester.requestFocus()
+            }
+            TvPopupFocusAction.NONE -> Unit
+        }
+    }
 
     Box {
-        TextButton(onClick = { expanded = true }) {
+        TextButton(
+            onClick = { expanded = true },
+            modifier = if (tvFocusManagement) {
+                Modifier.focusRequester(triggerFocusRequester)
+            } else {
+                Modifier
+            },
+        ) {
             Text("Browse")
         }
         DropdownMenu(
@@ -255,6 +387,11 @@ private fun LiveBrowseOptionsMenu(
                         expanded = false
                         onOrderChanged(order)
                     },
+                    modifier = if (tvFocusManagement && order == state.query.order) {
+                        Modifier.focusRequester(selectedOrderFocusRequester)
+                    } else {
+                        Modifier
+                    },
                 )
             }
             if (state.customGroups.isNotEmpty()) {
@@ -262,7 +399,7 @@ private fun LiveBrowseOptionsMenu(
                 DropdownMenuItem(
                     text = {
                         Text(
-                            if (state.query.customGroupId == null) "No group filter ✓" else "No group filter",
+                            if (state.query.customGroupId == null) "All groups ✓" else "All groups",
                         )
                     },
                     onClick = {
@@ -301,8 +438,8 @@ private fun LiveViewCategoryStrip(
 ) {
     LazyRow(
         modifier = Modifier.fillMaxWidth(),
-        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 2.dp),
-        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         items(
             items = categories,
@@ -349,8 +486,13 @@ private fun LiveChannelView(
         return
     }
 
+    val configuration = LocalConfiguration.current
+    val isTelevision =
+        configuration.uiMode and Configuration.UI_MODE_TYPE_MASK == Configuration.UI_MODE_TYPE_TELEVISION
+    val cardMinSize = if (isTelevision) 176.dp else 156.dp
     val listState = rememberLazyListState()
     val gridState = rememberLazyGridState()
+    var requesterChannelId by remember { mutableStateOf(focusChannelId) }
     val focusIndex = remember(channels, focusChannelId) {
         channels.indexOfFirst { channel -> channel.channelId == focusChannelId }
     }
@@ -364,6 +506,7 @@ private fun LiveChannelView(
     ) {
         val requester = channelFocusRequester ?: return@LaunchedEffect
         if (focusRequestGeneration <= 0 || focusIndex < 0) return@LaunchedEffect
+        requesterChannelId = focusChannelId
         when (viewMode) {
             ContentViewMode.LIST,
             ContentViewMode.COMPACT,
@@ -379,11 +522,11 @@ private fun LiveChannelView(
         ContentViewMode.LIST -> LazyColumn(
             state = listState,
             modifier = modifier.fillMaxSize(),
-            contentPadding = PaddingValues(vertical = 2.dp),
+            contentPadding = PaddingValues(vertical = 4.dp),
         ) {
             items(channels, key = LiveChannelItem::channelId) { channel ->
                 val channelModifier = if (
-                    channel.channelId == focusChannelId && channelFocusRequester != null
+                    channel.channelId == requesterChannelId && channelFocusRequester != null
                 ) {
                     Modifier.focusRequester(channelFocusRequester)
                 } else {
@@ -391,22 +534,27 @@ private fun LiveChannelView(
                 }
                 LiveChannelListRow(
                     channel = channel,
-                    playing = channel.channelId == playingChannelId,
+                    active = channel.channelId == playingChannelId,
                     currentProgram = currentEpgByChannelId[channel.channelId],
                     onClick = { onChannelSelected(channel.channelId) },
+                    onFocused = { requesterChannelId = channel.channelId },
                     modifier = channelModifier,
                 )
-                HorizontalDivider(modifier = Modifier.padding(start = 66.dp))
+                HorizontalDivider(
+                    modifier = Modifier.padding(start = 70.dp),
+                    color = MaterialTheme.colorScheme.outlineVariant,
+                )
             }
         }
 
         ContentViewMode.COMPACT -> LazyColumn(
             state = listState,
             modifier = modifier.fillMaxSize(),
+            contentPadding = PaddingValues(vertical = 2.dp),
         ) {
             items(channels, key = LiveChannelItem::channelId) { channel ->
                 val channelModifier = if (
-                    channel.channelId == focusChannelId && channelFocusRequester != null
+                    channel.channelId == requesterChannelId && channelFocusRequester != null
                 ) {
                     Modifier.focusRequester(channelFocusRequester)
                 } else {
@@ -414,26 +562,30 @@ private fun LiveChannelView(
                 }
                 LiveChannelCompactRow(
                     channel = channel,
-                    playing = channel.channelId == playingChannelId,
+                    active = channel.channelId == playingChannelId,
                     currentProgram = currentEpgByChannelId[channel.channelId],
                     onClick = { onChannelSelected(channel.channelId) },
+                    onFocused = { requesterChannelId = channel.channelId },
                     modifier = channelModifier,
                 )
-                HorizontalDivider(modifier = Modifier.padding(start = 48.dp))
+                HorizontalDivider(
+                    modifier = Modifier.padding(start = 52.dp),
+                    color = MaterialTheme.colorScheme.outlineVariant,
+                )
             }
         }
 
         ContentViewMode.CARDS -> LazyVerticalGrid(
             state = gridState,
-            columns = GridCells.Adaptive(minSize = 156.dp),
+            columns = GridCells.Adaptive(minSize = cardMinSize),
             modifier = modifier.fillMaxSize(),
-            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
+            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             gridItems(channels, key = LiveChannelItem::channelId) { channel ->
                 val channelModifier = if (
-                    channel.channelId == focusChannelId && channelFocusRequester != null
+                    channel.channelId == requesterChannelId && channelFocusRequester != null
                 ) {
                     Modifier.focusRequester(channelFocusRequester)
                 } else {
@@ -441,9 +593,10 @@ private fun LiveChannelView(
                 }
                 LiveChannelCard(
                     channel = channel,
-                    playing = channel.channelId == playingChannelId,
+                    active = channel.channelId == playingChannelId,
                     currentProgram = currentEpgByChannelId[channel.channelId],
                     onClick = { onChannelSelected(channel.channelId) },
+                    onFocused = { requesterChannelId = channel.channelId },
                     modifier = channelModifier,
                 )
             }
@@ -454,21 +607,25 @@ private fun LiveChannelView(
 @Composable
 private fun LiveChannelCompactRow(
     channel: LiveChannelItem,
-    playing: Boolean,
+    active: Boolean,
     currentProgram: EpgProgram?,
     onClick: () -> Unit,
+    onFocused: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     var focused by remember(channel.channelId) { mutableStateOf(false) }
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .onFocusChanged { focused = it.isFocused }
-            .background(liveSelectionBackground(playing || focused))
+            .onFocusChanged { focusState ->
+                focused = focusState.isFocused
+                if (focusState.isFocused) onFocused()
+            }
+            .background(liveSelectionBackground(active || focused))
             .clickable(onClick = onClick)
-            .padding(horizontal = 10.dp, vertical = 7.dp),
+            .padding(horizontal = 12.dp, vertical = 7.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        horizontalArrangement = Arrangement.spacedBy(9.dp),
     ) {
         RemoteChannelLogo(
             url = channel.logoRef,
@@ -479,7 +636,12 @@ private fun LiveChannelCompactRow(
             Text(
                 text = channel.displayName,
                 style = MaterialTheme.typography.bodyMedium,
-                fontWeight = if (playing) FontWeight.SemiBold else FontWeight.Medium,
+                fontWeight = FontWeight.Medium,
+                color = if (active || focused) {
+                    MaterialTheme.colorScheme.onPrimaryContainer
+                } else {
+                    MaterialTheme.colorScheme.onSurface
+                },
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
@@ -487,32 +649,40 @@ private fun LiveChannelCompactRow(
                 Text(
                     text = label,
                     style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = if (active || focused) {
+                        MaterialTheme.colorScheme.primary
+                    } else {
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    },
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
             }
         }
-        LiveChannelTrailingState(channel = channel, playing = playing)
+        LiveChannelTrailingState(channel = channel)
     }
 }
 
 @Composable
 private fun LiveChannelListRow(
     channel: LiveChannelItem,
-    playing: Boolean,
+    active: Boolean,
     currentProgram: EpgProgram?,
     onClick: () -> Unit,
+    onFocused: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     var focused by remember(channel.channelId) { mutableStateOf(false) }
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .onFocusChanged { focused = it.isFocused }
-            .background(liveSelectionBackground(playing || focused))
+            .onFocusChanged { focusState ->
+                focused = focusState.isFocused
+                if (focusState.isFocused) onFocused()
+            }
+            .background(liveSelectionBackground(active || focused))
             .clickable(onClick = onClick)
-            .padding(horizontal = 12.dp, vertical = 9.dp),
+            .padding(horizontal = 14.dp, vertical = 9.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(10.dp),
     ) {
@@ -525,7 +695,12 @@ private fun LiveChannelListRow(
             Text(
                 text = channel.displayName,
                 style = MaterialTheme.typography.bodyLarge,
-                fontWeight = if (playing) FontWeight.SemiBold else FontWeight.Medium,
+                fontWeight = FontWeight.Medium,
+                color = if (active || focused) {
+                    MaterialTheme.colorScheme.onPrimaryContainer
+                } else {
+                    MaterialTheme.colorScheme.onSurface
+                },
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
@@ -533,47 +708,55 @@ private fun LiveChannelListRow(
                 Text(
                     text = label,
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 2,
+                    color = if (active || focused) {
+                        MaterialTheme.colorScheme.primary
+                    } else {
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    },
+                    maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
             }
         }
-        LiveChannelTrailingState(channel = channel, playing = playing)
+        LiveChannelTrailingState(channel = channel)
     }
 }
 
 @Composable
 private fun LiveChannelCard(
     channel: LiveChannelItem,
-    playing: Boolean,
+    active: Boolean,
     currentProgram: EpgProgram?,
     onClick: () -> Unit,
+    onFocused: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     var focused by remember(channel.channelId) { mutableStateOf(false) }
     Surface(
         modifier = modifier
             .fillMaxWidth()
-            .onFocusChanged { focused = it.isFocused }
+            .onFocusChanged { focusState ->
+                focused = focusState.isFocused
+                if (focusState.isFocused) onFocused()
+            }
             .clickable(onClick = onClick),
-        shape = RoundedCornerShape(14.dp),
-        color = if (playing || focused) {
-            MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.42f)
+        shape = RoundedCornerShape(10.dp),
+        color = if (active || focused) {
+            MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.56f)
         } else {
             MaterialTheme.colorScheme.surface
         },
-        tonalElevation = 1.dp,
+        tonalElevation = 0.dp,
     ) {
         Column(
-            modifier = Modifier.padding(10.dp),
-            verticalArrangement = Arrangement.spacedBy(7.dp),
+            modifier = Modifier.padding(8.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(72.dp)
-                    .clip(RoundedCornerShape(11.dp))
+                    .clip(RoundedCornerShape(8.dp))
                     .background(MaterialTheme.colorScheme.surfaceVariant),
                 contentAlignment = Alignment.Center,
             ) {
@@ -585,56 +768,55 @@ private fun LiveChannelCard(
             }
             Text(
                 text = channel.displayName,
-                modifier = Modifier.basicMarquee(iterations = Int.MAX_VALUE),
                 style = MaterialTheme.typography.bodyMedium,
-                fontWeight = FontWeight.SemiBold,
-                maxLines = 1,
-                softWrap = false,
-                overflow = TextOverflow.Clip,
+                fontWeight = FontWeight.Medium,
+                color = if (active || focused) {
+                    MaterialTheme.colorScheme.onPrimaryContainer
+                } else {
+                    MaterialTheme.colorScheme.onSurface
+                },
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
             )
-            currentProgram?.let { program ->
-                liveSecondaryLabel(channel, program)?.let { label ->
-                    Text(
-                        text = label,
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                }
+            liveSecondaryLabel(channel, currentProgram)?.let { label ->
+                Text(
+                    text = label,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = if (active || focused) {
+                        MaterialTheme.colorScheme.primary
+                    } else {
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    },
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
             }
-            if (channel.isFavorite || playing) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.End,
-                ) {
-                    LiveChannelTrailingState(channel = channel, playing = playing)
-                }
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = channel.categoryName.orEmpty(),
+                    modifier = Modifier.weight(1f),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                LiveChannelTrailingState(channel = channel)
             }
         }
     }
 }
 
 @Composable
-private fun LiveChannelTrailingState(
-    channel: LiveChannelItem,
-    playing: Boolean,
-) {
-    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-        if (channel.isFavorite) {
-            Text(
-                text = "★",
-                style = MaterialTheme.typography.labelLarge,
-                color = MaterialTheme.colorScheme.primary,
-            )
-        }
-        if (playing) {
-            Text(
-                text = "▶",
-                style = MaterialTheme.typography.labelLarge,
-                color = MaterialTheme.colorScheme.primary,
-            )
-        }
+private fun LiveChannelTrailingState(channel: LiveChannelItem) {
+    if (channel.isFavorite) {
+        Text(
+            text = "★",
+            style = MaterialTheme.typography.labelLarge,
+            color = MaterialTheme.colorScheme.primary,
+        )
     }
 }
 
@@ -656,7 +838,7 @@ private fun RemoteChannelLogo(
 
     Box(
         modifier = modifier
-            .clip(RoundedCornerShape(9.dp))
+            .clip(RoundedCornerShape(8.dp))
             .background(MaterialTheme.colorScheme.surfaceVariant),
         contentAlignment = Alignment.Center,
     ) {
@@ -672,7 +854,7 @@ private fun RemoteChannelLogo(
         } ?: Text(
             text = title.trim().firstOrNull()?.uppercase() ?: "•",
             style = MaterialTheme.typography.labelLarge,
-            fontWeight = FontWeight.SemiBold,
+            fontWeight = FontWeight.Medium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
     }
@@ -729,8 +911,8 @@ private fun decodeChannelLogo(bytes: ByteArray): ImageBitmap? {
 }
 
 @Composable
-private fun liveSelectionBackground(playing: Boolean) = if (playing) {
-    MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.38f)
+private fun liveSelectionBackground(active: Boolean) = if (active) {
+    MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.56f)
 } else {
     MaterialTheme.colorScheme.background
 }

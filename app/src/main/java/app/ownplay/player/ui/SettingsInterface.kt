@@ -22,7 +22,6 @@ import androidx.compose.ui.unit.dp
 import app.ownplay.player.persistence.PlaylistSourceSummary
 import app.ownplay.player.personalization.AppDeviceProfile
 import app.ownplay.player.personalization.AppOrientationMode
-import app.ownplay.player.target.OwnPlayBuildTarget
 
 @Composable
 internal fun PortraitSettingsMenu(
@@ -46,16 +45,16 @@ internal fun PortraitSettingsMenu(
                 .fillMaxWidth()
                 .widthIn(max = 760.dp)
                 .verticalScroll(rememberScrollState())
-                .padding(horizontal = 12.dp, vertical = 10.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
+                .padding(horizontal = 16.dp, vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             Column(
-                modifier = Modifier.padding(horizontal = 2.dp, vertical = 2.dp),
-                verticalArrangement = Arrangement.spacedBy(1.dp),
+                modifier = Modifier.padding(horizontal = 2.dp, vertical = 4.dp),
+                verticalArrangement = Arrangement.spacedBy(3.dp),
             ) {
                 Text(
                     text = "Settings",
-                    style = MaterialTheme.typography.titleLarge,
+                    style = MaterialTheme.typography.headlineSmall,
                     fontWeight = FontWeight.Bold,
                 )
                 Text(
@@ -94,7 +93,7 @@ internal fun PortraitSettingsMenu(
             ) {
                 SettingsActionRow(
                     title = "Downloaded media",
-                    detail = "Play offline · pause · resume · remove",
+                    detail = "Progress · retry · remove",
                     actionLabel = "Open",
                     onClick = onOpenDownloads,
                 )
@@ -117,34 +116,13 @@ internal fun InterfaceSettingsContent(
     onSetDeviceProfile: (AppDeviceProfile) -> Unit,
     onSetOrientation: (AppOrientationMode) -> Unit,
 ) {
-    if (OwnPlayBuildTarget.selectableProfiles.isEmpty()) {
-        SettingValueRow(
-            label = "Device target",
-            value = "Android TV / TV Box",
-        )
-        SettingValueRow(
-            label = "Input",
-            value = "Remote / D-pad",
-        )
-        SettingValueRow(
-            label = "App orientation",
-            value = "Landscape · fixed",
-        )
-        Text(
-            text = "This TV build uses the D-pad interface. Smartphone and Tablet profiles are available only in OwnPlay Mobile.",
-            style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        return
-    }
-
     SettingValueRow(
         label = "Device profile",
         value = deviceProfileLabel(deviceProfile),
     )
     Row(
         modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         OrientationButton(
             label = "Smartphone",
@@ -156,6 +134,23 @@ internal fun InterfaceSettingsContent(
             label = "Tablet",
             selected = deviceProfile == AppDeviceProfile.TABLET,
             onClick = { onSetDeviceProfile(AppDeviceProfile.TABLET) },
+            modifier = Modifier.weight(1f),
+        )
+    }
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        OrientationButton(
+            label = "Android TV",
+            selected = deviceProfile == AppDeviceProfile.ANDROID_TV,
+            onClick = { onSetDeviceProfile(AppDeviceProfile.ANDROID_TV) },
+            modifier = Modifier.weight(1f),
+        )
+        OrientationButton(
+            label = "TV Box",
+            selected = deviceProfile == AppDeviceProfile.TV_BOX,
+            onClick = { onSetDeviceProfile(AppDeviceProfile.TV_BOX) },
             modifier = Modifier.weight(1f),
         )
     }
@@ -176,7 +171,7 @@ internal fun InterfaceSettingsContent(
     if (deviceProfile == AppDeviceProfile.SMARTPHONE) {
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             OrientationButton(
                 label = "Portrait",
@@ -198,9 +193,9 @@ internal fun InterfaceSettingsContent(
                 "This controls the browsing layout. With an active Live preview, rotating to landscape can open the full player."
             null -> "Loading device profile…"
             AppDeviceProfile.TABLET ->
-                "Tablet uses the Landscape touchscreen layout."
+                "Tablet uses the Landscape touch layout."
             else ->
-                "This profile belongs to OwnPlay TV and cannot be selected in the Mobile build."
+                "Android TV and TV Box use the Landscape D-pad/remote layout."
         },
         style = MaterialTheme.typography.labelSmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,

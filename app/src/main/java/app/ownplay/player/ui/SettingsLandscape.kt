@@ -1,5 +1,6 @@
 package app.ownplay.player.ui
 
+import android.content.res.Configuration
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -18,6 +19,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import app.ownplay.player.OwnPlayAppRuntime
@@ -25,7 +27,6 @@ import app.ownplay.player.persistence.PlaylistSourceSummary
 import app.ownplay.player.personalization.AppDeviceProfile
 import app.ownplay.player.personalization.AppOrientationMode
 import app.ownplay.player.source.SourceSyncState
-import app.ownplay.player.target.OwnPlayBuildTarget
 
 @Composable
 internal fun LandscapeSettingsShell(
@@ -40,17 +41,24 @@ internal fun LandscapeSettingsShell(
     onSetOrientation: (AppOrientationMode) -> Unit,
     onOpenSourceInLive: (String) -> Unit,
 ) {
-    val usesDpad = OwnPlayBuildTarget.usesDpad
+    val configuration = LocalConfiguration.current
+    val isTelevision =
+        configuration.uiMode and Configuration.UI_MODE_TYPE_MASK == Configuration.UI_MODE_TYPE_TELEVISION
+    val resolvedDestination = if (isTelevision && destination == SettingsDestination.DOWNLOADS) {
+        SettingsDestination.CONTENT
+    } else {
+        destination
+    }
     val selectedRailFocusRequester = remember { FocusRequester() }
-    val selectedRailDestination = when (destination) {
+    val selectedRailDestination = when (resolvedDestination) {
         SettingsDestination.LIVE_MANAGEMENT,
         SettingsDestination.PLAYLISTS,
         -> SettingsDestination.CONTENT
-        else -> destination
+        else -> resolvedDestination
     }
 
-    LaunchedEffect(usesDpad, destination) {
-        if (usesDpad) {
+    LaunchedEffect(isTelevision, resolvedDestination) {
+        if (isTelevision) {
             selectedRailFocusRequester.requestFocus()
         }
     }
@@ -59,8 +67,8 @@ internal fun LandscapeSettingsShell(
         modifier = Modifier
             .fillMaxSize()
             .navigationBarsPadding()
-            .padding(8.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
+            .padding(horizontal = 12.dp, vertical = 8.dp),
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         LandscapeSettingsRail(
             selectedRailDestination = selectedRailDestination,
@@ -72,11 +80,11 @@ internal fun LandscapeSettingsShell(
             modifier = Modifier
                 .weight(1f)
                 .fillMaxHeight(),
-            shape = RoundedCornerShape(18.dp),
+            shape = RoundedCornerShape(12.dp),
             color = MaterialTheme.colorScheme.surface,
-            tonalElevation = 1.dp,
+            tonalElevation = 0.dp,
         ) {
-            when (destination) {
+            when (resolvedDestination) {
                 SettingsDestination.INTERFACE -> LandscapeSectionPage(
                     title = "Interface",
                     subtitle = "Device profile and orientation.",
@@ -141,13 +149,13 @@ internal fun LandscapeSectionPage(
         modifier = Modifier
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
-            .padding(horizontal = 18.dp, vertical = 14.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
+            .padding(horizontal = 20.dp, vertical = 16.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
-        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
             Text(
                 text = title,
-                style = MaterialTheme.typography.titleLarge,
+                style = MaterialTheme.typography.headlineSmall,
                 fontWeight = FontWeight.Bold,
             )
             Text(

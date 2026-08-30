@@ -73,9 +73,6 @@ import app.ownplay.player.series.SeriesSeason
 import app.ownplay.player.series.SeriesSummary
 import app.ownplay.player.source.SourceError
 import app.ownplay.player.source.SourceResult
-import app.ownplay.player.target.OwnPlayBuildTarget
-import app.ownplay.player.ui.PlaybackOriginBadge
-import app.ownplay.player.ui.library.libraryOfflineStorageLabel
 import app.ownplay.player.ui.playbackStatusLabel
 import app.ownplay.player.ui.vod.RemotePoster
 import kotlinx.coroutines.currentCoroutineContext
@@ -94,7 +91,6 @@ internal fun SeriesRoute(
     requestedSeriesId: String? = null,
     onRequestedSeriesConsumed: () -> Unit = {},
     returnToLibraryOnDetailBack: Boolean = false,
-    standaloneDetailPresentation: Boolean = false,
     onReturnToLibrary: () -> Unit = {},
     onOpenSettings: () -> Unit,
     onFullscreenStateChanged: (Boolean) -> Unit,
@@ -157,8 +153,11 @@ internal fun SeriesRoute(
                 selectedSeasonNumber = null
                 selectedEpisodeId = null
             }
+            selectedSeries != null -> {
+                restoreCatalogFocusAfterPlayback = true
+                selectedSeries = null
+            }
             returnToLibraryOnDetailBack -> onReturnToLibrary()
-            else -> selectedSeries = null
         }
     }
 
@@ -170,8 +169,15 @@ internal fun SeriesRoute(
         detailsBackOwner,
         returnToLibraryOnDetailBack,
     ) {
-        if (selectedSeries != null && playingEpisode == null) {
-            PlaybackInteractionBridge.registerBackAction(detailsBackOwner, ::closeSeriesLevel)
+        if (playingEpisode == null) {
+            when {
+                selectedSeries != null -> {
+                    PlaybackInteractionBridge.registerBackAction(detailsBackOwner, ::closeSeriesLevel)
+                }
+                returnToLibraryOnDetailBack -> {
+                    PlaybackInteractionBridge.registerBackAction(detailsBackOwner, onReturnToLibrary)
+                }
+            }
         }
         onDispose {
             PlaybackInteractionBridge.clearBackAction(detailsBackOwner)
@@ -242,13 +248,15 @@ internal fun SeriesRoute(
         loading = false
     }
 
-    LaunchedEffect(catalog.categories, categoryKey) {
-        val categories = catalog.categories
-        val selected = categoryKey
-        categoryKey = when {
-            categories.isEmpty() -> null
-            selected != null && categories.any { it.providerCategoryKey == selected } -> selected
-            else -> categories.first().providerCategoryKey
+    LaunchedEffect(sourceId, catalog.categories, requestedSeriesId, selectedSeries?.seriesId) {
+        if (requestedSeriesId != null) return@LaunchedEffect
+        val selectedIsValid = catalog.categories.any { category ->
+            category.providerCategoryKey == categoryKey
+        }
+        if (!selectedIsValid) {
+            categoryKey = selectedSeries?.categoryKey
+                ?.takeIf { key -> catalog.categories.any { it.providerCategoryKey == key } }
+                ?: catalog.categories.firstOrNull()?.providerCategoryKey
         }
     }
 
@@ -334,7 +342,7 @@ internal fun SeriesRoute(
     }
 
     val portraitSelection = selectedSeries
-    if ((standaloneDetailPresentation || !isLandscape) && portraitSelection != null) {
+    if (!isLandscape && portraitSelection != null) {
         SeriesDetailsPane(
             selected = portraitSelection,
             details = details,
@@ -459,11 +467,16 @@ private fun SeriesCatalogPane(
     onContinueEpisode: (SeriesEpisode) -> Unit,
     modifier: Modifier,
 ) {
-    val usesDpad = OwnPlayBuildTarget.usesDpad
+    val configuration = LocalConfiguration.current
+    val isTelevision =
+        configuration.uiMode and Configuration.UI_MODE_TYPE_MASK == Configuration.UI_MODE_TYPE_TELEVISION
     val catalogReturnFocusRequester = remember { FocusRequester() }
+    val focusCategoryKey = selectedCategoryKey
+        ?.takeIf { key -> catalog.categories.any { it.providerCategoryKey == key } }
+        ?: catalog.categories.firstOrNull()?.providerCategoryKey
 
-    LaunchedEffect(usesDpad, restoreFocusOnEntry) {
-        if (usesDpad && restoreFocusOnEntry) {
+    LaunchedEffect(isTelevision, restoreFocusOnEntry, focusCategoryKey) {
+        if (isTelevision && restoreFocusOnEntry) {
             catalogReturnFocusRequester.requestFocus()
         }
         if (restoreFocusOnEntry) {
@@ -509,7 +522,11 @@ private fun SeriesCatalogPane(
                 selected = favoritesOnly,
                 onClick = { onFavoritesChanged(!favoritesOnly) },
                 label = { Text("Favorites") },
-                modifier = Modifier.focusRequester(catalogReturnFocusRequester),
+                modifier = if (focusCategoryKey == null) {
+                    Modifier.focusRequester(catalogReturnFocusRequester)
+                } else {
+                    Modifier
+                },
             )
         }
         LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -518,6 +535,11 @@ private fun SeriesCatalogPane(
                     selected = selectedCategoryKey == category.providerCategoryKey,
                     onClick = { onCategoryChanged(category.providerCategoryKey) },
                     label = { Text(category.name, maxLines = 1) },
+                    modifier = if (category.providerCategoryKey == focusCategoryKey) {
+                        Modifier.focusRequester(catalogReturnFocusRequester)
+                    } else {
+                        Modifier
+                    },
                 )
             }
         }
@@ -622,508 +644,6 @@ private fun SeriesCatalogPane(
     }
 }
 
-@Composable
-private fun SeriesDetailsPane(
-    selected: SeriesSummary,
-    details: SeriesDetails?,
-    loading: Boolean,
-    error: SourceError?,
-    selectedSeasonNumber: Int?,
-    selectedEpisodeId: String?,
-    downloads: List<OfflineDownload>,
-    focusBackOnEntry: Boolean,
-    onSeasonSelected: (Int) -> Unit,
-    onEpisodeSelected: (String) -> Unit,
-    onFavoriteChanged: (Boolean) -> Unit,
-    onPlay: (SeriesEpisode) -> Unit,
-    onDownload: (SeriesEpisode) -> Unit,
-    onPauseDownload: (OfflineDownload) -> Unit,
-    onResumeDownload: (OfflineDownload) -> Unit,
-    onClearProgress: (SeriesEpisode) -> Unit,
-    onClose: () -> Unit,
-    modifier: Modifier,
-) {
-    val usesDpad = OwnPlayBuildTarget.usesDpad
-    val hierarchyBackFocusRequester = remember(selected.seriesId) { FocusRequester() }
-    val selectedSeason = details?.seasons?.firstOrNull { it.seasonNumber == selectedSeasonNumber }
-    val selectedEpisode = selectedSeason?.episodes?.firstOrNull { it.episodeId == selectedEpisodeId }
-
-    LaunchedEffect(
-        usesDpad,
-        focusBackOnEntry,
-        selected.seriesId,
-        selectedSeasonNumber,
-        selectedEpisodeId,
-    ) {
-        if (
-            usesDpad &&
-            (focusBackOnEntry || selectedSeasonNumber != null || selectedEpisodeId != null)
-        ) {
-            hierarchyBackFocusRequester.requestFocus()
-        }
-    }
-
-    Surface(
-        modifier = modifier,
-        color = MaterialTheme.colorScheme.background,
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(horizontal = 12.dp, vertical = 8.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = when {
-                            selectedEpisode != null -> selectedEpisode.title
-                            selectedSeason != null -> selectedSeason.name ?: "Season ${selectedSeason.seasonNumber}"
-                            else -> selected.name
-                        },
-                        style = MaterialTheme.typography.headlineSmall,
-                        fontWeight = FontWeight.Bold,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                    Text(
-                        text = when {
-                            selectedEpisode != null -> "Season ${selectedEpisode.seasonNumber} · Episode ${selectedEpisode.episodeNumber}"
-                            selectedSeason != null -> "${selectedSeason.episodes.size} episode${if (selectedSeason.episodes.size == 1) "" else "s"}"
-                            else -> "Series"
-                        },
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-                TextButton(
-                    onClick = onClose,
-                    modifier = Modifier.focusRequester(hierarchyBackFocusRequester),
-                ) { Text("Back") }
-            }
-
-            if (selectedSeason == null && selectedEpisode == null) {
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Button(onClick = { onFavoriteChanged(!selected.isFavorite) }) {
-                        Text(if (selected.isFavorite) "Unfavorite" else "Favorite")
-                    }
-                }
-            }
-
-            if (loading) {
-                CircularProgressIndicator(modifier = Modifier.padding(12.dp))
-            }
-            error?.let {
-                Text("Series details failed to load.", color = MaterialTheme.colorScheme.error)
-            }
-
-            details?.let { loaded ->
-                when {
-                    selectedEpisode != null -> {
-                        SeriesEpisodeDetailsPane(
-                            episode = selectedEpisode,
-                            download = downloads.firstOrNull { item ->
-                                item.mediaKind == DownloadMediaKinds.SERIES_EPISODE &&
-                                    item.contentId == selectedEpisode.episodeId
-                            },
-                            onPlay = { onPlay(selectedEpisode) },
-                            onDownload = { onDownload(selectedEpisode) },
-                            onPauseDownload = onPauseDownload,
-                            onResumeDownload = onResumeDownload,
-                            onClearProgress = { onClearProgress(selectedEpisode) },
-                        )
-                    }
-
-                    selectedSeason != null -> {
-                        SeriesSeasonHeader(
-                            series = selected,
-                            season = selectedSeason,
-                        )
-                        HorizontalDivider()
-                        Text(
-                            "Episodes",
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.SemiBold,
-                        )
-                        if (selectedSeason.episodes.isEmpty()) {
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .weight(1f),
-                                contentAlignment = Alignment.Center,
-                            ) {
-                                Text(
-                                    "No episodes available for this season.",
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
-                            }
-                        } else {
-                            LazyColumn(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .weight(1f),
-                            ) {
-                                items(selectedSeason.episodes, key = { it.episodeId }) { episode ->
-                                    val download = downloads.firstOrNull { item ->
-                                        item.mediaKind == DownloadMediaKinds.SERIES_EPISODE &&
-                                            item.contentId == episode.episodeId
-                                    }
-                                    EpisodeRow(
-                                        episode = episode,
-                                        download = download,
-                                        onOpen = { onEpisodeSelected(episode.episodeId) },
-                                        onPlay = { onPlay(episode) },
-                                        onDownload = { onDownload(episode) },
-                                        onPauseDownload = onPauseDownload,
-                                        onResumeDownload = onResumeDownload,
-                                        onClearProgress = { onClearProgress(episode) },
-                                    )
-                                }
-                            }
-                        }
-                    }
-
-                    else -> {
-                        SeriesInfoSummary(
-                            selected = selected,
-                            details = loaded,
-                        )
-                        HorizontalDivider()
-                        Text(
-                            "Seasons",
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.SemiBold,
-                        )
-                        if (loaded.seasons.isEmpty()) {
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .weight(1f),
-                                contentAlignment = Alignment.Center,
-                            ) {
-                                Text(
-                                    "No seasons available.",
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
-                            }
-                        } else {
-                            LazyColumn(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .weight(1f),
-                                verticalArrangement = Arrangement.spacedBy(6.dp),
-                            ) {
-                                items(loaded.seasons, key = { it.seasonId }) { season ->
-                                    SeriesSeasonRow(
-                                        series = selected,
-                                        season = season,
-                                        onClick = { onSeasonSelected(season.seasonNumber) },
-                                    )
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun SeriesSeasonRow(
-    series: SeriesSummary,
-    season: SeriesSeason,
-    onClick: () -> Unit,
-) {
-    Surface(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick),
-        shape = RoundedCornerShape(10.dp),
-        tonalElevation = 1.dp,
-    ) {
-        Row(
-            modifier = Modifier.padding(8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
-        ) {
-            RemotePoster(
-                url = season.posterUrl ?: series.posterUrl,
-                title = season.name ?: "Season ${season.seasonNumber}",
-                modifier = Modifier
-                    .width(58.dp)
-                    .aspectRatio(2f / 3f),
-            )
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    season.name ?: "Season ${season.seasonNumber}",
-                    fontWeight = FontWeight.SemiBold,
-                )
-                Text(
-                    "${season.episodes.size} episode${if (season.episodes.size == 1) "" else "s"}",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                season.airDate?.takeIf(String::isNotBlank)?.let { airDate ->
-                    Text(
-                        airDate,
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-            }
-            Text(
-                "Open",
-                style = MaterialTheme.typography.labelLarge,
-                color = MaterialTheme.colorScheme.primary,
-                fontWeight = FontWeight.SemiBold,
-            )
-        }
-    }
-}
-
-@Composable
-private fun SeriesSeasonHeader(
-    series: SeriesSummary,
-    season: SeriesSeason,
-) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(10.dp),
-    ) {
-        RemotePoster(
-            url = season.posterUrl ?: series.posterUrl,
-            title = season.name ?: "Season ${season.seasonNumber}",
-            modifier = Modifier
-                .width(84.dp)
-                .aspectRatio(2f / 3f),
-        )
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                season.name ?: "Season ${season.seasonNumber}",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold,
-            )
-            Text(
-                "${season.episodes.size} episode${if (season.episodes.size == 1) "" else "s"}",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            season.airDate?.takeIf(String::isNotBlank)?.let { airDate ->
-                Text(
-                    airDate,
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun SeriesEpisodeDetailsPane(
-    episode: SeriesEpisode,
-    download: OfflineDownload?,
-    onPlay: () -> Unit,
-    onDownload: () -> Unit,
-    onPauseDownload: (OfflineDownload) -> Unit,
-    onResumeDownload: (OfflineDownload) -> Unit,
-    onClearProgress: () -> Unit,
-) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
-        verticalAlignment = Alignment.Top,
-    ) {
-        RemotePoster(
-            url = episode.posterUrl,
-            title = episode.title,
-            modifier = Modifier
-                .width(110.dp)
-                .aspectRatio(2f / 3f),
-        )
-        Column(
-            modifier = Modifier.weight(1f),
-            verticalArrangement = Arrangement.spacedBy(5.dp),
-        ) {
-            Text(
-                episode.title,
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold,
-            )
-            Text(
-                "Season ${episode.seasonNumber} · Episode ${episode.episodeNumber}",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            episode.durationSeconds?.takeIf { it > 0L }?.let { seconds ->
-                Text(
-                    "${(seconds + 59L) / 60L} min",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-            if (episode.resumeAvailable) {
-                Text(
-                    "Resume available",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.primary,
-                )
-            } else if (episode.progressCompleted) {
-                Text(
-                    "Watched",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-        }
-    }
-    HorizontalDivider(modifier = Modifier.padding(top = 8.dp))
-    EpisodeRow(
-        episode = episode,
-        download = download,
-        onOpen = null,
-        showHeader = false,
-        onPlay = onPlay,
-        onDownload = onDownload,
-        onPauseDownload = onPauseDownload,
-        onResumeDownload = onResumeDownload,
-        onClearProgress = onClearProgress,
-    )
-}
-
-@Composable
-private fun EpisodeRow(
-    episode: SeriesEpisode,
-    download: OfflineDownload?,
-    onOpen: (() -> Unit)? = null,
-    showHeader: Boolean = true,
-    onPlay: () -> Unit,
-    onDownload: () -> Unit,
-    onPauseDownload: (OfflineDownload) -> Unit,
-    onResumeDownload: (OfflineDownload) -> Unit,
-    onClearProgress: () -> Unit,
-) {
-    val offlineCopyAvailable = download?.state == DownloadStates.COMPLETED
-    val rowModifier = if (onOpen == null) {
-        Modifier.fillMaxWidth()
-    } else {
-        Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onOpen)
-    }
-
-    Column(
-        modifier = rowModifier.padding(vertical = 9.dp),
-    ) {
-        if (showHeader) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        "E${episode.episodeNumber} · ${episode.title}",
-                        fontWeight = FontWeight.SemiBold,
-                    )
-                    episode.positionMs?.takeIf { it > 0L }?.let {
-                        Text(
-                            if (episode.resumeAvailable) "Resume available" else "Watched",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                }
-                if (onOpen != null) {
-                    Text(
-                        "Details",
-                        style = MaterialTheme.typography.labelLarge,
-                        color = MaterialTheme.colorScheme.primary,
-                        fontWeight = FontWeight.SemiBold,
-                    )
-                }
-            }
-        }
-        Row(
-            modifier = Modifier.padding(top = if (showHeader) 6.dp else 0.dp),
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
-        ) {
-            Button(onClick = onPlay) {
-                Text(
-                    when {
-                        offlineCopyAvailable && episode.resumeAvailable -> "Resume Offline"
-                        offlineCopyAvailable -> "Play Offline"
-                        episode.resumeAvailable -> "Resume"
-                        else -> "Play"
-                    },
-                )
-            }
-            if (!offlineCopyAvailable) {
-                Button(
-                    onClick = {
-                        when (download?.state) {
-                            DownloadStates.QUEUED,
-                            DownloadStates.DOWNLOADING,
-                            -> onPauseDownload(download)
-                            DownloadStates.PAUSED -> onResumeDownload(download)
-                            DownloadStates.FAILED, null -> onDownload()
-                            DownloadStates.COMPLETED -> Unit
-                        }
-                    },
-                ) {
-                    Text(
-                        when (download?.state) {
-                            DownloadStates.QUEUED,
-                            DownloadStates.DOWNLOADING,
-                            -> "Pause"
-                            DownloadStates.PAUSED -> "Resume DL"
-                            DownloadStates.FAILED -> "Retry"
-                            else -> "Download"
-                        },
-                    )
-                }
-            }
-            if ((episode.positionMs ?: 0L) > 0L) {
-                TextButton(onClick = onClearProgress) { Text("Clear") }
-            }
-        }
-        if (offlineCopyAvailable) {
-            Text(
-                text = "Downloaded · ${libraryOfflineStorageLabel(download?.savedToDownloads == true)}",
-                modifier = Modifier.padding(top = 5.dp),
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.primary,
-                fontWeight = FontWeight.SemiBold,
-            )
-        }
-        if (
-            download?.state == DownloadStates.DOWNLOADING ||
-            download?.state == DownloadStates.QUEUED ||
-            download?.state == DownloadStates.PAUSED
-        ) {
-            val fraction = download.progressFraction
-            if (fraction == null) {
-                LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
-            } else {
-                LinearProgressIndicator(
-                    progress = { fraction },
-                    modifier = Modifier.fillMaxWidth(),
-                )
-            }
-            Text(
-                downloadProgressLabel(download),
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-        download?.failureReason?.takeIf { download.state == DownloadStates.FAILED }?.let {
-            Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.labelSmall)
-        }
-        HorizontalDivider(modifier = Modifier.padding(top = 8.dp))
-    }
-}
-
 @OptIn(UnstableApi::class)
 @Composable
 private fun SeriesPlaybackScreen(
@@ -1135,9 +655,10 @@ private fun SeriesPlaybackScreen(
     onFullscreenStateChanged: (Boolean) -> Unit,
 ) {
     val playbackState by runtime.playbackController.state.collectAsState()
-    val playbackOrigin by runtime.playbackController.resolvedOrigin.collectAsState()
     val playbackControls = PlaybackPresentationPolicy.controlsFor(playbackState)
-    val usesDpad = OwnPlayBuildTarget.usesDpad
+    val configuration = LocalConfiguration.current
+    val isTelevision =
+        configuration.uiMode and Configuration.UI_MODE_TYPE_MASK == Configuration.UI_MODE_TYPE_TELEVISION
     val scope = rememberCoroutineScope()
     var playerView by remember { mutableStateOf<PlayerView?>(null) }
     var exitRequested by remember(episode.episodeId) { mutableStateOf(false) }
@@ -1176,12 +697,11 @@ private fun SeriesPlaybackScreen(
                 mediaKind = PlaybackMediaKind.SERIES_EPISODE,
             )
             PlaybackInteractionBridge.clearBackAction(backOwner)
-            onFullscreenStateChanged(false)
         }
     }
 
-    LaunchedEffect(usesDpad, playbackState, playerView, episode.episodeId) {
-        if (!usesDpad) return@LaunchedEffect
+    LaunchedEffect(isTelevision, playbackState, playerView, episode.episodeId) {
+        if (!isTelevision) return@LaunchedEffect
         if (playbackState is PlaybackState.Failed) {
             backFocusRequester.requestFocus()
             return@LaunchedEffect
@@ -1265,14 +785,6 @@ private fun SeriesPlaybackScreen(
                     if (playerView === view) playerView = null
                 },
             )
-            playbackOrigin?.let { origin ->
-                PlaybackOriginBadge(
-                    origin = origin,
-                    modifier = Modifier
-                        .align(Alignment.TopEnd)
-                        .padding(top = 10.dp, end = 12.dp),
-                )
-            }
             if (playbackState is PlaybackState.Loading) {
                 CircularProgressIndicator()
             }

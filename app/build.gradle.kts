@@ -14,21 +14,9 @@ android {
         minSdk = 26
         targetSdk = 36
         versionCode = 6
-        versionName = "0.1.0-dev-qa6-targets"
+        versionName = "0.1.0-dev-qa6-update"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-    }
-
-    flavorDimensions += "device"
-    productFlavors {
-        create("mobile") {
-            dimension = "device"
-            manifestPlaceholders["appLabel"] = "OwnPlay Mobile QA6"
-        }
-        create("tv") {
-            dimension = "device"
-            manifestPlaceholders["appLabel"] = "OwnPlay TV QA6"
-        }
     }
 
     buildTypes {

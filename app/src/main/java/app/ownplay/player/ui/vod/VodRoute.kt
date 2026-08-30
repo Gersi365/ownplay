@@ -38,14 +38,10 @@ import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.DownloadDone
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
-import androidx.compose.material.icons.filled.LiveTv
-import androidx.compose.material.icons.filled.Movie
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.filled.VideoLibrary
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilterChip
@@ -69,6 +65,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
@@ -101,9 +98,6 @@ import app.ownplay.player.playback.PlaybackRequest
 import app.ownplay.player.playback.PlaybackState
 import app.ownplay.player.source.SourceError
 import app.ownplay.player.source.SourceResult
-import app.ownplay.player.target.OwnPlayBuildTarget
-import app.ownplay.player.ui.PlaybackOriginBadge
-import app.ownplay.player.ui.library.libraryOfflineStorageLabel
 import app.ownplay.player.vod.VodCatalog
 import app.ownplay.player.vod.VodFeatureRuntime
 import app.ownplay.player.vod.VodMovie
@@ -133,7 +127,6 @@ internal fun VodRoute(
     requestedMovieId: String? = null,
     onRequestedMovieConsumed: () -> Unit = {},
     returnToLibraryOnDetailBack: Boolean = false,
-    standaloneDetailPresentation: Boolean = false,
     onReturnToLibrary: () -> Unit = {},
     onOpenLive: () -> Unit,
     onOpenSeries: () -> Unit,
@@ -187,15 +180,13 @@ internal fun VodRoute(
     var detailsError by remember(sourceId) { mutableStateOf<SourceError?>(null) }
     var playingMovie by remember(sourceId) { mutableStateOf<VodMovie?>(null) }
     var restoreDetailFocusAfterPlayback by remember(sourceId) { mutableStateOf(false) }
+    var restoreCategoryFocusAfterDetailBack by remember(sourceId) { mutableStateOf(false) }
     val detailsBackOwner = remember(sourceId) { Any() }
 
     fun closeMovieDetails() {
         restoreDetailFocusAfterPlayback = false
-        if (returnToLibraryOnDetailBack) {
-            onReturnToLibrary()
-        } else {
-            selectedMovie = null
-        }
+        restoreCategoryFocusAfterDetailBack = true
+        selectedMovie = null
     }
 
     DisposableEffect(
@@ -204,8 +195,15 @@ internal fun VodRoute(
         detailsBackOwner,
         returnToLibraryOnDetailBack,
     ) {
-        if (selectedMovie != null && playingMovie == null) {
-            PlaybackInteractionBridge.registerBackAction(detailsBackOwner, ::closeMovieDetails)
+        if (playingMovie == null) {
+            when {
+                selectedMovie != null -> {
+                    PlaybackInteractionBridge.registerBackAction(detailsBackOwner, ::closeMovieDetails)
+                }
+                returnToLibraryOnDetailBack -> {
+                    PlaybackInteractionBridge.registerBackAction(detailsBackOwner, onReturnToLibrary)
+                }
+            }
         }
         onDispose {
             PlaybackInteractionBridge.clearBackAction(detailsBackOwner)
@@ -307,13 +305,15 @@ internal fun VodRoute(
         loading = false
     }
 
-    LaunchedEffect(catalog.categories, selectedCategoryKey) {
-        val categories = catalog.categories
-        val selected = selectedCategoryKey
-        selectedCategoryKey = when {
-            categories.isEmpty() -> null
-            selected != null && categories.any { it.providerCategoryKey == selected } -> selected
-            else -> categories.first().providerCategoryKey
+    LaunchedEffect(sourceId, catalog.categories, requestedMovieId, selectedMovie?.movieId) {
+        if (requestedMovieId != null) return@LaunchedEffect
+        val selectedIsValid = catalog.categories.any { category ->
+            category.providerCategoryKey == selectedCategoryKey
+        }
+        if (!selectedIsValid) {
+            selectedCategoryKey = selectedMovie?.categoryKey
+                ?.takeIf { key -> catalog.categories.any { it.providerCategoryKey == key } }
+                ?: catalog.categories.firstOrNull()?.providerCategoryKey
         }
     }
 
@@ -327,6 +327,7 @@ internal fun VodRoute(
             ?: catalog.categories.firstOrNull()?.providerCategoryKey
         favoritesOnly = false
         restoreDetailFocusAfterPlayback = false
+        restoreCategoryFocusAfterDetailBack = false
         selectedMovie = target
         onRequestedMovieConsumed()
     }
@@ -399,7 +400,7 @@ internal fun VodRoute(
         return
     }
 
-    if (standaloneDetailPresentation || !isLandscape) {
+    if (!isLandscape) {
         selectedMovie?.let { movie ->
             MovieDetailsPane(
                 movie = movie,
@@ -431,20 +432,19 @@ internal fun VodRoute(
         }
     }
 
-    if (isLandscape && !standaloneDetailPresentation) {
+    if (isLandscape) {
         Row(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(horizontal = 6.dp, vertical = 4.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            MovieNavigationRail(
+            MovieCategoryRail(
                 catalog = catalog,
                 selectedCategoryKey = selectedCategoryKey,
+                restoreFocusOnEntry = restoreCategoryFocusAfterDetailBack,
+                onFocusRestored = { restoreCategoryFocusAfterDetailBack = false },
                 onCategorySelected = { selectedCategoryKey = it },
-                onOpenLive = onOpenLive,
-                onOpenSeries = onOpenSeries,
-                onOpenSettings = onOpenSettings,
                 modifier = Modifier
                     .widthIn(min = 170.dp, max = 220.dp)
                     .fillMaxHeight(),
@@ -463,6 +463,7 @@ internal fun VodRoute(
                 onRefresh = ::refresh,
                 onMovieSelected = {
                     restoreDetailFocusAfterPlayback = false
+                    restoreCategoryFocusAfterDetailBack = false
                     selectedMovie = it
                 },
                 showCategoryStrip = false,
@@ -516,6 +517,7 @@ internal fun VodRoute(
             onRefresh = ::refresh,
             onMovieSelected = {
                 restoreDetailFocusAfterPlayback = false
+                restoreCategoryFocusAfterDetailBack = false
                 selectedMovie = it
             },
             showCategoryStrip = true,
@@ -707,29 +709,46 @@ private fun MoviesCatalogContent(
 }
 
 @Composable
-private fun MovieNavigationRail(
+private fun MovieCategoryRail(
     catalog: VodCatalog,
     selectedCategoryKey: String?,
+    restoreFocusOnEntry: Boolean,
+    onFocusRestored: () -> Unit,
     onCategorySelected: (String?) -> Unit,
-    onOpenLive: () -> Unit,
-    onOpenSeries: () -> Unit,
-    onOpenSettings: () -> Unit,
     modifier: Modifier,
 ) {
+    val configuration = LocalConfiguration.current
+    val isTelevision =
+        configuration.uiMode and android.content.res.Configuration.UI_MODE_TYPE_MASK ==
+            android.content.res.Configuration.UI_MODE_TYPE_TELEVISION
+    val categoryFocusRequester = remember { FocusRequester() }
+    val focusCategoryKey = selectedCategoryKey
+        ?.takeIf { key -> catalog.categories.any { it.providerCategoryKey == key } }
+        ?: catalog.categories.firstOrNull()?.providerCategoryKey
+
+    LaunchedEffect(isTelevision, restoreFocusOnEntry, focusCategoryKey) {
+        if (!restoreFocusOnEntry) return@LaunchedEffect
+        if (isTelevision && focusCategoryKey != null) {
+            withFrameNanos { }
+            categoryFocusRequester.requestFocus()
+        }
+        onFocusRestored()
+    }
+
     Surface(
         modifier = modifier,
-        shape = RoundedCornerShape(16.dp),
-        tonalElevation = 1.dp,
+        shape = RoundedCornerShape(12.dp),
+        color = MaterialTheme.colorScheme.surface,
+        tonalElevation = 0.dp,
     ) {
-        Column(modifier = Modifier.fillMaxSize()) {
-            NavRailItem(Icons.Filled.LiveTv, "Live", false, onOpenLive)
-            NavRailItem(Icons.Filled.Movie, "Movies", true, {})
-            NavRailItem(Icons.Filled.VideoLibrary, "Series", false, onOpenSeries)
-            HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
+        Column(
+            modifier = Modifier.fillMaxSize(),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
             Text(
                 text = "Movie categories",
-                modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
-                style = MaterialTheme.typography.labelMedium,
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                style = MaterialTheme.typography.labelLarge,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             LazyColumn(
@@ -742,41 +761,14 @@ private fun MovieNavigationRail(
                         title = category.name,
                         selected = selectedCategoryKey == category.providerCategoryKey,
                         onClick = { onCategorySelected(category.providerCategoryKey) },
+                        modifier = if (category.providerCategoryKey == focusCategoryKey) {
+                            Modifier.focusRequester(categoryFocusRequester)
+                        } else {
+                            Modifier
+                        },
                     )
                 }
             }
-            HorizontalDivider()
-            NavRailItem(Icons.Filled.Settings, "Settings", false, onOpenSettings)
-        }
-    }
-}
-
-@Composable
-private fun NavRailItem(
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    label: String,
-    selected: Boolean,
-    onClick: () -> Unit,
-) {
-    Surface(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 6.dp, vertical = 2.dp)
-            .clickable(onClick = onClick),
-        shape = RoundedCornerShape(10.dp),
-        color = if (selected) MaterialTheme.colorScheme.primaryContainer else Color.Transparent,
-    ) {
-        Row(
-            modifier = Modifier.padding(horizontal = 9.dp, vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            Icon(icon, contentDescription = null, modifier = Modifier.size(18.dp))
-            Text(
-                text = label,
-                style = MaterialTheme.typography.labelLarge,
-                fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
-            )
         }
     }
 }
@@ -786,13 +778,15 @@ private fun MovieCategoryRow(
     title: String,
     selected: Boolean,
     onClick: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     Surface(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .clickable(onClick = onClick),
         shape = RoundedCornerShape(9.dp),
-        color = if (selected) MaterialTheme.colorScheme.secondaryContainer else Color.Transparent,
+        color = if (selected) MaterialTheme.colorScheme.primaryContainer else Color.Transparent,
+        tonalElevation = 0.dp,
     ) {
         Text(
             text = title,
@@ -800,7 +794,7 @@ private fun MovieCategoryRow(
                 .padding(horizontal = 9.dp, vertical = 7.dp)
                 .basicMarquee(iterations = Int.MAX_VALUE),
             style = MaterialTheme.typography.bodySmall,
-            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
+            fontWeight = FontWeight.Medium,
             maxLines = 1,
             softWrap = false,
             overflow = TextOverflow.Clip,
@@ -920,266 +914,6 @@ private fun ContinueWatchingCard(
     }
 }
 
-@Composable
-private fun MovieDetailsPane(
-    movie: VodMovie,
-    details: VodMovieDetails?,
-    loading: Boolean,
-    error: SourceError?,
-    download: OfflineDownload?,
-    focusBackOnEntry: Boolean,
-    onDismiss: () -> Unit,
-    onFavoriteChanged: (Boolean) -> Unit,
-    onDownload: (VodMovie) -> Unit,
-    onPauseDownload: (OfflineDownload) -> Unit,
-    onResumeDownload: (OfflineDownload) -> Unit,
-    onClearProgress: () -> Unit,
-    onPlay: (VodMovie) -> Unit,
-    modifier: Modifier,
-) {
-    val usesDpad = OwnPlayBuildTarget.usesDpad
-    val detailBackFocusRequester = remember(movie.movieId) { FocusRequester() }
-    val offlineCopyAvailable = download?.state == DownloadStates.COMPLETED
-
-    LaunchedEffect(usesDpad, focusBackOnEntry, movie.movieId) {
-        if (usesDpad && focusBackOnEntry) {
-            detailBackFocusRequester.requestFocus()
-        }
-    }
-
-    Surface(
-        modifier = modifier,
-        color = MaterialTheme.colorScheme.background,
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = 16.dp, vertical = 10.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                IconButton(
-                    onClick = onDismiss,
-                    modifier = Modifier.focusRequester(detailBackFocusRequester),
-                ) {
-                    Icon(Icons.Filled.ArrowBack, contentDescription = "Back")
-                }
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = details?.movie?.name ?: movie.name,
-                        style = MaterialTheme.typography.headlineSmall,
-                        fontWeight = FontWeight.Bold,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                    Text(
-                        text = "Movie",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-            }
-
-            RemotePoster(
-                url = details?.posterUrl ?: movie.posterUrl,
-                title = movie.name,
-                modifier = Modifier
-                    .width(168.dp)
-                    .aspectRatio(2f / 3f)
-                    .align(Alignment.CenterHorizontally),
-            )
-
-            if (loading) {
-                CircularProgressIndicator(
-                    modifier = Modifier
-                        .size(24.dp)
-                        .align(Alignment.CenterHorizontally),
-                    strokeWidth = 2.dp,
-                )
-            }
-            if (error != null) {
-                Text(
-                    text = "Detailed metadata unavailable. Catalog playback remains available.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.error,
-                )
-            }
-
-            details?.let { info ->
-                val meta = listOfNotNull(
-                    info.releaseDate,
-                    info.durationLabel,
-                    info.genre,
-                    info.country,
-                    info.rating?.let { "★ %.1f".format(it) },
-                ).joinToString("  ·  ")
-                if (meta.isNotBlank()) {
-                    Text(
-                        text = meta,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-            }
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                Button(
-                    onClick = { onPlay(movie) },
-                    modifier = Modifier.weight(1f),
-                ) {
-                    Icon(Icons.Filled.PlayArrow, contentDescription = null)
-                    Spacer(Modifier.width(6.dp))
-                    Text(
-                        when {
-                            offlineCopyAvailable && movie.resumeAvailable -> "Resume Offline"
-                            offlineCopyAvailable -> "Play Offline"
-                            movie.resumeAvailable -> "Resume"
-                            else -> "Play"
-                        },
-                    )
-                }
-                FilledTonalButton(
-                    onClick = { onFavoriteChanged(!movie.isFavorite) },
-                ) {
-                    Icon(
-                        if (movie.isFavorite) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,
-                        contentDescription = null,
-                    )
-                }
-            }
-
-            if ((movie.positionMs ?: 0L) > 0L) {
-                TextButton(onClick = onClearProgress) {
-                    Text("Clear progress")
-                }
-            }
-
-            val target = details?.movie ?: movie
-            if (offlineCopyAvailable) {
-                Surface(
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(12.dp),
-                    color = MaterialTheme.colorScheme.primaryContainer,
-                ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    ) {
-                        Icon(Icons.Filled.DownloadDone, contentDescription = null)
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                text = "Downloaded · ${libraryOfflineStorageLabel(download?.savedToDownloads == true)}",
-                                style = MaterialTheme.typography.labelLarge,
-                                fontWeight = FontWeight.SemiBold,
-                            )
-                            Text(
-                                text = "Play uses the local download first.",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
-                    }
-                }
-            } else {
-                val downloadLabel = when (download?.state) {
-                    DownloadStates.QUEUED -> "Pause"
-                    DownloadStates.DOWNLOADING -> "Pause"
-                    DownloadStates.PAUSED -> "Resume"
-                    DownloadStates.FAILED -> "Retry download"
-                    else -> "Download"
-                }
-                FilledTonalButton(
-                    onClick = {
-                        when (download?.state) {
-                            DownloadStates.QUEUED,
-                            DownloadStates.DOWNLOADING,
-                            -> onPauseDownload(download)
-                            DownloadStates.PAUSED -> onResumeDownload(download)
-                            DownloadStates.FAILED, null -> onDownload(target)
-                            DownloadStates.COMPLETED -> Unit
-                        }
-                    },
-                    modifier = Modifier.align(Alignment.Start),
-                    contentPadding = PaddingValues(horizontal = 14.dp, vertical = 4.dp),
-                ) {
-                    Icon(
-                        imageVector = when (download?.state) {
-                            DownloadStates.QUEUED,
-                            DownloadStates.DOWNLOADING,
-                            -> Icons.Filled.Pause
-                            DownloadStates.PAUSED -> Icons.Filled.PlayArrow
-                            else -> Icons.Filled.Download
-                        },
-                        contentDescription = null,
-                        modifier = Modifier.size(18.dp),
-                    )
-                    Spacer(Modifier.width(6.dp))
-                    Text(downloadLabel)
-                }
-            }
-
-            if (
-                download?.state == DownloadStates.DOWNLOADING ||
-                download?.state == DownloadStates.QUEUED ||
-                download?.state == DownloadStates.PAUSED
-            ) {
-                val progress = download.progressFraction
-                if (progress == null) {
-                    LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
-                } else {
-                    LinearProgressIndicator(
-                        progress = { progress },
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-                }
-                Text(
-                    text = downloadProgressLabel(download),
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                if (download.savedToDownloads) {
-                    Text(
-                        text = "Saving to phone Downloads",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-            }
-
-            if (download?.state == DownloadStates.FAILED) {
-                Text(
-                    text = download.failureReason ?: "Download failed. Retry when the source is available.",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.error,
-                )
-            }
-
-            details?.let { info ->
-                HorizontalDivider()
-                Text(
-                    text = "About",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.SemiBold,
-                )
-                info.description?.takeIf(String::isNotBlank)?.let { description ->
-                    Text(text = description, style = MaterialTheme.typography.bodyMedium)
-                }
-                info.director?.takeIf(String::isNotBlank)?.let { director ->
-                    Text("Director: $director", style = MaterialTheme.typography.bodySmall)
-                }
-                info.cast?.takeIf(String::isNotBlank)?.let { cast ->
-                    Text("Cast: $cast", style = MaterialTheme.typography.bodySmall)
-                }
-            }
-        }
-    }
-}
-
 @OptIn(UnstableApi::class)
 @Composable
 private fun VodPlaybackScreen(
@@ -1191,9 +925,11 @@ private fun VodPlaybackScreen(
     onFullscreenStateChanged: (Boolean) -> Unit,
 ) {
     val playbackState by runtime.playbackController.state.collectAsState()
-    val playbackOrigin by runtime.playbackController.resolvedOrigin.collectAsState()
     val playbackControls = PlaybackPresentationPolicy.controlsFor(playbackState)
-    val usesDpad = OwnPlayBuildTarget.usesDpad
+    val configuration = LocalConfiguration.current
+    val isTelevision =
+        configuration.uiMode and android.content.res.Configuration.UI_MODE_TYPE_MASK ==
+            android.content.res.Configuration.UI_MODE_TYPE_TELEVISION
     val scope = rememberCoroutineScope()
     val backOwner = remember(movie.movieId) { Any() }
     val backFocusRequester = remember(movie.movieId) { FocusRequester() }
@@ -1235,7 +971,6 @@ private fun VodPlaybackScreen(
                 mediaKind = PlaybackMediaKind.MOVIE,
             )
             PlaybackInteractionBridge.clearBackAction(backOwner)
-            onFullscreenStateChanged(false)
         }
     }
 
@@ -1294,8 +1029,8 @@ private fun VodPlaybackScreen(
         }
     }
 
-    LaunchedEffect(usesDpad, controlsVisible, playbackState, movie.movieId) {
-        if (!usesDpad) return@LaunchedEffect
+    LaunchedEffect(isTelevision, controlsVisible, playbackState, movie.movieId) {
+        if (!isTelevision) return@LaunchedEffect
         when {
             playbackState is PlaybackState.Failed -> backFocusRequester.requestFocus()
             controlsVisible -> controlsFocusRequester.requestFocus()
@@ -1303,7 +1038,7 @@ private fun VodPlaybackScreen(
         }
     }
 
-    val remoteWakeModifier = if (usesDpad && !controlsVisible) {
+    val remoteWakeModifier = if (isTelevision && !controlsVisible) {
         Modifier
             .focusRequester(wakeFocusRequester)
             .onKeyEvent { event ->
@@ -1328,7 +1063,7 @@ private fun VodPlaybackScreen(
                 .fillMaxSize()
                 .onPreviewKeyEvent { event ->
                     if (
-                        usesDpad &&
+                        isTelevision &&
                         controlsVisible &&
                         event.nativeKeyEvent.isRemoteNavigationKeyDown()
                     ) {
@@ -1373,15 +1108,6 @@ private fun VodPlaybackScreen(
                     }
                     .then(remoteWakeModifier),
             )
-
-            playbackOrigin?.let { origin ->
-                PlaybackOriginBadge(
-                    origin = origin,
-                    modifier = Modifier
-                        .align(Alignment.TopEnd)
-                        .padding(top = 52.dp, end = 12.dp),
-                )
-            }
 
             if (controlsVisible) {
                 Row(

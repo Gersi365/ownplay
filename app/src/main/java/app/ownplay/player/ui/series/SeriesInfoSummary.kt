@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -26,7 +27,7 @@ internal fun SeriesInfoSummary(
 ) {
     val episodeCount = details.seasons.sumOf { it.episodes.size }
     val metadata = buildList {
-        details.rating?.let { add("Rating ${"%.1f".format(it)}") }
+        details.rating?.let { add("★ ${"%.1f".format(it)}") }
         details.releaseDate?.takeIf(String::isNotBlank)?.let(::add)
         details.genre?.takeIf(String::isNotBlank)?.let(::add)
         details.country?.takeIf(String::isNotBlank)?.let(::add)
@@ -40,25 +41,25 @@ internal fun SeriesInfoSummary(
 
     Row(
         modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         RemotePoster(
             url = details.posterUrl ?: selected.posterUrl,
             title = selected.name,
             modifier = Modifier
-                .width(96.dp)
+                .width(104.dp)
                 .aspectRatio(2f / 3f),
         )
         Column(
             modifier = Modifier.weight(1f),
-            verticalArrangement = Arrangement.spacedBy(5.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {
-            metadata.forEach { item ->
+            if (metadata.isNotEmpty()) {
                 Text(
-                    text = item,
-                    style = MaterialTheme.typography.labelMedium,
+                    text = metadata.joinToString("  ·  "),
+                    style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 2,
+                    maxLines = 4,
                     overflow = TextOverflow.Ellipsis,
                 )
             }
@@ -87,18 +88,19 @@ internal fun SeriesInfoSummary(
         Surface(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(top = 8.dp),
-            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
-            shape = MaterialTheme.shapes.medium,
+                .padding(top = 10.dp),
+            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.28f),
+            shape = RoundedCornerShape(10.dp),
+            tonalElevation = 0.dp,
         ) {
             Column(
-                modifier = Modifier.padding(10.dp),
-                verticalArrangement = Arrangement.spacedBy(4.dp),
+                modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+                verticalArrangement = Arrangement.spacedBy(5.dp),
             ) {
                 Text(
                     text = "About",
                     style = MaterialTheme.typography.labelLarge,
-                    fontWeight = FontWeight.SemiBold,
+                    fontWeight = FontWeight.Medium,
                 )
                 Text(
                     text = description,

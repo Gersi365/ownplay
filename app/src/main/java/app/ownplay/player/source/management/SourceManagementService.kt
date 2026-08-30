@@ -5,6 +5,7 @@ import app.ownplay.player.persistence.OwnPlayDatabase
 import app.ownplay.player.persistence.SourceKinds
 import app.ownplay.player.persistence.secure.SensitiveValueRef
 import app.ownplay.player.persistence.secure.SensitiveValueStore
+import app.ownplay.player.persistence.sync.DeviceSyncLocalMutationWriter
 import app.ownplay.player.source.CredentialRef
 import app.ownplay.player.source.SourceError
 import app.ownplay.player.source.SourceResult
@@ -55,6 +56,8 @@ class SourceManagementService(
     private val credentialStore: CredentialStore,
     private val xtreamClient: XtreamClient = XtreamClient(),
 ) {
+    private val syncWriter = DeviceSyncLocalMutationWriter(database)
+
     suspend fun load(sourceId: String): SourceEditSnapshot? = withContext(Dispatchers.IO) {
         val source = database.playlistSourceDao().getById(sourceId) ?: return@withContext null
         val locatorValue = try {
@@ -112,6 +115,9 @@ class SourceManagementService(
                         updatedAtEpochMillis = System.currentTimeMillis(),
                     ),
                 )
+                if (normalizedName != source.name) {
+                    syncWriter.recordSourceRenamed(sourceId, normalizedName)
+                }
             }
             SourceMutationResult.Success
         } catch (error: Exception) {
@@ -242,6 +248,11 @@ class SourceManagementService(
                         updatedAtEpochMillis = System.currentTimeMillis(),
                     ),
                 )
+                // Only non-secret source metadata is synchronized at this stage. Portable encrypted
+                // locator/credential transport remains intentionally unimplemented.
+                if (normalizedName != source.name) {
+                    syncWriter.recordSourceRenamed(sourceId, normalizedName)
+                }
             }
         } catch (error: Exception) {
             runCatching { sensitiveValueStore.delete(newLocatorRef) }
@@ -297,6 +308,7 @@ class SourceManagementService(
 
         try {
             database.withTransaction {
+                syncWriter.recordSourceDeleted(sourceId)
                 val deleted = database.playlistSourceDao().deleteById(sourceId)
                 check(deleted > 0) { "Source disappeared during delete transaction" }
             }

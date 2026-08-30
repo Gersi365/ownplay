@@ -3,6 +3,7 @@ package app.ownplay.player.personalization
 import androidx.room.withTransaction
 import app.ownplay.player.persistence.FavoriteEntryEntity
 import app.ownplay.player.persistence.OwnPlayDatabase
+import app.ownplay.player.persistence.sync.DeviceSyncLocalMutationWriter
 import kotlinx.coroutines.CancellationException
 
 enum class FavoriteMutationFailureReason {
@@ -28,6 +29,8 @@ sealed interface FavoriteMutationResult {
 class FavoriteChannelMutator(
     private val database: OwnPlayDatabase,
 ) {
+    private val syncWriter = DeviceSyncLocalMutationWriter(database)
+
     suspend fun addFavorites(
         sourceId: String,
         channelIds: Set<String>,
@@ -39,6 +42,7 @@ class FavoriteChannelMutator(
         return mutateSourceSelection(
             sourceId = sourceId,
             requestedChannelIds = channelIds,
+            syncMode = FavoriteSelectionSyncMode.ADD,
         ) { orderedSelection, existing ->
             FavoriteEntryPlanner.add(
                 existing = existing,
@@ -54,6 +58,7 @@ class FavoriteChannelMutator(
     ): FavoriteMutationResult = mutateSourceSelection(
         sourceId = sourceId,
         requestedChannelIds = channelIds,
+        syncMode = FavoriteSelectionSyncMode.REMOVE,
     ) { orderedSelection, existing ->
         val plan = FavoriteEntryPlanner.remove(
             existing = existing,
@@ -113,6 +118,7 @@ class FavoriteChannelMutator(
     private suspend fun mutateSourceSelection(
         sourceId: String,
         requestedChannelIds: Set<String>,
+        syncMode: FavoriteSelectionSyncMode,
         operation: suspend (
             orderedSelection: List<String>,
             existing: List<FavoriteEntryEntity>,
@@ -134,8 +140,22 @@ class FavoriteChannelMutator(
                     is ChannelSelectionValidationResult.Failure -> validation.toFavoriteFailure()
                     is ChannelSelectionValidationResult.Success -> {
                         val existing = dao.favoriteEntriesForSource(sourceId)
+                        val existingIds = existing.mapTo(hashSetOf()) { it.channelId }
                         val plan = operation(validation.channelIds, existing)
                         dao.upsertFavorites(plan.entries)
+                        when (syncMode) {
+                            FavoriteSelectionSyncMode.ADD -> syncWriter.recordFavorites(
+                                sourceId = sourceId,
+                                activeEntries = plan.entries.filter { entry ->
+                                    entry.channelId in validation.channelIds && entry.channelId !in existingIds
+                                },
+                            )
+                            FavoriteSelectionSyncMode.REMOVE -> syncWriter.recordFavorites(
+                                sourceId = sourceId,
+                                activeEntries = plan.entries,
+                                removedChannelIds = validation.channelIds,
+                            )
+                        }
                         FavoriteMutationResult.Success(plan.channelIds)
                     }
                 }
@@ -169,6 +189,7 @@ class FavoriteChannelMutator(
                         missingReason = FavoriteMutationFailureReason.FAVORITE_NOT_FOUND,
                     )
                     is ChannelSelectionValidationResult.Success -> applyFavoriteOrderPlan(
+                        sourceId = sourceId,
                         existing = existing,
                         plannerResult = operation(favoriteIds, validation.channelIds),
                     )
@@ -191,6 +212,7 @@ class FavoriteChannelMutator(
             database.withTransaction {
                 val existing = database.personalizationDao().favoriteEntriesForSource(sourceId)
                 applyFavoriteOrderPlan(
+                    sourceId = sourceId,
                     existing = existing,
                     plannerResult = operation(existing.map { it.channelId }),
                 )
@@ -202,6 +224,7 @@ class FavoriteChannelMutator(
     }
 
     private suspend fun applyFavoriteOrderPlan(
+        sourceId: String,
         existing: List<FavoriteEntryEntity>,
         plannerResult: ManualOrderPlanResult,
     ): FavoriteMutationResult = when (plannerResult) {
@@ -209,9 +232,18 @@ class FavoriteChannelMutator(
         is ManualOrderPlanResult.Success -> {
             val plan = FavoriteEntryPlanner.reorder(existing, plannerResult.plan)
             database.personalizationDao().upsertFavorites(plan.entries)
+            syncWriter.recordFavorites(
+                sourceId = sourceId,
+                activeEntries = plan.entries,
+            )
             FavoriteMutationResult.Success(plan.channelIds)
         }
     }
+}
+
+private enum class FavoriteSelectionSyncMode {
+    ADD,
+    REMOVE,
 }
 
 private fun ChannelSelectionValidationResult.Failure.toFavoriteFailure(

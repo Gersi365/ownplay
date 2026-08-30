@@ -1,5 +1,6 @@
 package app.ownplay.player.ui.library
 
+import android.content.res.Configuration
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -54,6 +55,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -65,7 +67,6 @@ import app.ownplay.player.series.SeriesEpisode
 import app.ownplay.player.series.SeriesFeatureRuntime
 import app.ownplay.player.series.SeriesSeason
 import app.ownplay.player.source.SourceResult
-import app.ownplay.player.target.OwnPlayBuildTarget
 import app.ownplay.player.ui.vod.RemotePoster
 import java.util.Locale
 
@@ -185,7 +186,9 @@ internal fun LibrarySeriesDetailScreen(
     onRemove: (OfflineDownload) -> Unit,
 ) {
     val context = LocalContext.current
-    val usesDpad = OwnPlayBuildTarget.usesDpad
+    val configuration = LocalConfiguration.current
+    val isTelevision =
+        configuration.uiMode and Configuration.UI_MODE_TYPE_MASK == Configuration.UI_MODE_TYPE_TELEVISION
     val seriesRuntime = remember(context) {
         SeriesFeatureRuntime(context.applicationContext)
     }
@@ -204,8 +207,8 @@ internal fun LibrarySeriesDetailScreen(
     var selectedSeasonNumber by remember(group.key) { mutableStateOf<Int?>(null) }
     var selectedEpisodeId by remember(group.key) { mutableStateOf<String?>(null) }
 
-    LaunchedEffect(usesDpad, group.key, selectedSeasonNumber, selectedEpisodeId) {
-        if (usesDpad) {
+    LaunchedEffect(isTelevision, group.key, selectedSeasonNumber, selectedEpisodeId) {
+        if (isTelevision) {
             detailBackFocusRequester.requestFocus()
         }
     }
@@ -323,13 +326,13 @@ internal fun LibrarySeriesDetailScreen(
     val totalCatalogEpisodes = fullDetails?.seasons?.sumOf { it.episodes.size }
 
     LaunchedEffect(
-        usesDpad,
+        isTelevision,
         returnFocusEpisodeId,
         returnFocusGeneration,
         selectedEpisodeId,
     ) {
         if (
-            usesDpad &&
+            isTelevision &&
             returnFocusGeneration > 0 &&
             returnFocusEpisodeId != null &&
             selectedEpisodeId == returnFocusEpisodeId
@@ -397,7 +400,7 @@ internal fun LibrarySeriesDetailScreen(
                 model = selectedEpisode,
                 primaryActionFocusRequester = episodeActionFocusRequester
                     .takeIf {
-                        usesDpad &&
+                        isTelevision &&
                             returnFocusGeneration > 0 &&
                             selectedEpisode.episodeId == returnFocusEpisodeId
                     },

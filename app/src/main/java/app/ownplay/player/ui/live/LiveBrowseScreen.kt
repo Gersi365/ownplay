@@ -418,6 +418,13 @@ private fun CategoryStrip(
         ),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
+        item(key = "all") {
+            FilterChip(
+                selected = selectedCategoryKey == null,
+                onClick = { onCategorySelected(null) },
+                label = { Text("All") },
+            )
+        }
         items(
             items = categories,
             key = LiveCategory::providerCategoryKey,

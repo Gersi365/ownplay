@@ -54,7 +54,7 @@ data class PlaybackNetworkProfile(
 }
 
 data class PlaybackRetryPolicy(
-    val maxAutomaticAttempts: Int = 2,
+    val maxAutomaticAttempts: Int = 3,
     val initialDelayMillis: Long = 750L,
     val maxDelayMillis: Long = 3_000L,
 ) {

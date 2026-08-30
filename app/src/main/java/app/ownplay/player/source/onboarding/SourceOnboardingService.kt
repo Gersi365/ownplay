@@ -12,6 +12,7 @@ import app.ownplay.player.persistence.PlaylistSourceEntity
 import app.ownplay.player.persistence.SourceKinds
 import app.ownplay.player.persistence.secure.SensitiveValueRef
 import app.ownplay.player.persistence.secure.SensitiveValueStore
+import app.ownplay.player.persistence.sync.DeviceSyncLocalMutationWriter
 import app.ownplay.player.source.CredentialRef
 import app.ownplay.player.source.SourceError
 import app.ownplay.player.source.SourceResult
@@ -61,6 +62,7 @@ class SourceOnboardingService(
         persistence = RoomLiveCatalogPersistence(database),
         sensitiveValueStore = sensitiveValueStore,
     )
+    private val syncWriter = DeviceSyncLocalMutationWriter(database)
 
     suspend fun addRemoteM3u(
         name: String,
@@ -290,6 +292,7 @@ class SourceOnboardingService(
                                 updatedAtEpochMillis = System.currentTimeMillis(),
                             ),
                         )
+                        syncWriter.recordSourceCreatedOrRestored(sourceId)
                     }
                 } catch (error: Exception) {
                     rollbackSource(sourceId, locatorRef)

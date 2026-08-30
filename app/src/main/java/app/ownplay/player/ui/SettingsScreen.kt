@@ -3,6 +3,7 @@ package app.ownplay.player.ui
 import android.content.res.Configuration
 import androidx.activity.compose.BackHandler
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -42,6 +43,8 @@ internal fun SettingsScreen(
     var destination by remember { mutableStateOf(SettingsDestination.CONTENT) }
     val configuration = LocalConfiguration.current
     val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
+    val isTelevision =
+        configuration.uiMode and Configuration.UI_MODE_TYPE_MASK == Configuration.UI_MODE_TYPE_TELEVISION
 
     val context = LocalContext.current
     val deviceProfileStore = remember(context) {
@@ -55,6 +58,12 @@ internal fun SettingsScreen(
     val deviceProfile = deviceSettings?.profile
     val orientationMode = deviceSettings?.effectiveOrientation ?: AppOrientationMode.PORTRAIT
     val scope = rememberCoroutineScope()
+
+    LaunchedEffect(isTelevision, destination) {
+        if (isTelevision && destination == SettingsDestination.DOWNLOADS) {
+            destination = SettingsDestination.CONTENT
+        }
+    }
 
     val nestedDestinationBackEnabled =
         destination == SettingsDestination.LIVE_MANAGEMENT ||

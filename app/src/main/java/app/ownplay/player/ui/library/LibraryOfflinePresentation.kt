@@ -19,13 +19,6 @@ internal data class LibraryOfflinePresentation(
     val storageLabel: String?,
 )
 
-internal fun libraryOfflineStorageLabel(savedToDownloads: Boolean): String =
-    if (savedToDownloads) {
-        "Local file · Phone Downloads"
-    } else {
-        "Local file · OwnPlay private storage"
-    }
-
 internal fun libraryOfflinePresentation(
     state: String?,
     savedToDownloads: Boolean,
@@ -34,7 +27,11 @@ internal fun libraryOfflinePresentation(
         verifiedOffline = true,
         badgeLabel = "OFFLINE",
         actionLabel = "Play Offline",
-        storageLabel = libraryOfflineStorageLabel(savedToDownloads),
+        storageLabel = if (savedToDownloads) {
+            "Local file · Phone Downloads"
+        } else {
+            "Local file · OwnPlay private storage"
+        },
     )
 } else {
     LibraryOfflinePresentation(

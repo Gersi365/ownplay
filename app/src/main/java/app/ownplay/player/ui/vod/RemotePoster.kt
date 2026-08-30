@@ -17,6 +17,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import app.ownplay.player.source.network.SourceHttpClient
 import java.io.ByteArrayOutputStream
@@ -60,8 +61,8 @@ internal fun RemotePoster(
 
     Box(
         modifier = modifier
-            .clip(RoundedCornerShape(12.dp))
-            .background(MaterialTheme.colorScheme.surfaceVariant),
+            .clip(RoundedCornerShape(10.dp))
+            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.42f)),
         contentAlignment = Alignment.Center,
     ) {
         image?.let { poster ->
@@ -73,8 +74,9 @@ internal fun RemotePoster(
             )
         } ?: Text(
             text = title.trim().firstOrNull()?.uppercase() ?: "•",
-            style = MaterialTheme.typography.headlineMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            style = MaterialTheme.typography.titleLarge,
+            fontWeight = FontWeight.Medium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.82f),
         )
     }
 }

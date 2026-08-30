@@ -1,7 +1,6 @@
 package app.ownplay.player.ui
 
 import android.content.res.Configuration
-import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
@@ -22,9 +21,9 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.DownloadDone
 import androidx.compose.material.icons.filled.LiveTv
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.VideoLibrary
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
@@ -189,15 +188,6 @@ fun OwnPlayApp(
         section = target
     }
 
-    BackHandler(
-        enabled =
-            section == OwnPlaySection.MOVIES &&
-                movieDetailReturnToLibrary &&
-                !vodFullscreen,
-    ) {
-        openContentSection(OwnPlaySection.LIBRARY)
-    }
-
     val librarySectionActive =
         section == OwnPlaySection.LIBRARY ||
             section == OwnPlaySection.MOVIES ||
@@ -332,7 +322,7 @@ fun OwnPlayApp(
                     NavigationBarItem(
                         selected = librarySectionActive,
                         onClick = { openContentSection(OwnPlaySection.LIBRARY) },
-                        icon = { Icon(Icons.Filled.DownloadDone, contentDescription = "Library") },
+                        icon = { Icon(Icons.Filled.VideoLibrary, contentDescription = "Library") },
                         label = { Text("Library") },
                     )
                     NavigationBarItem(
@@ -365,7 +355,7 @@ fun OwnPlayApp(
                     NavigationBarItem(
                         selected = librarySectionActive,
                         onClick = { openContentSection(OwnPlaySection.LIBRARY) },
-                        icon = { Icon(Icons.Filled.DownloadDone, contentDescription = "Library") },
+                        icon = { Icon(Icons.Filled.VideoLibrary, contentDescription = "Library") },
                         label = { Text("Library") },
                     )
                     NavigationBarItem(
@@ -466,7 +456,6 @@ fun OwnPlayApp(
                         requestedMovieId = requestedVodMovieId,
                         onRequestedMovieConsumed = { requestedVodMovieId = null },
                         returnToLibraryOnDetailBack = movieDetailReturnToLibrary,
-                        standaloneDetailPresentation = movieDetailReturnToLibrary,
                         onReturnToLibrary = { openContentSection(OwnPlaySection.LIBRARY) },
                         onOpenLive = { openContentSection(OwnPlaySection.LIVE) },
                         onOpenSeries = { openContentSection(OwnPlaySection.SERIES) },
@@ -484,7 +473,6 @@ fun OwnPlayApp(
                         requestedSeriesId = requestedSeriesId,
                         onRequestedSeriesConsumed = { requestedSeriesId = null },
                         returnToLibraryOnDetailBack = seriesDetailReturnToLibrary,
-                        standaloneDetailPresentation = seriesDetailReturnToLibrary,
                         onReturnToLibrary = { openContentSection(OwnPlaySection.LIBRARY) },
                         onOpenSettings = { openContentSection(OwnPlaySection.SETTINGS) },
                         onFullscreenStateChanged = { fullscreen ->

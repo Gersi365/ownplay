@@ -1,6 +1,7 @@
 package app.ownplay.player.ui
 
 import android.content.res.Configuration
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -39,7 +40,12 @@ import app.ownplay.player.playback.PlaybackState
 import app.ownplay.player.playback.PlaybackVideoOutput
 import app.ownplay.player.source.SourceSyncStage
 import app.ownplay.player.source.SourceSyncState
+import app.ownplay.player.ui.live.HierarchicalLiveBrowse
 import app.ownplay.player.ui.live.LandscapeLiveWorkspaceAdaptive
+import app.ownplay.player.ui.live.LiveBrowseBackAction
+import app.ownplay.player.ui.live.LiveBrowseHierarchyLevel
+import app.ownplay.player.ui.live.LiveBrowseHierarchyPolicy
+import app.ownplay.player.ui.live.LiveChannelActivationAction
 import app.ownplay.player.ui.live.PortraitLiveBrowseWithViewModes
 import app.ownplay.player.ui.view.ContentViewMode
 import app.ownplay.player.ui.view.ContentViewModeStore
@@ -69,6 +75,8 @@ internal fun LiveRoute(
     val configuration = LocalConfiguration.current
     val context = LocalContext.current
     val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
+    val isTelevision =
+        configuration.uiMode and Configuration.UI_MODE_TYPE_MASK == Configuration.UI_MODE_TYPE_TELEVISION
     val browseSession = remember(sourceId) { LiveBrowseSession() }
     val browseFlow = remember(sourceId) {
         browseSession.observe(runtime.observeLiveCatalog(sourceId))
@@ -81,6 +89,19 @@ internal fun LiveRoute(
     val liveViewMode by viewModeStore.liveMode.collectAsState(initial = ContentViewMode.COMPACT)
     val preview = activeSelection?.takeIf { selection ->
         selection.request.sourceId == sourceId
+    }
+    var hierarchyLevel by remember(sourceId, isTelevision) {
+        mutableStateOf(
+            LiveBrowseHierarchyPolicy.initialLevel(
+                isTelevision = isTelevision,
+                hasPreview = preview != null,
+            ),
+        )
+    }
+    val effectiveHierarchyLevel = if (isTelevision) {
+        hierarchyLevel
+    } else {
+        LiveBrowseHierarchyLevel.CHANNELS
     }
 
     var epgSnapshot by remember(sourceId, preview?.request?.channelId) {
@@ -106,11 +127,24 @@ internal fun LiveRoute(
         epgRefreshFailed && epgSnapshot?.programs.isNullOrEmpty()
     )
 
-    LaunchedEffect(browseState.categories, browseState.query.categoryKey) {
-        val categories = browseState.categories
-        val selected = browseState.query.categoryKey
-        if (categories.isNotEmpty() && categories.none { it.providerCategoryKey == selected }) {
-            browseSession.selectCategory(categories.first().providerCategoryKey)
+    BackHandler(
+        enabled = LiveBrowseHierarchyPolicy.ownsBack(
+            isTelevision = isTelevision,
+            hasPreview = preview != null,
+            level = effectiveHierarchyLevel,
+        ),
+    ) {
+        when (
+            LiveBrowseHierarchyPolicy.backAction(
+                hasPreview = preview != null,
+                level = effectiveHierarchyLevel,
+            )
+        ) {
+            LiveBrowseBackAction.CLOSE_PREVIEW -> onPreviewClosed()
+            LiveBrowseBackAction.SHOW_CATEGORIES -> {
+                hierarchyLevel = LiveBrowseHierarchyLevel.CATEGORIES
+            }
+            LiveBrowseBackAction.PROPAGATE -> Unit
         }
     }
 
@@ -159,6 +193,13 @@ internal fun LiveRoute(
         }
     }
 
+    fun selectCategory(categoryKey: String?) {
+        browseSession.selectCategory(categoryKey)
+        if (isTelevision) {
+            hierarchyLevel = LiveBrowseHierarchyLevel.CHANNELS
+        }
+    }
+
     fun selectChannel(channelId: String) {
         val channel = browseState.channels.firstOrNull { item -> item.channelId == channelId } ?: return
         val browseContext = LivePlaybackBrowseContext.capture(
@@ -172,7 +213,16 @@ internal fun LiveRoute(
                 browseContext = browseContext,
             )
         ) {
-            is LiveChannelSelectionAction.StartPlayback -> onPreviewRequested(action.selection)
+            is LiveChannelSelectionAction.StartPlayback -> when (
+                LiveBrowseHierarchyPolicy.channelActivationAction(
+                    isTelevision = isTelevision,
+                    activePreviewChannelId = preview?.request?.channelId,
+                    activatedChannelId = channelId,
+                )
+            ) {
+                LiveChannelActivationAction.OPEN_PREVIEW -> onPreviewRequested(action.selection)
+                LiveChannelActivationAction.OPEN_FULLSCREEN -> onOpenFullscreen(action.selection)
+            }
             is LiveChannelSelectionAction.ToggleEditSelection -> Unit
         }
     }
@@ -180,6 +230,7 @@ internal fun LiveRoute(
     if (isLandscape) {
         LandscapeLiveWorkspaceAdaptive(
             state = browseState,
+            hierarchyLevel = effectiveHierarchyLevel,
             preview = preview,
             playbackState = playbackState,
             videoOutput = videoOutput,
@@ -192,7 +243,11 @@ internal fun LiveRoute(
                 mutationScope.launch { viewModeStore.setLiveMode(mode) }
             },
             onSearchChange = browseSession::updateSearch,
-            onCategorySelected = browseSession::selectCategory,
+            onCategorySelected = if (isTelevision) {
+                ::selectCategory
+            } else {
+                browseSession::selectCategory
+            },
             onFavoritesOnlyChanged = browseSession::setFavoritesOnly,
             onOrderChanged = browseSession::setOrder,
             onCustomGroupSelected = browseSession::selectCustomGroup,
@@ -261,6 +316,26 @@ internal fun LiveRoute(
                     onRetry = { mutationScope.launch { runtime.refreshSource(sourceId) } },
                     onOpenSettings = onOpenSettings,
                     modifier = Modifier.weight(1f),
+                )
+            } else if (isTelevision) {
+                HierarchicalLiveBrowse(
+                    state = browseState,
+                    hierarchyLevel = effectiveHierarchyLevel,
+                    playingChannelId = preview?.request?.channelId,
+                    currentEpgByChannelId = currentEpgByChannelId,
+                    viewMode = liveViewMode,
+                    onViewModeSelected = { mode ->
+                        mutationScope.launch { viewModeStore.setLiveMode(mode) }
+                    },
+                    onSearchChange = browseSession::updateSearch,
+                    onCategorySelected = ::selectCategory,
+                    onFavoritesOnlyChanged = browseSession::setFavoritesOnly,
+                    onOrderChanged = browseSession::setOrder,
+                    onCustomGroupSelected = browseSession::selectCustomGroup,
+                    onChannelSelected = ::selectChannel,
+                    modifier = Modifier
+                        .weight(1f)
+                        .navigationBarsPadding(),
                 )
             } else {
                 PortraitLiveBrowseWithViewModes(

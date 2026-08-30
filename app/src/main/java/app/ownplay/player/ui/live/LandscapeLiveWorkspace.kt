@@ -393,6 +393,15 @@ private fun LandscapeCategoryPane(
                 ),
                 verticalArrangement = Arrangement.spacedBy(4.dp),
             ) {
+                item(key = "landscape-all-categories") {
+                    LandscapeCategoryRow(
+                        title = "All channels",
+                        subtitle = "${state.catalogChannelCount} total",
+                        selected = state.query.categoryKey == null,
+                        hidden = false,
+                        onClick = { onCategorySelected(null) },
+                    )
+                }
                 items(
                     items = state.categories,
                     key = LiveCategory::providerCategoryKey,
@@ -844,7 +853,7 @@ private fun LandscapeBulkEditBar(
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            TextButton(onClick = onSelectVisible) { Text("Select visible") }
+            TextButton(onClick = onSelectVisible) { Text("All") }
             TextButton(onClick = onClearSelection, enabled = selectedCount > 0) { Text("Clear") }
         }
         Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {

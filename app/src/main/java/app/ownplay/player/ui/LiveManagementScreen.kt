@@ -1,5 +1,6 @@
 package app.ownplay.player.ui
 
+import android.content.res.Configuration
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -24,6 +25,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -40,7 +42,6 @@ import app.ownplay.player.personalization.ChannelEditState
 import app.ownplay.player.personalization.FavoriteMutationResult
 import app.ownplay.player.personalization.ManualOrderMutationResult
 import app.ownplay.player.personalization.ManualOrderPlacement
-import app.ownplay.player.target.OwnPlayBuildTarget
 import app.ownplay.player.ui.live.LiveBrowseScreen
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
@@ -52,15 +53,17 @@ internal fun LiveManagementScreen(
     onBack: () -> Unit,
     focusBackOnEntry: Boolean = false,
 ) {
-    val usesDpad = OwnPlayBuildTarget.usesDpad
+    val configuration = LocalConfiguration.current
+    val isTelevision =
+        configuration.uiMode and Configuration.UI_MODE_TYPE_MASK == Configuration.UI_MODE_TYPE_TELEVISION
     val backFocusRequester = remember { FocusRequester() }
     var sourceId by remember(summaries) {
         mutableStateOf(summaries.firstOrNull()?.sourceId)
     }
     val selectedSourceId = sourceId
 
-    LaunchedEffect(usesDpad, focusBackOnEntry, selectedSourceId) {
-        if (usesDpad && focusBackOnEntry) {
+    LaunchedEffect(isTelevision, focusBackOnEntry, selectedSourceId) {
+        if (isTelevision && focusBackOnEntry) {
             backFocusRequester.requestFocus()
         }
     }
@@ -112,14 +115,6 @@ internal fun LiveManagementScreen(
     LaunchedEffect(selectedSourceId) {
         browseSession.setIncludeHidden(true)
         browseSession.setOrder(LiveBrowseOrder.MY_ORDER)
-    }
-
-    LaunchedEffect(state.categories, state.query.categoryKey) {
-        val categories = state.categories
-        val selectedKey = state.query.categoryKey
-        if (categories.isNotEmpty() && categories.none { it.providerCategoryKey == selectedKey }) {
-            browseSession.selectCategory(categories.first().providerCategoryKey)
-        }
     }
 
     LaunchedEffect(state.channels) {
@@ -319,7 +314,7 @@ internal fun LiveManagementScreen(
             )
         }
 
-        if (usesDpad && selectedChannelId != null) {
+        if (isTelevision && selectedChannelId != null) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()

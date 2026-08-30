@@ -3,6 +3,7 @@ package app.ownplay.player.personalization
 import androidx.room.withTransaction
 import app.ownplay.player.persistence.HiddenEntryEntity
 import app.ownplay.player.persistence.OwnPlayDatabase
+import app.ownplay.player.persistence.sync.DeviceSyncLocalMutationWriter
 import kotlinx.coroutines.CancellationException
 
 enum class ChannelVisibilityFailureReason {
@@ -26,6 +27,8 @@ sealed interface ChannelVisibilityMutationResult {
 class ChannelVisibilityMutator(
     private val database: OwnPlayDatabase,
 ) {
+    private val syncWriter = DeviceSyncLocalMutationWriter(database)
+
     suspend fun hide(
         sourceId: String,
         channelIds: Set<String>,
@@ -48,6 +51,11 @@ class ChannelVisibilityMutator(
                     )
                 },
             )
+            syncWriter.recordHidden(
+                sourceId = sourceId,
+                channelIds = orderedChannelIds,
+                hidden = true,
+            )
         }
     }
 
@@ -60,6 +68,11 @@ class ChannelVisibilityMutator(
     ) { orderedChannelIds ->
         val dao = database.personalizationDao()
         orderedChannelIds.forEach { channelId -> dao.unhide(channelId) }
+        syncWriter.recordHidden(
+            sourceId = sourceId,
+            channelIds = orderedChannelIds,
+            hidden = false,
+        )
     }
 
     private suspend fun mutate(
