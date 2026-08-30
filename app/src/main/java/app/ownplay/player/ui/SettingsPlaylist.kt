@@ -1,6 +1,5 @@
 package app.ownplay.player.ui
 
-import android.content.res.Configuration
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -22,12 +21,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import app.ownplay.player.OwnPlayAppRuntime
 import app.ownplay.player.persistence.PlaylistSourceSummary
 import app.ownplay.player.source.SourceSyncState
+import app.ownplay.player.target.OwnPlayBuildTarget
 
 @Composable
 internal fun PlaylistManagementSubscreen(
@@ -38,13 +37,10 @@ internal fun PlaylistManagementSubscreen(
     onOpenInLive: (String) -> Unit,
     focusBackOnEntry: Boolean = false,
 ) {
-    val configuration = LocalConfiguration.current
-    val isTelevision =
-        configuration.uiMode and Configuration.UI_MODE_TYPE_MASK == Configuration.UI_MODE_TYPE_TELEVISION
     val backFocusRequester = remember { FocusRequester() }
 
-    LaunchedEffect(isTelevision, focusBackOnEntry) {
-        if (isTelevision && focusBackOnEntry) {
+    LaunchedEffect(focusBackOnEntry) {
+        if (OwnPlayBuildTarget.usesDpad && focusBackOnEntry) {
             backFocusRequester.requestFocus()
         }
     }
