@@ -49,13 +49,13 @@ class Media3PlaybackEngine(
         .setEnableDecoderFallback(true)
         .setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON)
     private val loadControl = DefaultLoadControl.Builder()
-        .setBufferDurationsMs(
+        .setBufferDurationsMsForStreaming(
             NETWORK_MIN_BUFFER_MILLIS,
             NETWORK_MAX_BUFFER_MILLIS,
             NETWORK_BUFFER_FOR_PLAYBACK_MILLIS,
             NETWORK_BUFFER_AFTER_REBUFFER_MILLIS,
         )
-        .setPrioritizeTimeOverSizeThresholds(true)
+        .setPrioritizeTimeOverSizeThresholdsForStreaming(true)
         .build()
     private val player = ExoPlayer.Builder(applicationContext, renderersFactory)
         .setLoadControl(loadControl)
@@ -420,7 +420,7 @@ class Media3PlaybackEngine(
             audioMimeType = safeDiagnosticValue(audio?.sampleMimeType),
             audioCodecs = safeDiagnosticValue(audio?.codecs),
             audioSampleRate = audio?.sampleRate?.positiveOrNull(),
-            audioChannelCount = audio?.channelCount?.positiveOrNull(),
+            audioChannelCount = audio?.channelCount.positiveOrNull(),
             audioLanguage = safeDiagnosticValue(audio?.language),
         )
     }
