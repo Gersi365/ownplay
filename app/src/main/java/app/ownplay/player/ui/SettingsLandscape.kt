@@ -44,15 +44,20 @@ internal fun LandscapeSettingsShell(
     val configuration = LocalConfiguration.current
     val isTelevision =
         configuration.uiMode and Configuration.UI_MODE_TYPE_MASK == Configuration.UI_MODE_TYPE_TELEVISION
+    val resolvedDestination = if (isTelevision && destination == SettingsDestination.DOWNLOADS) {
+        SettingsDestination.CONTENT
+    } else {
+        destination
+    }
     val selectedRailFocusRequester = remember { FocusRequester() }
-    val selectedRailDestination = when (destination) {
+    val selectedRailDestination = when (resolvedDestination) {
         SettingsDestination.LIVE_MANAGEMENT,
         SettingsDestination.PLAYLISTS,
         -> SettingsDestination.CONTENT
-        else -> destination
+        else -> resolvedDestination
     }
 
-    LaunchedEffect(isTelevision, destination) {
+    LaunchedEffect(isTelevision, resolvedDestination) {
         if (isTelevision) {
             selectedRailFocusRequester.requestFocus()
         }
@@ -79,7 +84,7 @@ internal fun LandscapeSettingsShell(
             color = MaterialTheme.colorScheme.surface,
             tonalElevation = 1.dp,
         ) {
-            when (destination) {
+            when (resolvedDestination) {
                 SettingsDestination.INTERFACE -> LandscapeSectionPage(
                     title = "Interface",
                     subtitle = "Device profile and orientation.",
