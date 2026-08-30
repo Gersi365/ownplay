@@ -14,7 +14,7 @@ concurrency:
 jobs:
   validate-no-apk:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 40
 
     steps:
       - name: Checkout
@@ -37,13 +37,17 @@ jobs:
           test -d "${ANDROID_HOME}/platforms/android-36"
           test -d "${ANDROID_HOME}/build-tools/36.0.0"
 
-      - name: Compile and validate without APK
+      - name: Compile and validate both targets without APK
         run: >-
           gradle
-          :app:kspDebugKotlin
-          :app:testDebugUnitTest
-          :app:lintDebug
-          :app:compileDebugAndroidTestKotlin
+          :app:kspMobileDebugKotlin
+          :app:testMobileDebugUnitTest
+          :app:lintMobileDebug
+          :app:compileMobileDebugAndroidTestKotlin
+          :app:kspTvDebugKotlin
+          :app:testTvDebugUnitTest
+          :app:lintTvDebug
+          :app:compileTvDebugAndroidTestKotlin
           --stacktrace
 
       - name: Verify no APK was produced
