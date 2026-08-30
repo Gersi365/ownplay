@@ -1,7 +1,6 @@
 package app.ownplay.player.ui.library
 
 import android.content.res.Configuration
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -133,6 +132,7 @@ internal fun UnifiedLibraryRoute(
     }
 
     val downloads by downloadRuntime.observeAll().collectAsState(initial = emptyList())
+    val presentationDownloads = if (isTelevision) emptyList() else downloads
     val libraryViewMode by viewModeStore.libraryMode.collectAsState(initial = ContentViewMode.CARDS)
     val vodFlow = remember(sourceId, vodRuntime) {
         sourceId?.let(vodRuntime::observeCatalog) ?: flowOf(VodCatalog())
@@ -189,7 +189,7 @@ internal fun UnifiedLibraryRoute(
         refreshing = false
     }
 
-    val seriesGroups = remember(downloads) { groupLibrarySeries(downloads) }
+    val seriesGroups = remember(presentationDownloads) { groupLibrarySeries(presentationDownloads) }
     val selectedSeriesGroup = selectedSeriesKey?.let { key ->
         seriesGroups.firstOrNull { it.key == key }
     }
@@ -305,8 +305,8 @@ internal fun UnifiedLibraryRoute(
     }
 
     val normalizedQuery = query.trim().lowercase()
-    val movieDownloadsByKey = remember(downloads) {
-        downloads
+    val movieDownloadsByKey = remember(presentationDownloads) {
+        presentationDownloads
             .filter { it.mediaKind == DownloadMediaKinds.MOVIE }
             .associateBy { "${it.sourceId}:${it.contentId}" }
     }
@@ -369,7 +369,7 @@ internal fun UnifiedLibraryRoute(
         if (sourceId == null) emptySet() else vodCatalog.movies.map { "$sourceId:${it.movieId}" }.toSet()
     }
     val orphanedOfflineMovies = remember(
-        downloads,
+        presentationDownloads,
         catalogMovieKeys,
         sourceId,
         filter,
@@ -384,7 +384,7 @@ internal fun UnifiedLibraryRoute(
         ) {
             emptyList()
         } else {
-            downloads.filter { download ->
+            presentationDownloads.filter { download ->
                 download.sourceId == sourceId &&
                     download.mediaKind == DownloadMediaKinds.MOVIE &&
                     download.countsForOfflineFilter() &&
@@ -760,8 +760,6 @@ private fun LibraryCatalogView(
     onRemoveMovie: (OfflineDownload) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    var currentlyFocusedItemKey by remember { mutableStateOf<String?>(null) }
-    val focusRingColor = MaterialTheme.colorScheme.primary
     val focusIndex = remember(focusKeys, focusItemKey) { focusKeys.indexOf(focusItemKey) }
 
     LaunchedEffect(
@@ -787,25 +785,11 @@ private fun LibraryCatalogView(
         } else {
             Modifier
         }
-        val ringModifier = if (currentlyFocusedItemKey == itemKey) {
-            Modifier.border(
-                width = 2.dp,
-                color = focusRingColor,
-                shape = RoundedCornerShape(12.dp),
-            )
-        } else {
-            Modifier
-        }
-        return requesterModifier
-            .then(ringModifier)
-            .onFocusChanged { focusState ->
-                if (focusState.hasFocus) {
-                    currentlyFocusedItemKey = itemKey
-                    onItemFocused(itemKey)
-                } else if (currentlyFocusedItemKey == itemKey) {
-                    currentlyFocusedItemKey = null
-                }
+        return requesterModifier.onFocusChanged { focusState ->
+            if (focusState.hasFocus) {
+                onItemFocused(itemKey)
             }
+        }
     }
 
     when (viewMode) {
@@ -1570,7 +1554,7 @@ private fun OfflineSeriesListRow(
                 text = group.title,
                 style = MaterialTheme.typography.bodyMedium,
                 fontWeight = FontWeight.SemiBold,
-                maxLines = 2,
+                maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
             Text(
