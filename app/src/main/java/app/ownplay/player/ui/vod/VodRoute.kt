@@ -303,13 +303,15 @@ internal fun VodRoute(
         loading = false
     }
 
-    LaunchedEffect(sourceId, catalog.categories, requestedMovieId) {
+    LaunchedEffect(sourceId, catalog.categories, requestedMovieId, selectedMovie?.movieId) {
         if (requestedMovieId != null) return@LaunchedEffect
         val selectedIsValid = catalog.categories.any { category ->
             category.providerCategoryKey == selectedCategoryKey
         }
         if (!selectedIsValid) {
-            selectedCategoryKey = catalog.categories.firstOrNull()?.providerCategoryKey
+            selectedCategoryKey = selectedMovie?.categoryKey
+                ?.takeIf { key -> catalog.categories.any { it.providerCategoryKey == key } }
+                ?: catalog.categories.firstOrNull()?.providerCategoryKey
         }
     }
 
@@ -973,7 +975,6 @@ private fun VodPlaybackScreen(
                 mediaKind = PlaybackMediaKind.MOVIE,
             )
             PlaybackInteractionBridge.clearBackAction(backOwner)
-            onFullscreenStateChanged(false)
         }
     }
 
