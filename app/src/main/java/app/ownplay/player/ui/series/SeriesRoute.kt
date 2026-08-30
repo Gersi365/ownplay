@@ -240,12 +240,24 @@ internal fun SeriesRoute(
         loading = false
     }
 
-    LaunchedEffect(sourceId, requestedSeriesId, catalog.series) {
+    LaunchedEffect(catalog.categories, categoryKey) {
+        val categories = catalog.categories
+        val selected = categoryKey
+        categoryKey = when {
+            categories.isEmpty() -> null
+            selected != null && categories.any { it.providerCategoryKey == selected } -> selected
+            else -> categories.first().providerCategoryKey
+        }
+    }
+
+    LaunchedEffect(sourceId, requestedSeriesId, catalog.series, catalog.categories) {
         val targetSeriesId = requestedSeriesId ?: return@LaunchedEffect
         val target = catalog.series.firstOrNull { item -> item.seriesId == targetSeriesId }
             ?: return@LaunchedEffect
         query = ""
-        categoryKey = null
+        categoryKey = target.categoryKey
+            ?.takeIf { key -> catalog.categories.any { it.providerCategoryKey == key } }
+            ?: catalog.categories.firstOrNull()?.providerCategoryKey
         favoritesOnly = false
         selectedSeasonNumber = null
         selectedEpisodeId = null
@@ -494,15 +506,10 @@ private fun SeriesCatalogPane(
             horizontalArrangement = Arrangement.spacedBy(6.dp),
         ) {
             FilterChip(
-                selected = selectedCategoryKey == null,
-                onClick = { onCategoryChanged(null) },
-                label = { Text("All") },
-                modifier = Modifier.focusRequester(catalogReturnFocusRequester),
-            )
-            FilterChip(
                 selected = favoritesOnly,
                 onClick = { onFavoritesChanged(!favoritesOnly) },
                 label = { Text("Favorites") },
+                modifier = Modifier.focusRequester(catalogReturnFocusRequester),
             )
         }
         LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
