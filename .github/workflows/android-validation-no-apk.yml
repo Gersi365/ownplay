@@ -1,6 +1,6 @@
 name: Android Validation No APK
 
-# Manual validation lane for source/schema checks only. It must never assemble or upload an APK.
+# Source/schema validation for the two independent OwnPlay targets. Never assemble or upload APKs.
 on:
   workflow_dispatch:
 
@@ -14,7 +14,7 @@ concurrency:
 jobs:
   validate-no-apk:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 35
 
     steps:
       - name: Checkout
@@ -37,13 +37,22 @@ jobs:
           test -d "${ANDROID_HOME}/platforms/android-36"
           test -d "${ANDROID_HOME}/build-tools/36.0.0"
 
-      - name: Compile and validate without APK
+      - name: Validate Mobile without APK
         run: >-
           gradle
-          :app:kspDebugKotlin
-          :app:testDebugUnitTest
-          :app:lintDebug
-          :app:compileDebugAndroidTestKotlin
+          :app:kspMobileDebugKotlin
+          :app:testMobileDebugUnitTest
+          :app:lintMobileDebug
+          :app:compileMobileDebugAndroidTestKotlin
+          --stacktrace
+
+      - name: Validate TV without APK
+        run: >-
+          gradle
+          :app:kspTvDebugKotlin
+          :app:testTvDebugUnitTest
+          :app:lintTvDebug
+          :app:compileTvDebugAndroidTestKotlin
           --stacktrace
 
       - name: Verify no APK was produced
