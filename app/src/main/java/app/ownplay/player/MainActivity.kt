@@ -39,6 +39,7 @@ import app.ownplay.player.playback.LiveActivityLifecyclePolicy
 import app.ownplay.player.playback.PlaybackInteractionBridge
 import app.ownplay.player.playback.PlaybackMediaKind
 import app.ownplay.player.playback.PlaybackState
+import app.ownplay.player.target.OwnPlayBuildTarget
 import app.ownplay.player.ui.DeviceProfileSetupScreen
 import app.ownplay.player.ui.DownloadPlaybackBridge
 import app.ownplay.player.ui.OrientationSetupLoadingSurface
@@ -88,7 +89,7 @@ class MainActivity : ComponentActivity() {
                 override fun onDown(e: MotionEvent): Boolean = true
 
                 override fun onDoubleTap(e: MotionEvent): Boolean {
-                    if (!playbackFullscreen) return false
+                    if (!OwnPlayBuildTarget.supportsTouchInput || !playbackFullscreen) return false
                     val mediaKind = currentPlaybackMediaKind()
                     if (
                         mediaKind != PlaybackMediaKind.MOVIE &&
@@ -123,10 +124,11 @@ class MainActivity : ComponentActivity() {
             val deviceProfileSelection by appDeviceProfileStore.observeSelection().collectAsState(
                 initial = AppDeviceProfileSelection.Loading,
             )
-            val configuredProfile =
+            val storedProfile =
                 (deviceProfileSelection as? AppDeviceProfileSelection.Configured)
                     ?.settings
                     ?.profile
+            val configuredProfile = OwnPlayBuildTarget.fixedProfile ?: storedProfile
             val playbackOrigin by runtime.playbackController.resolvedOrigin.collectAsState()
             var downloadPlaybackSession by remember {
                 mutableStateOf<LibraryPlaybackSession?>(null)
@@ -134,15 +136,18 @@ class MainActivity : ComponentActivity() {
             val downloadPlaybackOwner = remember { Any() }
 
             SideEffect {
-                val usesDpad = configuredProfile?.usesDpad == true
-                PlaybackInteractionBridge.setDpadMode(usesDpad)
-                playbackWindowController.updateFullscreenSensorRotationEnabled(!usesDpad)
-                playbackWindowController.updatePictureInPictureEnabled(!usesDpad)
+                PlaybackInteractionBridge.setDpadMode(OwnPlayBuildTarget.usesDpad)
+                playbackWindowController.updateFullscreenSensorRotationEnabled(
+                    OwnPlayBuildTarget.supportsTouchInput,
+                )
+                playbackWindowController.updatePictureInPictureEnabled(
+                    OwnPlayBuildTarget.supportsPictureInPicture,
+                )
                 if (configuredProfile != AppDeviceProfile.SMARTPHONE) {
                     playbackWindowController.updateLivePreviewRotationEnabled(false)
                 }
-                tvRemoteGuardEnabled = usesDpad
-                if (!usesDpad) tvRemoteKeySuppression.clear()
+                tvRemoteGuardEnabled = OwnPlayBuildTarget.usesDpad
+                if (!OwnPlayBuildTarget.usesDpad) tvRemoteKeySuppression.clear()
             }
 
             DisposableEffect(downloadPlaybackOwner) {
@@ -176,13 +181,18 @@ class MainActivity : ComponentActivity() {
             }
 
             OwnPlayTheme(deviceProfile = configuredProfile) {
-                when (deviceProfileSelection) {
-                    AppDeviceProfileSelection.Loading -> {
+                when {
+                    configuredProfile == null &&
+                        deviceProfileSelection == AppDeviceProfileSelection.Loading -> {
                         OrientationSetupLoadingSurface()
                     }
-                    AppDeviceProfileSelection.Unconfigured -> {
+                    configuredProfile == null &&
+                        deviceProfileSelection == AppDeviceProfileSelection.Unconfigured -> {
                         DeviceProfileSetupScreen(
                             onConfigured = { profile, smartphoneOrientation ->
+                                if (profile !in OwnPlayBuildTarget.selectableProfiles) {
+                                    return@DeviceProfileSetupScreen
+                                }
                                 activityScope.launch {
                                     if (
                                         appDeviceProfileStore.configure(
@@ -201,7 +211,7 @@ class MainActivity : ComponentActivity() {
                             },
                         )
                     }
-                    is AppDeviceProfileSelection.Configured -> {
+                    configuredProfile != null -> {
                         Box(modifier = Modifier.fillMaxSize()) {
                             OwnPlayRoot(
                                 runtime = runtime,
@@ -220,14 +230,16 @@ class MainActivity : ComponentActivity() {
                                     playbackWindowController::updatePlaybackSurfaceState,
                                 onLivePreviewActiveChanged = { previewActive ->
                                     playbackWindowController.updateLivePreviewRotationEnabled(
-                                        previewActive &&
+                                        OwnPlayBuildTarget.supportsTouchInput &&
+                                            previewActive &&
                                             configuredProfile == AppDeviceProfile.SMARTPHONE,
                                     )
                                 },
                             )
 
                             when {
-                                isInPictureInPictureMode -> {
+                                isInPictureInPictureMode &&
+                                    OwnPlayBuildTarget.supportsPictureInPicture -> {
                                     PictureInPicturePlaybackSurface(
                                         videoOutput = runtime.playbackVideoOutput,
                                         mediaKind = currentPlaybackMediaKind(),
@@ -298,11 +310,18 @@ class MainActivity : ComponentActivity() {
         }
         playbackWindowController.attachWindowRoot(findViewById(android.R.id.content))
         activityScope.launch {
-            appDeviceProfileStore.observeSelection().collectLatest { selection ->
-                if (selection is AppDeviceProfileSelection.Configured) {
-                    playbackWindowController.updateAppOrientation(
-                        selection.settings.effectiveOrientation,
-                    )
+            val fixedProfile = OwnPlayBuildTarget.fixedProfile
+            if (fixedProfile != null) {
+                playbackWindowController.updateAppOrientation(
+                    configuredOrientation(fixedProfile, smartphoneOrientation = null),
+                )
+            } else {
+                appDeviceProfileStore.observeSelection().collectLatest { selection ->
+                    if (selection is AppDeviceProfileSelection.Configured) {
+                        playbackWindowController.updateAppOrientation(
+                            selection.settings.effectiveOrientation,
+                        )
+                    }
                 }
             }
         }
@@ -352,7 +371,9 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun dispatchTouchEvent(event: MotionEvent): Boolean {
-        playbackGestureDetector.onTouchEvent(event)
+        if (OwnPlayBuildTarget.supportsTouchInput) {
+            playbackGestureDetector.onTouchEvent(event)
+        }
         return super.dispatchTouchEvent(event)
     }
 
@@ -386,7 +407,7 @@ class MainActivity : ComponentActivity() {
                 }
                 LiveActivityBackgroundAction.NONE -> {
                     if (
-                        tvRemoteGuardEnabled &&
+                        OwnPlayBuildTarget.usesDpad &&
                         !isInPictureInPictureMode &&
                         !isChangingConfigurations
                     ) {
@@ -410,7 +431,9 @@ class MainActivity : ComponentActivity() {
 
     override fun onUserLeaveHint() {
         super.onUserLeaveHint()
-        playbackWindowController.onUserLeaveHint()
+        if (OwnPlayBuildTarget.supportsPictureInPicture) {
+            playbackWindowController.onUserLeaveHint()
+        }
     }
 
     override fun onPictureInPictureModeChanged(
