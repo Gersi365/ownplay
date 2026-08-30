@@ -199,7 +199,12 @@ internal fun LandscapeLiveWorkspaceAdaptive(
             channelFocusRequester = channelFocusRequester,
             onPreviewKeyEvent = { event ->
                 if (event.isKeyDown(Key.DirectionRight)) {
-                    if (isTelevision) {
+                    if (
+                        LandscapeLiveFocusPolicy.consumeBrowserRight(
+                            isTelevision = isTelevision,
+                            hasPreview = preview != null,
+                        )
+                    ) {
                         true
                     } else {
                         applyFocusAction(
@@ -359,6 +364,11 @@ internal enum class LandscapeLiveFocusAction {
 }
 
 internal object LandscapeLiveFocusPolicy {
+    fun consumeBrowserRight(
+        isTelevision: Boolean,
+        hasPreview: Boolean,
+    ): Boolean = isTelevision && hasPreview
+
     fun destination(
         current: LandscapeLiveFocusZone,
         action: LandscapeLiveFocusAction,
