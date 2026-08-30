@@ -1,6 +1,5 @@
 package app.ownplay.player.ui
 
-import android.content.res.Configuration
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
@@ -14,8 +13,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.focus.FocusDirection
-import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalFocusManager
+import app.ownplay.player.BuildConfig
 import app.ownplay.player.OwnPlayAppRuntime
 
 @Composable
@@ -27,10 +26,7 @@ fun OwnPlayRoot(
     onLivePreviewActiveChanged: (Boolean) -> Unit = {},
 ) {
     var contentVisible by remember { mutableStateOf(false) }
-    val configuration = LocalConfiguration.current
     val focusManager = LocalFocusManager.current
-    val isTelevision =
-        configuration.uiMode and Configuration.UI_MODE_TYPE_MASK == Configuration.UI_MODE_TYPE_TELEVISION
 
     SideEffect {
         LiveEpgPresentationBridge.bindRuntime(runtime)
@@ -40,8 +36,8 @@ fun OwnPlayRoot(
         contentVisible = true
     }
 
-    LaunchedEffect(isTelevision, contentVisible) {
-        if (isTelevision && contentVisible) {
+    LaunchedEffect(BuildConfig.IS_TV_BUILD, contentVisible) {
+        if (BuildConfig.IS_TV_BUILD && contentVisible) {
             withFrameNanos { }
             if (!focusManager.moveFocus(FocusDirection.Next)) {
                 withFrameNanos { }
@@ -58,7 +54,7 @@ fun OwnPlayRoot(
                 initialScale = 0.985f,
             ),
     ) {
-        OwnPlayApp(
+        TargetOwnPlayApp(
             runtime = runtime,
             rotationFullscreenEnabled = rotationFullscreenEnabled,
             onPlaybackFullscreenChanged = onPlaybackFullscreenChanged,
