@@ -17,7 +17,7 @@ class DeviceSyncDormancyRegressionTest {
             .flatMap { relative -> appFile(relative).walkTopDown().filter(File::isFile).toList() }
             .filter { it.extension == "kt" }
             .filter { it.readText().contains("DeviceSyncLocalMutationWriter") }
-            .map(File::path)
+            .map { it.path }
 
         assertTrue(
             "Deferred Device Sync write-through returned to active product paths: $offenders",
