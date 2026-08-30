@@ -3,7 +3,6 @@ package app.ownplay.player.personalization
 import androidx.room.withTransaction
 import app.ownplay.player.persistence.ChannelCustomizationEntity
 import app.ownplay.player.persistence.OwnPlayDatabase
-import app.ownplay.player.persistence.sync.DeviceSyncLocalMutationWriter
 import kotlinx.coroutines.CancellationException
 
 sealed interface ManualOrderMutationResult {
@@ -20,8 +19,6 @@ sealed interface ManualOrderMutationResult {
 class ManualChannelOrderMutator(
     private val database: OwnPlayDatabase,
 ) {
-    private val syncWriter = DeviceSyncLocalMutationWriter(database)
-
     suspend fun move(
         sourceId: String,
         channelId: String,
@@ -87,12 +84,6 @@ class ManualChannelOrderMutator(
                             existing = existing,
                         )
                         dao.upsertCustomizations(merged)
-                        syncWriter.recordManualOrder(
-                            sourceId = sourceId,
-                            assignments = result.plan.assignments.associate { assignment ->
-                                assignment.channelId to assignment.manualOrder
-                            },
-                        )
                         ManualOrderMutationResult.Success(result.plan)
                     }
                 }

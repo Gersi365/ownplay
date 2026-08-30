@@ -1,6 +1,7 @@
 package app.ownplay.player.ui.library
 
 import androidx.compose.foundation.border
+import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -504,11 +505,20 @@ private fun TvCategoryRailItem(
     ) {
         Text(
             text = name,
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 11.dp),
+            modifier = Modifier
+                .padding(horizontal = 12.dp, vertical = 11.dp)
+                .then(
+                    if (focused) {
+                        Modifier.basicMarquee(iterations = Int.MAX_VALUE)
+                    } else {
+                        Modifier
+                    },
+                ),
             style = MaterialTheme.typography.bodyLarge,
             fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
             maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
+            softWrap = false,
+            overflow = if (focused) TextOverflow.Clip else TextOverflow.Ellipsis,
         )
     }
 }
@@ -696,10 +706,16 @@ private fun TvMediaTile(
             )
             Text(
                 title,
+                modifier = if (focused) {
+                    Modifier.basicMarquee(iterations = Int.MAX_VALUE)
+                } else {
+                    Modifier
+                },
                 style = if (compact) MaterialTheme.typography.labelLarge else MaterialTheme.typography.bodyMedium,
                 fontWeight = FontWeight.SemiBold,
-                maxLines = if (compact) 1 else 2,
-                overflow = TextOverflow.Ellipsis,
+                maxLines = 1,
+                softWrap = false,
+                overflow = if (focused) TextOverflow.Clip else TextOverflow.Ellipsis,
             )
             if (subtitle.isNotBlank()) {
                 Text(
@@ -751,7 +767,19 @@ private fun TvMediaRow(
                 modifier = Modifier.size(width = 54.dp, height = 78.dp),
             )
             Column(modifier = Modifier.weight(1f)) {
-                Text(title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(
+                    title,
+                    modifier = if (focused) {
+                        Modifier.basicMarquee(iterations = Int.MAX_VALUE)
+                    } else {
+                        Modifier
+                    },
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    softWrap = false,
+                    overflow = if (focused) TextOverflow.Clip else TextOverflow.Ellipsis,
+                )
                 if (subtitle.isNotBlank()) {
                     Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }

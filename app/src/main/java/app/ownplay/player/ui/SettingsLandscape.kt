@@ -1,6 +1,5 @@
 package app.ownplay.player.ui
 
-import android.content.res.Configuration
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -19,7 +18,6 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import app.ownplay.player.OwnPlayAppRuntime
@@ -27,6 +25,7 @@ import app.ownplay.player.persistence.PlaylistSourceSummary
 import app.ownplay.player.personalization.AppDeviceProfile
 import app.ownplay.player.personalization.AppOrientationMode
 import app.ownplay.player.source.SourceSyncState
+import app.ownplay.player.target.OwnPlayBuildTarget
 
 @Composable
 internal fun LandscapeSettingsShell(
@@ -41,9 +40,7 @@ internal fun LandscapeSettingsShell(
     onSetOrientation: (AppOrientationMode) -> Unit,
     onOpenSourceInLive: (String) -> Unit,
 ) {
-    val configuration = LocalConfiguration.current
-    val isTelevision =
-        configuration.uiMode and Configuration.UI_MODE_TYPE_MASK == Configuration.UI_MODE_TYPE_TELEVISION
+    val usesDpad = OwnPlayBuildTarget.usesDpad
     val selectedRailFocusRequester = remember { FocusRequester() }
     val selectedRailDestination = when (destination) {
         SettingsDestination.LIVE_MANAGEMENT,
@@ -52,8 +49,8 @@ internal fun LandscapeSettingsShell(
         else -> destination
     }
 
-    LaunchedEffect(isTelevision, destination) {
-        if (isTelevision) {
+    LaunchedEffect(usesDpad, destination) {
+        if (usesDpad) {
             selectedRailFocusRequester.requestFocus()
         }
     }

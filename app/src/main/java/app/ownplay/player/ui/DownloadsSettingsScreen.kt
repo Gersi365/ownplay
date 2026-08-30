@@ -1,6 +1,5 @@
 package app.ownplay.player.ui
 
-import android.content.res.Configuration
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -47,7 +46,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
-import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -57,6 +55,7 @@ import app.ownplay.player.download.OfflineDownloadFeatureRuntime
 import app.ownplay.player.download.queuedDownloadStatusLabel
 import app.ownplay.player.persistence.download.DownloadMediaKinds
 import app.ownplay.player.persistence.download.DownloadStates
+import app.ownplay.player.target.OwnPlayBuildTarget
 import kotlinx.coroutines.launch
 
 @Composable
@@ -65,9 +64,7 @@ internal fun DownloadsSettingsScreen(
     focusBackOnEntry: Boolean = false,
 ) {
     val context = LocalContext.current
-    val configuration = LocalConfiguration.current
-    val isTelevision =
-        configuration.uiMode and Configuration.UI_MODE_TYPE_MASK == Configuration.UI_MODE_TYPE_TELEVISION
+    val usesDpad = OwnPlayBuildTarget.usesDpad
     val backFocusRequester = remember { FocusRequester() }
     val runtime = remember(context) {
         OfflineDownloadFeatureRuntime(context.applicationContext)
@@ -98,8 +95,8 @@ internal fun DownloadsSettingsScreen(
         )
     }
 
-    DisposableEffect(isTelevision, focusReturnOwner) {
-        if (isTelevision) {
+    DisposableEffect(usesDpad, focusReturnOwner) {
+        if (usesDpad) {
             DownloadPlaybackBridge.registerFocusReturn(focusReturnOwner) { downloadId ->
                 focusDownloadId = downloadId
                 focusRequestGeneration += 1
@@ -108,8 +105,8 @@ internal fun DownloadsSettingsScreen(
         onDispose { DownloadPlaybackBridge.clearFocusReturn(focusReturnOwner) }
     }
 
-    LaunchedEffect(isTelevision, focusBackOnEntry, downloadIds.firstOrNull()) {
-        if (!isTelevision || initialDownloadFocusRequested) return@LaunchedEffect
+    LaunchedEffect(usesDpad, focusBackOnEntry, downloadIds.firstOrNull()) {
+        if (!usesDpad || initialDownloadFocusRequested) return@LaunchedEffect
         initialDownloadFocusRequested = true
         if (focusBackOnEntry && onBack != null) {
             withFrameNanos { }
@@ -126,12 +123,12 @@ internal fun DownloadsSettingsScreen(
     }
 
     LaunchedEffect(
-        isTelevision,
+        usesDpad,
         focusDownloadId,
         focusRequestGeneration,
         downloadIds,
     ) {
-        if (!isTelevision || focusRequestGeneration <= 0) return@LaunchedEffect
+        if (!usesDpad || focusRequestGeneration <= 0) return@LaunchedEffect
         val target = focusDownloadId ?: return@LaunchedEffect
         val index = downloadIds.indexOf(target)
         if (index < 0) {

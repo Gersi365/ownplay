@@ -101,6 +101,7 @@ import app.ownplay.player.playback.PlaybackRequest
 import app.ownplay.player.playback.PlaybackState
 import app.ownplay.player.source.SourceError
 import app.ownplay.player.source.SourceResult
+import app.ownplay.player.target.OwnPlayBuildTarget
 import app.ownplay.player.ui.PlaybackOriginBadge
 import app.ownplay.player.ui.library.libraryOfflineStorageLabel
 import app.ownplay.player.vod.VodCatalog
@@ -132,6 +133,7 @@ internal fun VodRoute(
     requestedMovieId: String? = null,
     onRequestedMovieConsumed: () -> Unit = {},
     returnToLibraryOnDetailBack: Boolean = false,
+    standaloneDetailPresentation: Boolean = false,
     onReturnToLibrary: () -> Unit = {},
     onOpenLive: () -> Unit,
     onOpenSeries: () -> Unit,
@@ -397,7 +399,7 @@ internal fun VodRoute(
         return
     }
 
-    if (!isLandscape) {
+    if (standaloneDetailPresentation || !isLandscape) {
         selectedMovie?.let { movie ->
             MovieDetailsPane(
                 movie = movie,
@@ -429,7 +431,7 @@ internal fun VodRoute(
         }
     }
 
-    if (isLandscape) {
+    if (isLandscape && !standaloneDetailPresentation) {
         Row(
             modifier = Modifier
                 .fillMaxSize()
@@ -935,15 +937,12 @@ private fun MovieDetailsPane(
     onPlay: (VodMovie) -> Unit,
     modifier: Modifier,
 ) {
-    val configuration = LocalConfiguration.current
-    val isTelevision =
-        configuration.uiMode and android.content.res.Configuration.UI_MODE_TYPE_MASK ==
-            android.content.res.Configuration.UI_MODE_TYPE_TELEVISION
+    val usesDpad = OwnPlayBuildTarget.usesDpad
     val detailBackFocusRequester = remember(movie.movieId) { FocusRequester() }
     val offlineCopyAvailable = download?.state == DownloadStates.COMPLETED
 
-    LaunchedEffect(isTelevision, focusBackOnEntry, movie.movieId) {
-        if (isTelevision && focusBackOnEntry) {
+    LaunchedEffect(usesDpad, focusBackOnEntry, movie.movieId) {
+        if (usesDpad && focusBackOnEntry) {
             detailBackFocusRequester.requestFocus()
         }
     }
@@ -1194,10 +1193,7 @@ private fun VodPlaybackScreen(
     val playbackState by runtime.playbackController.state.collectAsState()
     val playbackOrigin by runtime.playbackController.resolvedOrigin.collectAsState()
     val playbackControls = PlaybackPresentationPolicy.controlsFor(playbackState)
-    val configuration = LocalConfiguration.current
-    val isTelevision =
-        configuration.uiMode and android.content.res.Configuration.UI_MODE_TYPE_MASK ==
-            android.content.res.Configuration.UI_MODE_TYPE_TELEVISION
+    val usesDpad = OwnPlayBuildTarget.usesDpad
     val scope = rememberCoroutineScope()
     val backOwner = remember(movie.movieId) { Any() }
     val backFocusRequester = remember(movie.movieId) { FocusRequester() }
@@ -1298,8 +1294,8 @@ private fun VodPlaybackScreen(
         }
     }
 
-    LaunchedEffect(isTelevision, controlsVisible, playbackState, movie.movieId) {
-        if (!isTelevision) return@LaunchedEffect
+    LaunchedEffect(usesDpad, controlsVisible, playbackState, movie.movieId) {
+        if (!usesDpad) return@LaunchedEffect
         when {
             playbackState is PlaybackState.Failed -> backFocusRequester.requestFocus()
             controlsVisible -> controlsFocusRequester.requestFocus()
@@ -1307,7 +1303,7 @@ private fun VodPlaybackScreen(
         }
     }
 
-    val remoteWakeModifier = if (isTelevision && !controlsVisible) {
+    val remoteWakeModifier = if (usesDpad && !controlsVisible) {
         Modifier
             .focusRequester(wakeFocusRequester)
             .onKeyEvent { event ->
@@ -1332,7 +1328,7 @@ private fun VodPlaybackScreen(
                 .fillMaxSize()
                 .onPreviewKeyEvent { event ->
                     if (
-                        isTelevision &&
+                        usesDpad &&
                         controlsVisible &&
                         event.nativeKeyEvent.isRemoteNavigationKeyDown()
                     ) {

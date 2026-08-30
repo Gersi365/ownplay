@@ -10,18 +10,24 @@ class ConsumerBrowseNoAggregateCategoryRegressionTest {
     fun `Live exposes only real provider categories`() {
         val liveRoute = source("src/main/java/app/ownplay/player/ui/LiveRoute.kt")
         val liveViews = source("src/main/java/app/ownplay/player/ui/live/PortraitLiveViewModes.kt")
+        val liveManagement = source("src/main/java/app/ownplay/player/ui/LiveManagementScreen.kt")
+        val managementBrowse = source("src/main/java/app/ownplay/player/ui/live/LiveBrowseScreen.kt")
 
         assertTrue(liveRoute.contains("categories.first().providerCategoryKey"))
         assertFalse(liveViews.contains("Text(\"All\")"))
         assertFalse(liveViews.contains("All groups"))
+        assertTrue(liveManagement.contains("categories.first().providerCategoryKey"))
+        assertFalse(managementBrowse.contains("label = { Text(\"All\") }"))
+        assertFalse(managementBrowse.contains("All channels"))
     }
 
     @Test
     fun `Library defaults to Offline and has no aggregate category control`() {
         val library = source("src/main/java/app/ownplay/player/ui/library/UnifiedLibraryRoute.kt")
 
-        assertTrue(library.contains("mutableStateOf(true)"))
-        assertTrue(library.contains("UnifiedLibraryFilter.ALL -> \"Offline\""))
+        assertTrue(library.contains("mutableStateOf(UnifiedLibrarySection.OFFLINE)"))
+        assertFalse(library.contains("UnifiedLibraryFilter"))
+        assertFalse(library.contains("UnifiedLibrarySection.ALL"))
         assertFalse(library.contains("All categories"))
     }
 

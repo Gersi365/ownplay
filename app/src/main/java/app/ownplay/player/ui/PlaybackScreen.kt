@@ -3,7 +3,6 @@ package app.ownplay.player.ui
 import android.app.Activity
 import android.content.Context
 import android.content.ContextWrapper
-import android.content.res.Configuration
 import android.graphics.Color as AndroidColor
 import android.view.KeyEvent
 import androidx.annotation.OptIn
@@ -61,7 +60,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -85,6 +83,7 @@ import app.ownplay.player.playback.PlaybackSubtitleSelection
 import app.ownplay.player.playback.PlaybackTrackOption
 import app.ownplay.player.playback.PlaybackTrackState
 import app.ownplay.player.playback.PlaybackVideoOutput
+import app.ownplay.player.target.OwnPlayBuildTarget
 import kotlinx.coroutines.delay
 
 @OptIn(UnstableApi::class)
@@ -104,9 +103,7 @@ internal fun PlaybackScreen(
     onFullscreenStateChanged: (Boolean) -> Unit,
     onRemoteChannelNavigate: ((PlaybackNavigationDirection) -> Unit)? = null,
 ) {
-    val configuration = LocalConfiguration.current
-    val isTelevision =
-        configuration.uiMode and Configuration.UI_MODE_TYPE_MASK == Configuration.UI_MODE_TYPE_TELEVISION
+    val usesDpad = OwnPlayBuildTarget.usesDpad
     val controlsFocusRequester = remember { FocusRequester() }
     val wakeFocusRequester = remember { FocusRequester() }
     val tracksFocusRequester = remember { FocusRequester() }
@@ -121,7 +118,7 @@ internal fun PlaybackScreen(
 
     fun revealControls() {
         controlsVisible = true
-        if (isTelevision) {
+        if (usesDpad) {
             controlsInteractionToken += 1
         }
     }
@@ -148,14 +145,14 @@ internal fun PlaybackScreen(
     }
 
     LaunchedEffect(
-        isTelevision,
+        usesDpad,
         state,
         controlsVisible,
         showTracks,
         showDiagnostics,
         selection.request.channelId,
     ) {
-        if (!isTelevision) return@LaunchedEffect
+        if (!usesDpad) return@LaunchedEffect
         when {
             showTracks -> tracksFocusRequester.requestFocus()
             showDiagnostics -> diagnosticsFocusRequester.requestFocus()
@@ -176,7 +173,7 @@ internal fun PlaybackScreen(
         }
     }
 
-    val remoteWakeModifier = if (isTelevision && !controlsVisible) {
+    val remoteWakeModifier = if (usesDpad && !controlsVisible) {
         Modifier
             .focusRequester(wakeFocusRequester)
             .onKeyEvent { event ->
@@ -188,6 +185,13 @@ internal fun PlaybackScreen(
                             else -> TvLiveRemoteArrow.OTHER
                         },
                         keyDown = event.nativeKeyEvent.action == KeyEvent.ACTION_DOWN,
+                        inputOwner = when {
+                            showTracks -> TvLiveRemoteInputOwner.TRACK_SELECTION
+                            showDiagnostics -> TvLiveRemoteInputOwner.DIAGNOSTICS
+                            controlsVisible -> TvLiveRemoteInputOwner.PLAYBACK_CONTROLS
+                            state is PlaybackState.Failed -> TvLiveRemoteInputOwner.DIALOG
+                            else -> TvLiveRemoteInputOwner.CHANNELS
+                        },
                     )
                 }
                 when {
@@ -216,7 +220,7 @@ internal fun PlaybackScreen(
                 .fillMaxSize()
                 .onPreviewKeyEvent { event ->
                     if (
-                        isTelevision &&
+                        usesDpad &&
                         controlsVisible &&
                         !showTracks &&
                         !showDiagnostics &&

@@ -32,4 +32,30 @@ class TvLiveRemoteNavigationTest {
     fun unrelatedArrowDoesNotNavigate() {
         assertNull(tvLiveRemoteNavigation(TvLiveRemoteArrow.OTHER, keyDown = true))
     }
+
+    @Test
+    fun controlsMenusDiagnosticsAndDialogsOwnTheDpadWhileVisible() {
+        listOf(
+            TvLiveRemoteInputOwner.PLAYBACK_CONTROLS,
+            TvLiveRemoteInputOwner.TRACK_SELECTION,
+            TvLiveRemoteInputOwner.DIAGNOSTICS,
+            TvLiveRemoteInputOwner.DIALOG,
+        ).forEach { owner ->
+            assertNull(
+                "Channel switching must stay dormant while $owner owns D-pad input",
+                tvLiveRemoteNavigation(
+                    arrow = TvLiveRemoteArrow.UP,
+                    keyDown = true,
+                    inputOwner = owner,
+                ),
+            )
+            assertNull(
+                tvLiveRemoteNavigation(
+                    arrow = TvLiveRemoteArrow.DOWN,
+                    keyDown = true,
+                    inputOwner = owner,
+                ),
+            )
+        }
+    }
 }

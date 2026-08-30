@@ -18,6 +18,21 @@ class TvGalleryCardMetadataRegressionTest {
         assertTrue(card.contains("Modifier.basicMarquee(iterations = Int.MAX_VALUE)"))
         assertTrue(card.contains("maxLines = 1"))
         assertTrue(card.contains("softWrap = false"))
+        assertTrue(card.contains("TvPreviewBadge()"))
+        assertTrue(card.contains("focused -> MaterialTheme.colorScheme.primaryContainer"))
+    }
+
+    @Test
+    fun tvLivePreviewIsInformationalAndKeepsFocusOnTheChannelList() {
+        val source = source("src/main/java/app/ownplay/player/ui/live/TvLiveRoute.kt")
+        val preview = source.substringBetween(
+            "LivePreviewPanel(",
+            "HorizontalDivider()",
+        )
+
+        assertTrue(preview.contains("showActionControls = false"))
+        assertTrue(source.contains("interactive = false"))
+        assertTrue(source.contains("OK opens Preview · OK again opens Fullscreen"))
     }
 
     @Test
@@ -41,6 +56,9 @@ class TvGalleryCardMetadataRegressionTest {
         assertFalse(tile.contains("category"))
         assertFalse(tile.contains("\"Movie\""))
         assertFalse(tile.contains("\"Series\""))
+        assertTrue(tile.contains("if (focused)"))
+        assertTrue(tile.contains("Modifier.basicMarquee(iterations = Int.MAX_VALUE)"))
+        assertTrue(tile.contains("maxLines = 1"))
     }
 
     private fun source(relativeToApp: String): String {

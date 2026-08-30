@@ -1,6 +1,5 @@
 package app.ownplay.player.ui
 
-import android.content.res.Configuration
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.gestures.scrollBy
@@ -37,13 +36,13 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import app.ownplay.player.live.LiveCategory
 import app.ownplay.player.personalization.ManualOrderPlacement
+import app.ownplay.player.target.OwnPlayBuildTarget
 import kotlinx.coroutines.launch
 
 private data class CategoryDropTarget(
@@ -58,9 +57,7 @@ internal fun CategoryReorderSheet(
     onOrderChanged: (List<String>) -> Unit,
     onDismiss: () -> Unit,
 ) {
-    val configuration = LocalConfiguration.current
-    val isTelevision =
-        configuration.uiMode and Configuration.UI_MODE_TYPE_MASK == Configuration.UI_MODE_TYPE_TELEVISION
+    val usesDpad = OwnPlayBuildTarget.usesDpad
     val doneFocusRequester = remember { FocusRequester() }
     var working by remember(categories) { mutableStateOf(categories) }
     var draggedKey by remember { mutableStateOf<String?>(null) }
@@ -70,8 +67,8 @@ internal fun CategoryReorderSheet(
     val listState = rememberLazyListState()
     val scope = rememberCoroutineScope()
 
-    LaunchedEffect(isTelevision) {
-        if (isTelevision) {
+    LaunchedEffect(usesDpad) {
+        if (usesDpad) {
             doneFocusRequester.requestFocus()
         }
     }
@@ -129,7 +126,7 @@ internal fun CategoryReorderSheet(
                         fontWeight = FontWeight.SemiBold,
                     )
                     Text(
-                        text = if (isTelevision) {
+                        text = if (usesDpad) {
                             "Use Up / Down with the remote. Press Done when finished."
                         } else {
                             "Hold the handle, then move the category to its new position."
@@ -138,7 +135,7 @@ internal fun CategoryReorderSheet(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
-                if (isTelevision) {
+                if (usesDpad) {
                     TextButton(
                         onClick = onDismiss,
                         modifier = Modifier.focusRequester(doneFocusRequester),
@@ -162,7 +159,7 @@ internal fun CategoryReorderSheet(
                     val key = category.providerCategoryKey
                     val isDragging = draggedKey == key
                     val isTarget = dropTarget?.anchorKey == key
-                    val handleModifier = if (isTelevision) {
+                    val handleModifier = if (usesDpad) {
                         Modifier
                     } else {
                         Modifier.pointerInput(key, working) {
@@ -257,7 +254,7 @@ internal fun CategoryReorderSheet(
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.spacedBy(12.dp),
                             ) {
-                                if (!isTelevision) {
+                                if (!usesDpad) {
                                     Text(
                                         text = "≡",
                                         modifier = handleModifier
@@ -294,7 +291,7 @@ internal fun CategoryReorderSheet(
                                         )
                                     }
                                 }
-                                if (isTelevision) {
+                                if (usesDpad) {
                                     TextButton(onClick = { moveWithRemote(index, -1) }) {
                                         Text("Up")
                                     }

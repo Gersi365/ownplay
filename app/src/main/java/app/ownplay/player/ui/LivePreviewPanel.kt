@@ -1,6 +1,5 @@
 package app.ownplay.player.ui
 
-import android.content.res.Configuration
 import android.graphics.Color as AndroidColor
 import androidx.annotation.OptIn
 import androidx.compose.animation.AnimatedVisibility
@@ -48,7 +47,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -61,6 +59,7 @@ import app.ownplay.player.playback.PlaybackNavigationDirection
 import app.ownplay.player.playback.PlaybackPresentationPolicy
 import app.ownplay.player.playback.PlaybackState
 import app.ownplay.player.playback.PlaybackVideoOutput
+import app.ownplay.player.target.OwnPlayBuildTarget
 import kotlinx.coroutines.delay
 
 @OptIn(UnstableApi::class)
@@ -75,11 +74,10 @@ internal fun LivePreviewPanel(
     onNavigate: (PlaybackNavigationDirection) -> Unit,
     onOpenFullscreen: () -> Unit,
     onClose: () -> Unit,
+    showActionControls: Boolean = true,
     modifier: Modifier = Modifier,
 ) {
-    val configuration = LocalConfiguration.current
-    val isTelevision =
-        configuration.uiMode and Configuration.UI_MODE_TYPE_MASK == Configuration.UI_MODE_TYPE_TELEVISION
+    val usesDpad = OwnPlayBuildTarget.usesDpad
     val controls = PlaybackPresentationPolicy.controlsFor(state)
     var controlsVisible by remember(selection.request.channelId) { mutableStateOf(true) }
     var interactionToken by remember(selection.request.channelId) { mutableStateOf(0) }
@@ -91,8 +89,8 @@ internal fun LivePreviewPanel(
         interactionToken += 1
     }
 
-    LaunchedEffect(selection.request.channelId, state, interactionToken, isTelevision) {
-        if (isTelevision) {
+    LaunchedEffect(selection.request.channelId, state, interactionToken, usesDpad) {
+        if (usesDpad) {
             controlsVisible = true
             return@LaunchedEffect
         }
@@ -104,8 +102,8 @@ internal fun LivePreviewPanel(
         }
     }
 
-    LaunchedEffect(selection.request.channelId, state, isTelevision) {
-        if (!isTelevision) return@LaunchedEffect
+    LaunchedEffect(selection.request.channelId, state, usesDpad, showActionControls) {
+        if (!usesDpad || !showActionControls) return@LaunchedEffect
         if (state is PlaybackState.Failed) {
             closeFocusRequester.requestFocus()
         } else {
@@ -113,7 +111,7 @@ internal fun LivePreviewPanel(
         }
     }
 
-    val previewInteractionModifier = if (isTelevision) {
+    val previewInteractionModifier = if (usesDpad) {
         Modifier
     } else {
         Modifier.clickable(onClick = ::revealControls)
@@ -192,7 +190,7 @@ internal fun LivePreviewPanel(
                             style = MaterialTheme.typography.bodySmall,
                             fontWeight = FontWeight.Medium,
                         )
-                        if (controls.canRetry) {
+                        if (controls.canRetry && showActionControls) {
                             TextButton(
                                 onClick = {
                                     revealControls()
@@ -247,103 +245,105 @@ internal fun LivePreviewPanel(
                         )
                     }
 
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        PreviewControlSlot {
-                            IconButton(
-                                onClick = {
-                                    revealControls()
-                                    onNavigate(PlaybackNavigationDirection.PREVIOUS)
-                                },
-                                enabled = selection.request.navigationTarget(
-                                    PlaybackNavigationDirection.PREVIOUS,
-                                ) != null,
-                                modifier = Modifier.size(38.dp),
-                            ) {
-                                Icon(
-                                    Icons.Filled.SkipPrevious,
-                                    contentDescription = "Previous channel",
-                                    tint = Color.White,
-                                    modifier = Modifier.size(20.dp),
-                                )
-                            }
-                        }
-                        PreviewControlSlot {
-                            FilledIconButton(
-                                onClick = if (controls.canPause) {
-                                    {
+                    if (showActionControls) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            PreviewControlSlot {
+                                IconButton(
+                                    onClick = {
                                         revealControls()
-                                        onPause()
-                                    }
-                                } else {
-                                    {
-                                        revealControls()
-                                        onPlay()
-                                    }
-                                },
-                                enabled = controls.canPause || controls.canPlay,
-                                modifier = Modifier.size(42.dp),
-                            ) {
-                                Icon(
-                                    imageVector = if (controls.canPause) {
-                                        Icons.Filled.Pause
-                                    } else {
-                                        Icons.Filled.PlayArrow
+                                        onNavigate(PlaybackNavigationDirection.PREVIOUS)
                                     },
-                                    contentDescription = if (controls.canPause) "Pause" else "Play",
-                                    modifier = Modifier.size(22.dp),
-                                )
+                                    enabled = selection.request.navigationTarget(
+                                        PlaybackNavigationDirection.PREVIOUS,
+                                    ) != null,
+                                    modifier = Modifier.size(38.dp),
+                                ) {
+                                    Icon(
+                                        Icons.Filled.SkipPrevious,
+                                        contentDescription = "Previous channel",
+                                        tint = Color.White,
+                                        modifier = Modifier.size(20.dp),
+                                    )
+                                }
                             }
-                        }
-                        PreviewControlSlot {
-                            IconButton(
-                                onClick = {
-                                    revealControls()
-                                    onNavigate(PlaybackNavigationDirection.NEXT)
-                                },
-                                enabled = selection.request.navigationTarget(
-                                    PlaybackNavigationDirection.NEXT,
-                                ) != null,
-                                modifier = Modifier.size(38.dp),
-                            ) {
-                                Icon(
-                                    Icons.Filled.SkipNext,
-                                    contentDescription = "Next channel",
-                                    tint = Color.White,
-                                    modifier = Modifier.size(20.dp),
-                                )
+                            PreviewControlSlot {
+                                FilledIconButton(
+                                    onClick = if (controls.canPause) {
+                                        {
+                                            revealControls()
+                                            onPause()
+                                        }
+                                    } else {
+                                        {
+                                            revealControls()
+                                            onPlay()
+                                        }
+                                    },
+                                    enabled = controls.canPause || controls.canPlay,
+                                    modifier = Modifier.size(42.dp),
+                                ) {
+                                    Icon(
+                                        imageVector = if (controls.canPause) {
+                                            Icons.Filled.Pause
+                                        } else {
+                                            Icons.Filled.PlayArrow
+                                        },
+                                        contentDescription = if (controls.canPause) "Pause" else "Play",
+                                        modifier = Modifier.size(22.dp),
+                                    )
+                                }
                             }
-                        }
-                        PreviewControlSlot {
-                            IconButton(
-                                onClick = onOpenFullscreen,
-                                modifier = Modifier
-                                    .size(38.dp)
-                                    .focusRequester(fullscreenFocusRequester),
-                            ) {
-                                Icon(
-                                    Icons.Filled.Fullscreen,
-                                    contentDescription = "Open full player",
-                                    tint = Color.White,
-                                    modifier = Modifier.size(20.dp),
-                                )
+                            PreviewControlSlot {
+                                IconButton(
+                                    onClick = {
+                                        revealControls()
+                                        onNavigate(PlaybackNavigationDirection.NEXT)
+                                    },
+                                    enabled = selection.request.navigationTarget(
+                                        PlaybackNavigationDirection.NEXT,
+                                    ) != null,
+                                    modifier = Modifier.size(38.dp),
+                                ) {
+                                    Icon(
+                                        Icons.Filled.SkipNext,
+                                        contentDescription = "Next channel",
+                                        tint = Color.White,
+                                        modifier = Modifier.size(20.dp),
+                                    )
+                                }
                             }
-                        }
-                        PreviewControlSlot {
-                            IconButton(
-                                onClick = onClose,
-                                modifier = Modifier
-                                    .size(38.dp)
-                                    .focusRequester(closeFocusRequester),
-                            ) {
-                                Icon(
-                                    Icons.Filled.Close,
-                                    contentDescription = "Close preview",
-                                    tint = Color.White,
-                                    modifier = Modifier.size(20.dp),
-                                )
+                            PreviewControlSlot {
+                                IconButton(
+                                    onClick = onOpenFullscreen,
+                                    modifier = Modifier
+                                        .size(38.dp)
+                                        .focusRequester(fullscreenFocusRequester),
+                                ) {
+                                    Icon(
+                                        Icons.Filled.Fullscreen,
+                                        contentDescription = "Open full player",
+                                        tint = Color.White,
+                                        modifier = Modifier.size(20.dp),
+                                    )
+                                }
+                            }
+                            PreviewControlSlot {
+                                IconButton(
+                                    onClick = onClose,
+                                    modifier = Modifier
+                                        .size(38.dp)
+                                        .focusRequester(closeFocusRequester),
+                                ) {
+                                    Icon(
+                                        Icons.Filled.Close,
+                                        contentDescription = "Close preview",
+                                        tint = Color.White,
+                                        modifier = Modifier.size(20.dp),
+                                    )
+                                }
                             }
                         }
                     }

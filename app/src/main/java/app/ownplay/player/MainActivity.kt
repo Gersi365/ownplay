@@ -171,7 +171,7 @@ class MainActivity : ComponentActivity() {
                 }
             }
 
-            OwnPlayTheme(deviceProfile = configuredProfile) {
+            OwnPlayTheme {
                 when {
                     configuredProfile == null &&
                         deviceProfileSelection == AppDeviceProfileSelection.Loading -> {

@@ -1,6 +1,7 @@
 package app.ownplay.player.ui.live
 
 import android.graphics.BitmapFactory
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.basicMarquee
@@ -19,9 +20,11 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.itemsIndexed as gridItemsIndexed
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -49,13 +52,16 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.input.key.Key
@@ -80,13 +86,11 @@ import app.ownplay.player.playback.LiveChannelSelectionAction
 import app.ownplay.player.playback.LiveChannelSelectionRouter
 import app.ownplay.player.playback.LivePlaybackBrowseContext
 import app.ownplay.player.playback.LivePlaybackSelection
-import app.ownplay.player.playback.PlaybackNavigationDirection
 import app.ownplay.player.playback.PlaybackState
 import app.ownplay.player.playback.PlaybackVideoOutput
 import app.ownplay.player.source.SourceSyncStage
 import app.ownplay.player.source.SourceSyncState
 import app.ownplay.player.source.network.SourceHttpClient
-import app.ownplay.player.ui.EpgGuideSheet
 import app.ownplay.player.ui.EpgPanel
 import app.ownplay.player.ui.LivePreviewPanel
 import app.ownplay.player.ui.view.ContentViewMode
@@ -103,6 +107,40 @@ import okhttp3.Request
 private const val TV_MAX_CHANNEL_LOGO_BYTES = 2 * 1024 * 1024
 private const val TV_MAX_CHANNEL_LOGO_EDGE_PX = 256
 
+internal enum class TvLiveBrowseLevel {
+    CATEGORIES,
+    CHANNELS,
+}
+
+internal enum class TvLiveBackAction {
+    CLOSE_PREVIEW,
+    SHOW_CATEGORIES,
+    EXIT_LIVE,
+}
+
+internal fun tvLiveBackAction(
+    level: TvLiveBrowseLevel,
+    hasPreview: Boolean,
+): TvLiveBackAction = when {
+    hasPreview -> TvLiveBackAction.CLOSE_PREVIEW
+    level == TvLiveBrowseLevel.CHANNELS -> TvLiveBackAction.SHOW_CATEGORIES
+    else -> TvLiveBackAction.EXIT_LIVE
+}
+
+internal enum class TvLiveChannelActivation {
+    OPEN_PREVIEW,
+    OPEN_FULLSCREEN,
+}
+
+internal fun tvLiveChannelActivation(
+    channelId: String,
+    previewChannelId: String?,
+): TvLiveChannelActivation = if (channelId == previewChannelId) {
+    TvLiveChannelActivation.OPEN_FULLSCREEN
+} else {
+    TvLiveChannelActivation.OPEN_PREVIEW
+}
+
 @Composable
 internal fun TvLiveRoute(
     runtime: OwnPlayAppRuntime,
@@ -118,7 +156,6 @@ internal fun TvLiveRoute(
     onPreviewRequested: (LivePlaybackSelection) -> Unit,
     onPreviewClosed: () -> Unit,
     onOpenFullscreen: (LivePlaybackSelection) -> Unit,
-    onNavigatePreview: (PlaybackNavigationDirection) -> Unit,
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
     val browseSession = remember(sourceId) { LiveBrowseSession() }
@@ -130,13 +167,15 @@ internal fun TvLiveRoute(
     val preview = activeSelection?.takeIf { it.request.sourceId == sourceId }
     val categoryFocusRequester = remember(sourceId) { FocusRequester() }
     val firstChannelFocusRequester = remember(sourceId) { FocusRequester() }
+    var browseLevel by rememberSaveable(sourceId) {
+        mutableStateOf(TvLiveBrowseLevel.CATEGORIES)
+    }
+    var rememberedChannelId by rememberSaveable(sourceId) { mutableStateOf<String?>(null) }
 
     var epgSnapshot by remember(sourceId, preview?.request?.channelId) { mutableStateOf<EpgSnapshot?>(null) }
     var currentEpgByChannelId by remember(sourceId) { mutableStateOf<Map<String, EpgProgram>>(emptyMap()) }
     var epgLookupLoading by remember(sourceId, preview?.request?.channelId) { mutableStateOf(false) }
     var epgLookupFailed by remember(sourceId, preview?.request?.channelId) { mutableStateOf(false) }
-    var showEpgGuide by remember(sourceId, preview?.request?.channelId) { mutableStateOf(false) }
-    var initialCategoryFocusRequested by remember(sourceId) { mutableStateOf(false) }
 
     val syncForSource = syncState.sourceId == sourceId
     val loadingChannels = syncForSource && syncState.stage == SourceSyncStage.LoadingChannels
@@ -151,13 +190,31 @@ internal fun TvLiveRoute(
         }
     }
 
-    LaunchedEffect(state.categories, state.query.categoryKey, initialCategoryFocusRequested) {
+    LaunchedEffect(browseLevel, state.categories, state.query.categoryKey) {
         if (
-            !initialCategoryFocusRequested &&
+            browseLevel == TvLiveBrowseLevel.CATEGORIES &&
             state.categories.any { it.providerCategoryKey == state.query.categoryKey }
         ) {
             categoryFocusRequester.requestFocus()
-            initialCategoryFocusRequested = true
+        }
+    }
+
+    LaunchedEffect(preview?.request?.channelId) {
+        if (preview != null) browseLevel = TvLiveBrowseLevel.CHANNELS
+    }
+
+    LaunchedEffect(
+        preview?.request?.channelId,
+        state.channelCategoryKeyById,
+        state.query.categoryKey,
+    ) {
+        val previewCategoryKey = preview
+            ?.request
+            ?.channelId
+            ?.let(state.channelCategoryKeyById::get)
+            ?: return@LaunchedEffect
+        if (previewCategoryKey != state.query.categoryKey) {
+            browseSession.selectCategory(previewCategoryKey)
         }
     }
 
@@ -192,7 +249,15 @@ internal fun TvLiveRoute(
         }
     }
 
-    fun selectChannel(channelId: String) {
+    fun openChannel(channelId: String) {
+        rememberedChannelId = channelId
+        if (
+            tvLiveChannelActivation(channelId, preview?.request?.channelId) ==
+            TvLiveChannelActivation.OPEN_FULLSCREEN
+        ) {
+            preview?.let(onOpenFullscreen)
+            return
+        }
         val channel = state.channels.firstOrNull { it.channelId == channelId } ?: return
         val browseContext = LivePlaybackBrowseContext.capture(sourceId, state.channels)
         when (val action = LiveChannelSelectionRouter.route(channel, false, browseContext)) {
@@ -201,110 +266,202 @@ internal fun TvLiveRoute(
         }
     }
 
-    Row(
+    fun showCategories() {
+        if (preview != null) onPreviewClosed()
+        browseLevel = TvLiveBrowseLevel.CATEGORIES
+    }
+
+    val backAction = tvLiveBackAction(
+        level = browseLevel,
+        hasPreview = preview != null,
+    )
+    BackHandler(enabled = backAction != TvLiveBackAction.EXIT_LIVE) {
+        when (backAction) {
+            TvLiveBackAction.CLOSE_PREVIEW -> onPreviewClosed()
+            TvLiveBackAction.SHOW_CATEGORIES -> showCategories()
+            TvLiveBackAction.EXIT_LIVE -> Unit
+        }
+    }
+
+    Box(
         modifier = Modifier
             .fillMaxSize()
             .padding(horizontal = 12.dp, vertical = 10.dp),
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        TvLiveCategoryRail(
-            categories = state.categories,
-            selectedCategoryKey = state.query.categoryKey,
-            hasChannels = state.channels.isNotEmpty(),
-            selectedFocusRequester = categoryFocusRequester,
-            onMoveToChannels = { firstChannelFocusRequester.requestFocus() },
-            onCategorySelected = browseSession::selectCategory,
-            modifier = Modifier
-                .width(216.dp)
-                .fillMaxHeight(),
-        )
-
-        Column(
-            modifier = Modifier
-                .weight(1f)
-                .fillMaxHeight(),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            TvLiveToolbar(
-                state = state,
-                viewMode = viewMode,
-                onViewModeSelected = { mode -> scope.launch { viewStore.setLiveMode(mode) } },
-                onSearchChange = browseSession::updateSearch,
-                onFavoritesOnlyChanged = browseSession::setFavoritesOnly,
-                onOrderChanged = browseSession::setOrder,
-                onCustomGroupSelected = browseSession::selectCustomGroup,
-            )
-
-            when {
-                loadingChannels && state.catalogChannelCount == 0 -> TvLiveStatus("Loading channels…")
-                refreshFailed && state.catalogChannelCount == 0 -> TvLiveFailure(
-                    onRetry = { scope.launch { runtime.refreshSource(sourceId) } },
-                    onOpenSettings = onOpenSettings,
+        when (browseLevel) {
+            TvLiveBrowseLevel.CATEGORIES -> Column(
+                modifier = Modifier.fillMaxSize(),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                Text(
+                    "Live",
+                    style = MaterialTheme.typography.headlineMedium,
+                    fontWeight = FontWeight.Black,
+                )
+                Text(
+                    "Choose a category, then press OK to browse its channels.",
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                when {
+                    loadingChannels && state.catalogChannelCount == 0 -> {
+                        TvLiveStatus("Loading channels…")
+                    }
+                    refreshFailed && state.catalogChannelCount == 0 -> {
+                        TvLiveFailure(
+                            onRetry = { scope.launch { runtime.refreshSource(sourceId) } },
+                            onOpenSettings = onOpenSettings,
+                        )
+                    }
+                    state.categories.isEmpty() -> {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            Text(
+                                "No channel categories are available.",
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                            TextButton(onClick = onOpenSettings) { Text("Settings") }
+                        }
+                    }
+                }
+                TvLiveCategoryRail(
+                    categories = state.categories,
+                    selectedCategoryKey = state.query.categoryKey,
+                    selectedFocusRequester = categoryFocusRequester,
+                    onCategorySelected = { categoryKey ->
+                        browseSession.selectCategory(categoryKey)
+                        browseLevel = TvLiveBrowseLevel.CHANNELS
+                    },
+                    modifier = Modifier
+                        .width(520.dp)
+                        .weight(1f),
                 )
             }
 
-            Row(
-                modifier = Modifier.weight(1f).fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
+            TvLiveBrowseLevel.CHANNELS -> Column(
+                modifier = Modifier.fillMaxSize(),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                TvLiveChannelView(
-                    channels = state.channels,
-                    playingChannelId = preview?.request?.channelId,
-                    currentEpgByChannelId = currentEpgByChannelId,
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    TextButton(onClick = ::showCategories) { Text("‹ Categories") }
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            state.categories
+                                .firstOrNull {
+                                    it.providerCategoryKey == state.query.categoryKey
+                                }
+                                ?.name
+                                ?: "Channels",
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        Text(
+                            if (preview == null) {
+                                "OK opens Preview · OK again opens Fullscreen"
+                            } else {
+                                "Preview open · OK on the selected channel opens Fullscreen · Back closes Preview"
+                            },
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                        )
+                    }
+                }
+
+                TvLiveToolbar(
+                    state = state,
                     viewMode = viewMode,
-                    firstItemFocusRequester = firstChannelFocusRequester,
-                    onMoveToCategories = { categoryFocusRequester.requestFocus() },
-                    onChannelSelected = ::selectChannel,
-                    modifier = Modifier
-                        .weight(if (preview == null) 1f else 0.64f)
-                        .fillMaxHeight(),
+                    onViewModeSelected = { mode -> scope.launch { viewStore.setLiveMode(mode) } },
+                    onSearchChange = browseSession::updateSearch,
+                    onFavoritesOnlyChanged = browseSession::setFavoritesOnly,
+                    onOrderChanged = browseSession::setOrder,
+                    onCustomGroupSelected = browseSession::selectCustomGroup,
                 )
 
-                if (preview != null) {
-                    Surface(
-                        modifier = Modifier.weight(0.36f).fillMaxHeight(),
-                        shape = RoundedCornerShape(16.dp),
-                        tonalElevation = 2.dp,
-                    ) {
-                        Column(
-                            modifier = Modifier.fillMaxSize().padding(10.dp),
-                            verticalArrangement = Arrangement.spacedBy(10.dp),
+                when {
+                    loadingChannels && state.catalogChannelCount == 0 -> TvLiveStatus("Loading channels…")
+                    refreshFailed && state.catalogChannelCount == 0 -> TvLiveFailure(
+                        onRetry = { scope.launch { runtime.refreshSource(sourceId) } },
+                        onOpenSettings = onOpenSettings,
+                    )
+                }
+
+                Row(
+                    modifier = Modifier.weight(1f).fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    TvLiveChannelView(
+                        channels = state.channels,
+                        playingChannelId = preview?.request?.channelId,
+                        entryFocusChannelId = preview
+                            ?.request
+                            ?.channelId
+                            ?.takeIf { channelId ->
+                                state.channels.any { it.channelId == channelId }
+                            }
+                            ?: rememberedChannelId?.takeIf { channelId ->
+                                state.channels.any { it.channelId == channelId }
+                            }
+                            ?: state.channels.firstOrNull()?.channelId,
+                        currentEpgByChannelId = currentEpgByChannelId,
+                        viewMode = viewMode,
+                        firstItemFocusRequester = firstChannelFocusRequester,
+                        onMoveToCategories = ::showCategories,
+                        onChannelFocused = { rememberedChannelId = it },
+                        onChannelSelected = ::openChannel,
+                        modifier = Modifier
+                            .weight(if (preview == null) 1f else 0.64f)
+                            .fillMaxHeight(),
+                    )
+
+                    if (preview != null) {
+                        Surface(
+                            modifier = Modifier.weight(0.36f).fillMaxHeight(),
+                            shape = RoundedCornerShape(18.dp),
+                            color = MaterialTheme.colorScheme.surfaceContainer,
+                            tonalElevation = 4.dp,
                         ) {
-                            LivePreviewPanel(
-                                selection = preview,
-                                state = playbackState,
-                                videoOutput = videoOutput,
-                                onPlay = onPlay,
-                                onPause = onPause,
-                                onRetry = onRetry,
-                                onNavigate = onNavigatePreview,
-                                onOpenFullscreen = { onOpenFullscreen(preview) },
-                                onClose = onPreviewClosed,
-                                modifier = Modifier.fillMaxWidth(),
-                            )
-                            HorizontalDivider()
-                            EpgPanel(
-                                snapshot = epgSnapshot,
-                                loading = loadingEpg || epgLookupLoading,
-                                failed = epgLookupFailed,
-                                onOpenGuide = { showEpgGuide = true },
-                                modifier = Modifier.fillMaxWidth(),
-                            )
+                            Column(
+                                modifier = Modifier.fillMaxSize().padding(10.dp),
+                                verticalArrangement = Arrangement.spacedBy(10.dp),
+                            ) {
+                                LivePreviewPanel(
+                                    selection = preview,
+                                    state = playbackState,
+                                    videoOutput = videoOutput,
+                                    onPlay = onPlay,
+                                    onPause = onPause,
+                                    onRetry = onRetry,
+                                    onNavigate = {},
+                                    onOpenFullscreen = {},
+                                    onClose = {},
+                                    showActionControls = false,
+                                    modifier = Modifier.fillMaxWidth(),
+                                )
+                                HorizontalDivider()
+                                EpgPanel(
+                                    snapshot = epgSnapshot,
+                                    loading = loadingEpg || epgLookupLoading,
+                                    failed = epgLookupFailed,
+                                    onOpenGuide = {},
+                                    interactive = false,
+                                    modifier = Modifier.fillMaxWidth(),
+                                )
+                            }
                         }
                     }
                 }
             }
         }
-    }
-
-    if (showEpgGuide && preview != null) {
-        EpgGuideSheet(
-            channelName = preview.displayName,
-            snapshot = epgSnapshot,
-            loading = loadingEpg || epgLookupLoading,
-            failed = epgLookupFailed,
-            onDismiss = { showEpgGuide = false },
-        )
     }
 }
 
@@ -312,9 +469,7 @@ internal fun TvLiveRoute(
 private fun TvLiveCategoryRail(
     categories: List<LiveCategory>,
     selectedCategoryKey: String?,
-    hasChannels: Boolean,
     selectedFocusRequester: FocusRequester,
-    onMoveToChannels: () -> Unit,
     onCategorySelected: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -338,30 +493,52 @@ private fun TvLiveCategoryRail(
                             .fillMaxWidth()
                             .then(if (selected) Modifier.focusRequester(selectedFocusRequester) else Modifier)
                             .onFocusChanged { focused = it.isFocused }
-                            .onPreviewKeyEvent { event ->
-                                if (
-                                    hasChannels &&
-                                    event.type == KeyEventType.KeyDown &&
-                                    event.key == Key.DirectionRight
-                                ) {
-                                    onMoveToChannels()
-                                    true
-                                } else {
-                                    false
-                                }
-                            }
+                            .border(
+                                width = if (focused) 3.dp else if (selected) 2.dp else 1.dp,
+                                color = when {
+                                    focused -> MaterialTheme.colorScheme.primary
+                                    selected -> MaterialTheme.colorScheme.secondary
+                                    else -> Color.Transparent
+                                },
+                                shape = RoundedCornerShape(11.dp),
+                            )
                             .clickable { onCategorySelected(category.providerCategoryKey) },
                         shape = RoundedCornerShape(11.dp),
-                        color = if (selected || focused) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface,
+                        color = when {
+                            focused -> MaterialTheme.colorScheme.primaryContainer
+                            selected -> MaterialTheme.colorScheme.secondaryContainer
+                            else -> MaterialTheme.colorScheme.surface
+                        },
+                        tonalElevation = if (focused) 5.dp else 1.dp,
                     ) {
-                        Text(
-                            text = category.name,
-                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 13.dp),
-                            style = MaterialTheme.typography.bodyLarge,
-                            fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 14.dp, vertical = 15.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        ) {
+                            Text(
+                                text = category.name,
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .then(
+                                        if (focused) {
+                                            Modifier.basicMarquee(iterations = Int.MAX_VALUE)
+                                        } else {
+                                            Modifier
+                                        },
+                                    ),
+                                style = MaterialTheme.typography.bodyLarge,
+                                fontWeight = if (selected || focused) FontWeight.Bold else FontWeight.Medium,
+                                maxLines = 1,
+                                softWrap = false,
+                                overflow = if (focused) TextOverflow.Clip else TextOverflow.Ellipsis,
+                            )
+                            if (selected || focused) {
+                                Text("›", style = MaterialTheme.typography.titleLarge)
+                            }
+                        }
                     }
                 }
             }
@@ -466,10 +643,12 @@ private fun TvLiveBrowseMenu(
 private fun TvLiveChannelView(
     channels: List<LiveChannelItem>,
     playingChannelId: String?,
+    entryFocusChannelId: String?,
     currentEpgByChannelId: Map<String, EpgProgram>,
     viewMode: ContentViewMode,
     firstItemFocusRequester: FocusRequester,
     onMoveToCategories: () -> Unit,
+    onChannelFocused: (String) -> Unit,
     onChannelSelected: (String) -> Unit,
     modifier: Modifier,
 ) {
@@ -479,41 +658,70 @@ private fun TvLiveChannelView(
         }
         return
     }
+    val listState = rememberLazyListState()
+    val gridState = rememberLazyGridState()
+    val entryFocusIndex = remember(channels, entryFocusChannelId) {
+        channels.indexOfFirst { channel -> channel.channelId == entryFocusChannelId }
+    }
+
+    LaunchedEffect(viewMode, entryFocusChannelId, entryFocusIndex) {
+        if (entryFocusIndex < 0) return@LaunchedEffect
+        when (viewMode) {
+            ContentViewMode.LIST,
+            ContentViewMode.COMPACT,
+            -> listState.scrollToItem(entryFocusIndex)
+
+            ContentViewMode.CARDS -> gridState.scrollToItem(entryFocusIndex)
+        }
+        withFrameNanos { }
+        firstItemFocusRequester.requestFocus()
+    }
     when (viewMode) {
         ContentViewMode.LIST,
         ContentViewMode.COMPACT,
         -> LazyColumn(
+            state = listState,
             modifier = modifier,
             contentPadding = PaddingValues(bottom = 12.dp),
             verticalArrangement = Arrangement.spacedBy(if (viewMode == ContentViewMode.COMPACT) 3.dp else 6.dp),
         ) {
-            itemsIndexed(channels, key = { _, channel -> channel.channelId }) { index, channel ->
+            itemsIndexed(channels, key = { _, channel -> channel.channelId }) { _, channel ->
                 TvLiveChannelRow(
                     channel = channel,
                     playing = channel.channelId == playingChannelId,
                     currentProgram = currentEpgByChannelId[channel.channelId],
                     compact = viewMode == ContentViewMode.COMPACT,
                     onMoveToCategories = onMoveToCategories,
+                    onFocused = { onChannelFocused(channel.channelId) },
                     onClick = { onChannelSelected(channel.channelId) },
-                    modifier = if (index == 0) Modifier.focusRequester(firstItemFocusRequester) else Modifier,
+                    modifier = if (channel.channelId == entryFocusChannelId) {
+                        Modifier.focusRequester(firstItemFocusRequester)
+                    } else {
+                        Modifier
+                    },
                 )
             }
         }
         ContentViewMode.CARDS -> LazyVerticalGrid(
             columns = GridCells.Adaptive(minSize = 126.dp),
+            state = gridState,
             modifier = modifier,
             contentPadding = PaddingValues(bottom = 12.dp),
             horizontalArrangement = Arrangement.spacedBy(7.dp),
             verticalArrangement = Arrangement.spacedBy(7.dp),
         ) {
-            gridItemsIndexed(channels, key = { _, channel -> channel.channelId }) { index, channel ->
+            gridItemsIndexed(channels, key = { _, channel -> channel.channelId }) { _, channel ->
                 TvLiveChannelCard(
                     channel = channel,
                     playing = channel.channelId == playingChannelId,
                     currentProgram = currentEpgByChannelId[channel.channelId],
-                    onMoveToCategories = onMoveToCategories,
+                    onFocused = { onChannelFocused(channel.channelId) },
                     onClick = { onChannelSelected(channel.channelId) },
-                    modifier = if (index == 0) Modifier.focusRequester(firstItemFocusRequester) else Modifier,
+                    modifier = if (channel.channelId == entryFocusChannelId) {
+                        Modifier.focusRequester(firstItemFocusRequester)
+                    } else {
+                        Modifier
+                    },
                 )
             }
         }
@@ -527,15 +735,25 @@ private fun TvLiveChannelRow(
     currentProgram: EpgProgram?,
     compact: Boolean,
     onMoveToCategories: () -> Unit,
+    onFocused: () -> Unit,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     var focused by remember(channel.channelId) { mutableStateOf(false) }
     val shape = RoundedCornerShape(11.dp)
+    val borderWidth = if (focused) 3.dp else if (playing) 2.dp else 1.dp
+    val borderColor = when {
+        focused -> MaterialTheme.colorScheme.primary
+        playing -> MaterialTheme.colorScheme.tertiary
+        else -> Color.Transparent
+    }
     Surface(
         modifier = modifier
             .fillMaxWidth()
-            .onFocusChanged { focused = it.isFocused }
+            .onFocusChanged {
+                focused = it.isFocused
+                if (it.isFocused) onFocused()
+            }
             .onPreviewKeyEvent { event ->
                 if (event.type == KeyEventType.KeyDown && event.key == Key.DirectionLeft) {
                     onMoveToCategories()
@@ -544,10 +762,15 @@ private fun TvLiveChannelRow(
                     false
                 }
             }
-            .then(if (focused) Modifier.border(2.dp, MaterialTheme.colorScheme.primary, shape) else Modifier)
+            .border(borderWidth, borderColor, shape)
             .clickable(onClick = onClick),
         shape = shape,
-        color = if (playing || focused) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f) else MaterialTheme.colorScheme.surface,
+        color = when {
+            focused -> MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.88f)
+            playing -> MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.72f)
+            else -> MaterialTheme.colorScheme.surface
+        },
+        tonalElevation = if (focused) 6.dp else if (playing) 3.dp else 1.dp,
     ) {
         Row(
             modifier = Modifier.padding(horizontal = 10.dp, vertical = if (compact) 6.dp else 9.dp),
@@ -556,13 +779,24 @@ private fun TvLiveChannelRow(
         ) {
             TvRemoteChannelLogo(channel.logoRef, channel.displayName, Modifier.size(if (compact) 34.dp else 42.dp))
             Column(modifier = Modifier.weight(1f)) {
-                Text(channel.displayName, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(
+                    channel.displayName,
+                    modifier = if (focused) {
+                        Modifier.basicMarquee(iterations = Int.MAX_VALUE)
+                    } else {
+                        Modifier
+                    },
+                    fontWeight = if (focused || playing) FontWeight.Bold else FontWeight.SemiBold,
+                    maxLines = 1,
+                    softWrap = false,
+                    overflow = if (focused) TextOverflow.Clip else TextOverflow.Ellipsis,
+                )
                 currentProgram?.title?.let { title ->
                     Text(title, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
             }
             if (channel.isFavorite) Text("★", color = MaterialTheme.colorScheme.primary)
-            if (playing) Text("▶", color = MaterialTheme.colorScheme.primary)
+            if (playing) TvPreviewBadge()
         }
     }
 }
@@ -572,29 +806,34 @@ private fun TvLiveChannelCard(
     channel: LiveChannelItem,
     playing: Boolean,
     currentProgram: EpgProgram?,
-    onMoveToCategories: () -> Unit,
+    onFocused: () -> Unit,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     var focused by remember(channel.channelId) { mutableStateOf(false) }
     val shape = RoundedCornerShape(12.dp)
+    val borderWidth = if (focused) 3.dp else if (playing) 2.dp else 1.dp
+    val borderColor = when {
+        focused -> MaterialTheme.colorScheme.primary
+        playing -> MaterialTheme.colorScheme.tertiary
+        else -> Color.Transparent
+    }
     Surface(
         modifier = modifier
             .fillMaxWidth()
-            .onFocusChanged { focused = it.isFocused }
-            .onPreviewKeyEvent { event ->
-                if (event.type == KeyEventType.KeyDown && event.key == Key.DirectionLeft) {
-                    onMoveToCategories()
-                    true
-                } else {
-                    false
-                }
+            .onFocusChanged {
+                focused = it.isFocused
+                if (it.isFocused) onFocused()
             }
-            .then(if (focused) Modifier.border(2.dp, MaterialTheme.colorScheme.primary, shape) else Modifier)
+            .border(borderWidth, borderColor, shape)
             .clickable(onClick = onClick),
         shape = shape,
-        color = if (playing || focused) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f) else MaterialTheme.colorScheme.surface,
-        tonalElevation = if (focused) 3.dp else 1.dp,
+        color = when {
+            focused -> MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.88f)
+            playing -> MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.72f)
+            else -> MaterialTheme.colorScheme.surface
+        },
+        tonalElevation = if (focused) 6.dp else if (playing) 3.dp else 1.dp,
     ) {
         Column(modifier = Modifier.padding(7.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Box(
@@ -618,13 +857,30 @@ private fun TvLiveChannelCard(
             if (channel.isFavorite || playing) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.End,
                 ) {
                     if (channel.isFavorite) Text("★", color = MaterialTheme.colorScheme.primary)
-                    if (playing) Text("▶", color = MaterialTheme.colorScheme.primary)
+                    if (playing) TvPreviewBadge()
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun TvPreviewBadge() {
+    Surface(
+        shape = RoundedCornerShape(999.dp),
+        color = MaterialTheme.colorScheme.tertiary,
+    ) {
+        Text(
+            "PREVIEW",
+            modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.dp),
+            style = MaterialTheme.typography.labelSmall,
+            fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.onTertiary,
+        )
     }
 }
 

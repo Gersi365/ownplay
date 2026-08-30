@@ -1,6 +1,5 @@
 package app.ownplay.player.ui.library
 
-import android.content.res.Configuration
 import android.graphics.Color as AndroidColor
 import androidx.activity.compose.BackHandler
 import androidx.annotation.OptIn
@@ -41,7 +40,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -56,6 +54,7 @@ import app.ownplay.player.playback.PlaybackInteractionBridge
 import app.ownplay.player.playback.PlaybackMediaKind
 import app.ownplay.player.playback.PlaybackPresentationPolicy
 import app.ownplay.player.playback.PlaybackState
+import app.ownplay.player.target.OwnPlayBuildTarget
 import app.ownplay.player.ui.playbackStatusLabel
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
@@ -90,9 +89,7 @@ internal fun LibraryPlaybackScreen(
         DownloadMediaKinds.SERIES_EPISODE -> PlaybackMediaKind.SERIES_EPISODE
         else -> null
     }
-    val configuration = LocalConfiguration.current
-    val isTelevision =
-        configuration.uiMode and Configuration.UI_MODE_TYPE_MASK == Configuration.UI_MODE_TYPE_TELEVISION
+    val usesDpad = OwnPlayBuildTarget.usesDpad
     val backOwner = remember(session.download.downloadId) { Any() }
     val backFocusRequester = remember(session.download.downloadId) { FocusRequester() }
     var playerView by remember(session.download.downloadId) { mutableStateOf<PlayerView?>(null) }
@@ -123,8 +120,8 @@ internal fun LibraryPlaybackScreen(
         }
     }
 
-    LaunchedEffect(isTelevision, playerView, playbackState, session.download.downloadId) {
-        if (!isTelevision) return@LaunchedEffect
+    LaunchedEffect(usesDpad, playerView, playbackState, session.download.downloadId) {
+        if (!usesDpad) return@LaunchedEffect
         if (playbackState is PlaybackState.Failed) {
             backFocusRequester.requestFocus()
             return@LaunchedEffect

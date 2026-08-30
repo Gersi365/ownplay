@@ -24,6 +24,7 @@ internal fun EpgPanel(
     loading: Boolean,
     failed: Boolean,
     onOpenGuide: () -> Unit,
+    interactive: Boolean = true,
     modifier: Modifier = Modifier,
 ) {
     val current = snapshot?.current
@@ -33,9 +34,15 @@ internal fun EpgPanel(
     Column(
         modifier = modifier
             .fillMaxWidth()
-            .clickable(
-                enabled = guideAvailable && !loading,
-                onClick = onOpenGuide,
+            .then(
+                if (interactive) {
+                    Modifier.clickable(
+                        enabled = guideAvailable && !loading,
+                        onClick = onOpenGuide,
+                    )
+                } else {
+                    Modifier
+                },
             )
             .padding(horizontal = 4.dp, vertical = 8.dp),
         verticalArrangement = Arrangement.spacedBy(6.dp),
@@ -45,13 +52,13 @@ internal fun EpgPanel(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
-                text = "Program guide",
+                text = if (interactive) "Program guide" else "Now & next",
                 modifier = Modifier.weight(1f),
                 style = MaterialTheme.typography.labelLarge,
                 fontWeight = FontWeight.SemiBold,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            if (guideAvailable && !loading) {
+            if (interactive && guideAvailable && !loading) {
                 Text(
                     text = "View guide",
                     style = MaterialTheme.typography.labelMedium,
