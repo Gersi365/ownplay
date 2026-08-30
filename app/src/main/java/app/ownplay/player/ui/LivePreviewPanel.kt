@@ -67,9 +67,9 @@ internal fun LivePreviewPanel(
 
     Surface(
         modifier = modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(14.dp),
+        shape = RoundedCornerShape(10.dp),
         color = Color.Black,
-        tonalElevation = 1.dp,
+        tonalElevation = 0.dp,
     ) {
         Box(
             modifier = Modifier
@@ -109,9 +109,10 @@ internal fun LivePreviewPanel(
             Surface(
                 modifier = Modifier
                     .align(Alignment.TopStart)
-                    .padding(8.dp),
-                shape = RoundedCornerShape(7.dp),
-                color = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.88f),
+                    .padding(9.dp),
+                shape = RoundedCornerShape(6.dp),
+                color = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.86f),
+                tonalElevation = 0.dp,
             ) {
                 Text(
                     text = "LIVE",
@@ -136,8 +137,9 @@ internal fun LivePreviewPanel(
                     modifier = Modifier
                         .align(Alignment.BottomStart)
                         .padding(10.dp),
-                    shape = RoundedCornerShape(10.dp),
+                    shape = RoundedCornerShape(8.dp),
                     color = MaterialTheme.colorScheme.surface.copy(alpha = 0.90f),
+                    tonalElevation = 0.dp,
                 ) {
                     Column(modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp)) {
                         Text(
