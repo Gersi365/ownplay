@@ -1,8 +1,9 @@
 name: Android Validation No APK
 
-# Manual validation lane for source/schema checks only. It must never assemble or upload an APK.
+# Validation lane for source/schema checks only. It must never assemble or upload an APK.
 on:
   workflow_dispatch:
+  pull_request:
 
 permissions:
   contents: read
