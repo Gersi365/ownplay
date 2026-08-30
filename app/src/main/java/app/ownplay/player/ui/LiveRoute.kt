@@ -91,7 +91,12 @@ internal fun LiveRoute(
         selection.request.sourceId == sourceId
     }
     var hierarchyLevel by remember(sourceId, isTelevision) {
-        mutableStateOf(LiveBrowseHierarchyPolicy.initialLevel(isTelevision))
+        mutableStateOf(
+            LiveBrowseHierarchyPolicy.initialLevel(
+                isTelevision = isTelevision,
+                hasPreview = preview != null,
+            ),
+        )
     }
     val effectiveHierarchyLevel = if (isTelevision) {
         hierarchyLevel
