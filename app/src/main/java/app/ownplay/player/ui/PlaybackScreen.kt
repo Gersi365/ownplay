@@ -71,6 +71,8 @@ import app.ownplay.player.playback.PlaybackState
 import app.ownplay.player.playback.PlaybackSubtitleSelection
 import app.ownplay.player.playback.PlaybackTrackState
 import app.ownplay.player.playback.PlaybackVideoOutput
+import app.ownplay.player.ui.live.LiveFullscreenEpgDirection
+import app.ownplay.player.ui.live.LiveFullscreenEpgPolicy
 import kotlinx.coroutines.delay
 
 private const val LIVE_EPG_AUTO_HIDE_MILLIS = 4_500L
@@ -124,11 +126,12 @@ internal fun PlaybackScreen(
                 .forEach { program -> add(program) }
         }.distinct()
     }
-    val fullGuideIndex = overlayPrograms.size
+    val fullGuideIndex = LiveFullscreenEpgPolicy.fullGuideIndex(overlayPrograms.size)
     val currentProgramIndex = overlayPrograms.indexOf(timeline.current).takeIf { it >= 0 } ?: 0
 
     var epgVisible by remember(selection.request.channelId) { mutableStateOf(true) }
     var epgFocused by remember(selection.request.channelId) { mutableStateOf(false) }
+    var epgLoading by remember(selection.request.channelId) { mutableStateOf(true) }
     var selectedProgramIndex by remember(selection.request.channelId) {
         mutableIntStateOf(currentProgramIndex)
     }
@@ -140,7 +143,7 @@ internal fun PlaybackScreen(
     }
 
     fun openFullGuide() {
-        if (overlayPrograms.isEmpty()) return
+        if (!LiveFullscreenEpgPolicy.canEnterTimeline(overlayPrograms.size)) return
         LiveEpgPresentationBridge.requestFullGuide()
         onReturnToChannels()
     }
@@ -155,12 +158,16 @@ internal fun PlaybackScreen(
     }
 
     LaunchedEffect(selection.request.sourceId, selection.request.channelId) {
-        val exactSnapshot = LiveEpgPresentationBridge.loadSnapshot(
-            sourceId = selection.request.sourceId,
-            channelId = selection.request.channelId,
-        )
-        if (exactSnapshot != null) {
+        epgLoading = true
+        LiveEpgPresentationBridge.publish(null)
+        try {
+            val exactSnapshot = LiveEpgPresentationBridge.loadSnapshot(
+                sourceId = selection.request.sourceId,
+                channelId = selection.request.channelId,
+            )
             LiveEpgPresentationBridge.publish(exactSnapshot)
+        } finally {
+            epgLoading = false
         }
     }
 
@@ -179,8 +186,8 @@ internal fun PlaybackScreen(
         if (!epgFocused) selectedProgramIndex = currentProgramIndex
     }
 
-    LaunchedEffect(epgVisible, epgFocused, interactionGeneration, state) {
-        if (epgVisible && !epgFocused && state is PlaybackState.Playing) {
+    LaunchedEffect(epgVisible, epgFocused, interactionGeneration, state, epgLoading) {
+        if (epgVisible && !epgFocused && !epgLoading && state is PlaybackState.Playing) {
             delay(LIVE_EPG_AUTO_HIDE_MILLIS)
             epgVisible = false
         }
@@ -214,15 +221,23 @@ internal fun PlaybackScreen(
                                         when {
                                             !epgVisible -> revealEpg()
                                             epgFocused &&
-                                                overlayPrograms.isNotEmpty() &&
-                                                selectedProgramIndex == fullGuideIndex -> openFullGuide()
+                                                LiveFullscreenEpgPolicy.isFullGuideSelection(
+                                                    selectedIndex = selectedProgramIndex,
+                                                    programCount = overlayPrograms.size,
+                                                ) -> openFullGuide()
                                             else -> revealEpg()
                                         }
                                         true
                                     }
 
                                     KeyEvent.KEYCODE_DPAD_DOWN -> {
-                                        if (!epgVisible || overlayPrograms.isEmpty()) {
+                                        if (
+                                            !epgVisible ||
+                                            epgLoading ||
+                                            !LiveFullscreenEpgPolicy.canEnterTimeline(
+                                                overlayPrograms.size,
+                                            )
+                                        ) {
                                             false
                                         } else {
                                             epgFocused = true
@@ -248,7 +263,11 @@ internal fun PlaybackScreen(
                                     KeyEvent.KEYCODE_DPAD_LEFT -> {
                                         if (epgFocused) {
                                             selectedProgramIndex =
-                                                (selectedProgramIndex - 1).coerceAtLeast(0)
+                                                LiveFullscreenEpgPolicy.moveSelection(
+                                                    currentIndex = selectedProgramIndex,
+                                                    direction = LiveFullscreenEpgDirection.LEFT,
+                                                    programCount = overlayPrograms.size,
+                                                )
                                             interactionGeneration += 1
                                             true
                                         } else {
@@ -259,7 +278,11 @@ internal fun PlaybackScreen(
                                     KeyEvent.KEYCODE_DPAD_RIGHT -> {
                                         if (epgFocused) {
                                             selectedProgramIndex =
-                                                (selectedProgramIndex + 1).coerceAtMost(fullGuideIndex)
+                                                LiveFullscreenEpgPolicy.moveSelection(
+                                                    currentIndex = selectedProgramIndex,
+                                                    direction = LiveFullscreenEpgDirection.RIGHT,
+                                                    programCount = overlayPrograms.size,
+                                                )
                                             interactionGeneration += 1
                                             true
                                         } else {
@@ -329,6 +352,7 @@ internal fun PlaybackScreen(
                     channelName = selection.displayName,
                     programs = overlayPrograms,
                     currentProgram = timeline.current,
+                    loading = epgLoading,
                     selectedIndex = selectedProgramIndex,
                     focused = epgFocused,
                     fullGuideIndex = fullGuideIndex,
@@ -374,6 +398,7 @@ private fun LiveFullscreenEpgOverlay(
     channelName: String,
     programs: List<EpgProgram>,
     currentProgram: EpgProgram?,
+    loading: Boolean,
     selectedIndex: Int,
     focused: Boolean,
     fullGuideIndex: Int,
@@ -423,14 +448,18 @@ private fun LiveFullscreenEpgOverlay(
                 }
             }
 
-            if (programs.isEmpty()) {
-                Text(
+            when {
+                loading -> Text(
+                    text = "Loading EPG…",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = Color.White.copy(alpha = 0.76f),
+                )
+                programs.isEmpty() -> Text(
                     text = "EPG unavailable for this channel",
                     style = MaterialTheme.typography.bodyMedium,
                     color = Color.White.copy(alpha = 0.76f),
                 )
-            } else {
-                LazyRow(
+                else -> LazyRow(
                     state = listState,
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
