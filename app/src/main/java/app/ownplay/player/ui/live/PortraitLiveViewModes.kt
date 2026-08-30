@@ -146,6 +146,7 @@ internal fun PortraitLiveBrowseWithViewModes(
             showSearch = showSearch,
             tvFocusManagement = isTelevision,
             searchTriggerFocusRequester = searchTriggerFocusRequester,
+            channelFocusRequester = channelFocusRequester,
             onToggleSearch = {
                 if (showSearch) {
                     onSearchChange("")
@@ -184,6 +185,7 @@ internal fun PortraitLiveBrowseWithViewModes(
                                         }
                                         event.type == KeyEventType.KeyDown &&
                                             event.key == Key.DirectionDown &&
+                                            state.channels.isNotEmpty() &&
                                             channelFocusRequester != null -> {
                                             channelFocusRequester.requestFocus()
                                             true
@@ -231,6 +233,7 @@ private fun LiveViewModeToolbar(
     showSearch: Boolean,
     tvFocusManagement: Boolean,
     searchTriggerFocusRequester: FocusRequester,
+    channelFocusRequester: FocusRequester?,
     onToggleSearch: () -> Unit,
     onViewModeSelected: (ContentViewMode) -> Unit,
     onFavoritesOnlyChanged: (Boolean) -> Unit,
@@ -240,6 +243,20 @@ private fun LiveViewModeToolbar(
     Row(
         modifier = Modifier
             .fillMaxWidth()
+            .onPreviewKeyEvent { event ->
+                if (
+                    tvFocusManagement &&
+                    event.type == KeyEventType.KeyDown &&
+                    event.key == Key.DirectionDown &&
+                    state.channels.isNotEmpty() &&
+                    channelFocusRequester != null
+                ) {
+                    channelFocusRequester.requestFocus()
+                    true
+                } else {
+                    false
+                }
+            }
             .padding(horizontal = 8.dp, vertical = 1.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
