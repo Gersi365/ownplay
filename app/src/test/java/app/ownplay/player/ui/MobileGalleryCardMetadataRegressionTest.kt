@@ -21,6 +21,30 @@ class MobileGalleryCardMetadataRegressionTest {
         assertTrue(card.contains("currentProgram?.let"))
     }
 
+    @Test
+    fun `Mobile Library cards omit decorative media type labels`() {
+        val source = source("src/main/java/app/ownplay/player/ui/library/UnifiedLibraryRoute.kt")
+        val movieCard = source.substringBetween(
+            "private fun UnifiedMovieCard(",
+            "private fun UnifiedSeriesCard(",
+        )
+        val seriesCard = source.substringBetween(
+            "private fun UnifiedSeriesCard(",
+            "private fun OfflineOnlyMovieCard(",
+        )
+        val statusPolicy = source.substringBetween(
+            "private fun MovieStatusText(",
+            "private fun movieStatusColor(",
+        )
+
+        assertTrue(movieCard.contains("maxLines = 1"))
+        assertFalse(movieCard.contains("\"Movie\""))
+        assertTrue(seriesCard.contains("maxLines = 1"))
+        assertFalse(seriesCard.contains("\"Series\""))
+        assertFalse(statusPolicy.contains("else -> \"Series\""))
+        assertTrue(source.contains("download == null -> null"))
+    }
+
     private fun source(relativeToApp: String): String {
         val candidates = listOf(
             File(relativeToApp),

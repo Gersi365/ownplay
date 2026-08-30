@@ -1,6 +1,5 @@
 package app.ownplay.player.ui
 
-import android.content.res.Configuration
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -29,13 +28,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import app.ownplay.player.epg.EpgProgram
 import app.ownplay.player.epg.EpgSnapshot
 import app.ownplay.player.epg.EpgTimelineProjector
+import app.ownplay.player.target.OwnPlayBuildTarget
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
@@ -50,9 +49,7 @@ internal fun EpgGuideSheet(
     failed: Boolean,
     onDismiss: () -> Unit,
 ) {
-    val configuration = LocalConfiguration.current
-    val isTelevision =
-        configuration.uiMode and Configuration.UI_MODE_TYPE_MASK == Configuration.UI_MODE_TYPE_TELEVISION
+    val usesDpad = OwnPlayBuildTarget.usesDpad
     val doneFocusRequester = remember { FocusRequester() }
     val nowEpochSeconds = System.currentTimeMillis() / 1_000L
     val timeline = remember(snapshot, nowEpochSeconds) {
@@ -65,8 +62,8 @@ internal fun EpgGuideSheet(
     val listState = rememberLazyListState()
     var selectedProgram by remember { mutableStateOf<EpgProgram?>(null) }
 
-    LaunchedEffect(isTelevision) {
-        if (isTelevision) {
+    LaunchedEffect(usesDpad) {
+        if (usesDpad) {
             doneFocusRequester.requestFocus()
         }
     }
@@ -101,7 +98,7 @@ internal fun EpgGuideSheet(
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
-                if (isTelevision) {
+                if (usesDpad) {
                     TextButton(
                         onClick = onDismiss,
                         modifier = Modifier.focusRequester(doneFocusRequester),

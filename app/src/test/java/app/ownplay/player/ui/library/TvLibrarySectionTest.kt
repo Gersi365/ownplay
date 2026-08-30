@@ -15,4 +15,16 @@ class TvLibrarySectionTest {
             TvLibrarySection.entries,
         )
     }
+
+    @Test
+    fun mobileSectionOrderMatchesTvWithoutAnAggregateAllSection() {
+        assertEquals(
+            listOf(
+                UnifiedLibrarySection.OFFLINE,
+                UnifiedLibrarySection.MOVIES,
+                UnifiedLibrarySection.SERIES,
+            ),
+            UnifiedLibrarySection.entries,
+        )
+    }
 }

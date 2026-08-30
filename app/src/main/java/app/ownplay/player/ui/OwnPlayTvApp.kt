@@ -45,7 +45,7 @@ import app.ownplay.player.ui.library.TvLibraryRoute
 import app.ownplay.player.ui.library.TvLibrarySeriesDetailRoute
 import app.ownplay.player.ui.live.TvLiveRoute
 
-private enum class TvOwnPlaySection {
+internal enum class TvOwnPlaySection {
     HOME,
     LIVE,
     LIBRARY,
@@ -54,17 +54,40 @@ private enum class TvOwnPlaySection {
     SERIES_DETAILS,
 }
 
+internal fun tvPrimarySectionBackDestination(
+    section: TvOwnPlaySection,
+): TvOwnPlaySection? = when (section) {
+    TvOwnPlaySection.LIVE,
+    TvOwnPlaySection.LIBRARY,
+    TvOwnPlaySection.SETTINGS,
+    -> TvOwnPlaySection.HOME
+
+    TvOwnPlaySection.HOME,
+    TvOwnPlaySection.MOVIE_DETAILS,
+    TvOwnPlaySection.SERIES_DETAILS,
+    -> null
+}
+
 internal enum class TvLiveRemoteArrow {
     UP,
     DOWN,
     OTHER,
 }
 
+internal enum class TvLiveRemoteInputOwner {
+    CHANNELS,
+    PLAYBACK_CONTROLS,
+    TRACK_SELECTION,
+    DIAGNOSTICS,
+    DIALOG,
+}
+
 internal fun tvLiveRemoteNavigation(
     arrow: TvLiveRemoteArrow,
     keyDown: Boolean,
+    inputOwner: TvLiveRemoteInputOwner = TvLiveRemoteInputOwner.CHANNELS,
 ): PlaybackNavigationDirection? {
-    if (!keyDown) return null
+    if (!keyDown || inputOwner != TvLiveRemoteInputOwner.CHANNELS) return null
     return when (arrow) {
         TvLiveRemoteArrow.UP -> PlaybackNavigationDirection.PREVIOUS
         TvLiveRemoteArrow.DOWN -> PlaybackNavigationDirection.NEXT
@@ -192,12 +215,9 @@ internal fun OwnPlayTvApp(
         return
     }
 
-    BackHandler(
-        enabled = section == TvOwnPlaySection.LIVE ||
-            section == TvOwnPlaySection.LIBRARY ||
-            section == TvOwnPlaySection.SETTINGS,
-    ) {
-        openSection(TvOwnPlaySection.HOME)
+    val primaryBackDestination = tvPrimarySectionBackDestination(section)
+    BackHandler(enabled = primaryBackDestination != null) {
+        openSection(requireNotNull(primaryBackDestination))
     }
 
     when (section) {
@@ -229,12 +249,6 @@ internal fun OwnPlayTvApp(
                     },
                     onPreviewClosed = { stopLive() },
                     onOpenFullscreen = ::openLiveFullscreen,
-                    onNavigatePreview = { direction ->
-                        activeSelection?.navigate(direction)?.let { target ->
-                            activeSelection = target
-                            runtime.playbackController.start(target.request)
-                        }
-                    },
                 )
             }
         }

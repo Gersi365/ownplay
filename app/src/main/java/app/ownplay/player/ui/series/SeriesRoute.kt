@@ -73,6 +73,7 @@ import app.ownplay.player.series.SeriesSeason
 import app.ownplay.player.series.SeriesSummary
 import app.ownplay.player.source.SourceError
 import app.ownplay.player.source.SourceResult
+import app.ownplay.player.target.OwnPlayBuildTarget
 import app.ownplay.player.ui.PlaybackOriginBadge
 import app.ownplay.player.ui.library.libraryOfflineStorageLabel
 import app.ownplay.player.ui.playbackStatusLabel
@@ -93,6 +94,7 @@ internal fun SeriesRoute(
     requestedSeriesId: String? = null,
     onRequestedSeriesConsumed: () -> Unit = {},
     returnToLibraryOnDetailBack: Boolean = false,
+    standaloneDetailPresentation: Boolean = false,
     onReturnToLibrary: () -> Unit = {},
     onOpenSettings: () -> Unit,
     onFullscreenStateChanged: (Boolean) -> Unit,
@@ -332,7 +334,7 @@ internal fun SeriesRoute(
     }
 
     val portraitSelection = selectedSeries
-    if (!isLandscape && portraitSelection != null) {
+    if ((standaloneDetailPresentation || !isLandscape) && portraitSelection != null) {
         SeriesDetailsPane(
             selected = portraitSelection,
             details = details,
@@ -457,13 +459,11 @@ private fun SeriesCatalogPane(
     onContinueEpisode: (SeriesEpisode) -> Unit,
     modifier: Modifier,
 ) {
-    val configuration = LocalConfiguration.current
-    val isTelevision =
-        configuration.uiMode and Configuration.UI_MODE_TYPE_MASK == Configuration.UI_MODE_TYPE_TELEVISION
+    val usesDpad = OwnPlayBuildTarget.usesDpad
     val catalogReturnFocusRequester = remember { FocusRequester() }
 
-    LaunchedEffect(isTelevision, restoreFocusOnEntry) {
-        if (isTelevision && restoreFocusOnEntry) {
+    LaunchedEffect(usesDpad, restoreFocusOnEntry) {
+        if (usesDpad && restoreFocusOnEntry) {
             catalogReturnFocusRequester.requestFocus()
         }
         if (restoreFocusOnEntry) {
@@ -643,22 +643,20 @@ private fun SeriesDetailsPane(
     onClose: () -> Unit,
     modifier: Modifier,
 ) {
-    val configuration = LocalConfiguration.current
-    val isTelevision =
-        configuration.uiMode and Configuration.UI_MODE_TYPE_MASK == Configuration.UI_MODE_TYPE_TELEVISION
+    val usesDpad = OwnPlayBuildTarget.usesDpad
     val hierarchyBackFocusRequester = remember(selected.seriesId) { FocusRequester() }
     val selectedSeason = details?.seasons?.firstOrNull { it.seasonNumber == selectedSeasonNumber }
     val selectedEpisode = selectedSeason?.episodes?.firstOrNull { it.episodeId == selectedEpisodeId }
 
     LaunchedEffect(
-        isTelevision,
+        usesDpad,
         focusBackOnEntry,
         selected.seriesId,
         selectedSeasonNumber,
         selectedEpisodeId,
     ) {
         if (
-            isTelevision &&
+            usesDpad &&
             (focusBackOnEntry || selectedSeasonNumber != null || selectedEpisodeId != null)
         ) {
             hierarchyBackFocusRequester.requestFocus()
@@ -1139,9 +1137,7 @@ private fun SeriesPlaybackScreen(
     val playbackState by runtime.playbackController.state.collectAsState()
     val playbackOrigin by runtime.playbackController.resolvedOrigin.collectAsState()
     val playbackControls = PlaybackPresentationPolicy.controlsFor(playbackState)
-    val configuration = LocalConfiguration.current
-    val isTelevision =
-        configuration.uiMode and Configuration.UI_MODE_TYPE_MASK == Configuration.UI_MODE_TYPE_TELEVISION
+    val usesDpad = OwnPlayBuildTarget.usesDpad
     val scope = rememberCoroutineScope()
     var playerView by remember { mutableStateOf<PlayerView?>(null) }
     var exitRequested by remember(episode.episodeId) { mutableStateOf(false) }
@@ -1184,8 +1180,8 @@ private fun SeriesPlaybackScreen(
         }
     }
 
-    LaunchedEffect(isTelevision, playbackState, playerView, episode.episodeId) {
-        if (!isTelevision) return@LaunchedEffect
+    LaunchedEffect(usesDpad, playbackState, playerView, episode.episodeId) {
+        if (!usesDpad) return@LaunchedEffect
         if (playbackState is PlaybackState.Failed) {
             backFocusRequester.requestFocus()
             return@LaunchedEffect

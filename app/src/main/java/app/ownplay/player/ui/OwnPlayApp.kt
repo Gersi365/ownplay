@@ -466,6 +466,7 @@ fun OwnPlayApp(
                         requestedMovieId = requestedVodMovieId,
                         onRequestedMovieConsumed = { requestedVodMovieId = null },
                         returnToLibraryOnDetailBack = movieDetailReturnToLibrary,
+                        standaloneDetailPresentation = movieDetailReturnToLibrary,
                         onReturnToLibrary = { openContentSection(OwnPlaySection.LIBRARY) },
                         onOpenLive = { openContentSection(OwnPlaySection.LIVE) },
                         onOpenSeries = { openContentSection(OwnPlaySection.SERIES) },
@@ -483,6 +484,7 @@ fun OwnPlayApp(
                         requestedSeriesId = requestedSeriesId,
                         onRequestedSeriesConsumed = { requestedSeriesId = null },
                         returnToLibraryOnDetailBack = seriesDetailReturnToLibrary,
+                        standaloneDetailPresentation = seriesDetailReturnToLibrary,
                         onReturnToLibrary = { openContentSection(OwnPlaySection.LIBRARY) },
                         onOpenSettings = { openContentSection(OwnPlaySection.SETTINGS) },
                         onFullscreenStateChanged = { fullscreen ->

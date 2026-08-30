@@ -314,13 +314,6 @@ private fun CategoryStripCompact(
         contentPadding = PaddingValues(horizontal = 10.dp, vertical = 2.dp),
         horizontalArrangement = Arrangement.spacedBy(6.dp),
     ) {
-        item(key = "consumer-all") {
-            FilterChip(
-                selected = selectedCategoryKey == null,
-                onClick = { onCategorySelected(null) },
-                label = { Text("All") },
-            )
-        }
         items(
             items = categories,
             key = LiveCategory::providerCategoryKey,
@@ -408,14 +401,6 @@ private fun CategoryColumn(
                 contentPadding = PaddingValues(horizontal = 6.dp, vertical = 6.dp),
                 verticalArrangement = Arrangement.spacedBy(2.dp),
             ) {
-                item(key = "landscape-consumer-all") {
-                    CategoryRowCompact(
-                        title = "All channels",
-                        countLabel = state.catalogChannelCount.toString(),
-                        selected = state.query.categoryKey == null,
-                        onClick = { onCategorySelected(null) },
-                    )
-                }
                 items(
                     items = state.categories,
                     key = LiveCategory::providerCategoryKey,

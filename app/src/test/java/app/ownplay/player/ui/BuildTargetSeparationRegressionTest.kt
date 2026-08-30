@@ -73,6 +73,31 @@ class BuildTargetSeparationRegressionTest {
     }
 
     @Test
+    fun `shared presentation never infers the product target from runtime ui mode`() {
+        val uiRoot = appFile("src/main/java/app/ownplay/player/ui")
+        val offenders = uiRoot.walkTopDown()
+            .filter(File::isFile)
+            .filter { it.extension == "kt" }
+            .filter { file ->
+                val text = file.readText()
+                text.contains("UI_MODE_TYPE_TELEVISION") ||
+                    text.contains("val isTelevision")
+            }
+            .map { it.relativeTo(uiRoot).path }
+            .toList()
+
+        assertTrue(
+            "Runtime product-target detection leaked into shared UI: $offenders",
+            offenders.isEmpty(),
+        )
+
+        val theme = source("src/main/java/app/ownplay/player/ui/theme/Theme.kt")
+        assertTrue(theme.contains("OwnPlayBuildTarget.usesDpad"))
+        assertFalse(theme.contains("LocalConfiguration provides"))
+        assertFalse(theme.contains("deviceProfile.usesDpad"))
+    }
+
+    @Test
     fun `Mobile rejects a legacy TV profile instead of entering the TV layout`() {
         val mobileTarget = source("src/mobile/java/app/ownplay/player/target/OwnPlayBuildTarget.kt")
         val profileStore = source(
@@ -116,13 +141,13 @@ class BuildTargetSeparationRegressionTest {
     }
 
     private fun source(relativeToApp: String): String {
-        val candidates = listOf(
-            File(relativeToApp),
-            File("app/$relativeToApp"),
-        )
-        val file = candidates.firstOrNull(File::isFile)
-            ?: error("Source file not found: $relativeToApp")
-        return file.readText()
+        return appFile(relativeToApp).readText()
+    }
+
+    private fun appFile(relativeToApp: String): File {
+        val candidates = listOf(File(relativeToApp), File("app/$relativeToApp"))
+        return candidates.firstOrNull(File::exists)
+            ?: error("Source path not found: $relativeToApp")
     }
 
     private fun repoSource(path: String): String {

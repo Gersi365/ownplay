@@ -1,9 +1,7 @@
 package app.ownplay.player.personalization
 
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
-import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class AppOrientationStoreTest {
@@ -43,14 +41,6 @@ class AppOrientationStoreTest {
         assertEquals(AppDeviceProfile.TV_BOX, AppDeviceProfile.fromStoredOrNull("tv_box"))
         assertNull(AppDeviceProfile.fromStoredOrNull(null))
         assertNull(AppDeviceProfile.fromStoredOrNull("television"))
-    }
-
-    @Test
-    fun onlyTelevisionProfilesUseDpad() {
-        assertFalse(AppDeviceProfile.SMARTPHONE.usesDpad)
-        assertFalse(AppDeviceProfile.TABLET.usesDpad)
-        assertTrue(AppDeviceProfile.ANDROID_TV.usesDpad)
-        assertTrue(AppDeviceProfile.TV_BOX.usesDpad)
     }
 
     @Test
