@@ -15,6 +15,9 @@ class BuildTargetSeparationRegressionTest {
         assertTrue(gradle.contains("create(\"tv\")"))
         assertTrue(gradle.contains("applicationId = \"app.ownplay.player\""))
         assertTrue(gradle.contains("versionCode = 6"))
+        assertTrue(gradle.contains("versionName = \"0.1.0-dev-qa6-targets\""))
+        assertTrue(gradle.contains("OwnPlay Mobile QA6"))
+        assertTrue(gradle.contains("OwnPlay TV QA6"))
         assertFalse(gradle.contains("applicationIdSuffix"))
     }
 
