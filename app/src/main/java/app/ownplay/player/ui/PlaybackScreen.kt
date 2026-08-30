@@ -330,8 +330,9 @@ internal fun PlaybackScreen(
                     modifier = Modifier
                         .align(Alignment.Center)
                         .padding(24.dp),
-                    shape = RoundedCornerShape(12.dp),
+                    shape = RoundedCornerShape(10.dp),
                     color = MaterialTheme.colorScheme.surface.copy(alpha = 0.92f),
+                    tonalElevation = 0.dp,
                 ) {
                     Text(
                         text = playbackStatusLabel(state),
@@ -417,14 +418,14 @@ private fun LiveFullscreenEpgOverlay(
     Surface(
         modifier = modifier
             .navigationBarsPadding()
-            .padding(horizontal = 12.dp, vertical = 10.dp),
-        shape = RoundedCornerShape(18.dp),
-        color = Color.Black.copy(alpha = 0.78f),
+            .padding(horizontal = 14.dp, vertical = 10.dp),
+        shape = RoundedCornerShape(12.dp),
+        color = Color.Black.copy(alpha = 0.82f),
         tonalElevation = 0.dp,
     ) {
         Column(
             modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
-            verticalArrangement = Arrangement.spacedBy(9.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -440,7 +441,11 @@ private fun LiveFullscreenEpgOverlay(
                         overflow = TextOverflow.Ellipsis,
                     )
                     Text(
-                        text = if (focused) "EPG · ← → browse · ↑ video" else "EPG",
+                        text = if (focused) {
+                            "EPG · ← → browse · ↑ video"
+                        } else {
+                            "EPG · ↓ browse"
+                        },
                         style = MaterialTheme.typography.labelSmall,
                         color = Color.White.copy(alpha = 0.62f),
                         maxLines = 1,
@@ -491,30 +496,32 @@ private fun LiveFullscreenProgramCard(
     onClick: () -> Unit,
 ) {
     val interactionSource = remember { MutableInteractionSource() }
+    val emphasized = selected || current
     Surface(
         modifier = Modifier
-            .width(230.dp)
-            .heightIn(min = 78.dp)
+            .width(224.dp)
+            .heightIn(min = 76.dp)
             .clickable(
                 interactionSource = interactionSource,
                 indication = null,
                 onClick = onClick,
             ),
-        shape = RoundedCornerShape(13.dp),
+        shape = RoundedCornerShape(10.dp),
         color = when {
-            selected -> MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.96f)
-            current -> MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.50f)
-            else -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.86f)
+            selected -> MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.72f)
+            current -> MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.38f)
+            else -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.74f)
         },
+        tonalElevation = 0.dp,
     ) {
         Column(
-            modifier = Modifier.padding(horizontal = 11.dp, vertical = 9.dp),
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 9.dp),
             verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
             Text(
                 text = if (current) "NOW · ${timeRange(program)}" else timeRange(program),
                 style = MaterialTheme.typography.labelSmall,
-                color = if (current || selected) {
+                color = if (emphasized) {
                     MaterialTheme.colorScheme.primary
                 } else {
                     MaterialTheme.colorScheme.onSurfaceVariant
@@ -524,7 +531,11 @@ private fun LiveFullscreenProgramCard(
                 text = program.title,
                 style = MaterialTheme.typography.bodyMedium,
                 fontWeight = FontWeight.Medium,
-                color = MaterialTheme.colorScheme.onSurface,
+                color = if (emphasized) {
+                    MaterialTheme.colorScheme.onPrimaryContainer
+                } else {
+                    MaterialTheme.colorScheme.onSurface
+                },
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
             )
@@ -540,22 +551,23 @@ private fun LiveFullscreenFullGuideCard(
     val interactionSource = remember { MutableInteractionSource() }
     Surface(
         modifier = Modifier
-            .width(150.dp)
-            .heightIn(min = 78.dp)
+            .width(160.dp)
+            .heightIn(min = 76.dp)
             .clickable(
                 interactionSource = interactionSource,
                 indication = null,
                 onClick = onClick,
             ),
-        shape = RoundedCornerShape(13.dp),
+        shape = RoundedCornerShape(10.dp),
         color = if (selected) {
-            MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.96f)
+            MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.72f)
         } else {
-            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.86f)
+            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.74f)
         },
+        tonalElevation = 0.dp,
     ) {
         Column(
-            modifier = Modifier.padding(horizontal = 11.dp, vertical = 9.dp),
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 9.dp),
             verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
             Text(
@@ -567,7 +579,11 @@ private fun LiveFullscreenFullGuideCard(
                 text = "Open guide  →",
                 style = MaterialTheme.typography.bodyMedium,
                 fontWeight = FontWeight.Medium,
-                color = MaterialTheme.colorScheme.onSurface,
+                color = if (selected) {
+                    MaterialTheme.colorScheme.onPrimaryContainer
+                } else {
+                    MaterialTheme.colorScheme.onSurface
+                },
             )
             Text(
                 text = "Returns to Preview",
