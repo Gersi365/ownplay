@@ -41,9 +41,10 @@ import app.ownplay.player.playback.PlaybackVideoOutput
  *
  * No playback/navigation/fullscreen/close buttons are rendered on either mobile or TV. TV keeps
  * focus in the channel browser so a second OK on the selected channel can open fullscreen. Mobile
- * can tap the video surface itself to open fullscreen without introducing a visible control layer.
- * Back/ESC ownership remains in LiveRoute so Preview closes before higher-level navigation.
+ * gets a transparent tap target above PlayerView so tapping video opens fullscreen without adding a
+ * visible control layer. Back/ESC ownership remains in LiveRoute so Preview closes first.
  */
+@Suppress("UNUSED_PARAMETER")
 @OptIn(UnstableApi::class)
 @Composable
 internal fun LivePreviewPanel(
@@ -63,15 +64,6 @@ internal fun LivePreviewPanel(
         configuration.uiMode and Configuration.UI_MODE_TYPE_MASK == Configuration.UI_MODE_TYPE_TELEVISION
     val controls = PlaybackPresentationPolicy.controlsFor(state)
     val interactionSource = remember { MutableInteractionSource() }
-    val openFullscreenModifier = if (isTelevision) {
-        Modifier
-    } else {
-        Modifier.clickable(
-            interactionSource = interactionSource,
-            indication = null,
-            onClick = onOpenFullscreen,
-        )
-    }
 
     Surface(
         modifier = modifier.fillMaxWidth(),
@@ -83,8 +75,7 @@ internal fun LivePreviewPanel(
             modifier = Modifier
                 .fillMaxWidth()
                 .aspectRatio(16f / 9f)
-                .background(Color.Black)
-                .then(openFullscreenModifier),
+                .background(Color.Black),
         ) {
             AndroidView(
                 factory = { context ->
@@ -102,6 +93,18 @@ internal fun LivePreviewPanel(
                 },
                 onRelease = { view -> videoOutput.unbind(view) },
             )
+
+            if (!isTelevision) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .clickable(
+                            interactionSource = interactionSource,
+                            indication = null,
+                            onClick = onOpenFullscreen,
+                        ),
+                )
+            }
 
             Surface(
                 modifier = Modifier
