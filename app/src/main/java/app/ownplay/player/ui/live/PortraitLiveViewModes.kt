@@ -2,6 +2,7 @@ package app.ownplay.player.ui.live
 
 import android.content.res.Configuration
 import android.graphics.BitmapFactory
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -122,6 +123,20 @@ internal fun PortraitLiveBrowseWithViewModes(
         if (!isTelevision || !searchExpanded) return@LaunchedEffect
         withFrameNanos { }
         searchFieldFocusRequester.requestFocus()
+    }
+
+    LaunchedEffect(playingChannelId, isTelevision) {
+        if (isTelevision && playingChannelId != null) {
+            searchExpanded = false
+        }
+    }
+
+    BackHandler(
+        enabled = isTelevision && searchExpanded && playingChannelId == null,
+    ) {
+        onSearchChange("")
+        searchExpanded = false
+        searchTriggerFocusRequester.requestFocus()
     }
 
     Column(modifier = modifier.fillMaxSize()) {
@@ -295,14 +310,18 @@ private fun LiveBrowseOptionsMenu(
     val triggerFocusRequester = remember { FocusRequester() }
     val selectedOrderFocusRequester = remember(state.query.order) { FocusRequester() }
 
+    BackHandler(enabled = tvFocusManagement && expanded) {
+        expanded = false
+    }
+
     LaunchedEffect(expanded, tvFocusManagement, state.query.order) {
-        when (
-            TvPopupFocusPolicy.action(
-                enabled = tvFocusManagement,
-                expanded = expanded,
-                wasExpanded = wasExpanded,
-            )
-        ) {
+        val focusAction = TvPopupFocusPolicy.action(
+            enabled = tvFocusManagement,
+            expanded = expanded,
+            wasExpanded = wasExpanded,
+        )
+        wasExpanded = expanded
+        when (focusAction) {
             TvPopupFocusAction.FOCUS_SELECTED_ITEM -> {
                 withFrameNanos { }
                 selectedOrderFocusRequester.requestFocus()
@@ -313,7 +332,6 @@ private fun LiveBrowseOptionsMenu(
             }
             TvPopupFocusAction.NONE -> Unit
         }
-        wasExpanded = expanded
     }
 
     Box {
