@@ -21,38 +21,40 @@ import app.ownplay.player.personalization.AppDeviceProfile
 import app.ownplay.player.ui.tv.TvRemoteIndication
 
 private val OwnPlayDarkColors = darkColorScheme(
-    primary = Color(0xFF69D6E3),
-    onPrimary = Color(0xFF002F35),
-    primaryContainer = Color(0xFF123F47),
-    onPrimaryContainer = Color(0xFFB7F4FB),
-    secondary = Color(0xFFA9B7FF),
-    onSecondary = Color(0xFF17204C),
-    secondaryContainer = Color(0xFF29325E),
-    onSecondaryContainer = Color(0xFFE0E4FF),
-    tertiary = Color(0xFFFFC66A),
-    onTertiary = Color(0xFF422C00),
-    tertiaryContainer = Color(0xFF5E430A),
-    onTertiaryContainer = Color(0xFFFFE1A8),
-    background = Color(0xFF080B10),
-    onBackground = Color(0xFFF2F5FA),
-    surface = Color(0xFF10151D),
-    onSurface = Color(0xFFF2F5FA),
-    surfaceVariant = Color(0xFF19212C),
-    onSurfaceVariant = Color(0xFFB8C3D1),
-    outline = Color(0xFF3E4A59),
-    outlineVariant = Color(0xFF293442),
+    primary = Color(0xFF83B6FF),
+    onPrimary = Color(0xFF071C38),
+    primaryContainer = Color(0xFF172A43),
+    onPrimaryContainer = Color(0xFFDCEAFF),
+    secondary = Color(0xFF79D9C7),
+    onSecondary = Color(0xFF062C27),
+    // Keep navigation selection geometry visually stable: Material3 can still draw its
+    // indicator, but it blends into the navigation surface and selection is expressed by tint.
+    secondaryContainer = Color(0xFF0D1218),
+    onSecondaryContainer = Color(0xFF83B6FF),
+    tertiary = Color(0xFFF0BE7B),
+    onTertiary = Color(0xFF352507),
+    tertiaryContainer = Color(0xFF493617),
+    onTertiaryContainer = Color(0xFFFFE4BE),
+    background = Color(0xFF07090D),
+    onBackground = Color(0xFFF1F4F8),
+    surface = Color(0xFF0D1218),
+    onSurface = Color(0xFFF1F4F8),
+    surfaceVariant = Color(0xFF151C25),
+    onSurfaceVariant = Color(0xFFAEB9C7),
+    outline = Color(0xFF34404E),
+    outlineVariant = Color(0xFF222C38),
     error = Color(0xFFFFB4AB),
     onError = Color(0xFF690005),
-    errorContainer = Color(0xFF55161A),
+    errorContainer = Color(0xFF501A1E),
     onErrorContainer = Color(0xFFFFDAD6),
 )
 
 private val OwnPlayShapes = Shapes(
-    extraSmall = RoundedCornerShape(8.dp),
-    small = RoundedCornerShape(12.dp),
-    medium = RoundedCornerShape(18.dp),
-    large = RoundedCornerShape(24.dp),
-    extraLarge = RoundedCornerShape(30.dp),
+    extraSmall = RoundedCornerShape(7.dp),
+    small = RoundedCornerShape(10.dp),
+    medium = RoundedCornerShape(14.dp),
+    large = RoundedCornerShape(18.dp),
+    extraLarge = RoundedCornerShape(22.dp),
 )
 
 private val OwnPlayTypography = Typography(
@@ -129,7 +131,7 @@ private val OwnPlayTypography = Typography(
         fontWeight = FontWeight.SemiBold,
         fontSize = 10.sp,
         lineHeight = 14.sp,
-        letterSpacing = 0.6.sp,
+        letterSpacing = 0.5.sp,
     ),
 )
 
