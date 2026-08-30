@@ -143,10 +143,14 @@ internal fun UnifiedLibraryRoute(
     val vodCatalog by vodFlow.collectAsState(initial = VodCatalog())
     val seriesCatalog by seriesFlow.collectAsState(initial = SeriesCatalog())
 
-    var filter by remember { mutableStateOf(UnifiedLibraryFilter.ALL) }
+    var filter by remember(isTelevision) {
+        mutableStateOf(
+            if (isTelevision) UnifiedLibraryFilter.MOVIES else UnifiedLibraryFilter.ALL,
+        )
+    }
     var movieCategoryKey by remember(sourceId) { mutableStateOf<String?>(null) }
     var seriesCategoryKey by remember(sourceId) { mutableStateOf<String?>(null) }
-    var offlineOnly by remember { mutableStateOf(false) }
+    var offlineOnly by remember(isTelevision) { mutableStateOf(!isTelevision) }
     var query by remember { mutableStateOf("") }
     var refreshing by remember(sourceId) { mutableStateOf(false) }
     var refreshWarning by remember(sourceId) { mutableStateOf(false) }
@@ -162,20 +166,29 @@ internal fun UnifiedLibraryRoute(
     var seriesReturnFocusGeneration by remember(sourceId) { mutableIntStateOf(0) }
 
     LaunchedEffect(isTelevision) {
-        if (isTelevision) offlineOnly = false
+        if (isTelevision) {
+            offlineOnly = false
+            if (filter == UnifiedLibraryFilter.ALL) {
+                filter = UnifiedLibraryFilter.MOVIES
+            }
+        }
     }
 
     LaunchedEffect(vodCatalog.categories, movieCategoryKey) {
-        val selected = movieCategoryKey
-        if (selected != null && vodCatalog.categories.none { it.providerCategoryKey == selected }) {
-            movieCategoryKey = null
+        val categories = vodCatalog.categories
+        movieCategoryKey = when {
+            categories.isEmpty() -> null
+            movieCategoryKey != null && categories.any { it.providerCategoryKey == movieCategoryKey } -> movieCategoryKey
+            else -> categories.first().providerCategoryKey
         }
     }
 
     LaunchedEffect(seriesCatalog.categories, seriesCategoryKey) {
-        val selected = seriesCategoryKey
-        if (selected != null && seriesCatalog.categories.none { it.providerCategoryKey == selected }) {
-            seriesCategoryKey = null
+        val categories = seriesCatalog.categories
+        seriesCategoryKey = when {
+            categories.isEmpty() -> null
+            seriesCategoryKey != null && categories.any { it.providerCategoryKey == seriesCategoryKey } -> seriesCategoryKey
+            else -> categories.first().providerCategoryKey
         }
     }
 
@@ -503,28 +516,38 @@ internal fun UnifiedLibraryRoute(
         }
 
         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            UnifiedLibraryFilter.entries.forEach { option ->
+            val visibleFilters = if (isTelevision) {
+                listOf(UnifiedLibraryFilter.MOVIES, UnifiedLibraryFilter.SERIES)
+            } else {
+                UnifiedLibraryFilter.entries
+            }
+            visibleFilters.forEach { option ->
                 FilterChip(
                     selected = filter == option,
-                    onClick = { filter = option },
+                    onClick = {
+                        filter = option
+                        offlineOnly = option == UnifiedLibraryFilter.ALL
+                        query = ""
+                    },
                     label = {
                         Text(
                             when (option) {
-                                UnifiedLibraryFilter.ALL -> "All"
+                                UnifiedLibraryFilter.ALL -> "Offline"
                                 UnifiedLibraryFilter.MOVIES -> "Movies"
                                 UnifiedLibraryFilter.SERIES -> "Series"
                             },
                         )
                     },
-                )
-            }
-            if (!isTelevision) {
-                FilterChip(
-                    selected = offlineOnly,
-                    onClick = { offlineOnly = !offlineOnly },
-                    label = { Text("Offline") },
-                    leadingIcon = {
-                        Icon(Icons.Filled.DownloadDone, contentDescription = null, modifier = Modifier.size(16.dp))
+                    leadingIcon = if (option == UnifiedLibraryFilter.ALL) {
+                        {
+                            Icon(
+                                Icons.Filled.DownloadDone,
+                                contentDescription = null,
+                                modifier = Modifier.size(16.dp),
+                            )
+                        }
+                    } else {
+                        null
                     },
                 )
             }
@@ -555,7 +578,7 @@ internal fun UnifiedLibraryRoute(
             placeholder = {
                 Text(
                     when (filter) {
-                        UnifiedLibraryFilter.ALL -> "Search Library"
+                        UnifiedLibraryFilter.ALL -> "Search Offline"
                         UnifiedLibraryFilter.MOVIES -> "Search Movies"
                         UnifiedLibraryFilter.SERIES -> "Search Series"
                     },
@@ -670,13 +693,6 @@ private fun LibraryCategoryStrip(
             horizontalArrangement = Arrangement.spacedBy(6.dp),
             contentPadding = PaddingValues(end = 12.dp),
         ) {
-            item(key = "all-categories") {
-                FilterChip(
-                    selected = selectedCategoryKey == null,
-                    onClick = { onCategorySelected(null) },
-                    label = { Text("All categories") },
-                )
-            }
             listItems(categories, key = { it.first }) { (categoryKey, categoryName) ->
                 FilterChip(
                     selected = selectedCategoryKey == categoryKey,
