@@ -66,6 +66,21 @@ internal fun HierarchicalLiveBrowse(
     channelFocusRequester: FocusRequester? = null,
     modifier: Modifier = Modifier,
 ) {
+    val resolvedChannelFocusId = if (channelFocusRequester != null) {
+        focusChannelId?.takeIf { candidate ->
+            state.channels.any { channel -> channel.channelId == candidate }
+        } ?: state.channels.firstOrNull()?.channelId
+    } else {
+        focusChannelId
+    }
+    val resolvedFocusRequestGeneration = if (
+        channelFocusRequester != null && resolvedChannelFocusId != null
+    ) {
+        focusRequestGeneration.coerceAtLeast(1)
+    } else {
+        focusRequestGeneration
+    }
+
     when (hierarchyLevel) {
         LiveBrowseHierarchyLevel.CATEGORIES -> LiveCategoryHierarchyPicker(
             state = state,
@@ -85,8 +100,8 @@ internal fun HierarchicalLiveBrowse(
             onOrderChanged = onOrderChanged,
             onCustomGroupSelected = onCustomGroupSelected,
             onChannelSelected = onChannelSelected,
-            focusChannelId = focusChannelId,
-            focusRequestGeneration = focusRequestGeneration,
+            focusChannelId = resolvedChannelFocusId,
+            focusRequestGeneration = resolvedFocusRequestGeneration,
             channelFocusRequester = channelFocusRequester,
             modifier = modifier,
         )
