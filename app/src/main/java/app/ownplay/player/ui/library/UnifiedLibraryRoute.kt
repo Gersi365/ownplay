@@ -161,6 +161,10 @@ internal fun UnifiedLibraryRoute(
     var seriesReturnEpisodeId by remember(sourceId) { mutableStateOf<String?>(null) }
     var seriesReturnFocusGeneration by remember(sourceId) { mutableIntStateOf(0) }
 
+    LaunchedEffect(isTelevision) {
+        if (isTelevision) offlineOnly = false
+    }
+
     LaunchedEffect(vodCatalog.categories, movieCategoryKey) {
         val selected = movieCategoryKey
         if (selected != null && vodCatalog.categories.none { it.providerCategoryKey == selected }) {
@@ -514,14 +518,16 @@ internal fun UnifiedLibraryRoute(
                     },
                 )
             }
-            FilterChip(
-                selected = offlineOnly,
-                onClick = { offlineOnly = !offlineOnly },
-                label = { Text("Offline") },
-                leadingIcon = {
-                    Icon(Icons.Filled.DownloadDone, contentDescription = null, modifier = Modifier.size(16.dp))
-                },
-            )
+            if (!isTelevision) {
+                FilterChip(
+                    selected = offlineOnly,
+                    onClick = { offlineOnly = !offlineOnly },
+                    label = { Text("Offline") },
+                    leadingIcon = {
+                        Icon(Icons.Filled.DownloadDone, contentDescription = null, modifier = Modifier.size(16.dp))
+                    },
+                )
+            }
         }
 
         when (filter) {
@@ -1740,7 +1746,6 @@ private fun movieOfflineLabel(download: OfflineDownload?): String = when {
     download.state == DownloadStates.FAILED -> download.failureReason ?: "Download failed"
     else -> "Movie"
 }
-
 
 private fun libraryCatalogMovieFocusKey(sourceId: String, movieId: String): String =
     "movie:$sourceId:$movieId"
