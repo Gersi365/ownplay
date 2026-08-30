@@ -1,7 +1,6 @@
 package app.ownplay.player.ui.live
 
 import android.content.res.Configuration
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -108,7 +107,7 @@ internal fun HierarchicalLiveBrowse(
             focusChannelId = resolvedChannelFocusId,
             focusRequestGeneration = resolvedFocusRequestGeneration,
             channelFocusRequester = channelFocusRequester,
-            showCategoryStrip = false,
+            showCategoryStrip = !isTelevision,
             modifier = modifier,
         )
     }
@@ -125,27 +124,27 @@ private fun LiveCategoryHierarchyPicker(
         configuration.uiMode and Configuration.UI_MODE_TYPE_MASK == Configuration.UI_MODE_TYPE_TELEVISION
     val preferredCategoryKey = state.query.categoryKey?.takeIf { selected ->
         state.categories.any { category -> category.providerCategoryKey == selected }
-    }
+    } ?: state.categories.firstOrNull()?.providerCategoryKey
     val initialFocusRequester = remember(preferredCategoryKey, state.categories) { FocusRequester() }
 
     LaunchedEffect(isTelevision, preferredCategoryKey, state.categories) {
-        if (!isTelevision) return@LaunchedEffect
+        if (!isTelevision || preferredCategoryKey == null) return@LaunchedEffect
         withFrameNanos { }
         initialFocusRequester.requestFocus()
     }
 
     Column(
         modifier = modifier.fillMaxSize(),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         Column(
-            modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
-            verticalArrangement = Arrangement.spacedBy(2.dp),
+            modifier = Modifier.padding(horizontal = 18.dp, vertical = 14.dp),
+            verticalArrangement = Arrangement.spacedBy(3.dp),
         ) {
             Text(
                 text = "Live categories",
-                style = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.SemiBold,
+                style = MaterialTheme.typography.headlineSmall,
+                fontWeight = FontWeight.Bold,
             )
             Text(
                 text = "Choose a category, then browse its channels.",
@@ -156,24 +155,9 @@ private fun LiveCategoryHierarchyPicker(
 
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
-            verticalArrangement = Arrangement.spacedBy(7.dp),
+            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            item(key = "live-hierarchy-all") {
-                val allModifier = if (preferredCategoryKey == null) {
-                    Modifier.focusRequester(initialFocusRequester)
-                } else {
-                    Modifier
-                }
-                LiveCategoryHierarchyRow(
-                    title = "All channels",
-                    subtitle = "${state.catalogChannelCount} channels",
-                    selected = preferredCategoryKey == null,
-                    onClick = { onCategorySelected(null) },
-                    modifier = allModifier,
-                )
-            }
-
             items(
                 items = state.categories,
                 key = LiveCategory::providerCategoryKey,
@@ -211,23 +195,16 @@ private fun LiveCategoryHierarchyRow(
         modifier = modifier
             .fillMaxWidth()
             .onFocusChanged { focused = it.isFocused },
-        shape = RoundedCornerShape(14.dp),
-        color = if (focused) {
-            MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.94f)
-        } else if (selected) {
-            MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.56f)
-        } else {
-            MaterialTheme.colorScheme.surface
+        shape = RoundedCornerShape(10.dp),
+        color = when {
+            focused -> MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.78f)
+            selected -> MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.42f)
+            else -> MaterialTheme.colorScheme.surface
         },
-        border = when {
-            focused -> BorderStroke(2.dp, MaterialTheme.colorScheme.primary)
-            selected -> BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.58f))
-            else -> null
-        },
-        tonalElevation = if (emphasized) 3.dp else 1.dp,
+        tonalElevation = 0.dp,
     ) {
         Row(
-            modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 11.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(10.dp),
         ) {
@@ -238,14 +215,23 @@ private fun LiveCategoryHierarchyRow(
                 Text(
                     text = title,
                     style = MaterialTheme.typography.bodyLarge,
-                    fontWeight = if (emphasized) FontWeight.SemiBold else FontWeight.Medium,
+                    fontWeight = FontWeight.Medium,
+                    color = if (emphasized) {
+                        MaterialTheme.colorScheme.onPrimaryContainer
+                    } else {
+                        MaterialTheme.colorScheme.onSurface
+                    },
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
                 Text(
                     text = subtitle,
                     style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = if (emphasized) {
+                        MaterialTheme.colorScheme.primary
+                    } else {
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    },
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
@@ -253,7 +239,7 @@ private fun LiveCategoryHierarchyRow(
             Icon(
                 imageVector = Icons.Filled.KeyboardArrowRight,
                 contentDescription = null,
-                tint = if (focused) {
+                tint = if (emphasized) {
                     MaterialTheme.colorScheme.primary
                 } else {
                     MaterialTheme.colorScheme.onSurfaceVariant
