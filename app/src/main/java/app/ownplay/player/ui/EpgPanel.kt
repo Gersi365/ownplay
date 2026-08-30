@@ -6,10 +6,13 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
@@ -30,65 +33,81 @@ internal fun EpgPanel(
     val next = snapshot?.next
     val guideAvailable = snapshot?.programs?.isNotEmpty() == true
 
-    Column(
+    LaunchedEffect(snapshot) {
+        LiveEpgPresentationBridge.publish(snapshot)
+    }
+
+    LaunchedEffect(Unit) {
+        if (LiveEpgPresentationBridge.consumeFullGuideRequest()) {
+            onOpenGuide()
+        }
+    }
+
+    Surface(
         modifier = modifier
             .fillMaxWidth()
             .clickable(
                 enabled = guideAvailable && !loading,
                 onClick = onOpenGuide,
-            )
-            .padding(horizontal = 4.dp, vertical = 8.dp),
-        verticalArrangement = Arrangement.spacedBy(6.dp),
+            ),
+        shape = RoundedCornerShape(14.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.58f),
+        tonalElevation = 0.dp,
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
+        Column(
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+            verticalArrangement = Arrangement.spacedBy(7.dp),
         ) {
-            Text(
-                text = "Program guide",
-                modifier = Modifier.weight(1f),
-                style = MaterialTheme.typography.labelLarge,
-                fontWeight = FontWeight.SemiBold,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            if (guideAvailable && !loading) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
                 Text(
-                    text = "View guide",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.primary,
+                    text = "EPG",
+                    modifier = Modifier.weight(1f),
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
+                if (guideAvailable && !loading) {
+                    Text(
+                        text = "Full guide  →",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                }
             }
-        }
 
-        when {
-            loading -> StatusLine("Updating EPG…")
-            failed -> StatusLine("EPG unavailable")
-            current != null -> {
-                ProgramLine(
-                    prefix = "Now",
-                    program = current,
-                    emphasized = true,
-                )
-                if (next != null) {
-                    HorizontalDivider()
+            when {
+                loading -> StatusLine("Updating EPG…")
+                failed -> StatusLine("EPG unavailable")
+                current != null -> {
                     ProgramLine(
-                        prefix = "Next",
-                        program = next,
-                        emphasized = false,
+                        prefix = "Now",
+                        program = current,
+                        emphasized = true,
                     )
+                    if (next != null) {
+                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                        ProgramLine(
+                            prefix = "Next",
+                            program = next,
+                            emphasized = false,
+                        )
+                    }
                 }
-            }
-            guideAvailable -> {
-                val firstUpcoming = snapshot?.programs?.firstOrNull()
-                if (firstUpcoming != null) {
-                    ProgramLine(
-                        prefix = "Guide",
-                        program = firstUpcoming,
-                        emphasized = false,
-                    )
+                guideAvailable -> {
+                    val firstUpcoming = snapshot?.programs?.firstOrNull()
+                    if (firstUpcoming != null) {
+                        ProgramLine(
+                            prefix = "Guide",
+                            program = firstUpcoming,
+                            emphasized = false,
+                        )
+                    }
                 }
+                else -> StatusLine("No EPG for this channel")
             }
-            else -> StatusLine("No EPG for this channel")
         }
     }
 }
