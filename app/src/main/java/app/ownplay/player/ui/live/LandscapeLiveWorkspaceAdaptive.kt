@@ -1,6 +1,6 @@
 package app.ownplay.player.ui.live
 
-import androidx.activity.compose.BackHandler
+import android.content.res.Configuration
 import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -24,13 +24,13 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEvent
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.unit.dp
 import app.ownplay.player.epg.EpgProgram
 import app.ownplay.player.epg.EpgSnapshot
@@ -47,22 +47,19 @@ import app.ownplay.player.ui.view.ContentViewMode
 /**
  * Landscape Live shell with one consistent browse model across touch and TV layouts.
  *
- * Before a channel is selected, browsing owns the full workspace. Preview and EPG are not
- * rendered at all. Once a channel is selected, the browse area remains available on the left
+ * Live browsing now starts at category level. After a category is chosen the established
+ * List / Compact / Cards channel browser is shown. Before a channel is selected, browsing owns
+ * the full workspace. Once a channel is selected, the browse area remains available on the left
  * while the selected channel owns a dedicated playback/EPG panel on the right.
  *
- * Settings deliberately does not live inside the channel workspace. App-level navigation owns
- * that destination instead of consuming permanent channel-list space.
- *
- * D-pad focus is split into three predictable zones: Browser -> Preview -> EPG. The channel
- * browser owns initial focus, Right enters Preview, Down enters EPG, and Left/Back from either
- * right-side zone returns to the currently active channel. The channel focus request scrolls the
- * active row/card into the viewport before requesting focus, so Preview navigation cannot leave
- * Back pointing at a stale channel.
+ * TV keeps channel focus in the browser after the first OK. The preview has no TV controls, so a
+ * second OK on the same channel is routed by LiveRoute to Fullscreen. Back/ESC precedence is also
+ * owned by LiveRoute: close Preview first, then return Channels -> Categories, then propagate.
  */
 @Composable
 internal fun LandscapeLiveWorkspaceAdaptive(
     state: LiveBrowseState,
+    hierarchyLevel: LiveBrowseHierarchyLevel,
     preview: LivePlaybackSelection?,
     playbackState: PlaybackState,
     videoOutput: PlaybackVideoOutput,
@@ -87,6 +84,9 @@ internal fun LandscapeLiveWorkspaceAdaptive(
     onOpenEpgGuide: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val configuration = LocalConfiguration.current
+    val isTelevision =
+        configuration.uiMode and Configuration.UI_MODE_TYPE_MASK == Configuration.UI_MODE_TYPE_TELEVISION
     val channelFocusRequester = remember { FocusRequester() }
     val previewFocusRequester = remember { FocusRequester() }
     val epgFocusRequester = remember { FocusRequester() }
@@ -95,8 +95,6 @@ internal fun LandscapeLiveWorkspaceAdaptive(
     var initialBrowserFocusRequested by remember { mutableStateOf(false) }
     var previousPreviewChannelId by remember { mutableStateOf<String?>(null) }
     var lastPreviewChannelId by remember { mutableStateOf<String?>(null) }
-    var previewZoneHasFocus by remember { mutableStateOf(false) }
-    var epgZoneHasFocus by remember { mutableStateOf(false) }
 
     fun requestChannelFocus(preferredChannelId: String?) {
         val visibleTarget = preferredChannelId?.takeIf { candidate ->
@@ -127,9 +125,17 @@ internal fun LandscapeLiveWorkspaceAdaptive(
     }
 
     LaunchedEffect(
+        hierarchyLevel,
         state.channels.firstOrNull()?.channelId,
         preview?.request?.channelId,
     ) {
+        if (hierarchyLevel == LiveBrowseHierarchyLevel.CATEGORIES) {
+            initialBrowserFocusRequested = false
+            focusChannelId = null
+            previousPreviewChannelId = preview?.request?.channelId
+            return@LaunchedEffect
+        }
+
         val currentPreviewChannelId = preview?.request?.channelId
         if (currentPreviewChannelId != null) {
             lastPreviewChannelId = currentPreviewChannelId
@@ -144,18 +150,10 @@ internal fun LandscapeLiveWorkspaceAdaptive(
         previousPreviewChannelId = currentPreviewChannelId
     }
 
-    BackHandler(
-        enabled = preview != null && (previewZoneHasFocus || epgZoneHasFocus),
-    ) {
-        applyFocusAction(
-            zone = if (epgZoneHasFocus) LandscapeLiveFocusZone.EPG else LandscapeLiveFocusZone.PREVIEW,
-            action = LandscapeLiveFocusAction.BACK,
-        )
-    }
-
     if (preview == null) {
         LandscapeBrowseSurface(
             state = state,
+            hierarchyLevel = hierarchyLevel,
             playingChannelId = null,
             currentEpgByChannelId = currentEpgByChannelId,
             viewMode = viewMode,
@@ -185,6 +183,7 @@ internal fun LandscapeLiveWorkspaceAdaptive(
     ) {
         LandscapeBrowseSurface(
             state = state,
+            hierarchyLevel = hierarchyLevel,
             playingChannelId = preview.request.channelId,
             currentEpgByChannelId = currentEpgByChannelId,
             viewMode = viewMode,
@@ -199,7 +198,7 @@ internal fun LandscapeLiveWorkspaceAdaptive(
             focusRequestGeneration = channelFocusRequestGeneration,
             channelFocusRequester = channelFocusRequester,
             onPreviewKeyEvent = { event ->
-                if (event.isKeyDown(Key.DirectionRight)) {
+                if (!isTelevision && event.isKeyDown(Key.DirectionRight)) {
                     applyFocusAction(
                         zone = LandscapeLiveFocusZone.BROWSER,
                         action = LandscapeLiveFocusAction.RIGHT,
@@ -231,9 +230,6 @@ internal fun LandscapeLiveWorkspaceAdaptive(
                     modifier = Modifier
                         .fillMaxWidth()
                         .focusRequester(previewFocusRequester)
-                        .onFocusChanged { focusState ->
-                            previewZoneHasFocus = focusState.hasFocus
-                        }
                         .onPreviewKeyEvent { event ->
                             when {
                                 event.isKeyDown(Key.DirectionLeft) -> applyFocusAction(
@@ -269,9 +265,6 @@ internal fun LandscapeLiveWorkspaceAdaptive(
                     modifier = Modifier
                         .fillMaxWidth()
                         .focusRequester(epgFocusRequester)
-                        .onFocusChanged { focusState ->
-                            epgZoneHasFocus = focusState.hasFocus
-                        }
                         .onPreviewKeyEvent { event ->
                             when {
                                 event.isKeyDown(Key.DirectionLeft) -> applyFocusAction(
@@ -303,6 +296,7 @@ internal fun LandscapeLiveWorkspaceAdaptive(
 @Composable
 private fun LandscapeBrowseSurface(
     state: LiveBrowseState,
+    hierarchyLevel: LiveBrowseHierarchyLevel,
     playingChannelId: String?,
     currentEpgByChannelId: Map<String, EpgProgram>,
     viewMode: ContentViewMode,
@@ -325,8 +319,9 @@ private fun LandscapeBrowseSurface(
         color = MaterialTheme.colorScheme.background,
         tonalElevation = 1.dp,
     ) {
-        PortraitLiveBrowseWithViewModes(
+        HierarchicalLiveBrowse(
             state = state,
+            hierarchyLevel = hierarchyLevel,
             playingChannelId = playingChannelId,
             currentEpgByChannelId = currentEpgByChannelId,
             viewMode = viewMode,

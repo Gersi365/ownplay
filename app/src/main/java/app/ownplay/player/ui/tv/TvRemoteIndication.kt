@@ -69,7 +69,12 @@ private class TvRemoteIndicationNode(
         }
 
         if (focusCount > 0) {
-            val strokeWidth = 3.dp.toPx()
+            drawRoundRect(
+                color = focusColor,
+                alpha = 0.13f,
+                cornerRadius = CornerRadius(10.dp.toPx()),
+            )
+            val strokeWidth = 4.dp.toPx()
             drawRoundRect(
                 color = focusColor,
                 cornerRadius = CornerRadius(10.dp.toPx()),

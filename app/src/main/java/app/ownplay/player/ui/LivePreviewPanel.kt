@@ -81,19 +81,22 @@ internal fun LivePreviewPanel(
     val isTelevision =
         configuration.uiMode and Configuration.UI_MODE_TYPE_MASK == Configuration.UI_MODE_TYPE_TELEVISION
     val controls = PlaybackPresentationPolicy.controlsFor(state)
-    var controlsVisible by remember(selection.request.channelId) { mutableStateOf(true) }
+    var controlsVisible by remember(selection.request.channelId, isTelevision) {
+        mutableStateOf(!isTelevision)
+    }
     var interactionToken by remember(selection.request.channelId) { mutableStateOf(0) }
     val fullscreenFocusRequester = remember(selection.request.channelId) { FocusRequester() }
     val closeFocusRequester = remember(selection.request.channelId) { FocusRequester() }
 
     fun revealControls() {
+        if (isTelevision) return
         controlsVisible = true
         interactionToken += 1
     }
 
     LaunchedEffect(selection.request.channelId, state, interactionToken, isTelevision) {
         if (isTelevision) {
-            controlsVisible = true
+            controlsVisible = false
             return@LaunchedEffect
         }
         if (state is PlaybackState.Playing) {
@@ -101,15 +104,6 @@ internal fun LivePreviewPanel(
             controlsVisible = false
         } else {
             controlsVisible = true
-        }
-    }
-
-    LaunchedEffect(selection.request.channelId, state, isTelevision) {
-        if (!isTelevision) return@LaunchedEffect
-        if (state is PlaybackState.Failed) {
-            closeFocusRequester.requestFocus()
-        } else {
-            fullscreenFocusRequester.requestFocus()
         }
     }
 
@@ -192,7 +186,7 @@ internal fun LivePreviewPanel(
                             style = MaterialTheme.typography.bodySmall,
                             fontWeight = FontWeight.Medium,
                         )
-                        if (controls.canRetry) {
+                        if (!isTelevision && controls.canRetry) {
                             TextButton(
                                 onClick = {
                                     revealControls()
@@ -207,7 +201,7 @@ internal fun LivePreviewPanel(
             }
 
             AnimatedVisibility(
-                visible = controlsVisible || state !is PlaybackState.Playing,
+                visible = !isTelevision && (controlsVisible || state !is PlaybackState.Playing),
                 modifier = Modifier.align(Alignment.BottomCenter),
                 enter = fadeIn(tween(150)) +
                     slideInVertically(
