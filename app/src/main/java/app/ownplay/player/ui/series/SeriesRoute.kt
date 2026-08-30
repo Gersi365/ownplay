@@ -998,7 +998,10 @@ private fun EpisodeRow(
     onResumeDownload: (OfflineDownload) -> Unit,
     onClearProgress: () -> Unit,
 ) {
-    val offlineCopyAvailable = download?.state == DownloadStates.COMPLETED
+    val configuration = LocalConfiguration.current
+    val isTelevision =
+        configuration.uiMode and Configuration.UI_MODE_TYPE_MASK == Configuration.UI_MODE_TYPE_TELEVISION
+    val offlineCopyAvailable = !isTelevision && download?.state == DownloadStates.COMPLETED
     val rowModifier = if (onOpen == null) {
         Modifier.fillMaxWidth()
     } else {
@@ -1052,7 +1055,7 @@ private fun EpisodeRow(
                     },
                 )
             }
-            if (!offlineCopyAvailable) {
+            if (!isTelevision && !offlineCopyAvailable) {
                 Button(
                     onClick = {
                         when (download?.state) {
@@ -1081,7 +1084,7 @@ private fun EpisodeRow(
                 TextButton(onClick = onClearProgress) { Text("Clear") }
             }
         }
-        if (offlineCopyAvailable) {
+        if (!isTelevision && offlineCopyAvailable) {
             Text(
                 text = "Downloaded · Offline copy",
                 modifier = Modifier.padding(top = 5.dp),
@@ -1091,11 +1094,12 @@ private fun EpisodeRow(
             )
         }
         if (
-            download?.state == DownloadStates.DOWNLOADING ||
-            download?.state == DownloadStates.QUEUED ||
-            download?.state == DownloadStates.PAUSED
+            !isTelevision &&
+            (download?.state == DownloadStates.DOWNLOADING ||
+                download?.state == DownloadStates.QUEUED ||
+                download?.state == DownloadStates.PAUSED)
         ) {
-            val fraction = download.progressFraction
+            val fraction = download?.progressFraction
             if (fraction == null) {
                 LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
             } else {
@@ -1104,14 +1108,18 @@ private fun EpisodeRow(
                     modifier = Modifier.fillMaxWidth(),
                 )
             }
-            Text(
-                downloadProgressLabel(download),
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+            download?.let { managedDownload ->
+                Text(
+                    downloadProgressLabel(managedDownload),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
         }
-        download?.failureReason?.takeIf { download.state == DownloadStates.FAILED }?.let {
-            Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.labelSmall)
+        if (!isTelevision) {
+            download?.failureReason?.takeIf { download.state == DownloadStates.FAILED }?.let {
+                Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.labelSmall)
+            }
         }
         HorizontalDivider(modifier = Modifier.padding(top = 8.dp))
     }
