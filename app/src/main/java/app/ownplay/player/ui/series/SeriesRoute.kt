@@ -238,12 +238,26 @@ internal fun SeriesRoute(
         loading = false
     }
 
-    LaunchedEffect(sourceId, requestedSeriesId, catalog.series) {
+    LaunchedEffect(sourceId, catalog.categories, requestedSeriesId, selectedSeries?.seriesId) {
+        if (requestedSeriesId != null) return@LaunchedEffect
+        val selectedIsValid = catalog.categories.any { category ->
+            category.providerCategoryKey == categoryKey
+        }
+        if (!selectedIsValid) {
+            categoryKey = selectedSeries?.categoryKey
+                ?.takeIf { key -> catalog.categories.any { it.providerCategoryKey == key } }
+                ?: catalog.categories.firstOrNull()?.providerCategoryKey
+        }
+    }
+
+    LaunchedEffect(sourceId, requestedSeriesId, catalog.series, catalog.categories) {
         val targetSeriesId = requestedSeriesId ?: return@LaunchedEffect
         val target = catalog.series.firstOrNull { item -> item.seriesId == targetSeriesId }
             ?: return@LaunchedEffect
         query = ""
-        categoryKey = null
+        categoryKey = target.categoryKey
+            ?.takeIf { key -> catalog.categories.any { it.providerCategoryKey == key } }
+            ?: catalog.categories.firstOrNull()?.providerCategoryKey
         favoritesOnly = false
         selectedSeasonNumber = null
         selectedEpisodeId = null
@@ -447,8 +461,11 @@ private fun SeriesCatalogPane(
     val isTelevision =
         configuration.uiMode and Configuration.UI_MODE_TYPE_MASK == Configuration.UI_MODE_TYPE_TELEVISION
     val catalogReturnFocusRequester = remember { FocusRequester() }
+    val focusCategoryKey = selectedCategoryKey
+        ?.takeIf { key -> catalog.categories.any { it.providerCategoryKey == key } }
+        ?: catalog.categories.firstOrNull()?.providerCategoryKey
 
-    LaunchedEffect(isTelevision, restoreFocusOnEntry) {
+    LaunchedEffect(isTelevision, restoreFocusOnEntry, focusCategoryKey) {
         if (isTelevision && restoreFocusOnEntry) {
             catalogReturnFocusRequester.requestFocus()
         }
@@ -492,15 +509,14 @@ private fun SeriesCatalogPane(
             horizontalArrangement = Arrangement.spacedBy(6.dp),
         ) {
             FilterChip(
-                selected = selectedCategoryKey == null,
-                onClick = { onCategoryChanged(null) },
-                label = { Text("All") },
-                modifier = Modifier.focusRequester(catalogReturnFocusRequester),
-            )
-            FilterChip(
                 selected = favoritesOnly,
                 onClick = { onFavoritesChanged(!favoritesOnly) },
                 label = { Text("Favorites") },
+                modifier = if (focusCategoryKey == null) {
+                    Modifier.focusRequester(catalogReturnFocusRequester)
+                } else {
+                    Modifier
+                },
             )
         }
         LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -509,6 +525,11 @@ private fun SeriesCatalogPane(
                     selected = selectedCategoryKey == category.providerCategoryKey,
                     onClick = { onCategoryChanged(category.providerCategoryKey) },
                     label = { Text(category.name, maxLines = 1) },
+                    modifier = if (category.providerCategoryKey == focusCategoryKey) {
+                        Modifier.focusRequester(catalogReturnFocusRequester)
+                    } else {
+                        Modifier
+                    },
                 )
             }
         }
@@ -666,7 +687,6 @@ private fun SeriesPlaybackScreen(
                 mediaKind = PlaybackMediaKind.SERIES_EPISODE,
             )
             PlaybackInteractionBridge.clearBackAction(backOwner)
-            onFullscreenStateChanged(false)
         }
     }
 
