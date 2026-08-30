@@ -19,6 +19,17 @@ class LiveBrowseHierarchyPolicyTest {
     }
 
     @Test
+    fun `tv with active preview restores channel hierarchy`() {
+        assertEquals(
+            LiveBrowseHierarchyLevel.CHANNELS,
+            LiveBrowseHierarchyPolicy.initialLevel(
+                isTelevision = true,
+                hasPreview = true,
+            ),
+        )
+    }
+
+    @Test
     fun `only tv owns preview and hierarchy back handling`() {
         assertTrue(
             LiveBrowseHierarchyPolicy.ownsBack(
