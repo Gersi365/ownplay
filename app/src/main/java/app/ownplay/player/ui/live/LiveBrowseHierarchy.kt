@@ -41,11 +41,12 @@ import app.ownplay.player.live.LiveCategory
 import app.ownplay.player.ui.view.ContentViewMode
 
 /**
- * Two-level Live browsing: categories first, channels second.
+ * Two-level Live browsing for TV: categories first, channels second.
  *
  * The channel level deliberately reuses the established List / Compact / Cards implementation so
  * hierarchy does not fork playback or personalization behavior. Back/ESC ownership lives in
- * [LiveBrowseHierarchyPolicy] and is applied by LiveRoute.
+ * [LiveBrowseHierarchyPolicy] and is applied by LiveRoute. Non-TV callers remain on the established
+ * browse behavior and do not receive TV focus fallback semantics.
  */
 @Composable
 internal fun HierarchicalLiveBrowse(
@@ -66,7 +67,11 @@ internal fun HierarchicalLiveBrowse(
     channelFocusRequester: FocusRequester? = null,
     modifier: Modifier = Modifier,
 ) {
-    val resolvedChannelFocusId = if (channelFocusRequester != null) {
+    val configuration = LocalConfiguration.current
+    val isTelevision =
+        configuration.uiMode and Configuration.UI_MODE_TYPE_MASK == Configuration.UI_MODE_TYPE_TELEVISION
+    val useTvFocusFallback = isTelevision && channelFocusRequester != null
+    val resolvedChannelFocusId = if (useTvFocusFallback) {
         focusChannelId?.takeIf { candidate ->
             state.channels.any { channel -> channel.channelId == candidate }
         } ?: state.channels.firstOrNull()?.channelId
@@ -74,7 +79,7 @@ internal fun HierarchicalLiveBrowse(
         focusChannelId
     }
     val resolvedFocusRequestGeneration = if (
-        channelFocusRequester != null && resolvedChannelFocusId != null
+        useTvFocusFallback && resolvedChannelFocusId != null
     ) {
         focusRequestGeneration.coerceAtLeast(1)
     } else {
