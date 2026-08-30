@@ -10,13 +10,32 @@ android {
     compileSdk = 36
 
     defaultConfig {
-        applicationId = "app.ownplay.player"
         minSdk = 26
         targetSdk = 36
-        versionCode = 5
-        versionName = "0.1.0-dev-qa5-no-local"
+        versionCode = 1
+        versionName = "0.1.0-dev"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+    }
+
+    flavorDimensions += "device"
+    productFlavors {
+        create("mobile") {
+            dimension = "device"
+            applicationId = "app.ownplay.mobile"
+            versionName = "0.1.0-mobile-dev"
+            manifestPlaceholders["appLabel"] = "OwnPlay Mobile"
+            buildConfigField("boolean", "IS_TV_BUILD", "false")
+            buildConfigField("String", "TARGET_DEVICE", "\"mobile\"")
+        }
+        create("tv") {
+            dimension = "device"
+            applicationId = "app.ownplay.tv"
+            versionName = "0.1.0-tv-dev"
+            manifestPlaceholders["appLabel"] = "OwnPlay TV"
+            buildConfigField("boolean", "IS_TV_BUILD", "true")
+            buildConfigField("String", "TARGET_DEVICE", "\"tv\"")
+        }
     }
 
     buildTypes {
@@ -36,6 +55,7 @@ android {
 
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 
     packaging {
