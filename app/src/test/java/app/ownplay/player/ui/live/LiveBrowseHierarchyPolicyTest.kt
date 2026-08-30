@@ -30,12 +30,19 @@ class LiveBrowseHierarchyPolicyTest {
     }
 
     @Test
-    fun `only tv owns preview and hierarchy back handling`() {
+    fun `preview owns back on every device while hierarchy back remains tv only`() {
         assertTrue(
             LiveBrowseHierarchyPolicy.ownsBack(
                 isTelevision = true,
                 hasPreview = true,
                 level = LiveBrowseHierarchyLevel.CATEGORIES,
+            ),
+        )
+        assertTrue(
+            LiveBrowseHierarchyPolicy.ownsBack(
+                isTelevision = false,
+                hasPreview = true,
+                level = LiveBrowseHierarchyLevel.CHANNELS,
             ),
         )
         assertTrue(
@@ -55,7 +62,7 @@ class LiveBrowseHierarchyPolicyTest {
         assertFalse(
             LiveBrowseHierarchyPolicy.ownsBack(
                 isTelevision = false,
-                hasPreview = true,
+                hasPreview = false,
                 level = LiveBrowseHierarchyLevel.CHANNELS,
             ),
         )
