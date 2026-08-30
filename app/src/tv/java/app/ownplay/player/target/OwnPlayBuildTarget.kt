@@ -7,6 +7,6 @@ internal object OwnPlayBuildTarget {
     const val supportsTouchInput: Boolean = false
     const val supportsPictureInPicture: Boolean = false
 
-    val fixedProfile: AppDeviceProfile = AppDeviceProfile.ANDROID_TV
+    val fixedProfile: AppDeviceProfile? = AppDeviceProfile.ANDROID_TV
     val selectableProfiles: Set<AppDeviceProfile> = emptySet()
 }
