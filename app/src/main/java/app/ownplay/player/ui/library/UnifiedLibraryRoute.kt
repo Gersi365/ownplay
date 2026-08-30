@@ -480,17 +480,23 @@ internal fun UnifiedLibraryRoute(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .padding(horizontal = 12.dp, vertical = 8.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
+            .padding(
+                horizontal = if (isTelevision) 20.dp else 16.dp,
+                vertical = 12.dp,
+            ),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Column(modifier = Modifier.weight(1f)) {
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(2.dp),
+            ) {
                 Text(
                     text = "Library",
-                    style = MaterialTheme.typography.titleLarge,
+                    style = MaterialTheme.typography.headlineSmall,
                     fontWeight = FontWeight.Bold,
                 )
                 Text(
@@ -504,7 +510,7 @@ internal fun UnifiedLibraryRoute(
                 )
             }
             if (refreshing) {
-                CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+                CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
             }
             ContentViewModeMenu(
                 mode = libraryViewMode,
@@ -515,7 +521,7 @@ internal fun UnifiedLibraryRoute(
             )
         }
 
-        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             val visibleFilters = if (isTelevision) {
                 listOf(UnifiedLibraryFilter.MOVIES, UnifiedLibraryFilter.SERIES)
             } else {
@@ -574,7 +580,13 @@ internal fun UnifiedLibraryRoute(
             onValueChange = { query = it },
             modifier = Modifier.fillMaxWidth(),
             singleLine = true,
-            leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
+            leadingIcon = {
+                Icon(
+                    Icons.Filled.Search,
+                    contentDescription = null,
+                    modifier = Modifier.size(20.dp),
+                )
+            },
             placeholder = {
                 Text(
                     when (filter) {
@@ -584,7 +596,7 @@ internal fun UnifiedLibraryRoute(
                     },
                 )
             },
-            shape = RoundedCornerShape(12.dp),
+            shape = RoundedCornerShape(10.dp),
         )
 
         if (refreshWarning && !offlineOnly) {
@@ -682,7 +694,7 @@ private fun LibraryCategoryStrip(
     categories: List<Pair<String, String>>,
     onCategorySelected: (String?) -> Unit,
 ) {
-    Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Text(
             text = label,
             style = MaterialTheme.typography.labelMedium,
@@ -690,8 +702,8 @@ private fun LibraryCategoryStrip(
         )
         LazyRow(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
-            contentPadding = PaddingValues(end = 12.dp),
+            horizontalArrangement = Arrangement.spacedBy(7.dp),
+            contentPadding = PaddingValues(end = 16.dp),
         ) {
             listItems(categories, key = { it.first }) { (categoryKey, categoryName) ->
                 FilterChip(
@@ -776,6 +788,11 @@ private fun LibraryCatalogView(
     onRemoveMovie: (OfflineDownload) -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val configuration = LocalConfiguration.current
+    val isTelevision =
+        configuration.uiMode and Configuration.UI_MODE_TYPE_MASK == Configuration.UI_MODE_TYPE_TELEVISION
+    val cardMinSize = if (isTelevision) 172.dp else 150.dp
+    val compactMinSize = if (isTelevision) 120.dp else 108.dp
     val focusIndex = remember(focusKeys, focusItemKey) { focusKeys.indexOf(focusItemKey) }
 
     LaunchedEffect(
@@ -811,11 +828,11 @@ private fun LibraryCatalogView(
     when (viewMode) {
         ContentViewMode.CARDS -> LazyVerticalGrid(
             state = gridState,
-            columns = GridCells.Adaptive(minSize = 150.dp),
+            columns = GridCells.Adaptive(minSize = cardMinSize),
             modifier = modifier.fillMaxSize(),
-            contentPadding = PaddingValues(bottom = 14.dp),
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
+            contentPadding = PaddingValues(top = 2.dp, bottom = 18.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
             if (filter != UnifiedLibraryFilter.SERIES) {
                 gridItems(visibleMovies, key = { "catalog-movie:${it.movieId}" }) { movie ->
@@ -872,11 +889,11 @@ private fun LibraryCatalogView(
 
         ContentViewMode.COMPACT -> LazyVerticalGrid(
             state = gridState,
-            columns = GridCells.Adaptive(minSize = 108.dp),
+            columns = GridCells.Adaptive(minSize = compactMinSize),
             modifier = modifier.fillMaxSize(),
-            contentPadding = PaddingValues(bottom = 14.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
+            contentPadding = PaddingValues(top = 2.dp, bottom = 18.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             if (filter != UnifiedLibraryFilter.SERIES) {
                 gridItems(visibleMovies, key = { "compact-movie:${it.movieId}" }) { movie ->
@@ -932,7 +949,7 @@ private fun LibraryCatalogView(
         ContentViewMode.LIST -> LazyColumn(
             state = listState,
             modifier = modifier.fillMaxSize(),
-            contentPadding = PaddingValues(bottom = 14.dp),
+            contentPadding = PaddingValues(bottom = 18.dp),
         ) {
             if (filter != UnifiedLibraryFilter.SERIES) {
                 listItems(visibleMovies, key = { "list-movie:${it.movieId}" }) { movie ->
@@ -1008,12 +1025,12 @@ private fun UnifiedMovieCard(
         modifier = modifier
             .fillMaxWidth()
             .clickable(onClick = onOpen),
-        shape = RoundedCornerShape(14.dp),
-        tonalElevation = 1.dp,
+        shape = RoundedCornerShape(10.dp),
+        tonalElevation = 0.dp,
     ) {
         Column(
-            modifier = Modifier.padding(8.dp),
-            verticalArrangement = Arrangement.spacedBy(6.dp),
+            modifier = Modifier.padding(7.dp),
+            verticalArrangement = Arrangement.spacedBy(5.dp),
         ) {
             RemotePoster(
                 url = movie.posterUrl,
@@ -1063,12 +1080,12 @@ private fun UnifiedSeriesCard(
         modifier = modifier
             .fillMaxWidth()
             .clickable(onClick = onOpen),
-        shape = RoundedCornerShape(14.dp),
-        tonalElevation = 1.dp,
+        shape = RoundedCornerShape(10.dp),
+        tonalElevation = 0.dp,
     ) {
         Column(
-            modifier = Modifier.padding(8.dp),
-            verticalArrangement = Arrangement.spacedBy(6.dp),
+            modifier = Modifier.padding(7.dp),
+            verticalArrangement = Arrangement.spacedBy(5.dp),
         ) {
             RemotePoster(
                 url = series.posterUrl,
@@ -1126,12 +1143,12 @@ private fun OfflineOnlyMovieCard(
         modifier = modifier
             .fillMaxWidth()
             .clickable(onClick = onPlay),
-        shape = RoundedCornerShape(14.dp),
-        tonalElevation = 1.dp,
+        shape = RoundedCornerShape(10.dp),
+        tonalElevation = 0.dp,
     ) {
         Column(
-            modifier = Modifier.padding(8.dp),
-            verticalArrangement = Arrangement.spacedBy(6.dp),
+            modifier = Modifier.padding(7.dp),
+            verticalArrangement = Arrangement.spacedBy(5.dp),
         ) {
             RemotePoster(
                 url = download.posterUrl,
@@ -1192,11 +1209,11 @@ private fun CompactMovieCard(
         modifier = modifier
             .fillMaxWidth()
             .clickable(onClick = onOpen),
-        shape = RoundedCornerShape(12.dp),
-        tonalElevation = 1.dp,
+        shape = RoundedCornerShape(8.dp),
+        tonalElevation = 0.dp,
     ) {
         Column(
-            modifier = Modifier.padding(6.dp),
+            modifier = Modifier.padding(5.dp),
             verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
             RemotePoster(
@@ -1247,11 +1264,11 @@ private fun CompactOfflineMovieCard(
         modifier = modifier
             .fillMaxWidth()
             .clickable(onClick = onPlay),
-        shape = RoundedCornerShape(12.dp),
-        tonalElevation = 1.dp,
+        shape = RoundedCornerShape(8.dp),
+        tonalElevation = 0.dp,
     ) {
         Column(
-            modifier = Modifier.padding(6.dp),
+            modifier = Modifier.padding(5.dp),
             verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
             RemotePoster(
@@ -1301,11 +1318,11 @@ private fun CompactSeriesCard(
         modifier = modifier
             .fillMaxWidth()
             .clickable(onClick = onOpen),
-        shape = RoundedCornerShape(12.dp),
-        tonalElevation = 1.dp,
+        shape = RoundedCornerShape(8.dp),
+        tonalElevation = 0.dp,
     ) {
         Column(
-            modifier = Modifier.padding(6.dp),
+            modifier = Modifier.padding(5.dp),
             verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
             RemotePoster(
@@ -1356,11 +1373,11 @@ private fun CompactOfflineSeriesCard(
         modifier = modifier
             .fillMaxWidth()
             .clickable(onClick = onOpen),
-        shape = RoundedCornerShape(12.dp),
-        tonalElevation = 1.dp,
+        shape = RoundedCornerShape(8.dp),
+        tonalElevation = 0.dp,
     ) {
         Column(
-            modifier = Modifier.padding(6.dp),
+            modifier = Modifier.padding(5.dp),
             verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
             RemotePoster(
@@ -1404,7 +1421,7 @@ private fun MovieListRow(
         modifier = modifier
             .fillMaxWidth()
             .clickable(onClick = onOpen)
-            .padding(horizontal = 4.dp, vertical = 8.dp),
+            .padding(horizontal = 4.dp, vertical = 7.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(10.dp),
     ) {
@@ -1451,7 +1468,7 @@ private fun OfflineMovieListRow(
         modifier = modifier
             .fillMaxWidth()
             .clickable(onClick = onPlay)
-            .padding(horizontal = 4.dp, vertical = 8.dp),
+            .padding(horizontal = 4.dp, vertical = 7.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(10.dp),
     ) {
@@ -1499,7 +1516,7 @@ private fun SeriesListRow(
         modifier = modifier
             .fillMaxWidth()
             .clickable(onClick = onOpen)
-            .padding(horizontal = 4.dp, vertical = 8.dp),
+            .padding(horizontal = 4.dp, vertical = 7.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(10.dp),
     ) {
@@ -1554,7 +1571,7 @@ private fun OfflineSeriesListRow(
         modifier = modifier
             .fillMaxWidth()
             .clickable(onClick = onOpen)
-            .padding(horizontal = 4.dp, vertical = 8.dp),
+            .padding(horizontal = 4.dp, vertical = 7.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(10.dp),
     ) {
@@ -1785,6 +1802,7 @@ private fun libraryVisibleFocusKeys(
         }
     }
 }
+
 private suspend fun enqueueSeriesEpisode(
     downloadRuntime: OfflineDownloadFeatureRuntime,
     sourceId: String,
