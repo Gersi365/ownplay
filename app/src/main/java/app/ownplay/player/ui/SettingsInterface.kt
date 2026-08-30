@@ -94,7 +94,7 @@ internal fun PortraitSettingsMenu(
             ) {
                 SettingsActionRow(
                     title = "Downloaded media",
-                    detail = "Progress · retry · remove",
+                    detail = "Play offline · pause · resume · remove",
                     actionLabel = "Open",
                     onClick = onOpenDownloads,
                 )
