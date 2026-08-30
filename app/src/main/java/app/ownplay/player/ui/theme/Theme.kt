@@ -21,28 +21,28 @@ import app.ownplay.player.personalization.AppDeviceProfile
 import app.ownplay.player.ui.tv.TvRemoteIndication
 
 private val OwnPlayDarkColors = darkColorScheme(
-    primary = Color(0xFF83B6FF),
-    onPrimary = Color(0xFF071C38),
-    primaryContainer = Color(0xFF172A43),
-    onPrimaryContainer = Color(0xFFDCEAFF),
-    secondary = Color(0xFF79D9C7),
-    onSecondary = Color(0xFF062C27),
+    primary = Color(0xFF9B7BFF),
+    onPrimary = Color(0xFF170E2A),
+    primaryContainer = Color(0xFF2A1F45),
+    onPrimaryContainer = Color(0xFFE9DEFF),
+    secondary = Color(0xFFB8A6E8),
+    onSecondary = Color(0xFF201934),
     // Keep navigation selection geometry visually stable: Material3 can still draw its
     // indicator, but it blends into the navigation surface and selection is expressed by tint.
-    secondaryContainer = Color(0xFF0D1218),
-    onSecondaryContainer = Color(0xFF83B6FF),
-    tertiary = Color(0xFFF0BE7B),
-    onTertiary = Color(0xFF352507),
-    tertiaryContainer = Color(0xFF493617),
-    onTertiaryContainer = Color(0xFFFFE4BE),
-    background = Color(0xFF07090D),
-    onBackground = Color(0xFFF1F4F8),
-    surface = Color(0xFF0D1218),
-    onSurface = Color(0xFFF1F4F8),
-    surfaceVariant = Color(0xFF151C25),
-    onSurfaceVariant = Color(0xFFAEB9C7),
-    outline = Color(0xFF34404E),
-    outlineVariant = Color(0xFF222C38),
+    secondaryContainer = Color(0xFF0D1016),
+    onSecondaryContainer = Color(0xFF9B7BFF),
+    tertiary = Color(0xFF78C8FF),
+    onTertiary = Color(0xFF061D2C),
+    tertiaryContainer = Color(0xFF163549),
+    onTertiaryContainer = Color(0xFFD2EFFF),
+    background = Color(0xFF080A0F),
+    onBackground = Color(0xFFF3F1F7),
+    surface = Color(0xFF0D1016),
+    onSurface = Color(0xFFF3F1F7),
+    surfaceVariant = Color(0xFF151922),
+    onSurfaceVariant = Color(0xFFB8B4C2),
+    outline = Color(0xFF373846),
+    outlineVariant = Color(0xFF252833),
     error = Color(0xFFFFB4AB),
     onError = Color(0xFF690005),
     errorContainer = Color(0xFF501A1E),
@@ -50,11 +50,11 @@ private val OwnPlayDarkColors = darkColorScheme(
 )
 
 private val OwnPlayShapes = Shapes(
-    extraSmall = RoundedCornerShape(7.dp),
-    small = RoundedCornerShape(10.dp),
-    medium = RoundedCornerShape(14.dp),
-    large = RoundedCornerShape(18.dp),
-    extraLarge = RoundedCornerShape(22.dp),
+    extraSmall = RoundedCornerShape(6.dp),
+    small = RoundedCornerShape(8.dp),
+    medium = RoundedCornerShape(10.dp),
+    large = RoundedCornerShape(12.dp),
+    extraLarge = RoundedCornerShape(16.dp),
 )
 
 private val OwnPlayTypography = Typography(
