@@ -11,6 +11,7 @@ OwnPlay ships two Android APK targets from one shared codebase.
 - First-run choices: Smartphone or Tablet only
 - Smartphone may use Portrait or Landscape; Tablet is Landscape
 - Launcher: standard Android launcher
+- QA app label: `OwnPlay Mobile QA6`
 
 ### TV
 - Product flavor: `tv`
@@ -19,6 +20,7 @@ OwnPlay ships two Android APK targets from one shared codebase.
 - No device-type chooser at startup; Android TV and TV Box share the TV presentation contract
 - Orientation: Landscape
 - Launchers: Leanback plus standard launcher for compatible generic TV boxes
+- QA app label: `OwnPlay TV QA6`
 
 ## Shared core
 
