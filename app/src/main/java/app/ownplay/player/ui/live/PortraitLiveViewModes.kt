@@ -1,5 +1,6 @@
 package app.ownplay.player.ui.live
 
+import android.content.res.Configuration
 import android.graphics.BitmapFactory
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
@@ -58,7 +59,13 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -70,6 +77,8 @@ import app.ownplay.player.live.LiveCategory
 import app.ownplay.player.live.LiveChannelItem
 import app.ownplay.player.live.LiveChannelLogoResolver
 import app.ownplay.player.source.network.SourceHttpClient
+import app.ownplay.player.ui.tv.TvPopupFocusAction
+import app.ownplay.player.ui.tv.TvPopupFocusPolicy
 import app.ownplay.player.ui.view.ContentViewMode
 import app.ownplay.player.ui.view.ContentViewModeMenu
 import java.io.ByteArrayOutputStream
@@ -101,14 +110,27 @@ internal fun PortraitLiveBrowseWithViewModes(
     showCategoryStrip: Boolean = true,
     modifier: Modifier = Modifier,
 ) {
+    val configuration = LocalConfiguration.current
+    val isTelevision =
+        configuration.uiMode and Configuration.UI_MODE_TYPE_MASK == Configuration.UI_MODE_TYPE_TELEVISION
+    val searchTriggerFocusRequester = remember { FocusRequester() }
+    val searchFieldFocusRequester = remember { FocusRequester() }
     var searchExpanded by remember { mutableStateOf(false) }
     val showSearch = searchExpanded || state.query.searchTerm.isNotBlank()
+
+    LaunchedEffect(searchExpanded, isTelevision) {
+        if (!isTelevision || !searchExpanded) return@LaunchedEffect
+        withFrameNanos { }
+        searchFieldFocusRequester.requestFocus()
+    }
 
     Column(modifier = modifier.fillMaxSize()) {
         LiveViewModeToolbar(
             state = state,
             viewMode = viewMode,
             showSearch = showSearch,
+            tvFocusManagement = isTelevision,
+            searchTriggerFocusRequester = searchTriggerFocusRequester,
             onToggleSearch = {
                 if (showSearch) {
                     onSearchChange("")
@@ -133,7 +155,31 @@ internal fun PortraitLiveBrowseWithViewModes(
                 onValueChange = onSearchChange,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 12.dp, vertical = 2.dp),
+                    .padding(horizontal = 12.dp, vertical = 2.dp)
+                    .then(
+                        if (isTelevision) {
+                            Modifier
+                                .focusRequester(searchFieldFocusRequester)
+                                .onPreviewKeyEvent { event ->
+                                    when {
+                                        event.type == KeyEventType.KeyDown &&
+                                            event.key == Key.DirectionUp -> {
+                                            searchTriggerFocusRequester.requestFocus()
+                                            true
+                                        }
+                                        event.type == KeyEventType.KeyDown &&
+                                            event.key == Key.DirectionDown &&
+                                            channelFocusRequester != null -> {
+                                            channelFocusRequester.requestFocus()
+                                            true
+                                        }
+                                        else -> false
+                                    }
+                                }
+                        } else {
+                            Modifier
+                        },
+                    ),
                 singleLine = true,
                 placeholder = { Text("Search channels") },
                 shape = RoundedCornerShape(12.dp),
@@ -168,6 +214,8 @@ private fun LiveViewModeToolbar(
     state: LiveBrowseState,
     viewMode: ContentViewMode,
     showSearch: Boolean,
+    tvFocusManagement: Boolean,
+    searchTriggerFocusRequester: FocusRequester,
     onToggleSearch: () -> Unit,
     onViewModeSelected: (ContentViewMode) -> Unit,
     onFavoritesOnlyChanged: (Boolean) -> Unit,
@@ -210,14 +258,23 @@ private fun LiveViewModeToolbar(
         }
         LiveBrowseOptionsMenu(
             state = state,
+            tvFocusManagement = tvFocusManagement,
             onOrderChanged = onOrderChanged,
             onCustomGroupSelected = onCustomGroupSelected,
         )
         ContentViewModeMenu(
             mode = viewMode,
             onModeSelected = onViewModeSelected,
+            tvFocusManagement = tvFocusManagement,
         )
-        IconButton(onClick = onToggleSearch) {
+        IconButton(
+            onClick = onToggleSearch,
+            modifier = if (tvFocusManagement) {
+                Modifier.focusRequester(searchTriggerFocusRequester)
+            } else {
+                Modifier
+            },
+        ) {
             Icon(
                 imageVector = if (showSearch) Icons.Filled.Close else Icons.Filled.Search,
                 contentDescription = if (showSearch) "Close search" else "Search channels",
@@ -229,13 +286,45 @@ private fun LiveViewModeToolbar(
 @Composable
 private fun LiveBrowseOptionsMenu(
     state: LiveBrowseState,
+    tvFocusManagement: Boolean,
     onOrderChanged: (LiveBrowseOrder) -> Unit,
     onCustomGroupSelected: (String?) -> Unit,
 ) {
     var expanded by remember { mutableStateOf(false) }
+    var wasExpanded by remember { mutableStateOf(false) }
+    val triggerFocusRequester = remember { FocusRequester() }
+    val selectedOrderFocusRequester = remember(state.query.order) { FocusRequester() }
+
+    LaunchedEffect(expanded, tvFocusManagement, state.query.order) {
+        when (
+            TvPopupFocusPolicy.action(
+                enabled = tvFocusManagement,
+                expanded = expanded,
+                wasExpanded = wasExpanded,
+            )
+        ) {
+            TvPopupFocusAction.FOCUS_SELECTED_ITEM -> {
+                withFrameNanos { }
+                selectedOrderFocusRequester.requestFocus()
+            }
+            TvPopupFocusAction.RESTORE_TRIGGER -> {
+                withFrameNanos { }
+                triggerFocusRequester.requestFocus()
+            }
+            TvPopupFocusAction.NONE -> Unit
+        }
+        wasExpanded = expanded
+    }
 
     Box {
-        TextButton(onClick = { expanded = true }) {
+        TextButton(
+            onClick = { expanded = true },
+            modifier = if (tvFocusManagement) {
+                Modifier.focusRequester(triggerFocusRequester)
+            } else {
+                Modifier
+            },
+        ) {
             Text("Browse")
         }
         DropdownMenu(
@@ -255,6 +344,11 @@ private fun LiveBrowseOptionsMenu(
                     onClick = {
                         expanded = false
                         onOrderChanged(order)
+                    },
+                    modifier = if (tvFocusManagement && order == state.query.order) {
+                        Modifier.focusRequester(selectedOrderFocusRequester)
+                    } else {
+                        Modifier
                     },
                 )
             }
