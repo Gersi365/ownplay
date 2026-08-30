@@ -13,8 +13,8 @@ android {
         applicationId = "app.ownplay.player"
         minSdk = 26
         targetSdk = 36
-        versionCode = 6
-        versionName = "0.1.0-dev-qa6-update"
+        versionCode = 7
+        versionName = "0.1.0-dev-qa7-current-ui"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
