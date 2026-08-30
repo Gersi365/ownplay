@@ -30,8 +30,8 @@ internal object LiveBrowseHierarchyPolicy {
         isTelevision: Boolean,
         hasPreview: Boolean,
         level: LiveBrowseHierarchyLevel,
-    ): Boolean = isTelevision && (
-        hasPreview || level == LiveBrowseHierarchyLevel.CHANNELS
+    ): Boolean = hasPreview || (
+        isTelevision && level == LiveBrowseHierarchyLevel.CHANNELS
     )
 
     fun backAction(
