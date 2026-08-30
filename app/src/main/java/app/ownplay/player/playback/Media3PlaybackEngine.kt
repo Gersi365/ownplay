@@ -420,7 +420,7 @@ class Media3PlaybackEngine(
             audioMimeType = safeDiagnosticValue(audio?.sampleMimeType),
             audioCodecs = safeDiagnosticValue(audio?.codecs),
             audioSampleRate = audio?.sampleRate?.positiveOrNull(),
-            audioChannelCount = audio?.channelCount.positiveOrNull(),
+            audioChannelCount = audio?.channelCount?.positiveOrNull(),
             audioLanguage = safeDiagnosticValue(audio?.language),
         )
     }
