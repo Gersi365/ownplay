@@ -198,11 +198,15 @@ internal fun LandscapeLiveWorkspaceAdaptive(
             focusRequestGeneration = channelFocusRequestGeneration,
             channelFocusRequester = channelFocusRequester,
             onPreviewKeyEvent = { event ->
-                if (!isTelevision && event.isKeyDown(Key.DirectionRight)) {
-                    applyFocusAction(
-                        zone = LandscapeLiveFocusZone.BROWSER,
-                        action = LandscapeLiveFocusAction.RIGHT,
-                    )
+                if (event.isKeyDown(Key.DirectionRight)) {
+                    if (isTelevision) {
+                        true
+                    } else {
+                        applyFocusAction(
+                            zone = LandscapeLiveFocusZone.BROWSER,
+                            action = LandscapeLiveFocusAction.RIGHT,
+                        )
+                    }
                 } else {
                     false
                 }
