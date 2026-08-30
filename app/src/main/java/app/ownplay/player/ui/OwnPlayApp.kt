@@ -22,9 +22,9 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.DownloadDone
 import androidx.compose.material.icons.filled.LiveTv
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.VideoLibrary
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
@@ -332,7 +332,7 @@ fun OwnPlayApp(
                     NavigationBarItem(
                         selected = librarySectionActive,
                         onClick = { openContentSection(OwnPlaySection.LIBRARY) },
-                        icon = { Icon(Icons.Filled.DownloadDone, contentDescription = "Library") },
+                        icon = { Icon(Icons.Filled.VideoLibrary, contentDescription = "Library") },
                         label = { Text("Library") },
                     )
                     NavigationBarItem(
@@ -365,7 +365,7 @@ fun OwnPlayApp(
                     NavigationBarItem(
                         selected = librarySectionActive,
                         onClick = { openContentSection(OwnPlaySection.LIBRARY) },
-                        icon = { Icon(Icons.Filled.DownloadDone, contentDescription = "Library") },
+                        icon = { Icon(Icons.Filled.VideoLibrary, contentDescription = "Library") },
                         label = { Text("Library") },
                     )
                     NavigationBarItem(
