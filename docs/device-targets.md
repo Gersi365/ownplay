@@ -36,6 +36,10 @@ The following remain shared in `src/main` and must not fork by target unless a c
 
 Target source sets own presentation/input entry policy. The shared core must not infer TV vs Mobile from runtime device detection.
 
+## Current playlist scope
+
+OwnPlay is local-first. The current product is designed around the playlist(s) configured on each installation; it does not require an OwnPlay cloud account or a second-device workflow to function. Playlist refresh and local personalization remain first-class features on both targets.
+
 ## Cross-device sync scope
 
 Cross-device Device Sync is deferred and is not part of the current Mobile or TV product scope.
