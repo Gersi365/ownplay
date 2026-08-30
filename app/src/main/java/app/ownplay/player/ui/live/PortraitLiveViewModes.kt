@@ -118,6 +118,14 @@ internal fun PortraitLiveBrowseWithViewModes(
     var searchExpanded by remember { mutableStateOf(false) }
     val showSearch = searchExpanded || state.query.searchTerm.isNotBlank()
 
+    LaunchedEffect(showCategoryStrip, state.categories, state.query.categoryKey) {
+        if (!showCategoryStrip || state.categories.isEmpty()) return@LaunchedEffect
+        val selected = state.query.categoryKey
+        if (selected == null || state.categories.none { it.providerCategoryKey == selected }) {
+            onCategorySelected(state.categories.first().providerCategoryKey)
+        }
+    }
+
     LaunchedEffect(searchExpanded, isTelevision) {
         if (!isTelevision || !searchExpanded) return@LaunchedEffect
         withFrameNanos { }
@@ -170,7 +178,7 @@ internal fun PortraitLiveBrowseWithViewModes(
                 onValueChange = onSearchChange,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 12.dp, vertical = 2.dp)
+                    .padding(horizontal = 16.dp, vertical = 4.dp)
                     .then(
                         if (isTelevision) {
                             Modifier
@@ -198,7 +206,7 @@ internal fun PortraitLiveBrowseWithViewModes(
                     ),
                 singleLine = true,
                 placeholder = { Text("Search channels") },
-                shape = RoundedCornerShape(12.dp),
+                shape = RoundedCornerShape(10.dp),
             )
         }
 
@@ -208,7 +216,7 @@ internal fun PortraitLiveBrowseWithViewModes(
                 selectedCategoryKey = state.query.categoryKey,
                 onCategorySelected = onCategorySelected,
             )
-            HorizontalDivider()
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
         }
 
         LiveChannelView(
@@ -256,14 +264,14 @@ private fun LiveViewModeToolbar(
                     false
                 }
             }
-            .padding(horizontal = 8.dp, vertical = 1.dp),
+            .padding(horizontal = 12.dp, vertical = 2.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(
             text = "${state.channels.size} channels",
             modifier = Modifier.weight(1f),
             style = MaterialTheme.typography.labelLarge,
-            fontWeight = FontWeight.SemiBold,
+            fontWeight = FontWeight.Medium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         IconButton(
@@ -430,16 +438,9 @@ private fun LiveViewCategoryStrip(
 ) {
     LazyRow(
         modifier = Modifier.fillMaxWidth(),
-        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 2.dp),
-        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        item(key = "view-mode-all") {
-            FilterChip(
-                selected = selectedCategoryKey == null,
-                onClick = { onCategorySelected(null) },
-                label = { Text("All") },
-            )
-        }
         items(
             items = categories,
             key = LiveCategory::providerCategoryKey,
@@ -485,6 +486,10 @@ private fun LiveChannelView(
         return
     }
 
+    val configuration = LocalConfiguration.current
+    val isTelevision =
+        configuration.uiMode and Configuration.UI_MODE_TYPE_MASK == Configuration.UI_MODE_TYPE_TELEVISION
+    val cardMinSize = if (isTelevision) 176.dp else 156.dp
     val listState = rememberLazyListState()
     val gridState = rememberLazyGridState()
     var requesterChannelId by remember { mutableStateOf(focusChannelId) }
@@ -517,7 +522,7 @@ private fun LiveChannelView(
         ContentViewMode.LIST -> LazyColumn(
             state = listState,
             modifier = modifier.fillMaxSize(),
-            contentPadding = PaddingValues(vertical = 2.dp),
+            contentPadding = PaddingValues(vertical = 4.dp),
         ) {
             items(channels, key = LiveChannelItem::channelId) { channel ->
                 val channelModifier = if (
@@ -535,13 +540,17 @@ private fun LiveChannelView(
                     onFocused = { requesterChannelId = channel.channelId },
                     modifier = channelModifier,
                 )
-                HorizontalDivider(modifier = Modifier.padding(start = 66.dp))
+                HorizontalDivider(
+                    modifier = Modifier.padding(start = 70.dp),
+                    color = MaterialTheme.colorScheme.outlineVariant,
+                )
             }
         }
 
         ContentViewMode.COMPACT -> LazyColumn(
             state = listState,
             modifier = modifier.fillMaxSize(),
+            contentPadding = PaddingValues(vertical = 2.dp),
         ) {
             items(channels, key = LiveChannelItem::channelId) { channel ->
                 val channelModifier = if (
@@ -559,17 +568,20 @@ private fun LiveChannelView(
                     onFocused = { requesterChannelId = channel.channelId },
                     modifier = channelModifier,
                 )
-                HorizontalDivider(modifier = Modifier.padding(start = 48.dp))
+                HorizontalDivider(
+                    modifier = Modifier.padding(start = 52.dp),
+                    color = MaterialTheme.colorScheme.outlineVariant,
+                )
             }
         }
 
         ContentViewMode.CARDS -> LazyVerticalGrid(
             state = gridState,
-            columns = GridCells.Adaptive(minSize = 156.dp),
+            columns = GridCells.Adaptive(minSize = cardMinSize),
             modifier = modifier.fillMaxSize(),
-            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
+            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             gridItems(channels, key = LiveChannelItem::channelId) { channel ->
                 val channelModifier = if (
@@ -611,9 +623,9 @@ private fun LiveChannelCompactRow(
             }
             .background(liveSelectionBackground(active || focused))
             .clickable(onClick = onClick)
-            .padding(horizontal = 10.dp, vertical = 7.dp),
+            .padding(horizontal = 12.dp, vertical = 7.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        horizontalArrangement = Arrangement.spacedBy(9.dp),
     ) {
         RemoteChannelLogo(
             url = channel.logoRef,
@@ -670,7 +682,7 @@ private fun LiveChannelListRow(
             }
             .background(liveSelectionBackground(active || focused))
             .clickable(onClick = onClick)
-            .padding(horizontal = 12.dp, vertical = 9.dp),
+            .padding(horizontal = 14.dp, vertical = 9.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(10.dp),
     ) {
@@ -701,7 +713,7 @@ private fun LiveChannelListRow(
                     } else {
                         MaterialTheme.colorScheme.onSurfaceVariant
                     },
-                    maxLines = 2,
+                    maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
             }
@@ -728,23 +740,23 @@ private fun LiveChannelCard(
                 if (focusState.isFocused) onFocused()
             }
             .clickable(onClick = onClick),
-        shape = RoundedCornerShape(14.dp),
+        shape = RoundedCornerShape(10.dp),
         color = if (active || focused) {
-            MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.68f)
+            MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.56f)
         } else {
             MaterialTheme.colorScheme.surface
         },
-        tonalElevation = 1.dp,
+        tonalElevation = 0.dp,
     ) {
         Column(
-            modifier = Modifier.padding(10.dp),
-            verticalArrangement = Arrangement.spacedBy(7.dp),
+            modifier = Modifier.padding(8.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(72.dp)
-                    .clip(RoundedCornerShape(11.dp))
+                    .clip(RoundedCornerShape(8.dp))
                     .background(MaterialTheme.colorScheme.surfaceVariant),
                 contentAlignment = Alignment.Center,
             ) {
@@ -757,7 +769,7 @@ private fun LiveChannelCard(
             Text(
                 text = channel.displayName,
                 style = MaterialTheme.typography.bodyMedium,
-                fontWeight = FontWeight.SemiBold,
+                fontWeight = FontWeight.Medium,
                 color = if (active || focused) {
                     MaterialTheme.colorScheme.onPrimaryContainer
                 } else {
@@ -775,7 +787,7 @@ private fun LiveChannelCard(
                     } else {
                         MaterialTheme.colorScheme.onSurfaceVariant
                     },
-                    maxLines = 2,
+                    maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
             }
@@ -826,7 +838,7 @@ private fun RemoteChannelLogo(
 
     Box(
         modifier = modifier
-            .clip(RoundedCornerShape(9.dp))
+            .clip(RoundedCornerShape(8.dp))
             .background(MaterialTheme.colorScheme.surfaceVariant),
         contentAlignment = Alignment.Center,
     ) {
@@ -842,7 +854,7 @@ private fun RemoteChannelLogo(
         } ?: Text(
             text = title.trim().firstOrNull()?.uppercase() ?: "•",
             style = MaterialTheme.typography.labelLarge,
-            fontWeight = FontWeight.SemiBold,
+            fontWeight = FontWeight.Medium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
     }
@@ -900,7 +912,7 @@ private fun decodeChannelLogo(bytes: ByteArray): ImageBitmap? {
 
 @Composable
 private fun liveSelectionBackground(active: Boolean) = if (active) {
-    MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.68f)
+    MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.56f)
 } else {
     MaterialTheme.colorScheme.background
 }
