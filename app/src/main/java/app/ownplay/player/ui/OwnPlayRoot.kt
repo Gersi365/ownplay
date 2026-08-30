@@ -7,6 +7,7 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.scaleIn
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -30,6 +31,10 @@ fun OwnPlayRoot(
     val focusManager = LocalFocusManager.current
     val isTelevision =
         configuration.uiMode and Configuration.UI_MODE_TYPE_MASK == Configuration.UI_MODE_TYPE_TELEVISION
+
+    SideEffect {
+        LiveEpgPresentationBridge.bindRuntime(runtime)
+    }
 
     LaunchedEffect(Unit) {
         contentVisible = true
