@@ -70,6 +70,12 @@ The default `PlaybackRetryPolicy` now allows one additional bounded automatic at
 
 This is recovery behavior only. It does not reserve bandwidth against other devices on the LAN and does not increase video buffer memory.
 
+A focused unit test was added at:
+
+`app/src/test/java/app/ownplay/player/playback/PlaybackRetryDefaultsTest.kt`
+
+It locks the intended default budget and delay sequence. The test is present in source but has not yet been executed on this exact head.
+
 ## TV restart / decoder / memory safety boundary
 
 A temporary experimental 90-second streaming buffer profile was evaluated on this branch and then removed before this checkpoint because prioritizing time over byte-size thresholds could increase memory pressure on low-memory TV / TV Box hardware.
@@ -99,6 +105,7 @@ Against exact PR #66 head:
 - `SeriesRoute.kt`: +13 / -3
 - `MovieDetailsPane.kt`: +9 / -8
 - `VodRoute.kt`: +46 / -9
+- `PlaybackRetryDefaultsTest.kt`: focused new unit test
 
 No lifecycle, Media3 engine, Surface, decoder, database, auth, signing, versioning, release, or deployment files are in the final cumulative source diff.
 
@@ -113,6 +120,8 @@ No lifecycle, Media3 engine, Surface, decoder, database, auth, signing, versioni
 - Series hierarchy uses existing selected/first real provider category focus restore
 - app-level Movie Back shortcut removed
 - custom high-memory buffer experiment fully absent from final cumulative diff
+- existing playback hardening tests inspected; they inject explicit retry budgets and do not depend on the old default value
+- focused default retry test added
 
 ## Validation still required
 
