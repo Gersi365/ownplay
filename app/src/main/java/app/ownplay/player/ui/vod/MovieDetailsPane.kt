@@ -35,6 +35,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
@@ -70,12 +71,13 @@ internal fun MovieDetailsPane(
     val isTelevision =
         configuration.uiMode and android.content.res.Configuration.UI_MODE_TYPE_MASK ==
             android.content.res.Configuration.UI_MODE_TYPE_TELEVISION
-    val detailBackFocusRequester = remember(movie.movieId) { FocusRequester() }
+    val detailPrimaryFocusRequester = remember(movie.movieId) { FocusRequester() }
     val offlineCopyAvailable = !isTelevision && download?.state == DownloadStates.COMPLETED
 
     LaunchedEffect(isTelevision, focusBackOnEntry, movie.movieId) {
-        if (isTelevision && focusBackOnEntry) {
-            detailBackFocusRequester.requestFocus()
+        if (isTelevision) {
+            withFrameNanos { }
+            detailPrimaryFocusRequester.requestFocus()
         }
     }
 
@@ -92,10 +94,7 @@ internal fun MovieDetailsPane(
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                IconButton(
-                    onClick = onDismiss,
-                    modifier = Modifier.focusRequester(detailBackFocusRequester),
-                ) {
+                IconButton(onClick = onDismiss) {
                     Icon(Icons.Filled.ArrowBack, contentDescription = "Back")
                 }
                 Column(modifier = Modifier.weight(1f)) {
@@ -162,7 +161,9 @@ internal fun MovieDetailsPane(
             ) {
                 Button(
                     onClick = { onPlay(movie) },
-                    modifier = Modifier.weight(1f),
+                    modifier = Modifier
+                        .weight(1f)
+                        .focusRequester(detailPrimaryFocusRequester),
                     shape = RoundedCornerShape(10.dp),
                 ) {
                     Icon(Icons.Filled.PlayArrow, contentDescription = null)
