@@ -98,6 +98,7 @@ internal fun PortraitLiveBrowseWithViewModes(
     focusChannelId: String? = null,
     focusRequestGeneration: Int = 0,
     channelFocusRequester: FocusRequester? = null,
+    showCategoryStrip: Boolean = true,
     modifier: Modifier = Modifier,
 ) {
     var searchExpanded by remember { mutableStateOf(false) }
@@ -139,13 +140,14 @@ internal fun PortraitLiveBrowseWithViewModes(
             )
         }
 
-        LiveViewCategoryStrip(
-            categories = state.categories,
-            selectedCategoryKey = state.query.categoryKey,
-            onCategorySelected = onCategorySelected,
-        )
-
-        HorizontalDivider()
+        if (showCategoryStrip) {
+            LiveViewCategoryStrip(
+                categories = state.categories,
+                selectedCategoryKey = state.query.categoryKey,
+                onCategorySelected = onCategorySelected,
+            )
+            HorizontalDivider()
+        }
 
         LiveChannelView(
             channels = state.channels,
