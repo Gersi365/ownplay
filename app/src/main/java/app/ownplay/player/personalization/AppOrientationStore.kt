@@ -8,6 +8,7 @@ import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.emptyPreferences
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
+import app.ownplay.player.target.OwnPlayBuildTarget
 import java.io.IOException
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.Flow
@@ -88,6 +89,12 @@ class AppDeviceProfileStore(
         .map { preferences ->
             val profile = AppDeviceProfile.fromStoredOrNull(preferences[DEVICE_PROFILE_KEY])
                 ?: return@map AppDeviceProfileSelection.Unconfigured
+            if (
+                OwnPlayBuildTarget.fixedProfile == null &&
+                profile !in OwnPlayBuildTarget.selectableProfiles
+            ) {
+                return@map AppDeviceProfileSelection.Unconfigured
+            }
             AppDeviceProfileSelection.Configured(
                 AppDeviceSettings(
                     profile = profile,
