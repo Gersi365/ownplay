@@ -488,6 +488,7 @@ private fun LiveChannelView(
 
     val listState = rememberLazyListState()
     val gridState = rememberLazyGridState()
+    var requesterChannelId by remember { mutableStateOf(focusChannelId) }
     val focusIndex = remember(channels, focusChannelId) {
         channels.indexOfFirst { channel -> channel.channelId == focusChannelId }
     }
@@ -501,6 +502,7 @@ private fun LiveChannelView(
     ) {
         val requester = channelFocusRequester ?: return@LaunchedEffect
         if (focusRequestGeneration <= 0 || focusIndex < 0) return@LaunchedEffect
+        requesterChannelId = focusChannelId
         when (viewMode) {
             ContentViewMode.LIST,
             ContentViewMode.COMPACT,
@@ -520,7 +522,7 @@ private fun LiveChannelView(
         ) {
             items(channels, key = LiveChannelItem::channelId) { channel ->
                 val channelModifier = if (
-                    channel.channelId == focusChannelId && channelFocusRequester != null
+                    channel.channelId == requesterChannelId && channelFocusRequester != null
                 ) {
                     Modifier.focusRequester(channelFocusRequester)
                 } else {
@@ -531,6 +533,7 @@ private fun LiveChannelView(
                     playing = channel.channelId == playingChannelId,
                     currentProgram = currentEpgByChannelId[channel.channelId],
                     onClick = { onChannelSelected(channel.channelId) },
+                    onFocused = { requesterChannelId = channel.channelId },
                     modifier = channelModifier,
                 )
                 HorizontalDivider(modifier = Modifier.padding(start = 66.dp))
@@ -543,7 +546,7 @@ private fun LiveChannelView(
         ) {
             items(channels, key = LiveChannelItem::channelId) { channel ->
                 val channelModifier = if (
-                    channel.channelId == focusChannelId && channelFocusRequester != null
+                    channel.channelId == requesterChannelId && channelFocusRequester != null
                 ) {
                     Modifier.focusRequester(channelFocusRequester)
                 } else {
@@ -554,6 +557,7 @@ private fun LiveChannelView(
                     playing = channel.channelId == playingChannelId,
                     currentProgram = currentEpgByChannelId[channel.channelId],
                     onClick = { onChannelSelected(channel.channelId) },
+                    onFocused = { requesterChannelId = channel.channelId },
                     modifier = channelModifier,
                 )
                 HorizontalDivider(modifier = Modifier.padding(start = 48.dp))
@@ -570,7 +574,7 @@ private fun LiveChannelView(
         ) {
             gridItems(channels, key = LiveChannelItem::channelId) { channel ->
                 val channelModifier = if (
-                    channel.channelId == focusChannelId && channelFocusRequester != null
+                    channel.channelId == requesterChannelId && channelFocusRequester != null
                 ) {
                     Modifier.focusRequester(channelFocusRequester)
                 } else {
@@ -581,6 +585,7 @@ private fun LiveChannelView(
                     playing = channel.channelId == playingChannelId,
                     currentProgram = currentEpgByChannelId[channel.channelId],
                     onClick = { onChannelSelected(channel.channelId) },
+                    onFocused = { requesterChannelId = channel.channelId },
                     modifier = channelModifier,
                 )
             }
@@ -594,13 +599,17 @@ private fun LiveChannelCompactRow(
     playing: Boolean,
     currentProgram: EpgProgram?,
     onClick: () -> Unit,
+    onFocused: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     var focused by remember(channel.channelId) { mutableStateOf(false) }
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .onFocusChanged { focused = it.isFocused }
+            .onFocusChanged { focusState ->
+                focused = focusState.isFocused
+                if (focusState.isFocused) onFocused()
+            }
             .background(liveSelectionBackground(playing || focused))
             .clickable(onClick = onClick)
             .padding(horizontal = 10.dp, vertical = 7.dp),
@@ -640,13 +649,17 @@ private fun LiveChannelListRow(
     playing: Boolean,
     currentProgram: EpgProgram?,
     onClick: () -> Unit,
+    onFocused: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     var focused by remember(channel.channelId) { mutableStateOf(false) }
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .onFocusChanged { focused = it.isFocused }
+            .onFocusChanged { focusState ->
+                focused = focusState.isFocused
+                if (focusState.isFocused) onFocused()
+            }
             .background(liveSelectionBackground(playing || focused))
             .clickable(onClick = onClick)
             .padding(horizontal = 12.dp, vertical = 9.dp),
@@ -686,13 +699,17 @@ private fun LiveChannelCard(
     playing: Boolean,
     currentProgram: EpgProgram?,
     onClick: () -> Unit,
+    onFocused: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     var focused by remember(channel.channelId) { mutableStateOf(false) }
     Surface(
         modifier = modifier
             .fillMaxWidth()
-            .onFocusChanged { focused = it.isFocused }
+            .onFocusChanged { focusState ->
+                focused = focusState.isFocused
+                if (focusState.isFocused) onFocused()
+            }
             .clickable(onClick = onClick),
         shape = RoundedCornerShape(14.dp),
         color = if (playing || focused) {
