@@ -38,14 +38,10 @@ import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.DownloadDone
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
-import androidx.compose.material.icons.filled.LiveTv
-import androidx.compose.material.icons.filled.Movie
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.filled.VideoLibrary
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilterChip
@@ -436,13 +432,10 @@ internal fun VodRoute(
                 .padding(horizontal = 6.dp, vertical = 4.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            MovieNavigationRail(
+            MovieCategoryRail(
                 catalog = catalog,
                 selectedCategoryKey = selectedCategoryKey,
                 onCategorySelected = { selectedCategoryKey = it },
-                onOpenLive = onOpenLive,
-                onOpenSeries = onOpenSeries,
-                onOpenSettings = onOpenSettings,
                 modifier = Modifier
                     .widthIn(min = 170.dp, max = 220.dp)
                     .fillMaxHeight(),
@@ -705,29 +698,26 @@ private fun MoviesCatalogContent(
 }
 
 @Composable
-private fun MovieNavigationRail(
+private fun MovieCategoryRail(
     catalog: VodCatalog,
     selectedCategoryKey: String?,
     onCategorySelected: (String?) -> Unit,
-    onOpenLive: () -> Unit,
-    onOpenSeries: () -> Unit,
-    onOpenSettings: () -> Unit,
     modifier: Modifier,
 ) {
     Surface(
         modifier = modifier,
-        shape = RoundedCornerShape(16.dp),
-        tonalElevation = 1.dp,
+        shape = RoundedCornerShape(12.dp),
+        color = MaterialTheme.colorScheme.surface,
+        tonalElevation = 0.dp,
     ) {
-        Column(modifier = Modifier.fillMaxSize()) {
-            NavRailItem(Icons.Filled.LiveTv, "Live", false, onOpenLive)
-            NavRailItem(Icons.Filled.Movie, "Movies", true, {})
-            NavRailItem(Icons.Filled.VideoLibrary, "Series", false, onOpenSeries)
-            HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
+        Column(
+            modifier = Modifier.fillMaxSize(),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
             Text(
                 text = "Movie categories",
-                modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
-                style = MaterialTheme.typography.labelMedium,
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                style = MaterialTheme.typography.labelLarge,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             LazyColumn(
@@ -743,38 +733,6 @@ private fun MovieNavigationRail(
                     )
                 }
             }
-            HorizontalDivider()
-            NavRailItem(Icons.Filled.Settings, "Settings", false, onOpenSettings)
-        }
-    }
-}
-
-@Composable
-private fun NavRailItem(
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    label: String,
-    selected: Boolean,
-    onClick: () -> Unit,
-) {
-    Surface(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 6.dp, vertical = 2.dp)
-            .clickable(onClick = onClick),
-        shape = RoundedCornerShape(10.dp),
-        color = if (selected) MaterialTheme.colorScheme.primaryContainer else Color.Transparent,
-    ) {
-        Row(
-            modifier = Modifier.padding(horizontal = 9.dp, vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            Icon(icon, contentDescription = null, modifier = Modifier.size(18.dp))
-            Text(
-                text = label,
-                style = MaterialTheme.typography.labelLarge,
-                fontWeight = FontWeight.Medium,
-            )
         }
     }
 }
@@ -790,7 +748,8 @@ private fun MovieCategoryRow(
             .fillMaxWidth()
             .clickable(onClick = onClick),
         shape = RoundedCornerShape(9.dp),
-        color = if (selected) MaterialTheme.colorScheme.secondaryContainer else Color.Transparent,
+        color = if (selected) MaterialTheme.colorScheme.primaryContainer else Color.Transparent,
+        tonalElevation = 0.dp,
     ) {
         Text(
             text = title,
