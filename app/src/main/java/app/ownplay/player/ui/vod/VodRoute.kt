@@ -773,7 +773,7 @@ private fun NavRailItem(
             Text(
                 text = label,
                 style = MaterialTheme.typography.labelLarge,
-                fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
+                fontWeight = FontWeight.Medium,
             )
         }
     }
@@ -798,7 +798,7 @@ private fun MovieCategoryRow(
                 .padding(horizontal = 9.dp, vertical = 7.dp)
                 .basicMarquee(iterations = Int.MAX_VALUE),
             style = MaterialTheme.typography.bodySmall,
-            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
+            fontWeight = FontWeight.Medium,
             maxLines = 1,
             softWrap = false,
             overflow = TextOverflow.Clip,
@@ -940,7 +940,7 @@ private fun MovieDetailsPane(
         configuration.uiMode and android.content.res.Configuration.UI_MODE_TYPE_MASK ==
             android.content.res.Configuration.UI_MODE_TYPE_TELEVISION
     val detailBackFocusRequester = remember(movie.movieId) { FocusRequester() }
-    val offlineCopyAvailable = download?.state == DownloadStates.COMPLETED
+    val offlineCopyAvailable = !isTelevision && download?.state == DownloadStates.COMPLETED
 
     LaunchedEffect(isTelevision, focusBackOnEntry, movie.movieId) {
         if (isTelevision && focusBackOnEntry) {
@@ -1059,109 +1059,111 @@ private fun MovieDetailsPane(
                 }
             }
 
-            val target = details?.movie ?: movie
-            if (offlineCopyAvailable) {
-                Surface(
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(12.dp),
-                    color = MaterialTheme.colorScheme.primaryContainer,
-                ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+            if (!isTelevision) {
+                val target = details?.movie ?: movie
+                if (offlineCopyAvailable) {
+                    Surface(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp),
+                        color = MaterialTheme.colorScheme.primaryContainer,
                     ) {
-                        Icon(Icons.Filled.DownloadDone, contentDescription = null)
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                text = if (download?.savedToDownloads == true) {
-                                    "Downloaded · Phone Downloads"
-                                } else {
-                                    "Downloaded · Offline copy"
-                                },
-                                style = MaterialTheme.typography.labelLarge,
-                                fontWeight = FontWeight.SemiBold,
-                            )
-                            Text(
-                                text = "Play uses the local download first.",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
+                        Row(
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            Icon(Icons.Filled.DownloadDone, contentDescription = null)
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = if (download?.savedToDownloads == true) {
+                                        "Downloaded · Phone Downloads"
+                                    } else {
+                                        "Downloaded · Offline copy"
+                                    },
+                                    style = MaterialTheme.typography.labelLarge,
+                                    fontWeight = FontWeight.SemiBold,
+                                )
+                                Text(
+                                    text = "Play uses the local download first.",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
                         }
                     }
-                }
-            } else {
-                val downloadLabel = when (download?.state) {
-                    DownloadStates.QUEUED -> "Pause"
-                    DownloadStates.DOWNLOADING -> "Pause"
-                    DownloadStates.PAUSED -> "Resume"
-                    DownloadStates.FAILED -> "Retry download"
-                    else -> "Download"
-                }
-                FilledTonalButton(
-                    onClick = {
-                        when (download?.state) {
-                            DownloadStates.QUEUED,
-                            DownloadStates.DOWNLOADING,
-                            -> onPauseDownload(download)
-                            DownloadStates.PAUSED -> onResumeDownload(download)
-                            DownloadStates.FAILED, null -> onDownload(target)
-                            DownloadStates.COMPLETED -> Unit
-                        }
-                    },
-                    modifier = Modifier.align(Alignment.Start),
-                    contentPadding = PaddingValues(horizontal = 14.dp, vertical = 4.dp),
-                ) {
-                    Icon(
-                        imageVector = when (download?.state) {
-                            DownloadStates.QUEUED,
-                            DownloadStates.DOWNLOADING,
-                            -> Icons.Filled.Pause
-                            DownloadStates.PAUSED -> Icons.Filled.PlayArrow
-                            else -> Icons.Filled.Download
-                        },
-                        contentDescription = null,
-                        modifier = Modifier.size(18.dp),
-                    )
-                    Spacer(Modifier.width(6.dp))
-                    Text(downloadLabel)
-                }
-            }
-
-            if (
-                download?.state == DownloadStates.DOWNLOADING ||
-                download?.state == DownloadStates.QUEUED ||
-                download?.state == DownloadStates.PAUSED
-            ) {
-                val progress = download.progressFraction
-                if (progress == null) {
-                    LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
                 } else {
-                    LinearProgressIndicator(
-                        progress = { progress },
-                        modifier = Modifier.fillMaxWidth(),
-                    )
+                    val downloadLabel = when (download?.state) {
+                        DownloadStates.QUEUED -> "Pause"
+                        DownloadStates.DOWNLOADING -> "Pause"
+                        DownloadStates.PAUSED -> "Resume"
+                        DownloadStates.FAILED -> "Retry download"
+                        else -> "Download"
+                    }
+                    FilledTonalButton(
+                        onClick = {
+                            when (download?.state) {
+                                DownloadStates.QUEUED,
+                                DownloadStates.DOWNLOADING,
+                                -> onPauseDownload(download)
+                                DownloadStates.PAUSED -> onResumeDownload(download)
+                                DownloadStates.FAILED, null -> onDownload(target)
+                                DownloadStates.COMPLETED -> Unit
+                            }
+                        },
+                        modifier = Modifier.align(Alignment.Start),
+                        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 4.dp),
+                    ) {
+                        Icon(
+                            imageVector = when (download?.state) {
+                                DownloadStates.QUEUED,
+                                DownloadStates.DOWNLOADING,
+                                -> Icons.Filled.Pause
+                                DownloadStates.PAUSED -> Icons.Filled.PlayArrow
+                                else -> Icons.Filled.Download
+                            },
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp),
+                        )
+                        Spacer(Modifier.width(6.dp))
+                        Text(downloadLabel)
+                    }
                 }
-                Text(
-                    text = downloadProgressLabel(download),
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                if (download.savedToDownloads) {
+
+                if (
+                    download?.state == DownloadStates.DOWNLOADING ||
+                    download?.state == DownloadStates.QUEUED ||
+                    download?.state == DownloadStates.PAUSED
+                ) {
+                    val progress = download.progressFraction
+                    if (progress == null) {
+                        LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                    } else {
+                        LinearProgressIndicator(
+                            progress = { progress },
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                    }
                     Text(
-                        text = "Saving to phone Downloads",
-                        style = MaterialTheme.typography.labelSmall,
+                        text = downloadProgressLabel(download),
+                        style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
+                    if (download.savedToDownloads) {
+                        Text(
+                            text = "Saving to phone Downloads",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
                 }
-            }
 
-            if (download?.state == DownloadStates.FAILED) {
-                Text(
-                    text = download.failureReason ?: "Download failed. Retry when the source is available.",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.error,
-                )
+                if (download?.state == DownloadStates.FAILED) {
+                    Text(
+                        text = download.failureReason ?: "Download failed. Retry when the source is available.",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.error,
+                    )
+                }
             }
 
             details?.let { info ->
