@@ -1,9 +1,55 @@
 package app.ownplay.player.ui.live
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class LiveBrowseHierarchyPolicyTest {
+    @Test
+    fun `tv starts at categories while non tv starts at channels`() {
+        assertEquals(
+            LiveBrowseHierarchyLevel.CATEGORIES,
+            LiveBrowseHierarchyPolicy.initialLevel(isTelevision = true),
+        )
+        assertEquals(
+            LiveBrowseHierarchyLevel.CHANNELS,
+            LiveBrowseHierarchyPolicy.initialLevel(isTelevision = false),
+        )
+    }
+
+    @Test
+    fun `only tv owns preview and hierarchy back handling`() {
+        assertTrue(
+            LiveBrowseHierarchyPolicy.ownsBack(
+                isTelevision = true,
+                hasPreview = true,
+                level = LiveBrowseHierarchyLevel.CATEGORIES,
+            ),
+        )
+        assertTrue(
+            LiveBrowseHierarchyPolicy.ownsBack(
+                isTelevision = true,
+                hasPreview = false,
+                level = LiveBrowseHierarchyLevel.CHANNELS,
+            ),
+        )
+        assertFalse(
+            LiveBrowseHierarchyPolicy.ownsBack(
+                isTelevision = true,
+                hasPreview = false,
+                level = LiveBrowseHierarchyLevel.CATEGORIES,
+            ),
+        )
+        assertFalse(
+            LiveBrowseHierarchyPolicy.ownsBack(
+                isTelevision = false,
+                hasPreview = true,
+                level = LiveBrowseHierarchyLevel.CHANNELS,
+            ),
+        )
+    }
+
     @Test
     fun `back closes preview before changing browse hierarchy`() {
         assertEquals(
