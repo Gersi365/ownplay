@@ -1,6 +1,7 @@
 package app.ownplay.player.ui.view
 
 import android.content.Context
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
@@ -123,6 +124,10 @@ internal fun ContentViewModeMenu(
     var wasExpanded by remember { mutableStateOf(false) }
     val triggerFocusRequester = remember { FocusRequester() }
     val selectedItemFocusRequester = remember(mode) { FocusRequester() }
+
+    BackHandler(enabled = tvFocusManagement && expanded) {
+        expanded = false
+    }
 
     LaunchedEffect(expanded, tvFocusManagement, mode) {
         val focusAction = TvPopupFocusPolicy.action(
