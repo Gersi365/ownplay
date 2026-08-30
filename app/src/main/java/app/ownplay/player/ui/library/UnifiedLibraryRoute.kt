@@ -146,7 +146,7 @@ internal fun UnifiedLibraryRoute(
     var filter by remember { mutableStateOf(UnifiedLibraryFilter.ALL) }
     var movieCategoryKey by remember(sourceId) { mutableStateOf<String?>(null) }
     var seriesCategoryKey by remember(sourceId) { mutableStateOf<String?>(null) }
-    var offlineOnly by remember { mutableStateOf(false) }
+    var offlineOnly by remember { mutableStateOf(true) }
     var query by remember { mutableStateOf("") }
     var refreshing by remember(sourceId) { mutableStateOf(false) }
     var refreshWarning by remember(sourceId) { mutableStateOf(false) }
@@ -162,16 +162,20 @@ internal fun UnifiedLibraryRoute(
     var seriesReturnFocusGeneration by remember(sourceId) { mutableIntStateOf(0) }
 
     LaunchedEffect(vodCatalog.categories, movieCategoryKey) {
-        val selected = movieCategoryKey
-        if (selected != null && vodCatalog.categories.none { it.providerCategoryKey == selected }) {
-            movieCategoryKey = null
+        val categories = vodCatalog.categories
+        movieCategoryKey = when {
+            categories.isEmpty() -> null
+            movieCategoryKey != null && categories.any { it.providerCategoryKey == movieCategoryKey } -> movieCategoryKey
+            else -> categories.first().providerCategoryKey
         }
     }
 
     LaunchedEffect(seriesCatalog.categories, seriesCategoryKey) {
-        val selected = seriesCategoryKey
-        if (selected != null && seriesCatalog.categories.none { it.providerCategoryKey == selected }) {
-            seriesCategoryKey = null
+        val categories = seriesCatalog.categories
+        seriesCategoryKey = when {
+            categories.isEmpty() -> null
+            seriesCategoryKey != null && categories.any { it.providerCategoryKey == seriesCategoryKey } -> seriesCategoryKey
+            else -> categories.first().providerCategoryKey
         }
     }
 
@@ -517,26 +521,33 @@ internal fun UnifiedLibraryRoute(
             UnifiedLibraryFilter.entries.forEach { option ->
                 FilterChip(
                     selected = filter == option,
-                    onClick = { filter = option },
+                    onClick = {
+                        filter = option
+                        offlineOnly = option == UnifiedLibraryFilter.ALL
+                        query = ""
+                    },
                     label = {
                         Text(
                             when (option) {
-                                UnifiedLibraryFilter.ALL -> "All"
+                                UnifiedLibraryFilter.ALL -> "Offline"
                                 UnifiedLibraryFilter.MOVIES -> "Movies"
                                 UnifiedLibraryFilter.SERIES -> "Series"
                             },
                         )
                     },
+                    leadingIcon = if (option == UnifiedLibraryFilter.ALL) {
+                        {
+                            Icon(
+                                Icons.Filled.DownloadDone,
+                                contentDescription = null,
+                                modifier = Modifier.size(16.dp),
+                            )
+                        }
+                    } else {
+                        null
+                    },
                 )
             }
-            FilterChip(
-                selected = offlineOnly,
-                onClick = { offlineOnly = !offlineOnly },
-                label = { Text("Offline") },
-                leadingIcon = {
-                    Icon(Icons.Filled.DownloadDone, contentDescription = null, modifier = Modifier.size(16.dp))
-                },
-            )
         }
 
         when (filter) {
@@ -564,7 +575,7 @@ internal fun UnifiedLibraryRoute(
             placeholder = {
                 Text(
                     when (filter) {
-                        UnifiedLibraryFilter.ALL -> "Search Library"
+                        UnifiedLibraryFilter.ALL -> "Search Offline"
                         UnifiedLibraryFilter.MOVIES -> "Search Movies"
                         UnifiedLibraryFilter.SERIES -> "Search Series"
                     },
@@ -690,13 +701,6 @@ private fun LibraryCategoryStrip(
             horizontalArrangement = Arrangement.spacedBy(6.dp),
             contentPadding = PaddingValues(end = 12.dp),
         ) {
-            item(key = "all-categories") {
-                FilterChip(
-                    selected = selectedCategoryKey == null,
-                    onClick = { onCategorySelected(null) },
-                    label = { Text("All categories") },
-                )
-            }
             listItems(categories, key = { it.first }) { (categoryKey, categoryName) ->
                 FilterChip(
                     selected = selectedCategoryKey == categoryKey,
