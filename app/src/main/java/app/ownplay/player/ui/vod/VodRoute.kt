@@ -65,6 +65,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
@@ -179,15 +180,13 @@ internal fun VodRoute(
     var detailsError by remember(sourceId) { mutableStateOf<SourceError?>(null) }
     var playingMovie by remember(sourceId) { mutableStateOf<VodMovie?>(null) }
     var restoreDetailFocusAfterPlayback by remember(sourceId) { mutableStateOf(false) }
+    var restoreCategoryFocusAfterDetailBack by remember(sourceId) { mutableStateOf(false) }
     val detailsBackOwner = remember(sourceId) { Any() }
 
     fun closeMovieDetails() {
         restoreDetailFocusAfterPlayback = false
-        if (returnToLibraryOnDetailBack) {
-            onReturnToLibrary()
-        } else {
-            selectedMovie = null
-        }
+        restoreCategoryFocusAfterDetailBack = true
+        selectedMovie = null
     }
 
     DisposableEffect(
@@ -196,8 +195,15 @@ internal fun VodRoute(
         detailsBackOwner,
         returnToLibraryOnDetailBack,
     ) {
-        if (selectedMovie != null && playingMovie == null) {
-            PlaybackInteractionBridge.registerBackAction(detailsBackOwner, ::closeMovieDetails)
+        if (playingMovie == null) {
+            when {
+                selectedMovie != null -> {
+                    PlaybackInteractionBridge.registerBackAction(detailsBackOwner, ::closeMovieDetails)
+                }
+                returnToLibraryOnDetailBack -> {
+                    PlaybackInteractionBridge.registerBackAction(detailsBackOwner, onReturnToLibrary)
+                }
+            }
         }
         onDispose {
             PlaybackInteractionBridge.clearBackAction(detailsBackOwner)
@@ -321,6 +327,7 @@ internal fun VodRoute(
             ?: catalog.categories.firstOrNull()?.providerCategoryKey
         favoritesOnly = false
         restoreDetailFocusAfterPlayback = false
+        restoreCategoryFocusAfterDetailBack = false
         selectedMovie = target
         onRequestedMovieConsumed()
     }
@@ -435,6 +442,8 @@ internal fun VodRoute(
             MovieCategoryRail(
                 catalog = catalog,
                 selectedCategoryKey = selectedCategoryKey,
+                restoreFocusOnEntry = restoreCategoryFocusAfterDetailBack,
+                onFocusRestored = { restoreCategoryFocusAfterDetailBack = false },
                 onCategorySelected = { selectedCategoryKey = it },
                 modifier = Modifier
                     .widthIn(min = 170.dp, max = 220.dp)
@@ -454,6 +463,7 @@ internal fun VodRoute(
                 onRefresh = ::refresh,
                 onMovieSelected = {
                     restoreDetailFocusAfterPlayback = false
+                    restoreCategoryFocusAfterDetailBack = false
                     selectedMovie = it
                 },
                 showCategoryStrip = false,
@@ -507,6 +517,7 @@ internal fun VodRoute(
             onRefresh = ::refresh,
             onMovieSelected = {
                 restoreDetailFocusAfterPlayback = false
+                restoreCategoryFocusAfterDetailBack = false
                 selectedMovie = it
             },
             showCategoryStrip = true,
@@ -701,9 +712,29 @@ private fun MoviesCatalogContent(
 private fun MovieCategoryRail(
     catalog: VodCatalog,
     selectedCategoryKey: String?,
+    restoreFocusOnEntry: Boolean,
+    onFocusRestored: () -> Unit,
     onCategorySelected: (String?) -> Unit,
     modifier: Modifier,
 ) {
+    val configuration = LocalConfiguration.current
+    val isTelevision =
+        configuration.uiMode and android.content.res.Configuration.UI_MODE_TYPE_MASK ==
+            android.content.res.Configuration.UI_MODE_TYPE_TELEVISION
+    val categoryFocusRequester = remember { FocusRequester() }
+    val focusCategoryKey = selectedCategoryKey
+        ?.takeIf { key -> catalog.categories.any { it.providerCategoryKey == key } }
+        ?: catalog.categories.firstOrNull()?.providerCategoryKey
+
+    LaunchedEffect(isTelevision, restoreFocusOnEntry, focusCategoryKey) {
+        if (!restoreFocusOnEntry) return@LaunchedEffect
+        if (isTelevision && focusCategoryKey != null) {
+            withFrameNanos { }
+            categoryFocusRequester.requestFocus()
+        }
+        onFocusRestored()
+    }
+
     Surface(
         modifier = modifier,
         shape = RoundedCornerShape(12.dp),
@@ -730,6 +761,11 @@ private fun MovieCategoryRail(
                         title = category.name,
                         selected = selectedCategoryKey == category.providerCategoryKey,
                         onClick = { onCategorySelected(category.providerCategoryKey) },
+                        modifier = if (category.providerCategoryKey == focusCategoryKey) {
+                            Modifier.focusRequester(categoryFocusRequester)
+                        } else {
+                            Modifier
+                        },
                     )
                 }
             }
@@ -742,9 +778,10 @@ private fun MovieCategoryRow(
     title: String,
     selected: Boolean,
     onClick: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     Surface(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .clickable(onClick = onClick),
         shape = RoundedCornerShape(9.dp),
