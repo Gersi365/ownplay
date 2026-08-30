@@ -4,7 +4,6 @@ import android.annotation.SuppressLint
 import android.app.AlertDialog
 import android.content.res.Configuration
 import android.os.Bundle
-import android.os.SystemClock
 import android.view.GestureDetector
 import android.view.KeyEvent
 import android.view.MotionEvent
@@ -40,6 +39,7 @@ import app.ownplay.player.playback.PlaybackInteractionBridge
 import app.ownplay.player.playback.PlaybackMediaKind
 import app.ownplay.player.playback.PlaybackState
 import app.ownplay.player.target.OwnPlayBuildTarget
+import app.ownplay.player.target.OwnPlayTargetBehavior
 import app.ownplay.player.ui.DeviceProfileSetupScreen
 import app.ownplay.player.ui.DownloadPlaybackBridge
 import app.ownplay.player.ui.OrientationSetupLoadingSurface
@@ -50,11 +50,6 @@ import app.ownplay.player.ui.PlaybackWindowController
 import app.ownplay.player.ui.library.LibraryPlaybackScreen
 import app.ownplay.player.ui.library.LibraryPlaybackSession
 import app.ownplay.player.ui.theme.OwnPlayTheme
-import app.ownplay.player.ui.tv.TvBackgroundPlaybackAction
-import app.ownplay.player.ui.tv.TvPlaybackLifecyclePolicy
-import app.ownplay.player.ui.tv.TvRemoteActionGuard
-import app.ownplay.player.ui.tv.TvRemoteActionKind
-import app.ownplay.player.ui.tv.TvRemoteKeySuppression
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -71,10 +66,8 @@ class MainActivity : ComponentActivity() {
     private lateinit var appDeviceProfileStore: AppDeviceProfileStore
     private lateinit var playbackGestureDetector: GestureDetector
     private val activityScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
-    private val tvRemoteActionGuard = TvRemoteActionGuard()
-    private val tvRemoteKeySuppression = TvRemoteKeySuppression()
+    private val targetBehavior = OwnPlayTargetBehavior()
     private var playbackFullscreen = false
-    private var tvRemoteGuardEnabled = false
     private var exitConfirmationDialog: AlertDialog? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -146,8 +139,6 @@ class MainActivity : ComponentActivity() {
                 if (configuredProfile != AppDeviceProfile.SMARTPHONE) {
                     playbackWindowController.updateLivePreviewRotationEnabled(false)
                 }
-                tvRemoteGuardEnabled = OwnPlayBuildTarget.usesDpad
-                if (!OwnPlayBuildTarget.usesDpad) tvRemoteKeySuppression.clear()
             }
 
             DisposableEffect(downloadPlaybackOwner) {
@@ -221,7 +212,7 @@ class MainActivity : ComponentActivity() {
                                     inPictureInPicture = isInPictureInPictureMode,
                                 ),
                                 onPlaybackFullscreenChanged = { isFullscreen ->
-                                    holdTvRemoteTransitionLock()
+                                    targetBehavior.holdTransitionLock()
                                     playbackFullscreen = isFullscreen
                                     playbackWindowController.updateFullscreenState(isFullscreen)
                                     if (!isFullscreen) hideStatusBar()
@@ -284,7 +275,7 @@ class MainActivity : ComponentActivity() {
                                             }
                                         },
                                         onFullscreenStateChanged = { isFullscreen ->
-                                            holdTvRemoteTransitionLock()
+                                            targetBehavior.holdTransitionLock()
                                             playbackFullscreen = isFullscreen
                                             playbackWindowController.updateFullscreenState(isFullscreen)
                                             playbackWindowController.updatePlaybackSurfaceState(isFullscreen)
@@ -340,33 +331,7 @@ class MainActivity : ComponentActivity() {
             }
             return true
         }
-        if (tvRemoteGuardEnabled && event.isRemoteActivationKey()) {
-            when (event.action) {
-                KeyEvent.ACTION_DOWN -> {
-                    if (event.repeatCount > 0) {
-                        tvRemoteKeySuppression.suppress(event.keyCode)
-                        return true
-                    }
-                    if (
-                        !tvRemoteActionGuard.tryAcquire(
-                            nowMillis = SystemClock.elapsedRealtime(),
-                            actionId = event.keyCode,
-                        )
-                    ) {
-                        tvRemoteKeySuppression.suppress(event.keyCode)
-                        return true
-                    }
-                    tvRemoteKeySuppression.allow(event.keyCode)
-                }
-                KeyEvent.ACTION_UP -> {
-                    if (tvRemoteActionGuard.isGloballyBlocked(SystemClock.elapsedRealtime())) {
-                        tvRemoteKeySuppression.consumeRelease(event.keyCode)
-                        return true
-                    }
-                    if (tvRemoteKeySuppression.consumeRelease(event.keyCode)) return true
-                }
-            }
-        }
+        if (targetBehavior.handleRemoteKeyEvent(event)) return true
         return super.dispatchKeyEvent(event)
     }
 
@@ -407,16 +372,11 @@ class MainActivity : ComponentActivity() {
                 }
                 LiveActivityBackgroundAction.NONE -> {
                     if (
-                        OwnPlayBuildTarget.usesDpad &&
                         !isInPictureInPictureMode &&
-                        !isChangingConfigurations
+                        !isChangingConfigurations &&
+                        targetBehavior.shouldSuspendPlaybackOnBackground(state)
                     ) {
-                        when (TvPlaybackLifecyclePolicy.backgroundAction(state)) {
-                            TvBackgroundPlaybackAction.NONE -> Unit
-                            TvBackgroundPlaybackAction.SUSPEND -> {
-                                runtime.playbackController.suspendForBackground()
-                            }
-                        }
+                        runtime.playbackController.suspendForBackground()
                     }
                 }
             }
@@ -441,7 +401,7 @@ class MainActivity : ComponentActivity() {
         newConfig: Configuration,
     ) {
         super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig)
-        holdTvRemoteTransitionLock()
+        targetBehavior.holdTransitionLock()
         playbackWindowController.onPictureInPictureModeChanged(isInPictureInPictureMode)
     }
 
@@ -471,14 +431,6 @@ class MainActivity : ComponentActivity() {
             is PlaybackState.Failed -> state.request.mediaKind
         }
 
-    private fun holdTvRemoteTransitionLock() {
-        if (!tvRemoteGuardEnabled) return
-        tvRemoteActionGuard.extendBlock(
-            nowMillis = SystemClock.elapsedRealtime(),
-            kind = TvRemoteActionKind.TRANSITION,
-        )
-    }
-
     private fun showExitConfirmation() {
         if (isFinishing || exitConfirmationDialog?.isShowing == true) return
         exitConfirmationDialog = AlertDialog.Builder(this)
@@ -497,17 +449,6 @@ class MainActivity : ComponentActivity() {
         }
     }
 }
-
-private fun KeyEvent.isRemoteActivationKey(): Boolean =
-    keyCode == KeyEvent.KEYCODE_DPAD_CENTER ||
-        keyCode == KeyEvent.KEYCODE_ENTER ||
-        keyCode == KeyEvent.KEYCODE_NUMPAD_ENTER ||
-        keyCode == KeyEvent.KEYCODE_BUTTON_A ||
-        keyCode == KeyEvent.KEYCODE_BUTTON_SELECT ||
-        keyCode == KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE ||
-        keyCode == KeyEvent.KEYCODE_MEDIA_PLAY ||
-        keyCode == KeyEvent.KEYCODE_MEDIA_PAUSE ||
-        keyCode == KeyEvent.KEYCODE_BACK
 
 private fun configuredOrientation(
     profile: AppDeviceProfile,
