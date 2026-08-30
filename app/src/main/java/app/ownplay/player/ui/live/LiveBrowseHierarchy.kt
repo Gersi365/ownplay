@@ -108,6 +108,7 @@ internal fun HierarchicalLiveBrowse(
             focusChannelId = resolvedChannelFocusId,
             focusRequestGeneration = resolvedFocusRequestGeneration,
             channelFocusRequester = channelFocusRequester,
+            showCategoryStrip = false,
             modifier = modifier,
         )
     }
