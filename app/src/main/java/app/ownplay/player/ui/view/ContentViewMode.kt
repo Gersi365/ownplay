@@ -125,13 +125,13 @@ internal fun ContentViewModeMenu(
     val selectedItemFocusRequester = remember(mode) { FocusRequester() }
 
     LaunchedEffect(expanded, tvFocusManagement, mode) {
-        when (
-            TvPopupFocusPolicy.action(
-                enabled = tvFocusManagement,
-                expanded = expanded,
-                wasExpanded = wasExpanded,
-            )
-        ) {
+        val focusAction = TvPopupFocusPolicy.action(
+            enabled = tvFocusManagement,
+            expanded = expanded,
+            wasExpanded = wasExpanded,
+        )
+        wasExpanded = expanded
+        when (focusAction) {
             TvPopupFocusAction.FOCUS_SELECTED_ITEM -> {
                 withFrameNanos { }
                 selectedItemFocusRequester.requestFocus()
@@ -142,7 +142,6 @@ internal fun ContentViewModeMenu(
             }
             TvPopupFocusAction.NONE -> Unit
         }
-        wasExpanded = expanded
     }
 
     Box(modifier = modifier) {
