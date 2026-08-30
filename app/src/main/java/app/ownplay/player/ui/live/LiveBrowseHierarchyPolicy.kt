@@ -17,6 +17,21 @@ internal enum class LiveChannelActivationAction {
 }
 
 internal object LiveBrowseHierarchyPolicy {
+    fun initialLevel(isTelevision: Boolean): LiveBrowseHierarchyLevel =
+        if (isTelevision) {
+            LiveBrowseHierarchyLevel.CATEGORIES
+        } else {
+            LiveBrowseHierarchyLevel.CHANNELS
+        }
+
+    fun ownsBack(
+        isTelevision: Boolean,
+        hasPreview: Boolean,
+        level: LiveBrowseHierarchyLevel,
+    ): Boolean = isTelevision && (
+        hasPreview || level == LiveBrowseHierarchyLevel.CHANNELS
+    )
+
     fun backAction(
         hasPreview: Boolean,
         level: LiveBrowseHierarchyLevel,
