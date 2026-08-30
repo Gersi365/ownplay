@@ -3,6 +3,7 @@ package app.ownplay.player.ui.live
 import android.graphics.BitmapFactory
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -602,14 +603,26 @@ private fun TvLiveChannelCard(
             ) {
                 TvRemoteChannelLogo(channel.logoRef, channel.displayName, Modifier.size(42.dp))
             }
-            Text(channel.displayName, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(
+                text = channel.displayName,
+                modifier = if (focused) Modifier.basicMarquee(iterations = Int.MAX_VALUE) else Modifier,
+                style = MaterialTheme.typography.bodySmall,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 1,
+                softWrap = false,
+                overflow = if (focused) TextOverflow.Clip else TextOverflow.Ellipsis,
+            )
             currentProgram?.title?.let { title ->
                 Text(title, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
-            Row(modifier = Modifier.fillMaxWidth()) {
-                Text(channel.categoryName.orEmpty(), modifier = Modifier.weight(1f), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                if (channel.isFavorite) Text("★", color = MaterialTheme.colorScheme.primary)
-                if (playing) Text("▶", color = MaterialTheme.colorScheme.primary)
+            if (channel.isFavorite || playing) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End,
+                ) {
+                    if (channel.isFavorite) Text("★", color = MaterialTheme.colorScheme.primary)
+                    if (playing) Text("▶", color = MaterialTheme.colorScheme.primary)
+                }
             }
         }
     }

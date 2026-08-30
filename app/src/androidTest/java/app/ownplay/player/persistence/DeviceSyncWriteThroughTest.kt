@@ -3,6 +3,7 @@ package app.ownplay.player.persistence
 import androidx.room.Room
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
+import app.ownplay.player.personalization.ChannelVisibilityMutationResult
 import app.ownplay.player.personalization.ChannelVisibilityMutator
 import app.ownplay.player.personalization.CustomGroupMutationResult
 import app.ownplay.player.personalization.CustomGroupMutator
@@ -10,10 +11,8 @@ import app.ownplay.player.personalization.FavoriteChannelMutator
 import app.ownplay.player.personalization.FavoriteMutationResult
 import app.ownplay.player.personalization.ManualChannelOrderMutator
 import app.ownplay.player.personalization.ManualOrderMutationResult
-import app.ownplay.player.personalization.ChannelVisibilityMutationResult
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -22,7 +21,7 @@ import org.junit.runner.RunWith
 @RunWith(AndroidJUnit4::class)
 class DeviceSyncWriteThroughTest {
     @Test
-    fun personalizationMutationsWriteSyncStateAndTombstones() = runBlocking {
+    fun personalizationMutationsRemainLocalWhileDeviceSyncIsDeferred() = runBlocking {
         val database = createDatabase()
         try {
             seedSourceWithChannels(database, "source-1", "One", "channel-1", "provider-1")
@@ -45,13 +44,6 @@ class DeviceSyncWriteThroughTest {
                 visibility.hide("source-1", setOf("channel-1"), 100L) is
                     ChannelVisibilityMutationResult.Success,
             )
-            assertTrue(
-                visibility.unhide("source-1", setOf("channel-1")) is
-                    ChannelVisibilityMutationResult.Success,
-            )
-            val hiddenSync = requireNotNull(database.deviceSyncDao().channel("source-1", "provider-1"))
-            assertEquals(false, hiddenSync.hidden)
-            assertNotNull(hiddenSync.hiddenUpdatedAtEpochMillis)
 
             val favorites = FavoriteChannelMutator(database)
             assertTrue(
@@ -61,79 +53,34 @@ class DeviceSyncWriteThroughTest {
                     addedAtEpochMillis = 200L,
                 ) is FavoriteMutationResult.Success,
             )
-            assertTrue(
-                favorites.removeFavorites(
-                    sourceId = "source-1",
-                    channelIds = setOf("channel-1"),
-                ) is FavoriteMutationResult.Success,
-            )
-            val removedFavorite = requireNotNull(
-                database.deviceSyncDao().channel("source-1", "provider-1"),
-            )
-            val remainingFavorite = requireNotNull(
-                database.deviceSyncDao().channel("source-1", "provider-2"),
-            )
-            assertNull(removedFavorite.favoriteOrder)
-            assertNull(removedFavorite.favoriteAddedAtEpochMillis)
-            assertNotNull(removedFavorite.favoriteUpdatedAtEpochMillis)
-            assertEquals(0L, remainingFavorite.favoriteOrder)
 
             val order = ManualChannelOrderMutator(database)
             assertTrue(
                 order.move("source-1", "channel-2", 0) is ManualOrderMutationResult.Success,
             )
-            assertEquals(
-                0L,
-                database.deviceSyncDao()
-                    .channel("source-1", "provider-2")
-                    ?.manualOrder,
-            )
-
-            val localState = requireNotNull(database.deviceSyncDao().localState())
-            assertTrue(localState.nextRevision > 1L)
-            assertTrue(localState.deviceId.isNotBlank())
-        } finally {
-            database.close()
-        }
-    }
-
-    @Test
-    fun mixedSourceGroupReindexWritesEachMembershipAgainstItsOwnSource() = runBlocking {
-        val database = createDatabase()
-        try {
-            seedSourceWithChannels(database, "source-a", "A", "channel-a", "provider-a")
-            seedSourceWithChannels(database, "source-b", "B", "channel-b", "provider-b")
 
             val groups = CustomGroupMutator(database)
             assertTrue(
                 groups.createGroup(
-                    name = "Mixed",
-                    createdAtEpochMillis = 100L,
+                    name = "Local",
+                    createdAtEpochMillis = 300L,
                     groupId = "group-1",
                 ) is CustomGroupMutationResult.Success,
             )
             assertTrue(
-                groups.addChannels("source-a", "group-1", setOf("channel-a")) is
-                    CustomGroupMutationResult.Success,
-            )
-            assertTrue(
-                groups.addChannels("source-b", "group-1", setOf("channel-b")) is
-                    CustomGroupMutationResult.Success,
-            )
-            assertTrue(
-                groups.removeChannels("source-a", "group-1", setOf("channel-a")) is
+                groups.addChannels("source-1", "group-1", setOf("channel-1")) is
                     CustomGroupMutationResult.Success,
             )
 
-            val memberships = database.deviceSyncDao().membershipsForGroup("group-1")
-            val removed = memberships.single {
-                it.syncSourceId == "source-a" && it.providerKey == "provider-a"
-            }
-            val remaining = memberships.single {
-                it.syncSourceId == "source-b" && it.providerKey == "provider-b"
-            }
-            assertNull(removed.groupOrder)
-            assertEquals(0L, remaining.groupOrder)
+            assertTrue(database.personalizationDao().hiddenEntriesForSource("source-1").isNotEmpty())
+            assertEquals(2, database.personalizationDao().favoriteEntriesForSource("source-1").size)
+            assertTrue(database.personalizationDao().customGroupsForMutation().isNotEmpty())
+
+            assertNull(database.deviceSyncDao().localState())
+            assertNull(database.deviceSyncDao().sourceByLocalId("source-1"))
+            assertNull(database.deviceSyncDao().channel("source-1", "provider-1"))
+            assertTrue(database.deviceSyncDao().allGroups().isEmpty())
+            assertTrue(database.deviceSyncDao().membershipsForGroup("group-1").isEmpty())
         } finally {
             database.close()
         }

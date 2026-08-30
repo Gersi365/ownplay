@@ -94,19 +94,19 @@ internal fun DeviceProfileSetupScreen(
                         verticalArrangement = Arrangement.spacedBy(6.dp),
                     ) {
                         Text(
-                            text = "Choose this device",
+                            text = "Choose this touchscreen device",
                             style = MaterialTheme.typography.headlineSmall,
                             fontWeight = FontWeight.Bold,
                             textAlign = TextAlign.Center,
                         )
                         Text(
-                            text = "This controls OwnPlay input and layout. You can change it later in Settings → Interface.",
+                            text = "OwnPlay Mobile supports Smartphone and Tablet layouts. You can change this later in Settings → Interface.",
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             textAlign = TextAlign.Center,
                         )
                         Text(
-                            text = "Touch or use the D-pad and OK to choose.",
+                            text = "Touch to choose.",
                             style = MaterialTheme.typography.labelLarge,
                             color = MaterialTheme.colorScheme.primary,
                             textAlign = TextAlign.Center,
@@ -124,44 +124,26 @@ internal fun DeviceProfileSetupScreen(
                             title = "Tablet",
                             detail = "Touchscreen · Landscape",
                         ),
-                        DeviceProfileChoice(
-                            profile = AppDeviceProfile.ANDROID_TV,
-                            title = "Android TV",
-                            detail = "Remote / D-pad · Landscape",
-                        ),
-                        DeviceProfileChoice(
-                            profile = AppDeviceProfile.TV_BOX,
-                            title = "TV Box",
-                            detail = "Remote / D-pad · Landscape",
-                        ),
                     )
 
                     if (isWideLayout) {
-                        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                            choices.chunked(2).forEachIndexed { rowIndex, rowChoices ->
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                                ) {
-                                    rowChoices.forEachIndexed { choiceIndex, choice ->
-                                        DeviceProfileChoiceButton(
-                                            choice = choice,
-                                            focusRequester = if (rowIndex == 0 && choiceIndex == 0) {
-                                                smartphoneFocusRequester
-                                            } else {
-                                                null
-                                            },
-                                            modifier = Modifier.weight(1f),
-                                            onClick = {
-                                                if (choice.profile == AppDeviceProfile.SMARTPHONE) {
-                                                    selectedProfile = AppDeviceProfile.SMARTPHONE
-                                                } else {
-                                                    onConfigured(choice.profile, null)
-                                                }
-                                            },
-                                        )
-                                    }
-                                }
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        ) {
+                            choices.forEachIndexed { index, choice ->
+                                DeviceProfileChoiceButton(
+                                    choice = choice,
+                                    focusRequester = if (index == 0) smartphoneFocusRequester else null,
+                                    modifier = Modifier.weight(1f),
+                                    onClick = {
+                                        if (choice.profile == AppDeviceProfile.SMARTPHONE) {
+                                            selectedProfile = AppDeviceProfile.SMARTPHONE
+                                        } else {
+                                            onConfigured(choice.profile, null)
+                                        }
+                                    },
+                                )
                             }
                         }
                     } else {
@@ -212,7 +194,7 @@ private fun SmartphoneOrientationStep(
                 textAlign = TextAlign.Center,
             )
             Text(
-                text = "Smartphone is the only profile that can use Portrait or Landscape.",
+                text = "Smartphone can use Portrait or Landscape. Tablet remains Landscape.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = TextAlign.Center,
