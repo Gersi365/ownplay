@@ -28,12 +28,24 @@ The following remain shared in `src/main` and must not fork by target unless a c
 - EPG
 - downloads/offline storage and playback
 - Room persistence and migrations
-- source/playlist handling
-- sync protocol and persistence
+- source/playlist handling and playlist refresh
 - favorites, progress and playback provenance
 - network/data/domain models
 
 Target source sets own presentation/input entry policy. The shared core must not infer TV vs Mobile from runtime device detection.
+
+## Cross-device sync scope
+
+Cross-device Device Sync is deferred and is not part of the current Mobile or TV product scope.
+
+- Each installation keeps playlist/source state and personalization local.
+- There is no current pairing, device registration, cloud account, automatic cross-device replication or secure source-transfer workflow exposed by the product.
+- `SourceSyncState` remains because it represents playlist refresh/import state on the current installation; it is not Device Sync.
+- Backup/Restore remains the explicit portability mechanism.
+- Database v6 sync tables and protocol primitives remain as dormant compatibility/history structures so update-compatible installs do not require a destructive database downgrade.
+- Local product mutations must not create or advance Device Sync metadata while the feature is deferred.
+
+Reintroducing cross-device sync requires a new explicit product-scope decision and a fresh security/UX validation pass.
 
 ## Change rule
 
