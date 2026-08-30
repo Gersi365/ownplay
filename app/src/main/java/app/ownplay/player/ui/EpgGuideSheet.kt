@@ -25,6 +25,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
@@ -54,6 +55,7 @@ internal fun EpgGuideSheet(
     val isTelevision =
         configuration.uiMode and Configuration.UI_MODE_TYPE_MASK == Configuration.UI_MODE_TYPE_TELEVISION
     val doneFocusRequester = remember { FocusRequester() }
+    val programFocusRequester = remember { FocusRequester() }
     val nowEpochSeconds = System.currentTimeMillis() / 1_000L
     val timeline = remember(snapshot, nowEpochSeconds) {
         EpgTimelineProjector.project(
@@ -62,18 +64,35 @@ internal fun EpgGuideSheet(
         )
     }
     val currentIndex = timeline.current?.let(timeline.programs::indexOf)?.takeIf { it >= 0 }
+    val initialFocus = EpgGuideFocusPolicy.initialFocus(
+        isTelevision = isTelevision,
+        loading = loading,
+        failed = failed,
+        programCount = timeline.programs.size,
+        currentIndex = currentIndex,
+    )
     val listState = rememberLazyListState()
     var selectedProgram by remember { mutableStateOf<EpgProgram?>(null) }
 
-    LaunchedEffect(isTelevision) {
-        if (isTelevision) {
-            doneFocusRequester.requestFocus()
-        }
-    }
-
-    LaunchedEffect(currentIndex) {
-        if (currentIndex != null) {
-            listState.scrollToItem((currentIndex - 1).coerceAtLeast(0))
+    LaunchedEffect(
+        isTelevision,
+        loading,
+        failed,
+        timeline.programs.size,
+        currentIndex,
+    ) {
+        when (initialFocus.target) {
+            EpgGuideFocusTarget.NONE -> Unit
+            EpgGuideFocusTarget.DONE -> {
+                withFrameNanos { }
+                doneFocusRequester.requestFocus()
+            }
+            EpgGuideFocusTarget.PROGRAM -> {
+                val targetIndex = initialFocus.programIndex ?: return@LaunchedEffect
+                listState.scrollToItem((targetIndex - 1).coerceAtLeast(0))
+                withFrameNanos { }
+                programFocusRequester.requestFocus()
+            }
         }
     }
 
@@ -135,6 +154,14 @@ internal fun EpgGuideSheet(
                                 program = program,
                                 isCurrent = program == timeline.current,
                                 isPast = program in timeline.past,
+                                focusRequester = if (
+                                    initialFocus.target == EpgGuideFocusTarget.PROGRAM &&
+                                    index == initialFocus.programIndex
+                                ) {
+                                    programFocusRequester
+                                } else {
+                                    null
+                                },
                                 onClick = { selectedProgram = program },
                             )
                         }
@@ -185,12 +212,16 @@ private fun ProgramGuideRow(
     program: EpgProgram,
     isCurrent: Boolean,
     isPast: Boolean,
+    focusRequester: FocusRequester? = null,
     onClick: () -> Unit,
 ) {
     Surface(
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 12.dp)
+            .then(
+                focusRequester?.let { requester -> Modifier.focusRequester(requester) } ?: Modifier,
+            )
             .clickable(onClick = onClick),
         shape = RoundedCornerShape(12.dp),
         color = if (isCurrent) {
