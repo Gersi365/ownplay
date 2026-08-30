@@ -154,6 +154,16 @@ internal fun PlaybackScreen(
         onDispose { onFullscreenStateChanged(false) }
     }
 
+    LaunchedEffect(selection.request.sourceId, selection.request.channelId) {
+        val exactSnapshot = LiveEpgPresentationBridge.loadSnapshot(
+            sourceId = selection.request.sourceId,
+            channelId = selection.request.channelId,
+        )
+        if (exactSnapshot != null) {
+            LiveEpgPresentationBridge.publish(exactSnapshot)
+        }
+    }
+
     LaunchedEffect(selection.request.channelId, isTelevision) {
         epgVisible = true
         epgFocused = false
