@@ -33,6 +33,7 @@ class BuildTargetSeparationRegressionTest {
         assertTrue(mobile.contains("android.hardware.touchscreen"))
         assertTrue(mobile.contains("android:required=\"true\""))
         assertTrue(mobile.contains("android.intent.category.LAUNCHER"))
+        assertTrue(mobile.contains("android:exported=\"true\""))
         assertFalse(mobile.contains("android.intent.category.LEANBACK_LAUNCHER"))
 
         assertTrue(tv.contains("android.intent.category.LEANBACK_LAUNCHER"))
