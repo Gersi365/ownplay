@@ -23,8 +23,8 @@ Authorized behavior implemented in this slice:
 - Parent HEAD: `ede2338801e0a804a41c5e51b7ca233a00c0b297`
 - Parent exact-head no-APK validation evidence: Android Validation No APK run `33257736799` / run #32, SUCCESS.
 - Focused branch: `agent/live-tv-hierarchy-preview-no-apk`
-- Current implementation checkpoint before this report update: `c716508d6f203a52a44f7f33c09523099b7fdca9`
-- Relationship to parent: ahead by 4 commits, behind by 0.
+- Current implementation checkpoint before this report update: `c714ba5d516540472ae0916b11c6a3e17696a2b6`
+- Relationship to parent at that checkpoint: ahead by 8 commits, behind by 0.
 
 The focused branch was created directly from the exact validated parent HEAD so this slice remains isolated from PR #45 rather than broadening that PR's existing diff boundary.
 
@@ -42,6 +42,8 @@ Two scope/focus risks were found during post-mutation audit and corrected before
 
 1. The first implementation applied the new hierarchy and Back handler to phone/tablet as well as TV. `LiveRoute` was corrected so hierarchy state, hierarchy Back ownership, and category-first presentation are TV-only. Phone/tablet again use the established direct `PortraitLiveBrowseWithViewModes` path.
 2. The hierarchy wrapper could force a fallback channel focus when used by a non-TV landscape workspace. The focus fallback is now gated by television `uiMode` so non-TV focus behavior is not broadened by this slice.
+
+The TV-only platform gate was then promoted into `LiveBrowseHierarchyPolicy` so the initial hierarchy level and Back ownership are deterministic and explicitly covered by unit tests rather than remaining only inline UI logic.
 
 ## Implementation boundary
 
@@ -62,8 +64,11 @@ No APK is to be produced by this branch.
 
 ## Regression policies added
 
-`LiveBrowseHierarchyPolicy` makes the requested activation transitions deterministic and unit-testable:
+`LiveBrowseHierarchyPolicy` now makes the device and transition rules deterministic and unit-testable:
 
+- TV initial Live hierarchy -> Categories.
+- Non-TV initial hierarchy state -> Channels/direct browse semantics.
+- Only TV owns Preview/category hierarchy Back handling.
 - Preview open + Back/ESC -> close Preview.
 - Channels level + no Preview + Back/ESC -> show Categories.
 - Categories level + no Preview + Back/ESC -> propagate to normal app navigation.
@@ -71,8 +76,6 @@ No APK is to be produced by this branch.
 - TV + same active Preview channel + channel OK -> open Fullscreen.
 - TV + different channel OK -> replace Preview.
 - Non-TV repeated channel activation keeps the existing Preview behavior.
-
-Platform ownership is applied in `LiveRoute`: the hierarchy Back handler is enabled only on television devices.
 
 ## Current diff boundary
 
@@ -94,12 +97,13 @@ No Room schema file changed in this slice.
 - Repository/source audit: PASS.
 - Exact parent baseline identification: PASS.
 - Diff boundary audit: PASS; 8 files, focused on Live/TV UI, policy, tests, and this report.
-- Deterministic policy regression tests: ADDED, but not executed on this new branch in the connected session.
+- Deterministic policy regression tests: ADDED, including TV-only hierarchy entry and Back ownership, but not executed on this new branch in the connected session.
 - Static review of TV Preview control suppression: PASS at source level.
 - Static review of TV second-OK routing and ESC precedence: PASS at source level.
 - Static review that phone/tablet direct browse behavior is preserved: PASS at source level after corrective commit `93c5d310ff46d1ed39b9040069ee3b62e0dbca13`.
 - Static review that hierarchy focus fallback is TV-only: PASS at source level after corrective commit `c716508d6f203a52a44f7f33c09523099b7fdca9`.
-- Current commit combined CI statuses: none attached.
+- TV-only hierarchy/Back policy wiring checkpoint: `c714ba5d516540472ae0916b11c6a3e17696a2b6`.
+- Current commit combined CI statuses at the implementation checkpoint: none attached.
 - Kotlin/Android compile, unit-test execution, lint, AndroidTest compile: NOT EXECUTED on this branch.
 - APK build: NOT AUTHORIZED / MUST NOT RUN for this branch.
 - Physical TV/TV Box QA: REQUIRED after a later explicitly authorized update-compatible QA APK exists.
