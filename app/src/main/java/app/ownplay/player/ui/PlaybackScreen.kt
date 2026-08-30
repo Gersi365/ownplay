@@ -3,6 +3,7 @@ package app.ownplay.player.ui
 import android.app.Activity
 import android.content.Context
 import android.content.ContextWrapper
+import android.content.res.Configuration
 import android.graphics.Color as AndroidColor
 import android.view.KeyEvent
 import androidx.annotation.OptIn
@@ -10,10 +11,8 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusable
-import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -50,7 +49,7 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.key.onPreviewKeyEvent
-import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -102,6 +101,9 @@ internal fun PlaybackScreen(
     onReturnToChannels: () -> Unit,
     onFullscreenStateChanged: (Boolean) -> Unit,
 ) {
+    val configuration = LocalConfiguration.current
+    val isTelevision =
+        configuration.uiMode and Configuration.UI_MODE_TYPE_MASK == Configuration.UI_MODE_TYPE_TELEVISION
     val rootFocusRequester = remember { FocusRequester() }
     val touchInteractionSource = remember { MutableInteractionSource() }
     val epgSnapshot by LiveEpgPresentationBridge.snapshot.collectAsState()
@@ -113,12 +115,13 @@ internal fun PlaybackScreen(
     }
     val overlayPrograms = remember(timeline) {
         buildList {
-            timeline.current?.let(::add)
+            timeline.current?.let { add(it) }
+            val remaining = (LIVE_EPG_PROGRAM_LIMIT - size).coerceAtLeast(0)
             timeline.future
                 .asSequence()
                 .filter { program -> program != timeline.current }
-                .take(LIVE_EPG_PROGRAM_LIMIT - size)
-                .forEach(::add)
+                .take(remaining)
+                .forEach { program -> add(program) }
         }.distinct()
     }
     val fullGuideIndex = overlayPrograms.size
@@ -137,6 +140,7 @@ internal fun PlaybackScreen(
     }
 
     fun openFullGuide() {
+        if (overlayPrograms.isEmpty()) return
         LiveEpgPresentationBridge.requestFullGuide()
         onReturnToChannels()
     }
@@ -150,13 +154,15 @@ internal fun PlaybackScreen(
         onDispose { onFullscreenStateChanged(false) }
     }
 
-    LaunchedEffect(selection.request.channelId) {
+    LaunchedEffect(selection.request.channelId, isTelevision) {
         epgVisible = true
         epgFocused = false
         selectedProgramIndex = currentProgramIndex
         interactionGeneration += 1
-        withFrameNanos { }
-        rootFocusRequester.requestFocus()
+        if (isTelevision) {
+            withFrameNanos { }
+            rootFocusRequester.requestFocus()
+        }
     }
 
     LaunchedEffect(overlayPrograms, currentProgramIndex) {
@@ -179,71 +185,86 @@ internal fun PlaybackScreen(
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .focusRequester(rootFocusRequester)
-                .onPreviewKeyEvent { event ->
-                    val native = event.nativeKeyEvent
-                    if (native.action != KeyEvent.ACTION_DOWN) return@onPreviewKeyEvent false
-                    when (native.keyCode) {
-                        KeyEvent.KEYCODE_DPAD_CENTER,
-                        KeyEvent.KEYCODE_ENTER,
-                        KeyEvent.KEYCODE_NUMPAD_ENTER,
-                        KeyEvent.KEYCODE_BUTTON_A,
-                        KeyEvent.KEYCODE_BUTTON_SELECT,
-                        -> {
-                            when {
-                                !epgVisible -> revealEpg()
-                                epgFocused && selectedProgramIndex == fullGuideIndex -> openFullGuide()
-                                else -> revealEpg()
-                            }
-                            true
-                        }
+                .then(
+                    if (isTelevision) {
+                        Modifier
+                            .focusRequester(rootFocusRequester)
+                            .onPreviewKeyEvent { event ->
+                                val native = event.nativeKeyEvent
+                                if (native.action != KeyEvent.ACTION_DOWN) {
+                                    return@onPreviewKeyEvent false
+                                }
+                                when (native.keyCode) {
+                                    KeyEvent.KEYCODE_DPAD_CENTER,
+                                    KeyEvent.KEYCODE_ENTER,
+                                    KeyEvent.KEYCODE_NUMPAD_ENTER,
+                                    KeyEvent.KEYCODE_BUTTON_A,
+                                    KeyEvent.KEYCODE_BUTTON_SELECT,
+                                    -> {
+                                        when {
+                                            !epgVisible -> revealEpg()
+                                            epgFocused &&
+                                                overlayPrograms.isNotEmpty() &&
+                                                selectedProgramIndex == fullGuideIndex -> openFullGuide()
+                                            else -> revealEpg()
+                                        }
+                                        true
+                                    }
 
-                        KeyEvent.KEYCODE_DPAD_DOWN -> {
-                            if (!epgVisible) {
-                                false
-                            } else {
-                                epgFocused = true
-                                selectedProgramIndex = selectedProgramIndex.coerceIn(0, fullGuideIndex)
-                                interactionGeneration += 1
-                                true
-                            }
-                        }
+                                    KeyEvent.KEYCODE_DPAD_DOWN -> {
+                                        if (!epgVisible || overlayPrograms.isEmpty()) {
+                                            false
+                                        } else {
+                                            epgFocused = true
+                                            selectedProgramIndex = selectedProgramIndex.coerceIn(
+                                                0,
+                                                fullGuideIndex,
+                                            )
+                                            interactionGeneration += 1
+                                            true
+                                        }
+                                    }
 
-                        KeyEvent.KEYCODE_DPAD_UP -> {
-                            if (epgFocused) {
-                                epgFocused = false
-                                interactionGeneration += 1
-                                true
-                            } else {
-                                false
-                            }
-                        }
+                                    KeyEvent.KEYCODE_DPAD_UP -> {
+                                        if (epgFocused) {
+                                            epgFocused = false
+                                            interactionGeneration += 1
+                                            true
+                                        } else {
+                                            false
+                                        }
+                                    }
 
-                        KeyEvent.KEYCODE_DPAD_LEFT -> {
-                            if (epgFocused) {
-                                selectedProgramIndex = (selectedProgramIndex - 1).coerceAtLeast(0)
-                                interactionGeneration += 1
-                                true
-                            } else {
-                                false
-                            }
-                        }
+                                    KeyEvent.KEYCODE_DPAD_LEFT -> {
+                                        if (epgFocused) {
+                                            selectedProgramIndex =
+                                                (selectedProgramIndex - 1).coerceAtLeast(0)
+                                            interactionGeneration += 1
+                                            true
+                                        } else {
+                                            false
+                                        }
+                                    }
 
-                        KeyEvent.KEYCODE_DPAD_RIGHT -> {
-                            if (epgFocused) {
-                                selectedProgramIndex =
-                                    (selectedProgramIndex + 1).coerceAtMost(fullGuideIndex)
-                                interactionGeneration += 1
-                                true
-                            } else {
-                                false
-                            }
-                        }
+                                    KeyEvent.KEYCODE_DPAD_RIGHT -> {
+                                        if (epgFocused) {
+                                            selectedProgramIndex =
+                                                (selectedProgramIndex + 1).coerceAtMost(fullGuideIndex)
+                                            interactionGeneration += 1
+                                            true
+                                        } else {
+                                            false
+                                        }
+                                    }
 
-                        else -> false
-                    }
-                }
-                .focusable(),
+                                    else -> false
+                                }
+                            }
+                            .focusable()
+                    } else {
+                        Modifier
+                    },
+                ),
         ) {
             LiveFullscreenVideoSurface(
                 videoOutput = videoOutput,
@@ -253,10 +274,8 @@ internal fun PlaybackScreen(
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .pointerInput(selection.request.channelId) {
-                        detectTapGestures(onTap = { revealEpg() })
-                    }
                     .clickable(
+                        enabled = !isTelevision,
                         interactionSource = touchInteractionSource,
                         indication = null,
                         onClick = ::revealEpg,
@@ -299,6 +318,7 @@ internal fun PlaybackScreen(
                 LiveFullscreenEpgOverlay(
                     channelName = selection.displayName,
                     programs = overlayPrograms,
+                    currentProgram = timeline.current,
                     selectedIndex = selectedProgramIndex,
                     focused = epgFocused,
                     fullGuideIndex = fullGuideIndex,
@@ -343,6 +363,7 @@ private fun LiveFullscreenVideoSurface(
 private fun LiveFullscreenEpgOverlay(
     channelName: String,
     programs: List<EpgProgram>,
+    currentProgram: EpgProgram?,
     selectedIndex: Int,
     focused: Boolean,
     fullGuideIndex: Int,
@@ -352,9 +373,9 @@ private fun LiveFullscreenEpgOverlay(
 ) {
     val listState = rememberLazyListState()
 
-    LaunchedEffect(selectedIndex, focused) {
-        if (focused) {
-            listState.animateScrollToItem(selectedIndex.coerceAtLeast(0))
+    LaunchedEffect(selectedIndex, focused, programs.size) {
+        if (focused && programs.isNotEmpty()) {
+            listState.animateScrollToItem(selectedIndex.coerceIn(0, fullGuideIndex))
         }
     }
 
@@ -384,7 +405,7 @@ private fun LiveFullscreenEpgOverlay(
                         overflow = TextOverflow.Ellipsis,
                     )
                     Text(
-                        text = if (focused) "EPG · ← → browse · ↑ return to video" else "EPG",
+                        text = if (focused) "EPG · ← → browse · ↑ video" else "EPG",
                         style = MaterialTheme.typography.labelSmall,
                         color = Color.White.copy(alpha = 0.62f),
                         maxLines = 1,
@@ -407,7 +428,7 @@ private fun LiveFullscreenEpgOverlay(
                         LiveFullscreenProgramCard(
                             program = program,
                             selected = focused && selectedIndex == index,
-                            current = index == 0,
+                            current = program == currentProgram,
                             onClick = { onProgramSelected(index) },
                         )
                     }
