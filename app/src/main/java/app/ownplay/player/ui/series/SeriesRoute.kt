@@ -153,8 +153,11 @@ internal fun SeriesRoute(
                 selectedSeasonNumber = null
                 selectedEpisodeId = null
             }
+            selectedSeries != null -> {
+                restoreCatalogFocusAfterPlayback = true
+                selectedSeries = null
+            }
             returnToLibraryOnDetailBack -> onReturnToLibrary()
-            else -> selectedSeries = null
         }
     }
 
@@ -166,8 +169,15 @@ internal fun SeriesRoute(
         detailsBackOwner,
         returnToLibraryOnDetailBack,
     ) {
-        if (selectedSeries != null && playingEpisode == null) {
-            PlaybackInteractionBridge.registerBackAction(detailsBackOwner, ::closeSeriesLevel)
+        if (playingEpisode == null) {
+            when {
+                selectedSeries != null -> {
+                    PlaybackInteractionBridge.registerBackAction(detailsBackOwner, ::closeSeriesLevel)
+                }
+                returnToLibraryOnDetailBack -> {
+                    PlaybackInteractionBridge.registerBackAction(detailsBackOwner, onReturnToLibrary)
+                }
+            }
         }
         onDispose {
             PlaybackInteractionBridge.clearBackAction(detailsBackOwner)
