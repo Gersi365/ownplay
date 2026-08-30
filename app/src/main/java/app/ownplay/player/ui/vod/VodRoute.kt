@@ -305,12 +305,24 @@ internal fun VodRoute(
         loading = false
     }
 
-    LaunchedEffect(sourceId, requestedMovieId, catalog.movies) {
+    LaunchedEffect(catalog.categories, selectedCategoryKey) {
+        val categories = catalog.categories
+        val selected = selectedCategoryKey
+        selectedCategoryKey = when {
+            categories.isEmpty() -> null
+            selected != null && categories.any { it.providerCategoryKey == selected } -> selected
+            else -> categories.first().providerCategoryKey
+        }
+    }
+
+    LaunchedEffect(sourceId, requestedMovieId, catalog.movies, catalog.categories) {
         val targetMovieId = requestedMovieId ?: return@LaunchedEffect
         val target = catalog.movies.firstOrNull { movie -> movie.movieId == targetMovieId }
             ?: return@LaunchedEffect
         query = ""
-        selectedCategoryKey = null
+        selectedCategoryKey = target.categoryKey
+            ?.takeIf { key -> catalog.categories.any { it.providerCategoryKey == key } }
+            ?: catalog.categories.firstOrNull()?.providerCategoryKey
         favoritesOnly = false
         restoreDetailFocusAfterPlayback = false
         selectedMovie = target
@@ -614,13 +626,6 @@ private fun MoviesCatalogContent(
                 contentPadding = PaddingValues(horizontal = 10.dp, vertical = 2.dp),
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
             ) {
-                item(key = "vod-all") {
-                    FilterChip(
-                        selected = selectedCategoryKey == null,
-                        onClick = { onCategorySelected(null) },
-                        label = { Text("All") },
-                    )
-                }
                 items(catalog.categories, key = { it.categoryId }) { category ->
                     FilterChip(
                         selected = selectedCategoryKey == category.providerCategoryKey,
@@ -730,13 +735,6 @@ private fun MovieNavigationRail(
                 contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp),
                 verticalArrangement = Arrangement.spacedBy(2.dp),
             ) {
-                item(key = "movie-all") {
-                    MovieCategoryRow(
-                        title = "All Movies",
-                        selected = selectedCategoryKey == null,
-                        onClick = { onCategorySelected(null) },
-                    )
-                }
                 items(catalog.categories, key = { it.categoryId }) { category ->
                     MovieCategoryRow(
                         title = category.name,
