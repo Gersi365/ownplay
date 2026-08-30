@@ -16,7 +16,6 @@ import androidx.media3.common.Tracks
 import androidx.media3.common.util.StuckPlayerException
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.HttpDataSource
-import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.ExoTimeoutException
@@ -30,10 +29,6 @@ import kotlinx.coroutines.flow.asStateFlow
 
 private const val DETACH_SURFACE_TIMEOUT_MILLIS = 1_000L
 private const val STUCK_PLAYING_TIMEOUT_MILLIS = 20_000
-private const val NETWORK_MIN_BUFFER_MILLIS = 50_000
-private const val NETWORK_MAX_BUFFER_MILLIS = 90_000
-private const val NETWORK_BUFFER_FOR_PLAYBACK_MILLIS = 1_500
-private const val NETWORK_BUFFER_AFTER_REBUFFER_MILLIS = 4_000
 
 interface PlaybackVideoOutput {
     fun bind(view: PlayerView)
@@ -48,17 +43,7 @@ class Media3PlaybackEngine(
     private val renderersFactory = DefaultRenderersFactory(applicationContext)
         .setEnableDecoderFallback(true)
         .setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON)
-    private val loadControl = DefaultLoadControl.Builder()
-        .setBufferDurationsMsForStreaming(
-            NETWORK_MIN_BUFFER_MILLIS,
-            NETWORK_MAX_BUFFER_MILLIS,
-            NETWORK_BUFFER_FOR_PLAYBACK_MILLIS,
-            NETWORK_BUFFER_AFTER_REBUFFER_MILLIS,
-        )
-        .setPrioritizeTimeOverSizeThresholdsForStreaming(true)
-        .build()
     private val player = ExoPlayer.Builder(applicationContext, renderersFactory)
-        .setLoadControl(loadControl)
         .setDetachSurfaceTimeoutMs(DETACH_SURFACE_TIMEOUT_MILLIS)
         .setStuckPlayingDetectionTimeoutMs(STUCK_PLAYING_TIMEOUT_MILLIS)
         .setAudioAttributes(AudioAttributes.DEFAULT, true)
@@ -238,7 +223,6 @@ class Media3PlaybackEngine(
             }
         }
     }
-
     override fun selectSubtitle(selection: PlaybackSubtitleSelection) {
         runOnPlayerThread {
             when (selection) {
