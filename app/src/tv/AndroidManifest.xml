@@ -11,6 +11,7 @@
     <application android:banner="@drawable/tv_banner">
         <activity
             android:name=".MainActivity"
+            android:exported="true"
             android:screenOrientation="landscape"
             android:supportsPictureInPicture="false"
             tools:replace="android:screenOrientation,android:supportsPictureInPicture">
