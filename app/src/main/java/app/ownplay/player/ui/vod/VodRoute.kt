@@ -303,12 +303,24 @@ internal fun VodRoute(
         loading = false
     }
 
-    LaunchedEffect(sourceId, requestedMovieId, catalog.movies) {
+    LaunchedEffect(sourceId, catalog.categories, requestedMovieId) {
+        if (requestedMovieId != null) return@LaunchedEffect
+        val selectedIsValid = catalog.categories.any { category ->
+            category.providerCategoryKey == selectedCategoryKey
+        }
+        if (!selectedIsValid) {
+            selectedCategoryKey = catalog.categories.firstOrNull()?.providerCategoryKey
+        }
+    }
+
+    LaunchedEffect(sourceId, requestedMovieId, catalog.movies, catalog.categories) {
         val targetMovieId = requestedMovieId ?: return@LaunchedEffect
         val target = catalog.movies.firstOrNull { movie -> movie.movieId == targetMovieId }
             ?: return@LaunchedEffect
         query = ""
-        selectedCategoryKey = null
+        selectedCategoryKey = target.categoryKey
+            ?.takeIf { key -> catalog.categories.any { it.providerCategoryKey == key } }
+            ?: catalog.categories.firstOrNull()?.providerCategoryKey
         favoritesOnly = false
         restoreDetailFocusAfterPlayback = false
         selectedMovie = target
@@ -612,13 +624,6 @@ private fun MoviesCatalogContent(
                 contentPadding = PaddingValues(horizontal = 10.dp, vertical = 2.dp),
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
             ) {
-                item(key = "vod-all") {
-                    FilterChip(
-                        selected = selectedCategoryKey == null,
-                        onClick = { onCategorySelected(null) },
-                        label = { Text("All") },
-                    )
-                }
                 items(catalog.categories, key = { it.categoryId }) { category ->
                     FilterChip(
                         selected = selectedCategoryKey == category.providerCategoryKey,
@@ -728,13 +733,6 @@ private fun MovieNavigationRail(
                 contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp),
                 verticalArrangement = Arrangement.spacedBy(2.dp),
             ) {
-                item(key = "movie-all") {
-                    MovieCategoryRow(
-                        title = "All Movies",
-                        selected = selectedCategoryKey == null,
-                        onClick = { onCategorySelected(null) },
-                    )
-                }
                 items(catalog.categories, key = { it.categoryId }) { category ->
                     MovieCategoryRow(
                         title = category.name,
