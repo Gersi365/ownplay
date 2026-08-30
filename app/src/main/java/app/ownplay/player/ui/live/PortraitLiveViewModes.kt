@@ -88,7 +88,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.Request
 
-private const val LIVE_VIEW_MOTION_MILLIS = 140
 private const val MAX_CHANNEL_LOGO_BYTES = 2 * 1024 * 1024
 private const val MAX_CHANNEL_LOGO_EDGE_PX = 256
 
@@ -530,7 +529,7 @@ private fun LiveChannelView(
                 }
                 LiveChannelListRow(
                     channel = channel,
-                    playing = channel.channelId == playingChannelId,
+                    active = channel.channelId == playingChannelId,
                     currentProgram = currentEpgByChannelId[channel.channelId],
                     onClick = { onChannelSelected(channel.channelId) },
                     onFocused = { requesterChannelId = channel.channelId },
@@ -554,7 +553,7 @@ private fun LiveChannelView(
                 }
                 LiveChannelCompactRow(
                     channel = channel,
-                    playing = channel.channelId == playingChannelId,
+                    active = channel.channelId == playingChannelId,
                     currentProgram = currentEpgByChannelId[channel.channelId],
                     onClick = { onChannelSelected(channel.channelId) },
                     onFocused = { requesterChannelId = channel.channelId },
@@ -582,7 +581,7 @@ private fun LiveChannelView(
                 }
                 LiveChannelCard(
                     channel = channel,
-                    playing = channel.channelId == playingChannelId,
+                    active = channel.channelId == playingChannelId,
                     currentProgram = currentEpgByChannelId[channel.channelId],
                     onClick = { onChannelSelected(channel.channelId) },
                     onFocused = { requesterChannelId = channel.channelId },
@@ -596,7 +595,7 @@ private fun LiveChannelView(
 @Composable
 private fun LiveChannelCompactRow(
     channel: LiveChannelItem,
-    playing: Boolean,
+    active: Boolean,
     currentProgram: EpgProgram?,
     onClick: () -> Unit,
     onFocused: () -> Unit,
@@ -610,7 +609,7 @@ private fun LiveChannelCompactRow(
                 focused = focusState.isFocused
                 if (focusState.isFocused) onFocused()
             }
-            .background(liveSelectionBackground(playing || focused))
+            .background(liveSelectionBackground(active || focused))
             .clickable(onClick = onClick)
             .padding(horizontal = 10.dp, vertical = 7.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -625,7 +624,12 @@ private fun LiveChannelCompactRow(
             Text(
                 text = channel.displayName,
                 style = MaterialTheme.typography.bodyMedium,
-                fontWeight = if (playing) FontWeight.SemiBold else FontWeight.Medium,
+                fontWeight = FontWeight.Medium,
+                color = if (active || focused) {
+                    MaterialTheme.colorScheme.onPrimaryContainer
+                } else {
+                    MaterialTheme.colorScheme.onSurface
+                },
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
@@ -633,20 +637,24 @@ private fun LiveChannelCompactRow(
                 Text(
                     text = label,
                     style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = if (active || focused) {
+                        MaterialTheme.colorScheme.primary
+                    } else {
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    },
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
             }
         }
-        LiveChannelTrailingState(channel = channel, playing = playing)
+        LiveChannelTrailingState(channel = channel)
     }
 }
 
 @Composable
 private fun LiveChannelListRow(
     channel: LiveChannelItem,
-    playing: Boolean,
+    active: Boolean,
     currentProgram: EpgProgram?,
     onClick: () -> Unit,
     onFocused: () -> Unit,
@@ -660,7 +668,7 @@ private fun LiveChannelListRow(
                 focused = focusState.isFocused
                 if (focusState.isFocused) onFocused()
             }
-            .background(liveSelectionBackground(playing || focused))
+            .background(liveSelectionBackground(active || focused))
             .clickable(onClick = onClick)
             .padding(horizontal = 12.dp, vertical = 9.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -675,7 +683,12 @@ private fun LiveChannelListRow(
             Text(
                 text = channel.displayName,
                 style = MaterialTheme.typography.bodyLarge,
-                fontWeight = if (playing) FontWeight.SemiBold else FontWeight.Medium,
+                fontWeight = FontWeight.Medium,
+                color = if (active || focused) {
+                    MaterialTheme.colorScheme.onPrimaryContainer
+                } else {
+                    MaterialTheme.colorScheme.onSurface
+                },
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
@@ -683,20 +696,24 @@ private fun LiveChannelListRow(
                 Text(
                     text = label,
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = if (active || focused) {
+                        MaterialTheme.colorScheme.primary
+                    } else {
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    },
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                 )
             }
         }
-        LiveChannelTrailingState(channel = channel, playing = playing)
+        LiveChannelTrailingState(channel = channel)
     }
 }
 
 @Composable
 private fun LiveChannelCard(
     channel: LiveChannelItem,
-    playing: Boolean,
+    active: Boolean,
     currentProgram: EpgProgram?,
     onClick: () -> Unit,
     onFocused: () -> Unit,
@@ -712,8 +729,8 @@ private fun LiveChannelCard(
             }
             .clickable(onClick = onClick),
         shape = RoundedCornerShape(14.dp),
-        color = if (playing || focused) {
-            MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.42f)
+        color = if (active || focused) {
+            MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.68f)
         } else {
             MaterialTheme.colorScheme.surface
         },
@@ -741,6 +758,11 @@ private fun LiveChannelCard(
                 text = channel.displayName,
                 style = MaterialTheme.typography.bodyMedium,
                 fontWeight = FontWeight.SemiBold,
+                color = if (active || focused) {
+                    MaterialTheme.colorScheme.onPrimaryContainer
+                } else {
+                    MaterialTheme.colorScheme.onSurface
+                },
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
             )
@@ -748,7 +770,11 @@ private fun LiveChannelCard(
                 Text(
                     text = label,
                     style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = if (active || focused) {
+                        MaterialTheme.colorScheme.primary
+                    } else {
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    },
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                 )
@@ -765,32 +791,20 @@ private fun LiveChannelCard(
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
-                LiveChannelTrailingState(channel = channel, playing = playing)
+                LiveChannelTrailingState(channel = channel)
             }
         }
     }
 }
 
 @Composable
-private fun LiveChannelTrailingState(
-    channel: LiveChannelItem,
-    playing: Boolean,
-) {
-    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-        if (channel.isFavorite) {
-            Text(
-                text = "★",
-                style = MaterialTheme.typography.labelLarge,
-                color = MaterialTheme.colorScheme.primary,
-            )
-        }
-        if (playing) {
-            Text(
-                text = "▶",
-                style = MaterialTheme.typography.labelLarge,
-                color = MaterialTheme.colorScheme.primary,
-            )
-        }
+private fun LiveChannelTrailingState(channel: LiveChannelItem) {
+    if (channel.isFavorite) {
+        Text(
+            text = "★",
+            style = MaterialTheme.typography.labelLarge,
+            color = MaterialTheme.colorScheme.primary,
+        )
     }
 }
 
@@ -885,8 +899,8 @@ private fun decodeChannelLogo(bytes: ByteArray): ImageBitmap? {
 }
 
 @Composable
-private fun liveSelectionBackground(playing: Boolean) = if (playing) {
-    MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.38f)
+private fun liveSelectionBackground(active: Boolean) = if (active) {
+    MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.68f)
 } else {
     MaterialTheme.colorScheme.background
 }
