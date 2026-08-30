@@ -1,5 +1,6 @@
 package app.ownplay.player.ui
 
+import android.content.res.Configuration
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -15,6 +16,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -25,6 +27,10 @@ internal fun LandscapeSettingsRail(
     selectedRailFocusRequester: FocusRequester,
     onDestinationChange: (SettingsDestination) -> Unit,
 ) {
+    val configuration = LocalConfiguration.current
+    val isTelevision =
+        configuration.uiMode and Configuration.UI_MODE_TYPE_MASK == Configuration.UI_MODE_TYPE_TELEVISION
+
     Surface(
         modifier = Modifier
             .width(220.dp)
@@ -67,13 +73,15 @@ internal fun LandscapeSettingsRail(
                 focusRequester = selectedRailFocusRequester,
                 onClick = { onDestinationChange(SettingsDestination.CONTENT) },
             )
-            SettingsRailItem(
-                label = "Downloads",
-                detail = "Offline movies & episodes",
-                selected = selectedRailDestination == SettingsDestination.DOWNLOADS,
-                focusRequester = selectedRailFocusRequester,
-                onClick = { onDestinationChange(SettingsDestination.DOWNLOADS) },
-            )
+            if (!isTelevision) {
+                SettingsRailItem(
+                    label = "Downloads",
+                    detail = "Offline movies & episodes",
+                    selected = selectedRailDestination == SettingsDestination.DOWNLOADS,
+                    focusRequester = selectedRailFocusRequester,
+                    onClick = { onDestinationChange(SettingsDestination.DOWNLOADS) },
+                )
+            }
             SettingsRailItem(
                 label = "About",
                 detail = "OwnPlay information",
@@ -114,7 +122,7 @@ internal fun SettingsRailItem(
             Text(
                 text = label,
                 style = MaterialTheme.typography.bodyMedium,
-                fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
+                fontWeight = FontWeight.Medium,
                 color = if (selected) {
                     MaterialTheme.colorScheme.onPrimaryContainer
                 } else {
