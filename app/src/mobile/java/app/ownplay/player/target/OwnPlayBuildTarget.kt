@@ -12,4 +12,7 @@ internal object OwnPlayBuildTarget {
         AppDeviceProfile.SMARTPHONE,
         AppDeviceProfile.TABLET,
     )
+
+    fun resolveProfile(storedProfile: AppDeviceProfile?): AppDeviceProfile? =
+        storedProfile?.takeIf(selectableProfiles::contains)
 }
