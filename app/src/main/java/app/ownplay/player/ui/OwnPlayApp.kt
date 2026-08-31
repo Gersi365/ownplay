@@ -279,7 +279,8 @@ fun OwnPlayApp(
 
     val openedFullscreen = fullscreenSelection
     if (openedFullscreen != null) {
-        PlaybackScreen(
+        LiveFullscreenPlaybackScreen(
+            runtime = runtime,
             selection = openedFullscreen,
             state = playbackState,
             trackState = playbackTrackState,
@@ -303,7 +304,6 @@ fun OwnPlayApp(
                     fullscreenSelection ?: activeSelection ?: openedFullscreen,
                 )
             },
-            onFullscreenStateChanged = {},
         )
         return
     }
