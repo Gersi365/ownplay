@@ -347,7 +347,7 @@ private fun MobileLiveBrowsePane(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 12.dp, vertical = 8.dp),
-                shape = RoundedCornerShape(16.dp),
+                shape = RoundedCornerShape(12.dp),
                 color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.28f),
                 tonalElevation = 0.dp,
             ) {
