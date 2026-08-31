@@ -399,7 +399,7 @@ private fun LiveBrowseOptionsMenu(
                 DropdownMenuItem(
                     text = {
                         Text(
-                            if (state.query.customGroupId == null) "All groups ✓" else "All groups",
+                            if (state.query.customGroupId == null) "No group filter ✓" else "No group filter",
                         )
                     },
                     onClick = {
