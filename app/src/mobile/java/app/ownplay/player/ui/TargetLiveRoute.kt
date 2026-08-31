@@ -27,8 +27,10 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
@@ -126,6 +128,7 @@ internal fun TargetLiveRoute(
     }
     val state by browseFlow.collectAsState(initial = LiveBrowseState())
     val scope = rememberCoroutineScope()
+    val channelListState = rememberLazyListState()
     val preview = activeSelection?.takeIf { it.request.sourceId == sourceId }
 
     var searchExpanded by remember(sourceId) { mutableStateOf(false) }
@@ -207,6 +210,11 @@ internal fun TargetLiveRoute(
     }
 
     fun selectChannel(channelId: String) {
+        val currentPreview = preview
+        if (currentPreview?.request?.channelId == channelId) {
+            onOpenFullscreen(currentPreview)
+            return
+        }
         val channel = state.channels.firstOrNull { it.channelId == channelId } ?: return
         val browseContext = LivePlaybackBrowseContext.capture(
             sourceId = sourceId,
@@ -229,6 +237,7 @@ internal fun TargetLiveRoute(
             state = state,
             playingChannelId = preview?.request?.channelId,
             currentEpgByChannelId = currentEpgByChannelId,
+            channelListState = channelListState,
             searchExpanded = searchExpanded,
             onSearchExpandedChange = { searchExpanded = it },
             onSearchChange = browseSession::updateSearch,
@@ -266,6 +275,7 @@ internal fun TargetLiveRoute(
                     onNavigate = onNavigatePreview,
                     onOpenFullscreen = { onOpenFullscreen(preview) },
                     onClose = onPreviewClosed,
+                    showLiveBadge = false,
                 )
                 EpgPanel(
                     snapshot = epgSnapshot,
@@ -296,6 +306,7 @@ internal fun TargetLiveRoute(
                         onNavigate = onNavigatePreview,
                         onOpenFullscreen = { onOpenFullscreen(preview) },
                         onClose = onPreviewClosed,
+                        showLiveBadge = false,
                     )
                     EpgPanel(
                         snapshot = epgSnapshot,
@@ -325,6 +336,7 @@ private fun MobileLiveBrowsePane(
     state: LiveBrowseState,
     playingChannelId: String?,
     currentEpgByChannelId: Map<String, EpgProgram>,
+    channelListState: LazyListState,
     searchExpanded: Boolean,
     onSearchExpandedChange: (Boolean) -> Unit,
     onSearchChange: (String) -> Unit,
@@ -451,6 +463,7 @@ private fun MobileLiveBrowsePane(
                     )
                 }
                 else -> LazyColumn(
+                    state = channelListState,
                     modifier = Modifier.weight(1f),
                     contentPadding = PaddingValues(vertical = 4.dp),
                 ) {
