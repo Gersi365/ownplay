@@ -211,6 +211,15 @@ internal fun TargetLiveRoute(
     }
 
     LaunchedEffect(preview?.request?.channelId) {
+        if (preview != null) {
+            searchExpanded = false
+            if (state.query.searchTerm.isNotBlank()) {
+                browseSession.updateSearch("")
+            }
+        }
+    }
+
+    LaunchedEffect(preview?.request?.channelId, state.channels) {
         val selectedChannelId = preview?.request?.channelId ?: return@LaunchedEffect
         val selectedIndex = state.channels.indexOfFirst { it.channelId == selectedChannelId }
         if (selectedIndex >= 0) {
@@ -384,6 +393,7 @@ private fun MobileLiveBrowsePane(
     onOpenSettings: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val compactBrowseHeader = playingChannelId != null
     Surface(
         modifier = modifier.fillMaxSize(),
         shape = RoundedCornerShape(12.dp),
@@ -391,40 +401,40 @@ private fun MobileLiveBrowsePane(
         tonalElevation = 0.dp,
     ) {
         Column(modifier = Modifier.fillMaxSize()) {
-            Surface(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 12.dp, vertical = 8.dp),
-                shape = RoundedCornerShape(12.dp),
-                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.28f),
-                tonalElevation = 0.dp,
-            ) {
-                Row(
-                    modifier = Modifier.padding(start = 16.dp, end = 8.dp, top = 10.dp, bottom = 10.dp),
-                    verticalAlignment = Alignment.CenterVertically,
+            if (!compactBrowseHeader) {
+                Surface(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 12.dp, vertical = 8.dp),
+                    shape = RoundedCornerShape(12.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.28f),
+                    tonalElevation = 0.dp,
                 ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = "Live",
-                            style = MaterialTheme.typography.titleLarge,
-                            fontWeight = FontWeight.Bold,
-                        )
-                        Text(
-                            text = "${state.channels.size} channels",
-                            style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                    IconButton(
-                        onClick = {
-                            val next = !searchExpanded
-                            onSearchExpandedChange(next)
-                            if (!next) onSearchChange("")
-                        },
+                    Row(
+                        modifier = Modifier.padding(
+                            start = 16.dp,
+                            end = 8.dp,
+                            top = 10.dp,
+                            bottom = 10.dp,
+                        ),
+                        verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        Icon(
-                            imageVector = if (searchExpanded) Icons.Filled.Close else Icons.Filled.Search,
-                            contentDescription = if (searchExpanded) "Close search" else "Search channels",
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "Live",
+                                style = MaterialTheme.typography.titleLarge,
+                                fontWeight = FontWeight.Bold,
+                            )
+                            Text(
+                                text = "${state.channels.size} channels",
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                        MobileSearchButton(
+                            searchExpanded = searchExpanded,
+                            onSearchExpandedChange = onSearchExpandedChange,
+                            onSearchChange = onSearchChange,
                         )
                     }
                 }
@@ -440,7 +450,10 @@ private fun MobileLiveBrowsePane(
                     onValueChange = onSearchChange,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 12.dp, vertical = 4.dp),
+                        .padding(
+                            horizontal = 12.dp,
+                            vertical = if (compactBrowseHeader) 2.dp else 4.dp,
+                        ),
                     singleLine = true,
                     placeholder = { Text("Search channels") },
                     shape = RoundedCornerShape(10.dp),
@@ -450,9 +463,22 @@ private fun MobileLiveBrowsePane(
             if (state.categories.isNotEmpty()) {
                 LazyRow(
                     modifier = Modifier.fillMaxWidth(),
-                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                    contentPadding = PaddingValues(
+                        horizontal = 12.dp,
+                        vertical = if (compactBrowseHeader) 2.dp else 6.dp,
+                    ),
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
                 ) {
+                    if (compactBrowseHeader) {
+                        item {
+                            MobileSearchButton(
+                                searchExpanded = searchExpanded,
+                                onSearchExpandedChange = onSearchExpandedChange,
+                                onSearchChange = onSearchChange,
+                            )
+                        }
+                    }
                     items(
                         items = state.categories,
                         key = { it.providerCategoryKey },
@@ -469,6 +495,19 @@ private fun MobileLiveBrowsePane(
                             },
                         )
                     }
+                }
+            } else if (compactBrowseHeader) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 8.dp),
+                    horizontalArrangement = Arrangement.End,
+                ) {
+                    MobileSearchButton(
+                        searchExpanded = searchExpanded,
+                        onSearchExpandedChange = onSearchExpandedChange,
+                        onSearchChange = onSearchChange,
+                    )
                 }
             }
 
@@ -517,6 +556,26 @@ private fun MobileLiveBrowsePane(
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun MobileSearchButton(
+    searchExpanded: Boolean,
+    onSearchExpandedChange: (Boolean) -> Unit,
+    onSearchChange: (String) -> Unit,
+) {
+    IconButton(
+        onClick = {
+            val next = !searchExpanded
+            onSearchExpandedChange(next)
+            if (!next) onSearchChange("")
+        },
+    ) {
+        Icon(
+            imageVector = if (searchExpanded) Icons.Filled.Close else Icons.Filled.Search,
+            contentDescription = if (searchExpanded) "Close search" else "Search channels",
+        )
     }
 }
 
