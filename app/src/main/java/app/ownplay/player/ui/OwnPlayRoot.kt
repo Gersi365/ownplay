@@ -4,7 +4,6 @@ import android.content.res.Configuration
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
-import androidx.compose.animation.scaleIn
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -47,11 +46,7 @@ fun OwnPlayRoot(
 
     AnimatedVisibility(
         visible = contentVisible,
-        enter = fadeIn(animationSpec = tween(durationMillis = 220)) +
-            scaleIn(
-                animationSpec = tween(durationMillis = 220),
-                initialScale = 0.985f,
-            ),
+        enter = fadeIn(animationSpec = tween(durationMillis = 140)),
     ) {
         OwnPlayApp(
             runtime = runtime,
