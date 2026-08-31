@@ -8,6 +8,7 @@ import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.emptyPreferences
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
+import app.ownplay.player.BuildConfig
 import java.io.IOException
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.Flow
@@ -86,11 +87,11 @@ class AppDeviceProfileStore(
 
     fun observeSelection(): Flow<AppDeviceProfileSelection> = safePreferences(dataStore)
         .map { preferences ->
-            val profile = AppDeviceProfile.fromStoredOrNull(preferences[DEVICE_PROFILE_KEY])
+            AppDeviceProfile.fromStoredOrNull(preferences[DEVICE_PROFILE_KEY])
                 ?: return@map AppDeviceProfileSelection.Unconfigured
             AppDeviceProfileSelection.Configured(
                 AppDeviceSettings(
-                    profile = profile,
+                    profile = buildTargetDeviceProfile(),
                     smartphoneOrientation = AppOrientationMode.fromStored(
                         preferences[ORIENTATION_KEY],
                     ),
@@ -102,33 +103,33 @@ class AppDeviceProfileStore(
         profile: AppDeviceProfile,
         smartphoneOrientation: AppOrientationMode? = null,
     ): Boolean {
-        if (profile == AppDeviceProfile.SMARTPHONE && smartphoneOrientation == null) {
+        val targetProfile = buildTargetDeviceProfile()
+        if (profile != targetProfile) return false
+        if (targetProfile == AppDeviceProfile.SMARTPHONE && smartphoneOrientation == null) {
             return false
         }
         return editSafely { preferences ->
-            preferences[DEVICE_PROFILE_KEY] = profile.storedValue
-            if (profile == AppDeviceProfile.SMARTPHONE) {
+            preferences[DEVICE_PROFILE_KEY] = targetProfile.storedValue
+            if (targetProfile == AppDeviceProfile.SMARTPHONE) {
                 preferences[ORIENTATION_KEY] = smartphoneOrientation!!.storedValue
             }
         }
     }
 
-    suspend fun setProfile(profile: AppDeviceProfile): Boolean = editSafely { preferences ->
-        preferences[DEVICE_PROFILE_KEY] = profile.storedValue
+    suspend fun setProfile(profile: AppDeviceProfile): Boolean {
+        val targetProfile = buildTargetDeviceProfile()
+        if (profile != targetProfile) return false
+        return editSafely { preferences ->
+            preferences[DEVICE_PROFILE_KEY] = targetProfile.storedValue
+        }
     }
 
     suspend fun setSmartphoneOrientation(mode: AppOrientationMode): Boolean {
-        var accepted = false
-        val persisted = editSafely { preferences ->
-            if (
-                AppDeviceProfile.fromStoredOrNull(preferences[DEVICE_PROFILE_KEY]) ==
-                AppDeviceProfile.SMARTPHONE
-            ) {
-                preferences[ORIENTATION_KEY] = mode.storedValue
-                accepted = true
-            }
+        if (buildTargetDeviceProfile() != AppDeviceProfile.SMARTPHONE) return false
+        return editSafely { preferences ->
+            preferences[DEVICE_PROFILE_KEY] = AppDeviceProfile.SMARTPHONE.storedValue
+            preferences[ORIENTATION_KEY] = mode.storedValue
         }
-        return persisted && accepted
     }
 
     private suspend fun editSafely(block: (MutablePreferences) -> Unit): Boolean = try {
@@ -150,9 +151,10 @@ sealed interface AppOrientationSelection {
 }
 
 /**
- * Compatibility facade while device-profile adoption is rolled through the UI.
- * Non-smartphone profiles are always constrained to landscape without overwriting
- * the last Smartphone orientation preference.
+ * Compatibility facade for the compile-time Mobile/TV targets.
+ *
+ * Mobile may change Smartphone orientation. TV is permanently landscape and rejects orientation
+ * writes. Runtime profile changes cannot switch either APK into the other target's input model.
  */
 class AppOrientationStore(
     context: Context,
@@ -164,28 +166,26 @@ class AppOrientationStore(
 
     fun observeSelection(): Flow<AppOrientationSelection> = safePreferences(dataStore)
         .map { preferences ->
-            val profile = AppDeviceProfile.fromStoredOrNull(preferences[DEVICE_PROFILE_KEY])
-            val storedMode = AppOrientationMode.fromStoredOrNull(preferences[ORIENTATION_KEY])
-            when {
-                profile != null && profile != AppDeviceProfile.SMARTPHONE -> {
-                    AppOrientationSelection.Configured(AppOrientationMode.LANDSCAPE)
+            if (buildTargetDeviceProfile() != AppDeviceProfile.SMARTPHONE) {
+                AppOrientationSelection.Configured(AppOrientationMode.LANDSCAPE)
+            } else {
+                val storedMode = AppOrientationMode.fromStoredOrNull(preferences[ORIENTATION_KEY])
+                if (storedMode == null) {
+                    AppOrientationSelection.Unconfigured
+                } else {
+                    AppOrientationSelection.Configured(storedMode)
                 }
-                storedMode == null -> AppOrientationSelection.Unconfigured
-                else -> AppOrientationSelection.Configured(storedMode)
             }
         }
 
     suspend fun set(mode: AppOrientationMode): Boolean {
-        var accepted = false
+        if (buildTargetDeviceProfile() != AppDeviceProfile.SMARTPHONE) return false
         return try {
             dataStore.edit { preferences ->
-                val profile = AppDeviceProfile.fromStoredOrNull(preferences[DEVICE_PROFILE_KEY])
-                if (profile == null || profile == AppDeviceProfile.SMARTPHONE) {
-                    preferences[ORIENTATION_KEY] = mode.storedValue
-                    accepted = true
-                }
+                preferences[DEVICE_PROFILE_KEY] = AppDeviceProfile.SMARTPHONE.storedValue
+                preferences[ORIENTATION_KEY] = mode.storedValue
             }
-            accepted
+            true
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (_: Exception) {
@@ -193,14 +193,18 @@ class AppOrientationStore(
         }
     }
 
-    private fun effectiveOrientation(preferences: Preferences): AppOrientationMode {
-        val profile = AppDeviceProfile.fromStoredOrNull(preferences[DEVICE_PROFILE_KEY])
-        return if (profile != null && profile != AppDeviceProfile.SMARTPHONE) {
-            AppOrientationMode.LANDSCAPE
-        } else {
+    private fun effectiveOrientation(preferences: Preferences): AppOrientationMode =
+        if (buildTargetDeviceProfile() == AppDeviceProfile.SMARTPHONE) {
             AppOrientationMode.fromStored(preferences[ORIENTATION_KEY])
+        } else {
+            AppOrientationMode.LANDSCAPE
         }
-    }
+}
+
+private fun buildTargetDeviceProfile(): AppDeviceProfile = if (BuildConfig.IS_TV_BUILD) {
+    AppDeviceProfile.ANDROID_TV
+} else {
+    AppDeviceProfile.SMARTPHONE
 }
 
 private fun safePreferences(dataStore: DataStore<Preferences>): Flow<Preferences> = dataStore.data
