@@ -87,8 +87,6 @@ class AppDeviceProfileStore(
 
     fun observeSelection(): Flow<AppDeviceProfileSelection> = safePreferences(dataStore)
         .map { preferences ->
-            AppDeviceProfile.fromStoredOrNull(preferences[DEVICE_PROFILE_KEY])
-                ?: return@map AppDeviceProfileSelection.Unconfigured
             AppDeviceProfileSelection.Configured(
                 AppDeviceSettings(
                     profile = buildTargetDeviceProfile(),
