@@ -496,7 +496,7 @@ private fun MobilePrimaryNavigationBar(
         modifier = Modifier
             .navigationBarsPadding()
             .padding(horizontal = 12.dp, vertical = 6.dp),
-        shape = RoundedCornerShape(22.dp),
+        shape = RoundedCornerShape(12.dp),
         color = MaterialTheme.colorScheme.surface,
         tonalElevation = 1.dp,
     ) {
