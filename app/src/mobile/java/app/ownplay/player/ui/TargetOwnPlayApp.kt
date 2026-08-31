@@ -12,7 +12,7 @@ internal fun TargetOwnPlayApp(
     onPlaybackSurfaceActiveChanged: (Boolean) -> Unit,
     onLivePreviewActiveChanged: (Boolean) -> Unit,
 ) {
-    OwnPlayApp(
+    MobileOwnPlayApp(
         runtime = runtime,
         rotationFullscreenEnabled = rotationFullscreenEnabled,
         onPlaybackFullscreenChanged = onPlaybackFullscreenChanged,
