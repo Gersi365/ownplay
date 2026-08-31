@@ -31,6 +31,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -309,6 +310,9 @@ fun OwnPlayApp(
     }
 
     val activeSummary = summaries.firstOrNull { it.sourceId == activeSourceId }
+    val navigationItemColors = NavigationBarItemDefaults.colors(
+        indicatorColor = MaterialTheme.colorScheme.surface.copy(alpha = 0f),
+    )
 
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
@@ -328,18 +332,21 @@ fun OwnPlayApp(
                         onClick = { openContentSection(OwnPlaySection.LIVE) },
                         icon = { Icon(Icons.Filled.LiveTv, contentDescription = "Live") },
                         label = { Text("Live") },
+                        colors = navigationItemColors,
                     )
                     NavigationBarItem(
                         selected = librarySectionActive,
                         onClick = { openContentSection(OwnPlaySection.LIBRARY) },
                         icon = { Icon(Icons.Filled.DownloadDone, contentDescription = "Library") },
                         label = { Text("Library") },
+                        colors = navigationItemColors,
                     )
                     NavigationBarItem(
                         selected = section == OwnPlaySection.SETTINGS,
                         onClick = { openContentSection(OwnPlaySection.SETTINGS) },
                         icon = { Icon(Icons.Filled.Settings, contentDescription = "Settings") },
                         label = { Text("Settings") },
+                        colors = navigationItemColors,
                     )
                 }
             }
@@ -361,18 +368,21 @@ fun OwnPlayApp(
                         onClick = { openContentSection(OwnPlaySection.LIVE) },
                         icon = { Icon(Icons.Filled.LiveTv, contentDescription = "Live") },
                         label = { Text("Live") },
+                        colors = navigationItemColors,
                     )
                     NavigationBarItem(
                         selected = librarySectionActive,
                         onClick = { openContentSection(OwnPlaySection.LIBRARY) },
                         icon = { Icon(Icons.Filled.DownloadDone, contentDescription = "Library") },
                         label = { Text("Library") },
+                        colors = navigationItemColors,
                     )
                     NavigationBarItem(
                         selected = section == OwnPlaySection.SETTINGS,
                         onClick = { openContentSection(OwnPlaySection.SETTINGS) },
                         icon = { Icon(Icons.Filled.Settings, contentDescription = "Settings") },
                         label = { Text("Settings") },
+                        colors = navigationItemColors,
                     )
                 }
             }
