@@ -203,8 +203,8 @@ internal fun LiveRoute(
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 12.dp, vertical = 2.dp),
-                    verticalArrangement = Arrangement.spacedBy(2.dp),
+                        .padding(horizontal = 14.dp, vertical = 6.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp),
                 ) {
                     LivePreviewPanel(
                         selection = preview,
@@ -292,7 +292,7 @@ internal fun LiveRoute(
 private fun CompactSyncStatus(text: String) {
     Text(
         text = text,
-        modifier = Modifier.padding(horizontal = 14.dp, vertical = 1.dp),
+        modifier = Modifier.padding(horizontal = 16.dp, vertical = 3.dp),
         style = MaterialTheme.typography.labelSmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
@@ -307,7 +307,7 @@ private fun CompactRetryStatus(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(start = 14.dp, end = 8.dp, top = 1.dp, bottom = 1.dp),
+            .padding(start = 16.dp, end = 10.dp, top = 3.dp, bottom = 3.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(
@@ -332,7 +332,7 @@ private fun LiveConsumerEmptyState(
     Column(
         modifier = modifier
             .fillMaxWidth()
-            .padding(24.dp),
+            .padding(horizontal = 28.dp, vertical = 24.dp),
         verticalArrangement = Arrangement.Center,
     ) {
         Text(
