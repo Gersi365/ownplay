@@ -1473,10 +1473,10 @@ private fun MovieListRow(
                 download = managedDownload,
                 compact = false,
                 onPlay = onPlayOffline,
-                onPause = onPauseMovie,
-                onResume = onResumeMovie,
-                onRetry = onRetryMovie,
-                onRemove = onRemoveMovie,
+                onPause = onPause,
+                onResume = onResume,
+                onRetry = onRetry,
+                onRemove = onRemove,
                 modifier = Modifier.width(144.dp),
             )
         }
