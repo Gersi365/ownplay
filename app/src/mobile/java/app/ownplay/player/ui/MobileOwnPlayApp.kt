@@ -2,9 +2,12 @@ package app.ownplay.player.ui
 
 import android.content.res.Configuration
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.LiveTv
 import androidx.compose.material.icons.filled.Settings
@@ -16,6 +19,7 @@ import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
@@ -25,9 +29,11 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.unit.dp
 import app.ownplay.player.OwnPlayAppRuntime
 import app.ownplay.player.playback.LiveFullscreenEntryReason
 import app.ownplay.player.playback.LivePlaybackPresentationPolicy
@@ -317,158 +323,144 @@ private fun MobileOwnPlayAppContent(
             modifier = Modifier
                 .fillMaxSize()
                 .background(MaterialTheme.colorScheme.background)
-                .then(
-                    if (hidePrimaryNavigation) Modifier else Modifier,
-                ),
+                .padding(innerPadding),
         ) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .then(
-                        if (hidePrimaryNavigation) {
-                            Modifier
-                        } else {
-                            Modifier
-                        },
-                    ),
-            ) {
-                when (section) {
-                    MobileSection.LIVE -> {
-                        val sourceId = activeSourceId
-                        if (sourceId == null) {
-                            MobileNoSourceScreen(
-                                syncState = syncState,
-                                onAddPlaylist = { openSection(MobileSection.SETTINGS) },
-                                modifier = Modifier.fillMaxSize(),
-                            )
-                        } else {
-                            LiveRoute(
-                                runtime = runtime,
-                                sourceId = sourceId,
-                                activeSelection = activeSelection,
-                                playbackState = playbackState,
-                                videoOutput = runtime.playbackVideoOutput,
-                                syncState = syncState,
-                                onPlay = runtime.playbackController::play,
-                                onPause = runtime.playbackController::pause,
-                                onRetry = runtime.playbackController::retry,
-                                onOpenMovies = { openSection(MobileSection.MOVIES) },
-                                onOpenSeries = { openSection(MobileSection.SERIES) },
-                                onOpenSettings = { openSection(MobileSection.SETTINGS) },
-                                onPreviewRequested = { selection ->
-                                    activeSelection = selection
-                                    runtime.playbackController.start(selection.request)
-                                },
-                                onPreviewClosed = {
-                                    stopLivePresentation { activeSelection = null }
-                                },
-                                onOpenFullscreen = { selection ->
-                                    openLiveFullscreen(
-                                        selection = activeSelection ?: selection,
-                                        reason = LiveFullscreenEntryReason.USER,
-                                    )
-                                },
-                                onNavigatePreview = { direction ->
-                                    activeSelection
-                                        ?.navigate(direction)
-                                        ?.let { target ->
-                                            activeSelection = target
-                                            runtime.playbackController.start(target.request)
-                                        }
-                                },
-                            )
-                        }
+            when (section) {
+                MobileSection.LIVE -> {
+                    val sourceId = activeSourceId
+                    if (sourceId == null) {
+                        MobileNoSourceScreen(
+                            syncState = syncState,
+                            onAddPlaylist = { openSection(MobileSection.SETTINGS) },
+                            modifier = Modifier.fillMaxSize(),
+                        )
+                    } else {
+                        LiveRoute(
+                            runtime = runtime,
+                            sourceId = sourceId,
+                            activeSelection = activeSelection,
+                            playbackState = playbackState,
+                            videoOutput = runtime.playbackVideoOutput,
+                            syncState = syncState,
+                            onPlay = runtime.playbackController::play,
+                            onPause = runtime.playbackController::pause,
+                            onRetry = runtime.playbackController::retry,
+                            onOpenMovies = { openSection(MobileSection.MOVIES) },
+                            onOpenSeries = { openSection(MobileSection.SERIES) },
+                            onOpenSettings = { openSection(MobileSection.SETTINGS) },
+                            onPreviewRequested = { selection ->
+                                activeSelection = selection
+                                runtime.playbackController.start(selection.request)
+                            },
+                            onPreviewClosed = {
+                                stopLivePresentation { activeSelection = null }
+                            },
+                            onOpenFullscreen = { selection ->
+                                openLiveFullscreen(
+                                    selection = activeSelection ?: selection,
+                                    reason = LiveFullscreenEntryReason.USER,
+                                )
+                            },
+                            onNavigatePreview = { direction ->
+                                activeSelection
+                                    ?.navigate(direction)
+                                    ?.let { target ->
+                                        activeSelection = target
+                                        runtime.playbackController.start(target.request)
+                                    }
+                            },
+                        )
                     }
-
-                    MobileSection.LIBRARY -> UnifiedLibraryRoute(
-                        runtime = runtime,
-                        sourceId = activeSourceId,
-                        sourceKind = activeSummary?.sourceKind,
-                        onOpenMovieDetails = { sourceId, movieId ->
-                            activeSourceId = sourceId
-                            requestedVodMovieId = movieId
-                            movieDetailReturnToLibrary = true
-                            openSection(MobileSection.MOVIES)
-                        },
-                        onOpenSeriesDetails = { sourceId, seriesId ->
-                            activeSourceId = sourceId
-                            requestedSeriesId = seriesId
-                            seriesDetailReturnToLibrary = true
-                            openSection(MobileSection.SERIES)
-                        },
-                        onFullscreenStateChanged = { fullscreen ->
-                            libraryFullscreen = fullscreen
-                            onPlaybackFullscreenChanged(fullscreen)
-                        },
-                    )
-
-                    MobileSection.MOVIES -> VodRoute(
-                        runtime = runtime,
-                        sourceId = activeSourceId,
-                        sourceKind = activeSummary?.sourceKind,
-                        requestedMovieId = requestedVodMovieId,
-                        onRequestedMovieConsumed = { requestedVodMovieId = null },
-                        returnToLibraryOnDetailBack = movieDetailReturnToLibrary,
-                        onReturnToLibrary = { openSection(MobileSection.LIBRARY) },
-                        onOpenLive = { openSection(MobileSection.LIVE) },
-                        onOpenSeries = { openSection(MobileSection.SERIES) },
-                        onOpenSettings = { openSection(MobileSection.SETTINGS) },
-                        onFullscreenStateChanged = { fullscreen ->
-                            vodFullscreen = fullscreen
-                            onPlaybackFullscreenChanged(fullscreen)
-                        },
-                    )
-
-                    MobileSection.SERIES -> SeriesRoute(
-                        runtime = runtime,
-                        sourceId = activeSourceId,
-                        sourceKind = activeSummary?.sourceKind,
-                        requestedSeriesId = requestedSeriesId,
-                        onRequestedSeriesConsumed = { requestedSeriesId = null },
-                        returnToLibraryOnDetailBack = seriesDetailReturnToLibrary,
-                        onReturnToLibrary = { openSection(MobileSection.LIBRARY) },
-                        onOpenSettings = { openSection(MobileSection.SETTINGS) },
-                        onFullscreenStateChanged = { fullscreen ->
-                            seriesFullscreen = fullscreen
-                            onPlaybackFullscreenChanged(fullscreen)
-                        },
-                    )
-
-                    MobileSection.SETTINGS -> SettingsScreen(
-                        runtime = runtime,
-                        summaries = summaries,
-                        syncState = syncState,
-                        activeSourceName = activeSummary?.name,
-                        hasActivePlayback =
-                            activeSelection != null ||
-                                vodFullscreen ||
-                                seriesFullscreen ||
-                                libraryFullscreen,
-                        onOpenLive = { openSection(MobileSection.LIVE) },
-                        onOpenSourceInLive = { sourceId ->
-                            if (sourceId != activeSourceId && activeSelection != null) {
-                                stopLivePresentation {
-                                    activeSelection = null
-                                    fullscreenSelection = null
-                                    fullscreenEntryReason = null
-                                }
-                            }
-                            activeSourceId = sourceId
-                            section = MobileSection.LIVE
-                        },
-                        onStopPlayback = {
-                            if (activeSelection != null || fullscreenSelection != null) {
-                                stopLivePresentation {
-                                    activeSelection = null
-                                    fullscreenSelection = null
-                                    fullscreenEntryReason = null
-                                }
-                            } else {
-                                runtime.playbackController.stop()
-                            }
-                        },
-                    )
                 }
+
+                MobileSection.LIBRARY -> UnifiedLibraryRoute(
+                    runtime = runtime,
+                    sourceId = activeSourceId,
+                    sourceKind = activeSummary?.sourceKind,
+                    onOpenMovieDetails = { sourceId, movieId ->
+                        activeSourceId = sourceId
+                        requestedVodMovieId = movieId
+                        movieDetailReturnToLibrary = true
+                        openSection(MobileSection.MOVIES)
+                    },
+                    onOpenSeriesDetails = { sourceId, seriesId ->
+                        activeSourceId = sourceId
+                        requestedSeriesId = seriesId
+                        seriesDetailReturnToLibrary = true
+                        openSection(MobileSection.SERIES)
+                    },
+                    onFullscreenStateChanged = { fullscreen ->
+                        libraryFullscreen = fullscreen
+                        onPlaybackFullscreenChanged(fullscreen)
+                    },
+                )
+
+                MobileSection.MOVIES -> VodRoute(
+                    runtime = runtime,
+                    sourceId = activeSourceId,
+                    sourceKind = activeSummary?.sourceKind,
+                    requestedMovieId = requestedVodMovieId,
+                    onRequestedMovieConsumed = { requestedVodMovieId = null },
+                    returnToLibraryOnDetailBack = movieDetailReturnToLibrary,
+                    onReturnToLibrary = { openSection(MobileSection.LIBRARY) },
+                    onOpenLive = { openSection(MobileSection.LIVE) },
+                    onOpenSeries = { openSection(MobileSection.SERIES) },
+                    onOpenSettings = { openSection(MobileSection.SETTINGS) },
+                    onFullscreenStateChanged = { fullscreen ->
+                        vodFullscreen = fullscreen
+                        onPlaybackFullscreenChanged(fullscreen)
+                    },
+                )
+
+                MobileSection.SERIES -> SeriesRoute(
+                    runtime = runtime,
+                    sourceId = activeSourceId,
+                    sourceKind = activeSummary?.sourceKind,
+                    requestedSeriesId = requestedSeriesId,
+                    onRequestedSeriesConsumed = { requestedSeriesId = null },
+                    returnToLibraryOnDetailBack = seriesDetailReturnToLibrary,
+                    onReturnToLibrary = { openSection(MobileSection.LIBRARY) },
+                    onOpenSettings = { openSection(MobileSection.SETTINGS) },
+                    onFullscreenStateChanged = { fullscreen ->
+                        seriesFullscreen = fullscreen
+                        onPlaybackFullscreenChanged(fullscreen)
+                    },
+                )
+
+                MobileSection.SETTINGS -> SettingsScreen(
+                    runtime = runtime,
+                    summaries = summaries,
+                    syncState = syncState,
+                    activeSourceName = activeSummary?.name,
+                    hasActivePlayback =
+                        activeSelection != null ||
+                            vodFullscreen ||
+                            seriesFullscreen ||
+                            libraryFullscreen,
+                    onOpenLive = { openSection(MobileSection.LIVE) },
+                    onOpenSourceInLive = { sourceId ->
+                        if (sourceId != activeSourceId && activeSelection != null) {
+                            stopLivePresentation {
+                                activeSelection = null
+                                fullscreenSelection = null
+                                fullscreenEntryReason = null
+                            }
+                        }
+                        activeSourceId = sourceId
+                        section = MobileSection.LIVE
+                    },
+                    onStopPlayback = {
+                        if (activeSelection != null || fullscreenSelection != null) {
+                            stopLivePresentation {
+                                activeSelection = null
+                                fullscreenSelection = null
+                                fullscreenEntryReason = null
+                            }
+                        } else {
+                            runtime.playbackController.stop()
+                        }
+                    },
+                )
             }
 
             val resolvedOrigin = playbackOrigin
@@ -533,16 +525,16 @@ private fun MobileNoSourceScreen(
     onAddPlaylist: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    androidx.compose.foundation.layout.Column(
+    Column(
         modifier = modifier,
-        verticalArrangement = androidx.compose.foundation.layout.Arrangement.Center,
-        horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center,
+        horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Text(
             text = if (syncState.sourceId != null) "Loading Live TV…" else "No playlist configured",
             style = MaterialTheme.typography.titleLarge,
         )
-        androidx.compose.material3.TextButton(onClick = onAddPlaylist) {
+        TextButton(onClick = onAddPlaylist) {
             Text("Open Settings")
         }
     }
