@@ -58,6 +58,7 @@ internal fun LivePreviewPanel(
     onOpenFullscreen: () -> Unit,
     onClose: () -> Unit,
     modifier: Modifier = Modifier,
+    showLiveBadge: Boolean = true,
 ) {
     val configuration = LocalConfiguration.current
     val isTelevision =
@@ -106,21 +107,23 @@ internal fun LivePreviewPanel(
                 )
             }
 
-            Surface(
-                modifier = Modifier
-                    .align(Alignment.TopStart)
-                    .padding(9.dp),
-                shape = RoundedCornerShape(6.dp),
-                color = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.86f),
-                tonalElevation = 0.dp,
-            ) {
-                Text(
-                    text = "LIVE",
-                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onErrorContainer,
-                    fontWeight = FontWeight.Bold,
-                )
+            if (showLiveBadge) {
+                Surface(
+                    modifier = Modifier
+                        .align(Alignment.TopStart)
+                        .padding(9.dp),
+                    shape = RoundedCornerShape(6.dp),
+                    color = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.86f),
+                    tonalElevation = 0.dp,
+                ) {
+                    Text(
+                        text = "LIVE",
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onErrorContainer,
+                        fontWeight = FontWeight.Bold,
+                    )
+                }
             }
 
             if (controls.showLoading) {
