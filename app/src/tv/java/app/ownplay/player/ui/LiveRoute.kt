@@ -149,7 +149,7 @@ internal fun LiveRoute(
     }
 
     LaunchedEffect(preview?.request?.channelId) {
-        showEpgGuide = false
+        showEpgGuide = preview != null && LiveEpgPresentationBridge.consumeFullGuideRequest()
     }
 
     LaunchedEffect(sourceId, syncState.sourceId, syncState.stage) {
