@@ -51,7 +51,7 @@ jobs:
         run: >-
           gradle
           :app:kspMobileReleaseKotlin
-          :app:testMobileReleaseUnitTest
+          :app:testMobileDebugUnitTest
           :app:lintMobileRelease
           :app:assembleMobileRelease
           --stacktrace
