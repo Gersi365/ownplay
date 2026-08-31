@@ -18,7 +18,7 @@ jobs:
     # Branches explicitly ending in -no-apk use Android Validation No APK instead.
     if: ${{ github.event_name != 'pull_request' || !endsWith(github.head_ref, '-no-apk') }}
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 35
 
     steps:
       - name: Checkout
@@ -47,8 +47,15 @@ jobs:
           test -d "${ANDROID_HOME}/platforms/android-36"
           test -d "${ANDROID_HOME}/build-tools/36.0.0"
 
-      - name: Validate
-        run: gradle :app:testDebugUnitTest :app:lintDebug :app:assembleDebug :app:compileDebugAndroidTestKotlin --stacktrace
+      - name: Validate and assemble Mobile debug APK
+        run: >-
+          gradle
+          :app:kspMobileDebugKotlin
+          :app:testMobileDebugUnitTest
+          :app:lintMobileDebug
+          :app:compileMobileDebugAndroidTestKotlin
+          :app:assembleMobileDebug
+          --stacktrace
 
       - name: Verify debug signing identity
         if: success()
@@ -59,15 +66,6 @@ jobs:
             -keystore "$HOME/.android/debug.keystore" \
             -storepass android \
             -alias androiddebugkey
-
-      - name: Upload Room schema
-        if: success()
-        uses: actions/upload-artifact@v4
-        with:
-          name: ownplay-room-schema
-          path: app/schemas
-          if-no-files-found: error
-          retention-days: 7
 
       - name: Verify Room schema is committed
         if: success()
@@ -118,11 +116,11 @@ jobs:
               sys.exit(1)
           PY
 
-      - name: Upload debug APK
+      - name: Upload Mobile debug APK
         if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: ownplay-debug-apk
-          path: app/build/outputs/apk/debug/app-debug.apk
+          name: ownplay-mobile-debug-apk
+          path: app/build/outputs/apk/mobile/debug/app-mobile-debug.apk
           if-no-files-found: error
           retention-days: 7
