@@ -12,9 +12,8 @@ internal fun TargetOwnPlayApp(
     onPlaybackSurfaceActiveChanged: (Boolean) -> Unit,
     onLivePreviewActiveChanged: (Boolean) -> Unit,
 ) {
-    OwnPlayApp(
+    TVOwnPlayApp(
         runtime = runtime,
-        rotationFullscreenEnabled = false,
         onPlaybackFullscreenChanged = onPlaybackFullscreenChanged,
         onPlaybackSurfaceActiveChanged = onPlaybackSurfaceActiveChanged,
         onLivePreviewActiveChanged = onLivePreviewActiveChanged,
