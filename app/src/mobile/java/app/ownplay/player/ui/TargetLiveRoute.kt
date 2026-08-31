@@ -180,7 +180,7 @@ internal fun TargetLiveRoute(
     }
 
     LaunchedEffect(preview?.request?.channelId, syncState.sourceId, syncState.stage) {
-        showEpgGuide = false
+        showEpgGuide = preview != null && LiveEpgPresentationBridge.consumeFullGuideRequest()
         val selected = preview
         if (selected == null || loadingEpg) {
             epgSnapshot = null
