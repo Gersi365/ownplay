@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.LiveTv
 import androidx.compose.material.icons.filled.Settings
@@ -18,6 +19,7 @@ import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -490,32 +492,40 @@ private fun MobilePrimaryNavigationBar(
         unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
         unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant,
     )
-    NavigationBar(
-        modifier = Modifier.navigationBarsPadding(),
-        containerColor = MaterialTheme.colorScheme.surface,
-        tonalElevation = 0.dp,
+    Surface(
+        modifier = Modifier
+            .navigationBarsPadding()
+            .padding(horizontal = 12.dp, vertical = 6.dp),
+        shape = RoundedCornerShape(22.dp),
+        color = MaterialTheme.colorScheme.surface,
+        tonalElevation = 1.dp,
     ) {
-        NavigationBarItem(
-            selected = liveSelected,
-            onClick = onOpenLive,
-            icon = { Icon(Icons.Filled.LiveTv, contentDescription = "Live") },
-            label = { Text("Live") },
-            colors = colors,
-        )
-        NavigationBarItem(
-            selected = librarySelected,
-            onClick = onOpenLibrary,
-            icon = { Icon(Icons.Filled.VideoLibrary, contentDescription = "Library") },
-            label = { Text("Library") },
-            colors = colors,
-        )
-        NavigationBarItem(
-            selected = settingsSelected,
-            onClick = onOpenSettings,
-            icon = { Icon(Icons.Filled.Settings, contentDescription = "Settings") },
-            label = { Text("Settings") },
-            colors = colors,
-        )
+        NavigationBar(
+            containerColor = Color.Transparent,
+            tonalElevation = 0.dp,
+        ) {
+            NavigationBarItem(
+                selected = liveSelected,
+                onClick = onOpenLive,
+                icon = { Icon(Icons.Filled.LiveTv, contentDescription = "Live") },
+                label = { Text("Live") },
+                colors = colors,
+            )
+            NavigationBarItem(
+                selected = librarySelected,
+                onClick = onOpenLibrary,
+                icon = { Icon(Icons.Filled.VideoLibrary, contentDescription = "Library") },
+                label = { Text("Library") },
+                colors = colors,
+            )
+            NavigationBarItem(
+                selected = settingsSelected,
+                onClick = onOpenSettings,
+                icon = { Icon(Icons.Filled.Settings, contentDescription = "Settings") },
+                label = { Text("Settings") },
+                colors = colors,
+            )
+        }
     }
 }
 
