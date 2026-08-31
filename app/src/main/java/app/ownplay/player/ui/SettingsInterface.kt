@@ -66,7 +66,7 @@ internal fun PortraitSettingsMenu(
 
             CompactSettingsSection(
                 title = "Interface",
-                subtitle = "Device profile and orientation",
+                subtitle = "App target and orientation",
             ) {
                 InterfaceSettingsContent(
                     deviceProfile = deviceProfile,
@@ -109,6 +109,7 @@ internal fun PortraitSettingsMenu(
     }
 }
 
+@Suppress("UNUSED_PARAMETER")
 @Composable
 internal fun InterfaceSettingsContent(
     deviceProfile: AppDeviceProfile?,
@@ -117,43 +118,28 @@ internal fun InterfaceSettingsContent(
     onSetOrientation: (AppOrientationMode) -> Unit,
 ) {
     SettingValueRow(
-        label = "Device profile",
-        value = deviceProfileLabel(deviceProfile),
+        label = "App target",
+        value = when (deviceProfile) {
+            AppDeviceProfile.SMARTPHONE -> "Mobile"
+            AppDeviceProfile.ANDROID_TV -> "TV"
+            AppDeviceProfile.TABLET -> "Mobile"
+            AppDeviceProfile.TV_BOX -> "TV"
+            null -> "Loading…"
+        },
     )
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        OrientationButton(
-            label = "Smartphone",
-            selected = deviceProfile == AppDeviceProfile.SMARTPHONE,
-            onClick = { onSetDeviceProfile(AppDeviceProfile.SMARTPHONE) },
-            modifier = Modifier.weight(1f),
-        )
-        OrientationButton(
-            label = "Tablet",
-            selected = deviceProfile == AppDeviceProfile.TABLET,
-            onClick = { onSetDeviceProfile(AppDeviceProfile.TABLET) },
-            modifier = Modifier.weight(1f),
-        )
-    }
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        OrientationButton(
-            label = "Android TV",
-            selected = deviceProfile == AppDeviceProfile.ANDROID_TV,
-            onClick = { onSetDeviceProfile(AppDeviceProfile.ANDROID_TV) },
-            modifier = Modifier.weight(1f),
-        )
-        OrientationButton(
-            label = "TV Box",
-            selected = deviceProfile == AppDeviceProfile.TV_BOX,
-            onClick = { onSetDeviceProfile(AppDeviceProfile.TV_BOX) },
-            modifier = Modifier.weight(1f),
-        )
-    }
+    Text(
+        text = when (deviceProfile) {
+            AppDeviceProfile.SMARTPHONE,
+            AppDeviceProfile.TABLET,
+            -> "This APK is touch-first. Device target switching is disabled."
+            AppDeviceProfile.ANDROID_TV,
+            AppDeviceProfile.TV_BOX,
+            -> "This APK is D-pad/remote-first. Device target switching is disabled."
+            null -> "Loading app target…"
+        },
+        style = MaterialTheme.typography.labelSmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
 
     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
     SettingValueRow(
@@ -190,12 +176,12 @@ internal fun InterfaceSettingsContent(
     Text(
         text = when (deviceProfile) {
             AppDeviceProfile.SMARTPHONE ->
-                "This controls the browsing layout. With an active Live preview, rotating to landscape can open the full player."
-            null -> "Loading device profile…"
+                "With an active Live preview, rotating to landscape can open the full player."
+            null -> "Loading orientation…"
             AppDeviceProfile.TABLET ->
-                "Tablet uses the Landscape touch layout."
+                "Mobile target uses the touch layout."
             else ->
-                "Android TV and TV Box use the Landscape D-pad/remote layout."
+                "TV target stays landscape and uses the D-pad/remote layout."
         },
         style = MaterialTheme.typography.labelSmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
