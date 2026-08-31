@@ -343,35 +343,42 @@ private fun MobileLiveBrowsePane(
         tonalElevation = 0.dp,
     ) {
         Column(modifier = Modifier.fillMaxSize()) {
-            Row(
+            Surface(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(start = 16.dp, end = 8.dp, top = 8.dp, bottom = 4.dp),
-                verticalAlignment = Alignment.CenterVertically,
+                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                shape = RoundedCornerShape(16.dp),
+                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.28f),
+                tonalElevation = 0.dp,
             ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = "Live",
-                        style = MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.Bold,
-                    )
-                    Text(
-                        text = "${state.channels.size} channels",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-                IconButton(
-                    onClick = {
-                        val next = !searchExpanded
-                        onSearchExpandedChange(next)
-                        if (!next) onSearchChange("")
-                    },
+                Row(
+                    modifier = Modifier.padding(start = 16.dp, end = 8.dp, top = 10.dp, bottom = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Icon(
-                        imageVector = if (searchExpanded) Icons.Filled.Close else Icons.Filled.Search,
-                        contentDescription = if (searchExpanded) "Close search" else "Search channels",
-                    )
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "Live",
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.Bold,
+                        )
+                        Text(
+                            text = "${state.channels.size} channels",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    IconButton(
+                        onClick = {
+                            val next = !searchExpanded
+                            onSearchExpandedChange(next)
+                            if (!next) onSearchChange("")
+                        },
+                    ) {
+                        Icon(
+                            imageVector = if (searchExpanded) Icons.Filled.Close else Icons.Filled.Search,
+                            contentDescription = if (searchExpanded) "Close search" else "Search channels",
+                        )
+                    }
                 }
             }
 
