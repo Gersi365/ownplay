@@ -197,6 +197,7 @@ fun OwnPlayApp(
     ) {
         openContentSection(OwnPlaySection.LIBRARY)
     }
+
     val librarySectionActive =
         section == OwnPlaySection.LIBRARY ||
             section == OwnPlaySection.MOVIES ||
