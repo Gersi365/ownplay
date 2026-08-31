@@ -21,17 +21,9 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.DownloadDone
-import androidx.compose.material.icons.filled.LiveTv
-import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.NavigationBar
-import androidx.compose.material3.NavigationBarItem
-import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -62,7 +54,7 @@ import app.ownplay.player.ui.library.LibraryRoute
 import app.ownplay.player.ui.series.SeriesRoute
 import app.ownplay.player.ui.vod.VodRoute
 
-private const val SECTION_MOTION_MILLIS = 200
+private const val SECTION_MOTION_MILLIS = 160
 
 private enum class OwnPlaySection {
     LIVE,
@@ -310,9 +302,6 @@ fun OwnPlayApp(
     }
 
     val activeSummary = summaries.firstOrNull { it.sourceId == activeSourceId }
-    val navigationItemColors = NavigationBarItemDefaults.colors(
-        indicatorColor = MaterialTheme.colorScheme.surface.copy(alpha = 0f),
-    )
 
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
@@ -322,33 +311,15 @@ fun OwnPlayApp(
                     activeSourceName = activeSummary?.name,
                     syncState = syncState,
                 )
-                contentLandscape && !vodFullscreen -> NavigationBar(
+                contentLandscape && !vodFullscreen -> OwnPlayNavigationBar(
+                    liveSelected = section == OwnPlaySection.LIVE,
+                    librarySelected = librarySectionActive,
+                    settingsSelected = section == OwnPlaySection.SETTINGS,
+                    onLive = { openContentSection(OwnPlaySection.LIVE) },
+                    onLibrary = { openContentSection(OwnPlaySection.LIBRARY) },
+                    onSettings = { openContentSection(OwnPlaySection.SETTINGS) },
                     modifier = Modifier.statusBarsPadding(),
-                    containerColor = MaterialTheme.colorScheme.surface,
-                    tonalElevation = 2.dp,
-                ) {
-                    NavigationBarItem(
-                        selected = section == OwnPlaySection.LIVE,
-                        onClick = { openContentSection(OwnPlaySection.LIVE) },
-                        icon = { Icon(Icons.Filled.LiveTv, contentDescription = "Live") },
-                        label = { Text("Live") },
-                        colors = navigationItemColors,
-                    )
-                    NavigationBarItem(
-                        selected = librarySectionActive,
-                        onClick = { openContentSection(OwnPlaySection.LIBRARY) },
-                        icon = { Icon(Icons.Filled.DownloadDone, contentDescription = "Library") },
-                        label = { Text("Library") },
-                        colors = navigationItemColors,
-                    )
-                    NavigationBarItem(
-                        selected = section == OwnPlaySection.SETTINGS,
-                        onClick = { openContentSection(OwnPlaySection.SETTINGS) },
-                        icon = { Icon(Icons.Filled.Settings, contentDescription = "Settings") },
-                        label = { Text("Settings") },
-                        colors = navigationItemColors,
-                    )
-                }
+                )
             }
         },
         bottomBar = {
@@ -358,33 +329,15 @@ fun OwnPlayApp(
                 !seriesFullscreen &&
                 !libraryFullscreen
             ) {
-                NavigationBar(
+                OwnPlayNavigationBar(
+                    liveSelected = section == OwnPlaySection.LIVE,
+                    librarySelected = librarySectionActive,
+                    settingsSelected = section == OwnPlaySection.SETTINGS,
+                    onLive = { openContentSection(OwnPlaySection.LIVE) },
+                    onLibrary = { openContentSection(OwnPlaySection.LIBRARY) },
+                    onSettings = { openContentSection(OwnPlaySection.SETTINGS) },
                     modifier = Modifier.navigationBarsPadding(),
-                    containerColor = MaterialTheme.colorScheme.surface,
-                    tonalElevation = 3.dp,
-                ) {
-                    NavigationBarItem(
-                        selected = section == OwnPlaySection.LIVE,
-                        onClick = { openContentSection(OwnPlaySection.LIVE) },
-                        icon = { Icon(Icons.Filled.LiveTv, contentDescription = "Live") },
-                        label = { Text("Live") },
-                        colors = navigationItemColors,
-                    )
-                    NavigationBarItem(
-                        selected = librarySectionActive,
-                        onClick = { openContentSection(OwnPlaySection.LIBRARY) },
-                        icon = { Icon(Icons.Filled.DownloadDone, contentDescription = "Library") },
-                        label = { Text("Library") },
-                        colors = navigationItemColors,
-                    )
-                    NavigationBarItem(
-                        selected = section == OwnPlaySection.SETTINGS,
-                        onClick = { openContentSection(OwnPlaySection.SETTINGS) },
-                        icon = { Icon(Icons.Filled.Settings, contentDescription = "Settings") },
-                        label = { Text("Settings") },
-                        colors = navigationItemColors,
-                    )
-                }
+                )
             }
         },
     ) { innerPadding ->
@@ -401,21 +354,21 @@ fun OwnPlayApp(
                     if (targetState.ordinal > initialState.ordinal) {
                         (slideInHorizontally(
                             animationSpec = tween(SECTION_MOTION_MILLIS),
-                            initialOffsetX = { width -> width / 18 },
+                            initialOffsetX = { width -> width / 24 },
                         ) + fadeIn(tween(SECTION_MOTION_MILLIS))) togetherWith
                             (slideOutHorizontally(
                                 animationSpec = tween(SECTION_MOTION_MILLIS),
-                                targetOffsetX = { width -> -width / 28 },
-                            ) + fadeOut(tween(130)))
+                                targetOffsetX = { width -> -width / 36 },
+                            ) + fadeOut(tween(110)))
                     } else {
                         (slideInHorizontally(
                             animationSpec = tween(SECTION_MOTION_MILLIS),
-                            initialOffsetX = { width -> -width / 18 },
+                            initialOffsetX = { width -> -width / 24 },
                         ) + fadeIn(tween(SECTION_MOTION_MILLIS))) togetherWith
                             (slideOutHorizontally(
                                 animationSpec = tween(SECTION_MOTION_MILLIS),
-                                targetOffsetX = { width -> width / 28 },
-                            ) + fadeOut(tween(130)))
+                                targetOffsetX = { width -> width / 36 },
+                            ) + fadeOut(tween(110)))
                     }
                 },
                 label = "ownPlaySection",
@@ -584,24 +537,24 @@ private fun SettingsHeader(
     syncState: SourceSyncState,
 ) {
     Surface(
-        color = MaterialTheme.colorScheme.surface,
-        tonalElevation = 2.dp,
+        color = MaterialTheme.colorScheme.background,
+        tonalElevation = 0.dp,
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .statusBarsPadding()
-                .padding(horizontal = 16.dp, vertical = 7.dp),
+                .padding(horizontal = 18.dp, vertical = 10.dp),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             Surface(
-                shape = RoundedCornerShape(11.dp),
+                shape = RoundedCornerShape(12.dp),
                 color = MaterialTheme.colorScheme.primary,
             ) {
                 Text(
                     text = "OP",
-                    modifier = Modifier.padding(horizontal = 9.dp, vertical = 6.dp),
+                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp),
                     color = MaterialTheme.colorScheme.onPrimary,
                     style = MaterialTheme.typography.labelLarge,
                     fontWeight = FontWeight.Black,
@@ -610,7 +563,7 @@ private fun SettingsHeader(
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = "OwnPlay",
-                    style = MaterialTheme.typography.titleMedium,
+                    style = MaterialTheme.typography.titleLarge,
                     fontWeight = FontWeight.Bold,
                 )
                 Text(
@@ -651,12 +604,12 @@ private fun LiveNoSourceScreen(
         )
         Surface(
             modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(20.dp),
+            shape = RoundedCornerShape(24.dp),
             color = MaterialTheme.colorScheme.surface,
-            tonalElevation = 2.dp,
+            tonalElevation = 1.dp,
         ) {
             Column(
-                modifier = Modifier.padding(18.dp),
+                modifier = Modifier.padding(20.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
                 if (syncState.stage == SourceSyncStage.LoadingChannels) {
