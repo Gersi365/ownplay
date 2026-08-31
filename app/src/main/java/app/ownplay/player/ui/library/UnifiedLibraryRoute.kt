@@ -57,10 +57,10 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
-import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -484,25 +484,25 @@ internal fun UnifiedLibraryRoute(
         modifier = Modifier
             .fillMaxSize()
             .padding(
-                horizontal = if (isTelevision) 20.dp else 12.dp,
-                vertical = if (isTelevision) 12.dp else 8.dp,
+                horizontal = if (isTelevision) 20.dp else 10.dp,
+                vertical = if (isTelevision) 12.dp else 4.dp,
             ),
-        verticalArrangement = Arrangement.spacedBy(if (isTelevision) 10.dp else 6.dp),
+        verticalArrangement = Arrangement.spacedBy(if (isTelevision) 10.dp else 4.dp),
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Column(
-                modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(2.dp),
+        if (isTelevision) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text(
-                    text = "Library",
-                    style = MaterialTheme.typography.headlineSmall,
-                    fontWeight = FontWeight.Bold,
-                )
-                if (isTelevision) {
+                Column(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(2.dp),
+                ) {
+                    Text(
+                        text = "Library",
+                        style = MaterialTheme.typography.headlineSmall,
+                        fontWeight = FontWeight.Bold,
+                    )
                     Text(
                         text = if (offlineOnly) {
                             "Local files on this device · playback works without internet"
@@ -513,68 +513,110 @@ internal fun UnifiedLibraryRoute(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
-            }
-            if (refreshing) {
-                CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
-            }
-            if (!isTelevision) {
-                IconButton(
-                    onClick = {
-                        searchExpanded = !searchExpanded
-                        if (!searchExpanded) query = ""
+                if (refreshing) {
+                    CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
+                }
+                ContentViewModeMenu(
+                    mode = libraryViewMode,
+                    onModeSelected = { mode ->
+                        scope.launch { viewModeStore.setLibraryMode(mode) }
                     },
-                ) {
-                    Icon(
-                        imageVector = if (searchExpanded) Icons.Filled.Close else Icons.Filled.Search,
-                        contentDescription = if (searchExpanded) "Close Library search" else "Search Library",
+                    prefix = "View",
+                )
+            }
+
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                listOf(UnifiedLibraryFilter.MOVIES, UnifiedLibraryFilter.SERIES).forEach { option ->
+                    FilterChip(
+                        selected = filter == option,
+                        onClick = {
+                            filter = option
+                            offlineOnly = false
+                            query = ""
+                        },
+                        label = {
+                            Text(
+                                when (option) {
+                                    UnifiedLibraryFilter.ALL -> "Offline"
+                                    UnifiedLibraryFilter.MOVIES -> "Movies"
+                                    UnifiedLibraryFilter.SERIES -> "Series"
+                                },
+                            )
+                        },
                     )
                 }
             }
-            ContentViewModeMenu(
-                mode = libraryViewMode,
-                onModeSelected = { mode ->
-                    scope.launch { viewModeStore.setLibraryMode(mode) }
-                },
-                prefix = "View",
-            )
-        }
-
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            val visibleFilters = if (isTelevision) {
-                listOf(UnifiedLibraryFilter.MOVIES, UnifiedLibraryFilter.SERIES)
-            } else {
-                UnifiedLibraryFilter.entries
-            }
-            visibleFilters.forEach { option ->
-                FilterChip(
-                    selected = filter == option,
-                    onClick = {
-                        filter = option
-                        offlineOnly = option == UnifiedLibraryFilter.ALL
-                        query = ""
-                        if (!isTelevision) searchExpanded = false
-                    },
-                    label = {
-                        Text(
-                            when (option) {
-                                UnifiedLibraryFilter.ALL -> "Offline"
-                                UnifiedLibraryFilter.MOVIES -> "Movies"
-                                UnifiedLibraryFilter.SERIES -> "Series"
+        } else {
+            LazyRow(
+                modifier = Modifier.fillMaxWidth(),
+                contentPadding = PaddingValues(end = 8.dp),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                item(key = "library-search") {
+                    IconButton(
+                        onClick = {
+                            searchExpanded = !searchExpanded
+                            if (!searchExpanded) query = ""
+                        },
+                    ) {
+                        Icon(
+                            imageVector = if (searchExpanded) Icons.Filled.Close else Icons.Filled.Search,
+                            contentDescription = if (searchExpanded) {
+                                "Close Library search"
+                            } else {
+                                "Search Library"
                             },
                         )
-                    },
-                    leadingIcon = if (option == UnifiedLibraryFilter.ALL) {
-                        {
-                            Icon(
-                                Icons.Filled.DownloadDone,
-                                contentDescription = null,
-                                modifier = Modifier.size(16.dp),
+                    }
+                }
+                item(key = "library-view") {
+                    ContentViewModeMenu(
+                        mode = libraryViewMode,
+                        onModeSelected = { mode ->
+                            scope.launch { viewModeStore.setLibraryMode(mode) }
+                        },
+                    )
+                }
+                listItems(
+                    items = UnifiedLibraryFilter.entries,
+                    key = { it.name },
+                ) { option ->
+                    FilterChip(
+                        selected = filter == option,
+                        onClick = {
+                            filter = option
+                            offlineOnly = option == UnifiedLibraryFilter.ALL
+                            query = ""
+                            searchExpanded = false
+                        },
+                        label = {
+                            Text(
+                                when (option) {
+                                    UnifiedLibraryFilter.ALL -> "Offline"
+                                    UnifiedLibraryFilter.MOVIES -> "Movies"
+                                    UnifiedLibraryFilter.SERIES -> "Series"
+                                },
                             )
-                        }
-                    } else {
-                        null
-                    },
-                )
+                        },
+                        leadingIcon = if (option == UnifiedLibraryFilter.ALL) {
+                            {
+                                Icon(
+                                    Icons.Filled.DownloadDone,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(16.dp),
+                                )
+                            }
+                        } else {
+                            null
+                        },
+                    )
+                }
+                if (refreshing) {
+                    item(key = "library-refreshing") {
+                        CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                    }
+                }
             }
         }
 
@@ -718,7 +760,7 @@ private fun LibraryCategoryStrip(
     categories: List<Pair<String, String>>,
     onCategorySelected: (String?) -> Unit,
 ) {
-    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+    Column(verticalArrangement = Arrangement.spacedBy(if (showLabel) 4.dp else 2.dp)) {
         if (showLabel) {
             Text(
                 text = label,
@@ -729,7 +771,7 @@ private fun LibraryCategoryStrip(
         LazyRow(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(7.dp),
-            contentPadding = PaddingValues(end = 16.dp),
+            contentPadding = PaddingValues(end = 12.dp),
         ) {
             listItems(categories, key = { it.first }) { (categoryKey, categoryName) ->
                 FilterChip(
