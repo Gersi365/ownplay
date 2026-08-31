@@ -47,6 +47,13 @@ jobs:
           test -x "${ANDROID_HOME}/build-tools/36.0.0/zipalign"
           test -x "${ANDROID_HOME}/build-tools/36.0.0/apksigner"
 
+      - name: Exclude TV-only banner from Mobile release resources
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f app/src/main/res/drawable-xhdpi/tv_banner.png
+          rm app/src/main/res/drawable-xhdpi/tv_banner.png
+
       - name: Validate and assemble Mobile release APK
         run: >-
           gradle
