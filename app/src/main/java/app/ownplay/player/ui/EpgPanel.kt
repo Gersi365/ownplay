@@ -37,12 +37,6 @@ internal fun EpgPanel(
         LiveEpgPresentationBridge.publish(snapshot)
     }
 
-    LaunchedEffect(Unit) {
-        if (LiveEpgPresentationBridge.consumeFullGuideRequest()) {
-            onOpenGuide()
-        }
-    }
-
     Surface(
         modifier = modifier
             .fillMaxWidth()
