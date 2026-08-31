@@ -463,8 +463,8 @@ internal fun UnifiedLibraryRoute(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .padding(horizontal = 12.dp, vertical = 8.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -473,7 +473,7 @@ internal fun UnifiedLibraryRoute(
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = "Library",
-                    style = MaterialTheme.typography.titleLarge,
+                    style = MaterialTheme.typography.headlineSmall,
                     fontWeight = FontWeight.Bold,
                 )
                 Text(
@@ -482,7 +482,7 @@ internal fun UnifiedLibraryRoute(
                     } else {
                         "Movies and Series from your active playlist"
                     },
-                    style = MaterialTheme.typography.bodySmall,
+                    style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
@@ -498,8 +498,12 @@ internal fun UnifiedLibraryRoute(
             )
         }
 
-        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            UnifiedLibraryFilter.entries.forEach { option ->
+        LazyRow(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            contentPadding = PaddingValues(end = 12.dp),
+        ) {
+            listItems(UnifiedLibraryFilter.entries, key = { it.name }) { option ->
                 FilterChip(
                     selected = filter == option,
                     onClick = { filter = option },
@@ -515,18 +519,20 @@ internal fun UnifiedLibraryRoute(
                 )
             }
             if (!isTelevision) {
-                FilterChip(
-                    selected = offlineOnly,
-                    onClick = { offlineOnly = !offlineOnly },
-                    label = { Text("Offline") },
-                    leadingIcon = {
-                        Icon(
-                            Icons.Filled.DownloadDone,
-                            contentDescription = null,
-                            modifier = Modifier.size(16.dp),
-                        )
-                    },
-                )
+                item(key = "offline") {
+                    FilterChip(
+                        selected = offlineOnly,
+                        onClick = { offlineOnly = !offlineOnly },
+                        label = { Text("Offline") },
+                        leadingIcon = {
+                            Icon(
+                                Icons.Filled.DownloadDone,
+                                contentDescription = null,
+                                modifier = Modifier.size(16.dp),
+                            )
+                        },
+                    )
+                }
             }
         }
 
@@ -561,19 +567,19 @@ internal fun UnifiedLibraryRoute(
                     },
                 )
             },
-            shape = RoundedCornerShape(12.dp),
+            shape = RoundedCornerShape(16.dp),
         )
 
         if (refreshWarning && !offlineOnly) {
             Surface(
                 modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(10.dp),
+                shape = RoundedCornerShape(12.dp),
                 color = MaterialTheme.colorScheme.errorContainer,
             ) {
                 Row(
-                    modifier = Modifier.padding(10.dp),
+                    modifier = Modifier.padding(12.dp),
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(7.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     Icon(Icons.Filled.ErrorOutline, contentDescription = null)
                     Text(
@@ -659,7 +665,7 @@ private fun LibraryCategoryStrip(
     categories: List<Pair<String, String>>,
     onCategorySelected: (String?) -> Unit,
 ) {
-    Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Text(
             text = label,
             style = MaterialTheme.typography.labelMedium,
@@ -667,7 +673,7 @@ private fun LibraryCategoryStrip(
         )
         LazyRow(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
             contentPadding = PaddingValues(end = 12.dp),
         ) {
             item(key = "all-categories") {
@@ -703,12 +709,12 @@ private fun LibraryEmptyState(
     Box(modifier = modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(6.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             Icon(
                 Icons.Filled.DownloadDone,
                 contentDescription = null,
-                modifier = Modifier.size(34.dp),
+                modifier = Modifier.size(38.dp),
                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             Text(
@@ -811,11 +817,11 @@ private fun LibraryCatalogView(
     when (viewMode) {
         ContentViewMode.CARDS -> LazyVerticalGrid(
             state = gridState,
-            columns = GridCells.Adaptive(minSize = 150.dp),
+            columns = GridCells.Adaptive(minSize = 156.dp),
             modifier = modifier.fillMaxSize(),
-            contentPadding = PaddingValues(bottom = 14.dp),
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
+            contentPadding = PaddingValues(bottom = 20.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
             if (filter != UnifiedLibraryFilter.SERIES) {
                 gridItems(visibleMovies, key = { "catalog-movie:${it.movieId}" }) { movie ->
@@ -872,11 +878,11 @@ private fun LibraryCatalogView(
 
         ContentViewMode.COMPACT -> LazyVerticalGrid(
             state = gridState,
-            columns = GridCells.Adaptive(minSize = 108.dp),
+            columns = GridCells.Adaptive(minSize = 112.dp),
             modifier = modifier.fillMaxSize(),
-            contentPadding = PaddingValues(bottom = 14.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
+            contentPadding = PaddingValues(bottom = 20.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             if (filter != UnifiedLibraryFilter.SERIES) {
                 gridItems(visibleMovies, key = { "compact-movie:${it.movieId}" }) { movie ->
@@ -932,7 +938,7 @@ private fun LibraryCatalogView(
         ContentViewMode.LIST -> LazyColumn(
             state = listState,
             modifier = modifier.fillMaxSize(),
-            contentPadding = PaddingValues(bottom = 14.dp),
+            contentPadding = PaddingValues(bottom = 20.dp),
         ) {
             if (filter != UnifiedLibraryFilter.SERIES) {
                 listItems(visibleMovies, key = { "list-movie:${it.movieId}" }) { movie ->
@@ -1747,7 +1753,6 @@ private fun movieOfflineLabel(download: OfflineDownload?): String = when {
     else -> "Movie"
 }
 
-
 private fun libraryCatalogMovieFocusKey(sourceId: String, movieId: String): String =
     "movie:$sourceId:$movieId"
 
@@ -1786,6 +1791,7 @@ private fun libraryVisibleFocusKeys(
         }
     }
 }
+
 private suspend fun enqueueSeriesEpisode(
     downloadRuntime: OfflineDownloadFeatureRuntime,
     sourceId: String,
