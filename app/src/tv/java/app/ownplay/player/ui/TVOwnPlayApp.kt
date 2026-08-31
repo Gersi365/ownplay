@@ -428,10 +428,10 @@ private fun TVPrimaryNavigationBar(
     Surface(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 12.dp, vertical = 8.dp),
-        shape = RoundedCornerShape(12.dp),
+            .padding(horizontal = 12.dp, vertical = 6.dp),
+        shape = RoundedCornerShape(18.dp),
         color = MaterialTheme.colorScheme.surface,
-        tonalElevation = 0.dp,
+        tonalElevation = 1.dp,
     ) {
         Row(
             modifier = Modifier.padding(6.dp),
@@ -476,10 +476,10 @@ private fun TVPrimaryNavigationItem(
             .onFocusChanged { focused = it.isFocused }
             .clickable(onClick = onClick),
         shape = RoundedCornerShape(10.dp),
-        color = when {
-            focused -> MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.72f)
-            selected -> MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.42f)
-            else -> MaterialTheme.colorScheme.surface
+        color = if (focused) {
+            MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.72f)
+        } else {
+            MaterialTheme.colorScheme.surface
         },
         tonalElevation = 0.dp,
     ) {
@@ -500,10 +500,10 @@ private fun TVPrimaryNavigationItem(
             Text(
                 text = label,
                 style = MaterialTheme.typography.bodyMedium,
-                color = if (emphasized) {
-                    MaterialTheme.colorScheme.onPrimaryContainer
-                } else {
-                    MaterialTheme.colorScheme.onSurface
+                color = when {
+                    focused -> MaterialTheme.colorScheme.onPrimaryContainer
+                    selected -> MaterialTheme.colorScheme.primary
+                    else -> MaterialTheme.colorScheme.onSurface
                 },
             )
         }
