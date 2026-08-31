@@ -26,6 +26,7 @@ import androidx.compose.foundation.lazy.items as listItems
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.DownloadDone
 import androidx.compose.material.icons.filled.ErrorOutline
@@ -152,6 +153,7 @@ internal fun UnifiedLibraryRoute(
     var seriesCategoryKey by remember(sourceId) { mutableStateOf<String?>(null) }
     var offlineOnly by remember(isTelevision) { mutableStateOf(!isTelevision) }
     var query by remember { mutableStateOf("") }
+    var searchExpanded by remember(isTelevision) { mutableStateOf(isTelevision) }
     var refreshing by remember(sourceId) { mutableStateOf(false) }
     var refreshWarning by remember(sourceId) { mutableStateOf(false) }
     var playbackSession by remember { mutableStateOf<LibraryPlaybackSession?>(null) }
@@ -168,6 +170,7 @@ internal fun UnifiedLibraryRoute(
     LaunchedEffect(isTelevision) {
         if (isTelevision) {
             offlineOnly = false
+            searchExpanded = true
             if (filter == UnifiedLibraryFilter.ALL) {
                 filter = UnifiedLibraryFilter.MOVIES
             }
@@ -481,10 +484,10 @@ internal fun UnifiedLibraryRoute(
         modifier = Modifier
             .fillMaxSize()
             .padding(
-                horizontal = if (isTelevision) 20.dp else 16.dp,
-                vertical = 12.dp,
+                horizontal = if (isTelevision) 20.dp else 12.dp,
+                vertical = if (isTelevision) 12.dp else 8.dp,
             ),
-        verticalArrangement = Arrangement.spacedBy(10.dp),
+        verticalArrangement = Arrangement.spacedBy(if (isTelevision) 10.dp else 6.dp),
     ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -499,18 +502,33 @@ internal fun UnifiedLibraryRoute(
                     style = MaterialTheme.typography.headlineSmall,
                     fontWeight = FontWeight.Bold,
                 )
-                Text(
-                    text = if (offlineOnly) {
-                        "Local files on this device · playback works without internet"
-                    } else {
-                        "Movies and Series from your active playlist"
-                    },
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+                if (isTelevision) {
+                    Text(
+                        text = if (offlineOnly) {
+                            "Local files on this device · playback works without internet"
+                        } else {
+                            "Movies and Series from your active playlist"
+                        },
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
             }
             if (refreshing) {
                 CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
+            }
+            if (!isTelevision) {
+                IconButton(
+                    onClick = {
+                        searchExpanded = !searchExpanded
+                        if (!searchExpanded) query = ""
+                    },
+                ) {
+                    Icon(
+                        imageVector = if (searchExpanded) Icons.Filled.Close else Icons.Filled.Search,
+                        contentDescription = if (searchExpanded) "Close Library search" else "Search Library",
+                    )
+                }
             }
             ContentViewModeMenu(
                 mode = libraryViewMode,
@@ -534,6 +552,7 @@ internal fun UnifiedLibraryRoute(
                         filter = option
                         offlineOnly = option == UnifiedLibraryFilter.ALL
                         query = ""
+                        if (!isTelevision) searchExpanded = false
                     },
                     label = {
                         Text(
@@ -562,12 +581,14 @@ internal fun UnifiedLibraryRoute(
         when (filter) {
             UnifiedLibraryFilter.MOVIES -> LibraryCategoryStrip(
                 label = "Movie categories",
+                showLabel = isTelevision,
                 selectedCategoryKey = movieCategoryKey,
                 categories = vodCatalog.categories.map { it.providerCategoryKey to it.name },
                 onCategorySelected = { movieCategoryKey = it },
             )
             UnifiedLibraryFilter.SERIES -> LibraryCategoryStrip(
                 label = "Series categories",
+                showLabel = isTelevision,
                 selectedCategoryKey = seriesCategoryKey,
                 categories = seriesCatalog.categories.map { it.providerCategoryKey to it.name },
                 onCategorySelected = { seriesCategoryKey = it },
@@ -575,29 +596,31 @@ internal fun UnifiedLibraryRoute(
             UnifiedLibraryFilter.ALL -> Unit
         }
 
-        OutlinedTextField(
-            value = query,
-            onValueChange = { query = it },
-            modifier = Modifier.fillMaxWidth(),
-            singleLine = true,
-            leadingIcon = {
-                Icon(
-                    Icons.Filled.Search,
-                    contentDescription = null,
-                    modifier = Modifier.size(20.dp),
-                )
-            },
-            placeholder = {
-                Text(
-                    when (filter) {
-                        UnifiedLibraryFilter.ALL -> "Search Offline"
-                        UnifiedLibraryFilter.MOVIES -> "Search Movies"
-                        UnifiedLibraryFilter.SERIES -> "Search Series"
-                    },
-                )
-            },
-            shape = RoundedCornerShape(10.dp),
-        )
+        if (isTelevision || searchExpanded || query.isNotBlank()) {
+            OutlinedTextField(
+                value = query,
+                onValueChange = { query = it },
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = true,
+                leadingIcon = {
+                    Icon(
+                        Icons.Filled.Search,
+                        contentDescription = null,
+                        modifier = Modifier.size(20.dp),
+                    )
+                },
+                placeholder = {
+                    Text(
+                        when (filter) {
+                            UnifiedLibraryFilter.ALL -> "Search Offline"
+                            UnifiedLibraryFilter.MOVIES -> "Search Movies"
+                            UnifiedLibraryFilter.SERIES -> "Search Series"
+                        },
+                    )
+                },
+                shape = RoundedCornerShape(10.dp),
+            )
+        }
 
         if (refreshWarning && !offlineOnly) {
             Surface(
@@ -690,16 +713,19 @@ internal fun UnifiedLibraryRoute(
 @Composable
 private fun LibraryCategoryStrip(
     label: String,
+    showLabel: Boolean,
     selectedCategoryKey: String?,
     categories: List<Pair<String, String>>,
     onCategorySelected: (String?) -> Unit,
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        Text(
-            text = label,
-            style = MaterialTheme.typography.labelMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
+        if (showLabel) {
+            Text(
+                text = label,
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
         LazyRow(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(7.dp),
@@ -1447,10 +1473,10 @@ private fun MovieListRow(
                 download = managedDownload,
                 compact = false,
                 onPlay = onPlayOffline,
-                onPause = onPause,
-                onResume = onResume,
-                onRetry = onRetry,
-                onRemove = onRemove,
+                onPause = onPauseMovie,
+                onResume = onResumeMovie,
+                onRetry = onRetryMovie,
+                onRemove = onRemoveMovie,
                 modifier = Modifier.width(144.dp),
             )
         }
