@@ -141,7 +141,7 @@ private fun LiveCategoryHierarchyPicker(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 14.dp, vertical = 6.dp),
-            shape = RoundedCornerShape(16.dp),
+            shape = RoundedCornerShape(12.dp),
             color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.28f),
             tonalElevation = 0.dp,
         ) {
