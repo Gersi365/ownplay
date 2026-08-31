@@ -92,6 +92,8 @@ import okhttp3.Request
 
 private const val MOBILE_LOGO_MAX_BYTES = 2 * 1024 * 1024
 private const val MOBILE_LOGO_MAX_EDGE_PX = 256
+private const val MOBILE_EPG_PREFETCH_STEP = 6
+private const val MOBILE_EPG_PREFETCH_WINDOW = 14
 
 /**
  * Mobile-only Live surface.
@@ -130,6 +132,7 @@ internal fun TargetLiveRoute(
     val scope = rememberCoroutineScope()
     val channelListState = rememberLazyListState()
     val preview = activeSelection?.takeIf { it.request.sourceId == sourceId }
+    val epgPrefetchBucket = channelListState.firstVisibleItemIndex / MOBILE_EPG_PREFETCH_STEP
 
     var searchExpanded by remember(sourceId) { mutableStateOf(false) }
     var epgSnapshot by remember(sourceId, preview?.request?.channelId) {
@@ -179,6 +182,39 @@ internal fun TargetLiveRoute(
                 // Keep the last known EPG map. Live browsing must remain usable without EPG.
             }
             delay(30_000L)
+        }
+    }
+
+    LaunchedEffect(sourceId, epgPrefetchBucket, state.channels, loadingEpg) {
+        if (loadingEpg || state.channels.isEmpty()) return@LaunchedEffect
+        val startIndex = (epgPrefetchBucket * MOBILE_EPG_PREFETCH_STEP)
+            .coerceIn(0, state.channels.lastIndex)
+        val endExclusive = minOf(
+            state.channels.size,
+            startIndex + MOBILE_EPG_PREFETCH_WINDOW,
+        )
+        for (index in startIndex until endExclusive) {
+            val channel = state.channels[index]
+            if (currentEpgByChannelId.containsKey(channel.channelId)) continue
+            try {
+                val currentProgram = runtime.epgSnapshot(
+                    sourceId = sourceId,
+                    channelId = channel.channelId,
+                )?.current ?: continue
+                currentEpgByChannelId = currentEpgByChannelId + (channel.channelId to currentProgram)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                // Visible-list EPG is best-effort. Never block channel browsing on a guide lookup.
+            }
+        }
+    }
+
+    LaunchedEffect(preview?.request?.channelId) {
+        val selectedChannelId = preview?.request?.channelId ?: return@LaunchedEffect
+        val selectedIndex = state.channels.indexOfFirst { it.channelId == selectedChannelId }
+        if (selectedIndex >= 0) {
+            channelListState.scrollToItem(selectedIndex)
         }
     }
 
