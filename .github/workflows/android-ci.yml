@@ -15,7 +15,6 @@ concurrency:
 
 jobs:
   validate:
-    # Branches explicitly ending in -no-apk use Android Validation No APK instead.
     if: ${{ github.event_name != 'pull_request' || !endsWith(github.head_ref, '-no-apk') }}
     runs-on: ubuntu-latest
     timeout-minutes: 35
@@ -35,7 +34,7 @@ jobs:
         with:
           gradle-version: "9.5.0"
 
-      - name: Preserve manual-test debug signing identity
+      - name: Restore QA signing identity
         uses: actions/cache@v4
         with:
           path: ~/.android/debug.keystore
@@ -45,23 +44,40 @@ jobs:
         shell: bash
         run: |
           test -d "${ANDROID_HOME}/platforms/android-36"
-          test -d "${ANDROID_HOME}/build-tools/36.0.0"
+          test -x "${ANDROID_HOME}/build-tools/36.0.0/zipalign"
+          test -x "${ANDROID_HOME}/build-tools/36.0.0/apksigner"
 
-      - name: Validate and assemble Mobile debug APK
+      - name: Validate and assemble Mobile release APK
         run: >-
           gradle
-          :app:kspMobileDebugKotlin
-          :app:testMobileDebugUnitTest
-          :app:lintMobileDebug
-          :app:compileMobileDebugAndroidTestKotlin
-          :app:assembleMobileDebug
+          :app:kspMobileReleaseKotlin
+          :app:testMobileReleaseUnitTest
+          :app:lintMobileRelease
+          :app:assembleMobileRelease
           --stacktrace
 
-      - name: Verify debug signing identity
+      - name: Align and sign Mobile release APK
         if: success()
         shell: bash
         run: |
+          set -euo pipefail
           test -f "$HOME/.android/debug.keystore"
+          INPUT="app/build/outputs/apk/mobile/release/app-mobile-release-unsigned.apk"
+          ALIGNED="app/build/outputs/apk/mobile/release/app-mobile-release-aligned.apk"
+          OUTPUT="app/build/outputs/apk/mobile/release/OwnPlay-Mobile.apk"
+          test -f "$INPUT"
+          "${ANDROID_HOME}/build-tools/36.0.0/zipalign" -f -p 4 "$INPUT" "$ALIGNED"
+          "${ANDROID_HOME}/build-tools/36.0.0/apksigner" sign \
+            --ks "$HOME/.android/debug.keystore" \
+            --ks-key-alias androiddebugkey \
+            --ks-pass pass:android \
+            --key-pass pass:android \
+            --out "$OUTPUT" \
+            "$ALIGNED"
+          "${ANDROID_HOME}/build-tools/36.0.0/apksigner" verify \
+            --verbose \
+            --print-certs \
+            "$OUTPUT"
           keytool -list \
             -keystore "$HOME/.android/debug.keystore" \
             -storepass android \
@@ -79,7 +95,6 @@ jobs:
 
           root = pathlib.Path("app/schemas")
           problems = []
-
           generated = sorted(root.rglob("*.json"))
           for path in generated:
               relative = path.as_posix()
@@ -92,14 +107,12 @@ jobs:
               except subprocess.CalledProcessError:
                   problems.append(f"Uncommitted Room schema: {relative}")
                   continue
-
               try:
                   generated_json = json.loads(path.read_text(encoding="utf-8"))
                   committed_json = json.loads(committed_text)
               except json.JSONDecodeError as error:
                   problems.append(f"Invalid Room schema JSON in {relative}: {error}")
                   continue
-
               if generated_json != committed_json:
                   problems.append(f"Room schema drift: {relative}")
 
@@ -116,11 +129,11 @@ jobs:
               sys.exit(1)
           PY
 
-      - name: Upload Mobile debug APK
+      - name: Upload Mobile release APK
         if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: ownplay-mobile-debug-apk
-          path: app/build/outputs/apk/mobile/debug/app-mobile-debug.apk
+          name: ownplay-mobile-release-apk
+          path: app/build/outputs/apk/mobile/release/OwnPlay-Mobile.apk
           if-no-files-found: error
           retention-days: 7
