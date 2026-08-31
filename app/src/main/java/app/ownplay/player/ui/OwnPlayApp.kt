@@ -57,7 +57,7 @@ import app.ownplay.player.playback.LivePlaybackTransitionTarget
 import app.ownplay.player.playback.PlaybackInteractionBridge
 import app.ownplay.player.source.SourceSyncStage
 import app.ownplay.player.source.SourceSyncState
-import app.ownplay.player.ui.library.UnifiedLibraryRoute
+import app.ownplay.player.ui.library.LibraryRoute
 import app.ownplay.player.ui.series.SeriesRoute
 import app.ownplay.player.ui.vod.VodRoute
 
@@ -197,7 +197,6 @@ fun OwnPlayApp(
     ) {
         openContentSection(OwnPlaySection.LIBRARY)
     }
-
     val librarySectionActive =
         section == OwnPlaySection.LIBRARY ||
             section == OwnPlaySection.MOVIES ||
@@ -491,7 +490,7 @@ fun OwnPlayApp(
                         },
                     )
 
-                    OwnPlaySection.LIBRARY -> UnifiedLibraryRoute(
+                    OwnPlaySection.LIBRARY -> LibraryRoute(
                         runtime = runtime,
                         sourceId = activeSourceId,
                         sourceKind = activeSummary?.sourceKind,
