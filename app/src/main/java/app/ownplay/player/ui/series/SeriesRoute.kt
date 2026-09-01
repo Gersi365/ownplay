@@ -154,8 +154,12 @@ internal fun SeriesRoute(
                 selectedEpisodeId = null
             }
             selectedSeries != null -> {
-                restoreCatalogFocusAfterPlayback = true
-                selectedSeries = null
+                if (returnToLibraryOnDetailBack) {
+                    onReturnToLibrary()
+                } else {
+                    restoreCatalogFocusAfterPlayback = true
+                    selectedSeries = null
+                }
             }
             returnToLibraryOnDetailBack -> onReturnToLibrary()
         }
@@ -691,6 +695,7 @@ private fun SeriesPlaybackScreen(
         onFullscreenStateChanged(true)
         PlaybackInteractionBridge.registerBackAction(backOwner, ::exitPlayback)
         onDispose {
+            onFullscreenStateChanged(false)
             runtime.playbackController.stopIfCurrent(
                 sourceId = sourceId,
                 channelId = episode.episodeId,

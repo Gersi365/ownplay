@@ -185,6 +185,10 @@ internal fun VodRoute(
 
     fun closeMovieDetails() {
         restoreDetailFocusAfterPlayback = false
+        if (returnToLibraryOnDetailBack) {
+            onReturnToLibrary()
+            return
+        }
         restoreCategoryFocusAfterDetailBack = true
         selectedMovie = null
     }
@@ -965,6 +969,7 @@ private fun VodPlaybackScreen(
         onFullscreenStateChanged(true)
         PlaybackInteractionBridge.registerBackAction(backOwner, ::exitPlayback)
         onDispose {
+            onFullscreenStateChanged(false)
             runtime.playbackController.stopIfCurrent(
                 sourceId = sourceId,
                 channelId = movie.movieId,
