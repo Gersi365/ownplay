@@ -54,6 +54,27 @@ Runtime files cleaned of Device Sync wiring
 - source/management/SourceManagementService.kt
 - source/onboarding/SourceOnboardingService.kt
 
+Structural verification at final source tree
+- Production package app/src/main/java/app/ownplay/player/sync no longer exists.
+- DeviceSyncLocalMutationWriter no longer exists.
+- The only production files remaining under persistence/sync are DeviceSyncPersistence.kt and DeviceSyncMigration.kt.
+- OwnPlayDatabase remains version 6.
+- Committed schema 6.json remains unchanged.
+- OwnPlayDatabaseMigration56Test.kt remains unchanged.
+
+Exact final source and validation
+- Final source head: 61a3b9ba31a6137965a26be15194f0ebe09c2444
+- Final source tree: 571ab47df52c7011411c7687fed8a7cb3b8a1970
+- Android Validation No APK #105 / run 33503362456: SUCCESS.
+- Mobile validation: SUCCESS.
+- TV validation: SUCCESS.
+- Explicit no-APK verification: SUCCESS.
+- Room schema upload: SUCCESS.
+- Committed Room-schema verification: SUCCESS.
+- Only workflow artifact: ownplay-room-schema-no-apk, ID 9798796253, 16,404 bytes, digest sha256:164f749f5403872397ea4747ffe22c126f587bf438d1ae9620350515ef383fbb.
+- APK-producing Android CI #458 / run 33503362489: intentionally SKIPPED.
+- No APK was produced by the final validation lane.
+
 Explicit non-changes
 - Room database version remains 6.
 - device_sync_* tables remain in committed schema 6.json solely as historical compatibility state.
@@ -62,7 +83,8 @@ Explicit non-changes
 - Source/playlist refresh behavior is unchanged.
 - No APK, merge, release, deployment, signing change, schema rewrite, or physical-device PASS is produced/claimed.
 
-Completion gate
-- Exact resulting PR head must pass Android Validation No APK for Mobile and TV.
-- Explicit no-APK verification and committed Room-schema verification must pass.
-- Artifact list must contain no APK.
+Completion status
+- Cross-device Device Sync is fully retired from product UI, runtime behavior, mutation wiring, pairing/transport implementation, and feature tests.
+- Historical Room v6 persistence/migration state remains only as compatibility scaffolding for existing databases.
+- Source/CI cleanup is complete at the exact final head above.
+- Physical phone and TV/TV Box validation remains a release acceptance gate; it is not missing Device Sync implementation work.
