@@ -1,0 +1,57 @@
+OwnPlay brand icon and app-name audit — 2026-09-01
+
+Scope
+- Continue from the latest verified source-only checkpoint without creating an APK.
+- Make the user-visible Android application name exactly "OwnPlay".
+- Refresh the launcher icon so it matches the modern dark OwnPlay UI.
+- Preserve package identity, signing continuity, application architecture, database, authentication, playback, and content behavior.
+
+Authoritative base
+- Repository: Gersi365/ownplay
+- Base branch checkpoint: agent/tv-full-epg-initial-focus-no-apk
+- Base commit: 882341bcfdd06b78e7988d1629461afcd8224b7e
+- Base tree: a424e07a19d4a49218ff1a7460798ba6c55425b1
+- Work branch: agent/ownplay-brand-icon-no-apk
+
+Audit findings before mutation
+- AndroidManifest.xml used android:label="OwnPlay QA5", so the launcher/application label was not the exact product name.
+- The existing launcher icon used an older cyan/periwinkle palette (#69D6E3 / #A9B7FF) plus a decorative detached diagonal stroke.
+- The current Compose theme uses primary #83B6FF, secondary #79D9C7, background #07090D, and on-background #F1F4F8.
+- The adaptive launcher resources already reference ic_launcher_background and ic_ownplay_launcher_foreground, so their wiring does not need to change.
+
+Approved changes implemented
+1. Android application label
+   - Changed android:label from "OwnPlay QA5" to exactly "OwnPlay".
+   - No package/application ID change.
+
+2. Launcher icon visual refresh
+   - Background aligned to the current app background: #07090D.
+   - Foreground redesigned as a clean broken circular OwnPlay/play mark:
+     - primary arc #83B6FF;
+     - secondary arc #79D9C7;
+     - play glyph #F1F4F8.
+   - Removed the old detached decorative diagonal stroke.
+   - Updated both adaptive foreground/background assets and legacy vector launcher/round launcher fallbacks.
+   - No text is embedded in the launcher icon.
+
+Files intentionally changed
+- app/src/main/AndroidManifest.xml
+- app/src/main/res/drawable/ic_launcher_background.xml
+- app/src/main/res/drawable/ic_ownplay_launcher_foreground.xml
+- app/src/main/res/mipmap-anydpi/ic_launcher.xml
+- app/src/main/res/mipmap-anydpi/ic_launcher_round.xml
+- docs/AUDIT_OWNPLAY_BRAND_ICON_NAME_2026-09-01.txt
+
+Validation boundary
+- Static source/resource validation only in this stage.
+- Adaptive launcher wiring was audited and retained.
+- No APK was created.
+- No physical-device claim is made.
+- No signing identity, application ID, version code, database, authentication, sync architecture, or playback behavior was changed.
+
+Name rule going forward
+- The product/app display name is exactly "OwnPlay".
+- Device-context terms such as mobile/phone/tablet may still be used descriptively in settings or technical logic, but they are not part of the OwnPlay brand/app label.
+
+Recommended next step
+- Continue the remaining source-only UI/TV hardening from this branch, then run the existing no-APK validation workflow before any future APK is authorized.
