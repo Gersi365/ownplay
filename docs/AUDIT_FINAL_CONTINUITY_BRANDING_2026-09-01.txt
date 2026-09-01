@@ -38,7 +38,10 @@ Findings closed
 3. TV banner carry-over
 - Historical tv_banner.png was a binary asset that the connected GitHub reader could not decode for visual/text audit.
 - Removed that opaque binary resource rather than leaving an unverified branding surface.
-- Replaced it with a deterministic 320x180 vector banner using the same current dark-purple OwnPlay logomark and no embedded Mobile/TV text.
+- Android TV guidance was cross-checked before finalizing the replacement: the banner must identify the app, use the 320x180 xhdpi launch-point format, and be supplied as the application banner resource.
+- Replaced the historical PNG with app/src/main/res/drawable-xhdpi/tv_banner.xml.
+- The vector has a 160dp x 90dp intrinsic size at xhdpi (320x180 px), dark #080A0F background, the current purple OwnPlay logomark, and an embedded OwnPlay wordmark rendered as vector paths.
+- It contains no Mobile or TV suffix text.
 - TV manifest continues to reference @drawable/tv_banner.
 
 4. Device Sync scope clarification
@@ -54,7 +57,7 @@ Files changed by this closure
 - app/src/main/res/mipmap-anydpi/ic_launcher.xml
 - app/src/main/res/mipmap-anydpi/ic_launcher_round.xml
 - app/src/main/res/drawable-xhdpi/tv_banner.png (removed)
-- app/src/main/res/drawable/tv_banner.xml (added)
+- app/src/main/res/drawable-xhdpi/tv_banner.xml (added)
 - docs/OWNPLAY_MOBILE_TV_SEPARATE_TARGETS_SPEC_2026-08-31.md
 - docs/AUDIT_FINAL_CONTINUITY_BRANDING_2026-09-01.txt
 
