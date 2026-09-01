@@ -19,6 +19,7 @@ Shared core may include playlist ingestion, Room persistence, reconciliation, Me
 - The user-visible application/product name is exactly `OwnPlay` on both targets.
 - `mobile` and `tv` are internal build-target identifiers only; they must not be appended to the launcher/application label.
 - Launcher icon and TV banner must follow the current dark-purple visual system and must not embed `Mobile` or `TV` as part of the OwnPlay brand name.
+- The approved launcher artwork is the dark rounded-square OwnPlay play mark with layered purple/magenta/blue ribbon treatment and white center play symbol. Do not substitute the retired simple vector mark.
 
 ## Retired scope
 
@@ -59,16 +60,21 @@ Bottom/app navigation exposes only:
 
 ### Library
 
-Visible Library sections:
+Visible Library sections, in this order:
 
-- Offline
 - Movies
 - Series
+- Offline
 
 Rules:
 
-- Offline/download presentation is Mobile-only.
+- Movies is the default Library section on Mobile.
+- Offline/download presentation is Mobile-only and remains the final Library section.
 - Movies and Series use real provider categories only.
+- Movies and Series show `Continue Watching` only when persisted, incomplete playback progress exists for that section.
+- `Continue Watching` is omitted completely when empty; no empty placeholder row is shown.
+- `Continue Watching` is hidden while Library search is active and is not part of Offline mode.
+- Continue Watching reuses existing VOD/Series playback progress persistence; it must not introduce a duplicate progress store or a parallel playback path.
 - If a category selection becomes invalid after hydration/refresh, fall back to the first real provider category.
 - Never expose `All` or `All categories`.
 
@@ -136,6 +142,8 @@ Visible Library sections:
 Rules:
 
 - No Offline/Download presentation on TV.
+- Movies and Series may show the same conditional `Continue Watching` section using existing playback progress persistence.
+- `Continue Watching` is omitted completely when empty and hidden while Library search is active.
 - No `All` or `All categories`.
 - Real provider categories only.
 - Initial focus and focus restoration must target real actionable content, not Back.
