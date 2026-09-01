@@ -1,6 +1,5 @@
 package app.ownplay.player.personalization
 
-import java.util.UUID
 import kotlin.math.abs
 
 data class VisibleChannelBounds(
@@ -22,24 +21,26 @@ object ChannelDragTargetResolver {
         pointerY: Float,
         draggedChannelId: String,
         visibleItems: List<VisibleChannelBounds>,
+        validChannelIds: Set<String>? = null,
     ): ChannelDragTarget? {
         if (!pointerY.isFinite() || draggedChannelId.isBlank()) return null
 
-        // Persisted channel IDs are stable UUIDs. LazyColumn headers also use String keys,
-        // so when dragging a persisted channel we only accept other stable channel IDs
-        // as anchors. Non-UUID IDs remain supported by unit-level/pure callers.
-        val draggedUsesStableId = draggedChannelId.isStableChannelId()
-        val target = visibleItems
-            .asSequence()
-            .filter { item ->
-                item.channelId.isNotBlank() &&
-                    item.channelId != draggedChannelId &&
-                    (!draggedUsesStableId || item.channelId.isStableChannelId()) &&
-                    item.top.isFinite() &&
-                    item.bottom.isFinite() &&
-                    item.bottom >= item.top
-            }
-            .minByOrNull { item -> abs(pointerY - item.center) }
+        val candidates = visibleItems.filter { item ->
+            item.channelId.isNotBlank() &&
+                item.channelId != draggedChannelId &&
+                (validChannelIds == null || item.channelId in validChannelIds) &&
+                item.top.isFinite() &&
+                item.bottom.isFinite() &&
+                item.bottom >= item.top
+        }
+        if (candidates.isEmpty()) return null
+
+        // Prefer the row that physically contains the pointer. This keeps the drop target stable
+        // when adjacent rows have different heights. Only fall back to nearest center when the
+        // pointer is in spacing outside every visible row.
+        val target = candidates.firstOrNull { item ->
+            pointerY >= item.top && pointerY <= item.bottom
+        } ?: candidates.minByOrNull { item -> abs(pointerY - item.center) }
             ?: return null
 
         return ChannelDragTarget(
@@ -52,7 +53,3 @@ object ChannelDragTargetResolver {
         )
     }
 }
-
-private fun String.isStableChannelId(): Boolean = runCatching {
-    UUID.fromString(this)
-}.isSuccess
