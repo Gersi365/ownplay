@@ -184,6 +184,53 @@ internal fun LiveManagementScreen(
         }
     }
 
+    fun persistDraggedChannelMove(
+        channelId: String,
+        anchorChannelId: String,
+        placement: ManualOrderPlacement,
+        favoriteOrder: Boolean,
+    ) {
+        orderError = null
+        scope.launch {
+            try {
+                if (favoriteOrder) {
+                    when (
+                        runtime.moveFavoriteRelative(
+                            sourceId = selectedSourceId,
+                            channelId = channelId,
+                            anchorChannelId = anchorChannelId,
+                            placement = placement,
+                        )
+                    ) {
+                        is FavoriteMutationResult.Success -> orderError = null
+                        is FavoriteMutationResult.Failure -> {
+                            orderError = "Could not save channel order."
+                        }
+                    }
+                } else {
+                    when (
+                        runtime.moveChannelRelative(
+                            sourceId = selectedSourceId,
+                            channelId = channelId,
+                            anchorChannelId = anchorChannelId,
+                            placement = placement,
+                        )
+                    ) {
+                        is ManualOrderMutationResult.Success -> orderError = null
+                        is ManualOrderMutationResult.Rejected,
+                        ManualOrderMutationResult.InvalidSourceId,
+                        ManualOrderMutationResult.PersistenceFailure,
+                        -> orderError = "Could not save channel order."
+                    }
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                orderError = "Could not save channel order."
+            }
+        }
+    }
+
     fun moveSelectedUp() {
         if (!canMoveSelectedUp) return
         moveSelectedRelative(
@@ -395,24 +442,20 @@ internal fun LiveManagementScreen(
                 scope.launch { runtime.clearLogoOverride(selectedSourceId, channelId) }
             },
             onManualMoveRelative = { channelId, anchorChannelId, placement ->
-                scope.launch {
-                    runtime.moveChannelRelative(
-                        sourceId = selectedSourceId,
-                        channelId = channelId,
-                        anchorChannelId = anchorChannelId,
-                        placement = placement,
-                    )
-                }
+                persistDraggedChannelMove(
+                    channelId = channelId,
+                    anchorChannelId = anchorChannelId,
+                    placement = placement,
+                    favoriteOrder = false,
+                )
             },
             onFavoriteMoveRelative = { channelId, anchorChannelId, placement ->
-                scope.launch {
-                    runtime.moveFavoriteRelative(
-                        sourceId = selectedSourceId,
-                        channelId = channelId,
-                        anchorChannelId = anchorChannelId,
-                        placement = placement,
-                    )
-                }
+                persistDraggedChannelMove(
+                    channelId = channelId,
+                    anchorChannelId = anchorChannelId,
+                    placement = placement,
+                    favoriteOrder = true,
+                )
             },
             onChannelSelected = {},
             modifier = Modifier.weight(1f),
@@ -423,17 +466,24 @@ internal fun LiveManagementScreen(
         CategoryReorderSheet(
             categories = state.categories,
             onOrderChanged = { orderedKeys ->
+                orderError = null
                 scope.launch {
-                    when (
-                        runtime.setCategoryOrder(
-                            sourceId = selectedSourceId,
-                            orderedCategoryKeys = orderedKeys,
-                        )
-                    ) {
-                        is CategoryOrderMutationResult.Success -> orderError = null
-                        is CategoryOrderMutationResult.Failure -> {
-                            orderError = "Could not save category order."
+                    try {
+                        when (
+                            runtime.setCategoryOrder(
+                                sourceId = selectedSourceId,
+                                orderedCategoryKeys = orderedKeys,
+                            )
+                        ) {
+                            is CategoryOrderMutationResult.Success -> orderError = null
+                            is CategoryOrderMutationResult.Failure -> {
+                                orderError = "Could not save category order."
+                            }
                         }
+                    } catch (cancelled: CancellationException) {
+                        throw cancelled
+                    } catch (_: Exception) {
+                        orderError = "Could not save category order."
                     }
                 }
             },
