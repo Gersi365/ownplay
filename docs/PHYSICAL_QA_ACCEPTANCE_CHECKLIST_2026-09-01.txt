@@ -1,7 +1,7 @@
 OwnPlay — Physical QA Acceptance Checklist
 Date: 2026-09-01
 Status: REQUIRED BEFORE RELEASE ACCEPTANCE
-Source-code parent checkpoint: 8845a4770889e08f410b5693182ecc7a66a7770f
+Runtime/source checkpoint audited before this checklist-only alignment: cfe7420750220a78b29cde0faf49a09b301bf363
 PR: #89 / agent/live-home-header-modernization-no-apk
 
 PURPOSE
@@ -17,7 +17,7 @@ GLOBAL ACCEPTANCE RULES
 - Back/ESC follows screen hierarchy; exit confirmation appears only at the actual app-exit boundary.
 
 MOBILE — PHONE/TABLET PHYSICAL QA
-[ ] Fresh install launches as OwnPlay with current launcher branding.
+[ ] Fresh install launches as OwnPlay with the approved current launcher branding.
 [ ] App opens directly into the Mobile touch-first shell; no device-profile chooser appears.
 [ ] Portrait and Landscape orientation options work from Settings.
 [ ] Primary navigation shows only Live / Library / Settings.
@@ -32,8 +32,10 @@ MOBILE — PHONE/TABLET PHYSICAL QA
 [ ] Fullscreen EPG can be shown/dismissed without breaking playback.
 [ ] Returning from Fullscreen restores the expected Live browsing context.
 [ ] Rotating with an active Live preview behaves according to the Mobile fullscreen policy and does not create duplicate playback surfaces/audio.
-[ ] Library exposes Offline / Movies / Series.
+[ ] Library exposes Movies / Series / Offline, in that order, with Movies selected by default.
 [ ] Movies and Series use real provider categories only; no aggregate All category is shown.
+[ ] Movies and Series show Continue Watching only when real persisted unfinished progress exists; the strip is absent when empty, hidden during search, and never shown in Offline mode.
+[ ] Opening a Continue Watching item follows the normal Movie/Series details path and existing Play/Resume behavior rather than a parallel playback route.
 [ ] Movie Details opens with Play/Resume immediately usable.
 [ ] Movie Back hierarchy: Playback -> Movie Details -> previous catalog/category -> Library.
 [ ] Series hierarchy works: Series -> Season -> Episode -> Playback and Back reverses that hierarchy correctly.
@@ -51,7 +53,7 @@ P1 RELIABILITY
 [ ] Zero duplicate audio / parallel audible playback.
 
 TV SHELL / FOCUS
-[ ] Fresh install launches as OwnPlay with current launcher icon/banner branding.
+[ ] Fresh install launches as OwnPlay with the approved current launcher icon/banner branding.
 [ ] App opens directly into the TV D-pad/remote-first shell; no device-profile chooser appears.
 [ ] Primary navigation shows only Live / Library / Settings.
 [ ] Focus is always visible and primarily color-based; focus does not resize cards, change shapes, or shift layout geometry.
@@ -83,6 +85,8 @@ TV LIBRARY / SETTINGS
 [ ] Library exposes Movies / Series only.
 [ ] No Offline/Downloads presentation or management entry appears anywhere on TV.
 [ ] Movies/Series show real provider categories only; no aggregate All category appears.
+[ ] Movies and Series show Continue Watching only when real persisted unfinished progress exists; the strip is absent when empty and hidden during search.
+[ ] Continue Watching cards keep visible D-pad focus without geometry changes and open the normal Movie/Series details + Play/Resume path.
 [ ] Movie Details initial focus is Play/Resume, never Back.
 [ ] Series root initial focus reaches the first season when available.
 [ ] Season/Episode details initial focus reaches the first actionable Play/Resume control.
