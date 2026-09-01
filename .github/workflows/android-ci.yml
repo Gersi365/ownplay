@@ -15,10 +15,9 @@ concurrency:
 
 jobs:
   validate:
-    # Branches explicitly ending in -no-apk use Android Validation No APK instead.
     if: ${{ github.event_name != 'pull_request' || !endsWith(github.head_ref, '-no-apk') }}
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 40
 
     steps:
       - name: Checkout
@@ -35,39 +34,89 @@ jobs:
         with:
           gradle-version: "9.5.0"
 
-      - name: Preserve manual-test debug signing identity
+      - name: Restore QA signing identity
         uses: actions/cache@v4
         with:
           path: ~/.android/debug.keystore
           key: ownplay-pr16-debug-keystore-v1
 
-      - name: Verify Android SDK 36
+      - name: Ensure QA signing identity
         shell: bash
         run: |
-          test -d "${ANDROID_HOME}/platforms/android-36"
-          test -d "${ANDROID_HOME}/build-tools/36.0.0"
-
-      - name: Validate
-        run: gradle :app:testDebugUnitTest :app:lintDebug :app:assembleDebug :app:compileDebugAndroidTestKotlin --stacktrace
-
-      - name: Verify debug signing identity
-        if: success()
-        shell: bash
-        run: |
-          test -f "$HOME/.android/debug.keystore"
-          keytool -list \
-            -keystore "$HOME/.android/debug.keystore" \
+          set -euo pipefail
+          KEYSTORE="$HOME/.android/debug.keystore"
+          if [ ! -f "$KEYSTORE" ]; then
+            mkdir -p "$HOME/.android"
+            keytool -genkeypair \
+              -keystore "$KEYSTORE" \
+              -storepass android \
+              -alias androiddebugkey \
+              -keypass android \
+              -keyalg RSA \
+              -keysize 2048 \
+              -validity 10000 \
+              -dname "CN=Android Debug,O=Android,C=US"
+          fi
+          keytool -list -v \
+            -keystore "$KEYSTORE" \
             -storepass android \
             -alias androiddebugkey
 
-      - name: Upload Room schema
+      - name: Verify Android SDK 36
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -d "${ANDROID_HOME}/platforms/android-36"
+          test -x "${ANDROID_HOME}/build-tools/36.0.0/zipalign"
+          test -x "${ANDROID_HOME}/build-tools/36.0.0/apksigner"
+
+      - name: Validate and assemble Mobile and TV QA APKs
+        run: >-
+          gradle
+          :app:kspMobileReleaseKotlin
+          :app:kspTvReleaseKotlin
+          :app:testMobileDebugUnitTest
+          :app:testTvDebugUnitTest
+          :app:lintMobileRelease
+          :app:lintTvRelease
+          :app:assembleMobileRelease
+          :app:assembleTvRelease
+          --stacktrace
+
+      - name: Align and sign QA APKs
         if: success()
-        uses: actions/upload-artifact@v4
-        with:
-          name: ownplay-room-schema
-          path: app/schemas
-          if-no-files-found: error
-          retention-days: 7
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f "$HOME/.android/debug.keystore"
+
+          MOBILE_INPUT="app/build/outputs/apk/mobile/release/app-mobile-release-unsigned.apk"
+          MOBILE_ALIGNED="app/build/outputs/apk/mobile/release/app-mobile-release-aligned.apk"
+          MOBILE_OUTPUT="app/build/outputs/apk/mobile/release/OwnPlay-Mobile-QA.apk"
+          test -f "$MOBILE_INPUT"
+          "${ANDROID_HOME}/build-tools/36.0.0/zipalign" -f -p 4 "$MOBILE_INPUT" "$MOBILE_ALIGNED"
+          "${ANDROID_HOME}/build-tools/36.0.0/apksigner" sign \
+            --ks "$HOME/.android/debug.keystore" \
+            --ks-key-alias androiddebugkey \
+            --ks-pass pass:android \
+            --key-pass pass:android \
+            --out "$MOBILE_OUTPUT" \
+            "$MOBILE_ALIGNED"
+          "${ANDROID_HOME}/build-tools/36.0.0/apksigner" verify --verbose --print-certs "$MOBILE_OUTPUT"
+
+          TV_INPUT="app/build/outputs/apk/tv/release/app-tv-release-unsigned.apk"
+          TV_ALIGNED="app/build/outputs/apk/tv/release/app-tv-release-aligned.apk"
+          TV_OUTPUT="app/build/outputs/apk/tv/release/OwnPlay-TV-QA.apk"
+          test -f "$TV_INPUT"
+          "${ANDROID_HOME}/build-tools/36.0.0/zipalign" -f -p 4 "$TV_INPUT" "$TV_ALIGNED"
+          "${ANDROID_HOME}/build-tools/36.0.0/apksigner" sign \
+            --ks "$HOME/.android/debug.keystore" \
+            --ks-key-alias androiddebugkey \
+            --ks-pass pass:android \
+            --key-pass pass:android \
+            --out "$TV_OUTPUT" \
+            "$TV_ALIGNED"
+          "${ANDROID_HOME}/build-tools/36.0.0/apksigner" verify --verbose --print-certs "$TV_OUTPUT"
 
       - name: Verify Room schema is committed
         if: success()
@@ -81,7 +130,6 @@ jobs:
 
           root = pathlib.Path("app/schemas")
           problems = []
-
           generated = sorted(root.rglob("*.json"))
           for path in generated:
               relative = path.as_posix()
@@ -94,14 +142,12 @@ jobs:
               except subprocess.CalledProcessError:
                   problems.append(f"Uncommitted Room schema: {relative}")
                   continue
-
               try:
                   generated_json = json.loads(path.read_text(encoding="utf-8"))
                   committed_json = json.loads(committed_text)
               except json.JSONDecodeError as error:
                   problems.append(f"Invalid Room schema JSON in {relative}: {error}")
                   continue
-
               if generated_json != committed_json:
                   problems.append(f"Room schema drift: {relative}")
 
@@ -118,11 +164,29 @@ jobs:
               sys.exit(1)
           PY
 
-      - name: Upload debug APK
+      - name: Upload Mobile QA APK
         if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: ownplay-debug-apk
-          path: app/build/outputs/apk/debug/app-debug.apk
+          name: ownplay-mobile-qa-apk
+          path: app/build/outputs/apk/mobile/release/OwnPlay-Mobile-QA.apk
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Upload TV QA APK
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ownplay-tv-qa-apk
+          path: app/build/outputs/apk/tv/release/OwnPlay-TV-QA.apk
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Upload Room schema
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ownplay-room-schema-qa
+          path: app/schemas
           if-no-files-found: error
           retention-days: 7
