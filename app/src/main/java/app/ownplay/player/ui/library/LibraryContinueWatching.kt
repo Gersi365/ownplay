@@ -17,7 +17,12 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -104,11 +109,18 @@ private fun <T> LibraryContinueWatchingStrip(
             horizontalArrangement = Arrangement.spacedBy(if (isTelevision) 10.dp else 8.dp),
         ) {
             items(items = items, key = key) { item ->
+                var focused by remember(key(item)) { mutableStateOf(false) }
                 Surface(
                     modifier = Modifier
                         .width(cardWidth)
+                        .onFocusChanged { focused = it.isFocused }
                         .clickable { onOpen(item) },
                     shape = RoundedCornerShape(10.dp),
+                    color = if (focused) {
+                        MaterialTheme.colorScheme.secondaryContainer
+                    } else {
+                        MaterialTheme.colorScheme.surface
+                    },
                     tonalElevation = 0.dp,
                 ) {
                     Column(
