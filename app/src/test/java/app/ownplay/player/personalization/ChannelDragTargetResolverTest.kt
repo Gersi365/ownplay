@@ -27,9 +27,9 @@ class ChannelDragTargetResolverTest {
     }
 
     @Test
-    fun persistedChannelDragIgnoresStringLazyLayoutKeys() {
-        val dragged = "00000000-0000-0000-0000-000000000001"
-        val target = "00000000-0000-0000-0000-000000000002"
+    fun validChannelIdsExcludeLazyLayoutHeadersWithoutDependingOnUuidShape() {
+        val dragged = "channel-a"
+        val target = "channel-b"
         val result = ChannelDragTargetResolver.resolve(
             pointerY = 30f,
             draggedChannelId = dragged,
@@ -38,12 +38,33 @@ class ChannelDragTargetResolverTest {
                 VisibleChannelBounds(target, top = 60f, bottom = 120f),
                 VisibleChannelBounds(dragged, top = 120f, bottom = 180f),
             ),
+            validChannelIds = setOf(dragged, target),
         )
 
         assertEquals(
             ChannelDragTarget(
                 anchorChannelId = target,
                 placement = ManualOrderPlacement.BEFORE,
+            ),
+            result,
+        )
+    }
+
+    @Test
+    fun containingRowWinsOverCloserAdjacentCenter() {
+        val result = ChannelDragTargetResolver.resolve(
+            pointerY = 95f,
+            draggedChannelId = "dragged",
+            visibleItems = listOf(
+                VisibleChannelBounds("tall", top = 0f, bottom = 100f),
+                VisibleChannelBounds("next", top = 100f, bottom = 120f),
+            ),
+        )
+
+        assertEquals(
+            ChannelDragTarget(
+                anchorChannelId = "tall",
+                placement = ManualOrderPlacement.AFTER,
             ),
             result,
         )
