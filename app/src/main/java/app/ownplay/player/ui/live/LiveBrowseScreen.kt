@@ -32,6 +32,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -39,10 +40,12 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.zIndex
 import app.ownplay.player.live.LiveBrowseOrder
 import app.ownplay.player.live.LiveBrowseState
 import app.ownplay.player.live.LiveCategory
@@ -54,7 +57,14 @@ import app.ownplay.player.personalization.ChannelDragTargetResolver
 import app.ownplay.player.personalization.ChannelEditState
 import app.ownplay.player.personalization.ManualOrderPlacement
 import app.ownplay.player.personalization.VisibleChannelBounds
+import app.ownplay.player.ui.DragAutoScrollPolicy
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+
+private const val CHANNEL_DRAG_EDGE_PX = 80f
+private const val CHANNEL_DRAG_SCROLL_STEP_PX = 36f
+private const val CHANNEL_DRAG_SCROLL_FRAME_MILLIS = 16L
 
 @Composable
 fun LiveBrowseScreen(
@@ -87,9 +97,14 @@ fun LiveBrowseScreen(
 ) {
     val listState = rememberLazyListState()
     val dragScope = rememberCoroutineScope()
+    val validChannelIds = remember(state.channels) {
+        state.channels.mapTo(hashSetOf()) { channel -> channel.channelId }
+    }
     var draggedChannelId by remember { mutableStateOf<String?>(null) }
     var draggedPointerY by remember { mutableStateOf<Float?>(null) }
+    var dragVisualOffsetY by remember { mutableFloatStateOf(0f) }
     var dragTarget by remember { mutableStateOf<ChannelDragTarget?>(null) }
+    var autoScrollJob by remember { mutableStateOf<Job?>(null) }
     val manualDragEnabled = editState.isEditing && state.query.order == LiveBrowseOrder.MY_ORDER
     val favoriteDragEnabled = editState.isEditing &&
         state.query.favoritesOnly &&
@@ -97,9 +112,70 @@ fun LiveBrowseScreen(
     val dragEnabled = manualDragEnabled || favoriteDragEnabled
 
     fun clearDragState() {
+        autoScrollJob?.cancel()
+        autoScrollJob = null
         draggedChannelId = null
         draggedPointerY = null
+        dragVisualOffsetY = 0f
         dragTarget = null
+    }
+
+    fun refreshDragTarget() {
+        val draggedId = draggedChannelId ?: return
+        val pointerY = draggedPointerY ?: return
+        dragTarget = resolveDragTarget(
+            pointerY = pointerY,
+            draggedChannelId = draggedId,
+            visibleItems = listState.layoutInfo.visibleItemsInfo,
+            validChannelIds = validChannelIds,
+        )
+    }
+
+    fun updateAutoScroll() {
+        val draggedId = draggedChannelId
+        val pointerY = draggedPointerY
+        if (draggedId == null || pointerY == null) {
+            autoScrollJob?.cancel()
+            autoScrollJob = null
+            return
+        }
+
+        val layout = listState.layoutInfo
+        val initialDelta = DragAutoScrollPolicy.delta(
+            pointerY = pointerY,
+            viewportStart = layout.viewportStartOffset,
+            viewportEnd = layout.viewportEndOffset,
+            edgeSize = CHANNEL_DRAG_EDGE_PX,
+            step = CHANNEL_DRAG_SCROLL_STEP_PX,
+        )
+        if (initialDelta == 0f) {
+            autoScrollJob?.cancel()
+            autoScrollJob = null
+            return
+        }
+        if (autoScrollJob?.isActive == true) return
+
+        autoScrollJob = dragScope.launch {
+            while (draggedChannelId == draggedId) {
+                val currentPointerY = draggedPointerY ?: break
+                val currentLayout = listState.layoutInfo
+                val scrollDelta = DragAutoScrollPolicy.delta(
+                    pointerY = currentPointerY,
+                    viewportStart = currentLayout.viewportStartOffset,
+                    viewportEnd = currentLayout.viewportEndOffset,
+                    edgeSize = CHANNEL_DRAG_EDGE_PX,
+                    step = CHANNEL_DRAG_SCROLL_STEP_PX,
+                )
+                if (scrollDelta == 0f) break
+
+                val consumed = listState.scrollBy(scrollDelta)
+                if (consumed == 0f) break
+                dragVisualOffsetY += consumed
+                refreshDragTarget()
+                delay(CHANNEL_DRAG_SCROLL_FRAME_MILLIS)
+            }
+            autoScrollJob = null
+        }
     }
 
     Surface(
@@ -204,43 +280,28 @@ fun LiveBrowseScreen(
                                     val itemInfo = listState.layoutInfo.visibleItemsInfo
                                         .firstOrNull { info -> info.key == channel.channelId }
                                     draggedChannelId = channel.channelId
+                                    dragVisualOffsetY = 0f
                                     draggedPointerY = itemInfo?.let { info ->
                                         info.offset + (info.size / 2f)
                                     }
-                                    dragTarget = draggedPointerY?.let { pointerY ->
-                                        resolveDragTarget(
-                                            pointerY = pointerY,
-                                            draggedChannelId = channel.channelId,
-                                            visibleItems = listState.layoutInfo.visibleItemsInfo,
-                                        )
-                                    }
+                                    refreshDragTarget()
+                                    updateAutoScroll()
                                 },
                                 onDrag = { change, dragAmount ->
                                     change.consume()
-                                    val draggedId = draggedChannelId
-                                        ?: return@detectDragGesturesAfterLongPress
-                                    val pointerY = (
-                                        draggedPointerY
-                                            ?: return@detectDragGesturesAfterLongPress
-                                        ) + dragAmount.y
-                                    draggedPointerY = pointerY
-                                    val layout = listState.layoutInfo
-                                    val edge = 80f
-                                    when {
-                                        pointerY < layout.viewportStartOffset + edge -> {
-                                            dragScope.launch { listState.scrollBy(-40f) }
-                                        }
-                                        pointerY > layout.viewportEndOffset - edge -> {
-                                            dragScope.launch { listState.scrollBy(40f) }
-                                        }
+                                    if (draggedChannelId == null) {
+                                        return@detectDragGesturesAfterLongPress
                                     }
-                                    dragTarget = resolveDragTarget(
-                                        pointerY = pointerY,
-                                        draggedChannelId = draggedId,
-                                        visibleItems = layout.visibleItemsInfo,
-                                    )
+                                    draggedPointerY = (draggedPointerY
+                                        ?: return@detectDragGesturesAfterLongPress) + dragAmount.y
+                                    dragVisualOffsetY += dragAmount.y
+                                    refreshDragTarget()
+                                    updateAutoScroll()
                                 },
                                 onDragEnd = {
+                                    autoScrollJob?.cancel()
+                                    autoScrollJob = null
+                                    refreshDragTarget()
                                     val draggedId = draggedChannelId
                                     val target = dragTarget
                                     if (draggedId != null && target != null) {
@@ -273,6 +334,7 @@ fun LiveBrowseScreen(
                         isSelected = channel.channelId in editState.selectedChannelIds,
                         isPlaying = channel.channelId == playingChannelId,
                         isDragging = draggedChannelId == channel.channelId,
+                        dragVisualOffsetY = dragVisualOffsetY,
                         dropPlacement = if (isDropAnchor) dragTarget?.placement else null,
                         showDragHandle = dragEnabled,
                         dragHandleModifier = dragHandleModifier,
@@ -296,17 +358,20 @@ private fun resolveDragTarget(
     pointerY: Float,
     draggedChannelId: String,
     visibleItems: List<androidx.compose.foundation.lazy.LazyListItemInfo>,
+    validChannelIds: Set<String>,
 ): ChannelDragTarget? = ChannelDragTargetResolver.resolve(
     pointerY = pointerY,
     draggedChannelId = draggedChannelId,
     visibleItems = visibleItems.mapNotNull { item ->
         val channelId = item.key as? String ?: return@mapNotNull null
+        if (channelId !in validChannelIds) return@mapNotNull null
         VisibleChannelBounds(
             channelId = channelId,
             top = item.offset.toFloat(),
             bottom = (item.offset + item.size).toFloat(),
         )
     },
+    validChannelIds = validChannelIds,
 )
 
 @Composable
@@ -710,6 +775,7 @@ private fun LiveChannelRow(
     isSelected: Boolean,
     isPlaying: Boolean,
     isDragging: Boolean,
+    dragVisualOffsetY: Float,
     dropPlacement: ManualOrderPlacement?,
     showDragHandle: Boolean,
     dragHandleModifier: Modifier,
@@ -718,115 +784,142 @@ private fun LiveChannelRow(
 ) {
     val highlight = when {
         isDragging -> MaterialTheme.colorScheme.surfaceVariant
-        dropPlacement != null -> MaterialTheme.colorScheme.primaryContainer
+        dropPlacement != null -> MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.56f)
         else -> MaterialTheme.colorScheme.background
     }
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .background(highlight)
-            .clickable {
-                if (isEditing) onSelectionToggle() else onClick()
-            }
-            .padding(horizontal = 20.dp, vertical = 10.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(10.dp),
-    ) {
-        if (isEditing) {
-            Checkbox(
-                checked = isSelected,
-                onCheckedChange = { onSelectionToggle() },
-            )
+
+    Box(modifier = Modifier.fillMaxWidth()) {
+        if (dropPlacement == ManualOrderPlacement.BEFORE) {
+            ChannelInsertionIndicator(modifier = Modifier.align(Alignment.TopCenter))
         }
 
-        if (showDragHandle) {
-            Text(
-                text = "≡",
-                modifier = dragHandleModifier
-                    .background(
-                        color = MaterialTheme.colorScheme.surfaceVariant,
-                        shape = RoundedCornerShape(8.dp),
-                    )
-                    .padding(horizontal = 10.dp, vertical = 8.dp),
-                style = MaterialTheme.typography.titleLarge,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-
-        Box(
+        Row(
             modifier = Modifier
-                .size(36.dp)
-                .clip(RoundedCornerShape(8.dp))
-                .background(MaterialTheme.colorScheme.surfaceVariant),
-            contentAlignment = Alignment.Center,
+                .fillMaxWidth()
+                .zIndex(if (isDragging) 2f else 0f)
+                .graphicsLayer {
+                    translationY = if (isDragging) dragVisualOffsetY else 0f
+                    scaleX = if (isDragging) 1.015f else 1f
+                    scaleY = if (isDragging) 1.015f else 1f
+                    alpha = if (isDragging) 0.98f else 1f
+                }
+                .background(highlight)
+                .clickable {
+                    if (isEditing) onSelectionToggle() else onClick()
+                }
+                .padding(horizontal = 20.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            Text(
-                text = channel.displayName.firstOrNull()?.uppercaseChar()?.toString() ?: "•",
-                style = MaterialTheme.typography.labelLarge,
-                fontWeight = FontWeight.SemiBold,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
+            if (isEditing) {
+                Checkbox(
+                    checked = isSelected,
+                    onCheckedChange = { onSelectionToggle() },
+                )
+            }
 
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = channel.displayName,
-                style = MaterialTheme.typography.bodyLarge,
-                fontWeight = if (isPlaying) FontWeight.SemiBold else FontWeight.Medium,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-            val secondary = channel.categoryName?.takeIf(String::isNotBlank)
-            if (secondary != null) {
-                Spacer(modifier = Modifier.height(2.dp))
+            if (showDragHandle) {
                 Text(
-                    text = secondary,
-                    style = MaterialTheme.typography.bodySmall,
+                    text = "≡",
+                    modifier = dragHandleModifier
+                        .background(
+                            color = if (isDragging) {
+                                MaterialTheme.colorScheme.primary
+                            } else {
+                                MaterialTheme.colorScheme.surfaceVariant
+                            },
+                            shape = RoundedCornerShape(8.dp),
+                        )
+                        .padding(horizontal = 10.dp, vertical = 8.dp),
+                    style = MaterialTheme.typography.titleLarge,
+                    color = if (isDragging) {
+                        MaterialTheme.colorScheme.onPrimary
+                    } else {
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    },
+                )
+            }
+
+            Box(
+                modifier = Modifier
+                    .size(36.dp)
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(MaterialTheme.colorScheme.surfaceVariant),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    text = channel.displayName.firstOrNull()?.uppercaseChar()?.toString() ?: "•",
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.SemiBold,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = channel.displayName,
+                    style = MaterialTheme.typography.bodyLarge,
+                    fontWeight = if (isPlaying) FontWeight.SemiBold else FontWeight.Medium,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
+                val secondary = channel.categoryName?.takeIf(String::isNotBlank)
+                if (secondary != null) {
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Text(
+                        text = secondary,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
             }
-            if (dropPlacement != null) {
-                Text(
-                    text = if (dropPlacement == ManualOrderPlacement.BEFORE) {
-                        "Drop before"
-                    } else {
-                        "Drop after"
-                    },
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.primary,
-                )
+
+            Column(
+                horizontalAlignment = Alignment.End,
+                verticalArrangement = Arrangement.spacedBy(2.dp),
+            ) {
+                if (isPlaying) {
+                    Text(
+                        text = "▶",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                }
+                if (channel.isFavorite) {
+                    Text(
+                        text = "Favorite",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                }
+                if (channel.isHidden) {
+                    Text(
+                        text = "Hidden",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
             }
         }
 
-        Column(
-            horizontalAlignment = Alignment.End,
-            verticalArrangement = Arrangement.spacedBy(2.dp),
-        ) {
-            if (isPlaying) {
-                Text(
-                    text = "▶",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.primary,
-                )
-            }
-            if (channel.isFavorite) {
-                Text(
-                    text = "Favorite",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.primary,
-                )
-            }
-            if (channel.isHidden) {
-                Text(
-                    text = "Hidden",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
+        if (dropPlacement == ManualOrderPlacement.AFTER) {
+            ChannelInsertionIndicator(modifier = Modifier.align(Alignment.BottomCenter))
         }
     }
+}
+
+@Composable
+private fun ChannelInsertionIndicator(modifier: Modifier = Modifier) {
+    HorizontalDivider(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(horizontal = 8.dp)
+            .zIndex(3f),
+        thickness = 3.dp,
+        color = MaterialTheme.colorScheme.primary,
+    )
 }
 
 @Composable
