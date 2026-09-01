@@ -95,6 +95,9 @@ fun LiveBrowseScreen(
         state.query.favoritesOnly &&
         state.query.order == LiveBrowseOrder.FAVORITE_ORDER
     val dragEnabled = manualDragEnabled || favoriteDragEnabled
+    val draggableChannelIds = remember(state.channels) {
+        state.channels.map { channel -> channel.channelId }.toSet()
+    }
 
     fun clearDragState() {
         draggedChannelId = null
@@ -113,6 +116,7 @@ fun LiveBrowseScreen(
                     pointerY = pointerY,
                     draggedChannelId = draggedId,
                     visibleItems = listState.layoutInfo.visibleItemsInfo,
+                    validChannelIds = draggableChannelIds,
                 )
             }
             if (consumed == 0f) {
@@ -123,13 +127,87 @@ fun LiveBrowseScreen(
         }
     }
 
+    val channelDragModifier = if (dragEnabled) {
+        Modifier.pointerInput(draggableChannelIds, favoriteDragEnabled) {
+            detectDragGesturesAfterLongPress(
+                onDragStart = { start ->
+                    val itemInfo = listState.layoutInfo.visibleItemsInfo.firstOrNull { info ->
+                        val channelId = info.key as? String
+                        channelId != null &&
+                            channelId in draggableChannelIds &&
+                            start.y >= info.offset &&
+                            start.y <= info.offset + info.size
+                    }
+                    val channelId = itemInfo?.key as? String
+                    if (channelId == null) {
+                        clearDragState()
+                    } else {
+                        draggedChannelId = channelId
+                        draggedPointerY = start.y
+                        dragAutoScrollStep = 0f
+                        dragTarget = resolveDragTarget(
+                            pointerY = start.y,
+                            draggedChannelId = channelId,
+                            visibleItems = listState.layoutInfo.visibleItemsInfo,
+                            validChannelIds = draggableChannelIds,
+                        )
+                    }
+                },
+                onDrag = { change, dragAmount ->
+                    change.consume()
+                    val draggedId = draggedChannelId ?: return@detectDragGesturesAfterLongPress
+                    val pointerY =
+                        (draggedPointerY ?: return@detectDragGesturesAfterLongPress) + dragAmount.y
+                    draggedPointerY = pointerY
+                    val layout = listState.layoutInfo
+                    dragAutoScrollStep = dragAutoScrollStepForPointer(
+                        pointerY = pointerY,
+                        viewportStartOffset = layout.viewportStartOffset,
+                        viewportEndOffset = layout.viewportEndOffset,
+                    )
+                    dragTarget = resolveDragTarget(
+                        pointerY = pointerY,
+                        draggedChannelId = draggedId,
+                        visibleItems = layout.visibleItemsInfo,
+                        validChannelIds = draggableChannelIds,
+                    )
+                },
+                onDragEnd = {
+                    val draggedId = draggedChannelId
+                    val target = dragTarget
+                    if (draggedId != null && target != null) {
+                        if (favoriteDragEnabled) {
+                            onFavoriteMoveRelative(
+                                draggedId,
+                                target.anchorChannelId,
+                                target.placement,
+                            )
+                        } else {
+                            onManualMoveRelative(
+                                draggedId,
+                                target.anchorChannelId,
+                                target.placement,
+                            )
+                        }
+                    }
+                    clearDragState()
+                },
+                onDragCancel = ::clearDragState,
+            )
+        }
+    } else {
+        Modifier
+    }
+
     Surface(
         modifier = modifier.fillMaxSize(),
         color = MaterialTheme.colorScheme.background,
     ) {
         LazyColumn(
             state = listState,
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier
+                .fillMaxSize()
+                .then(channelDragModifier),
         ) {
             item(key = "browse-header") {
                 LiveBrowseHeader(
@@ -218,72 +296,6 @@ fun LiveBrowseScreen(
                     key = { _, channel -> channel.channelId },
                 ) { index, channel ->
                     val isDropAnchor = dragTarget?.anchorChannelId == channel.channelId
-                    val dragHandleModifier = if (dragEnabled) {
-                        Modifier.pointerInput(channel.channelId, favoriteDragEnabled) {
-                            detectDragGesturesAfterLongPress(
-                                onDragStart = {
-                                    val itemInfo = listState.layoutInfo.visibleItemsInfo
-                                        .firstOrNull { info -> info.key == channel.channelId }
-                                    draggedChannelId = channel.channelId
-                                    draggedPointerY = itemInfo?.let { info ->
-                                        info.offset + (info.size / 2f)
-                                    }
-                                    dragAutoScrollStep = 0f
-                                    dragTarget = draggedPointerY?.let { pointerY ->
-                                        resolveDragTarget(
-                                            pointerY = pointerY,
-                                            draggedChannelId = channel.channelId,
-                                            visibleItems = listState.layoutInfo.visibleItemsInfo,
-                                        )
-                                    }
-                                },
-                                onDrag = { change, dragAmount ->
-                                    change.consume()
-                                    val draggedId = draggedChannelId
-                                        ?: return@detectDragGesturesAfterLongPress
-                                    val pointerY = (
-                                        draggedPointerY
-                                            ?: return@detectDragGesturesAfterLongPress
-                                        ) + dragAmount.y
-                                    draggedPointerY = pointerY
-                                    val layout = listState.layoutInfo
-                                    dragAutoScrollStep = dragAutoScrollStepForPointer(
-                                        pointerY = pointerY,
-                                        viewportStartOffset = layout.viewportStartOffset,
-                                        viewportEndOffset = layout.viewportEndOffset,
-                                    )
-                                    dragTarget = resolveDragTarget(
-                                        pointerY = pointerY,
-                                        draggedChannelId = draggedId,
-                                        visibleItems = layout.visibleItemsInfo,
-                                    )
-                                },
-                                onDragEnd = {
-                                    val draggedId = draggedChannelId
-                                    val target = dragTarget
-                                    if (draggedId != null && target != null) {
-                                        if (favoriteDragEnabled) {
-                                            onFavoriteMoveRelative(
-                                                draggedId,
-                                                target.anchorChannelId,
-                                                target.placement,
-                                            )
-                                        } else {
-                                            onManualMoveRelative(
-                                                draggedId,
-                                                target.anchorChannelId,
-                                                target.placement,
-                                            )
-                                        }
-                                    }
-                                    clearDragState()
-                                },
-                                onDragCancel = ::clearDragState,
-                            )
-                        }
-                    } else {
-                        Modifier
-                    }
 
                     LiveChannelRow(
                         channel = channel,
@@ -293,7 +305,7 @@ fun LiveBrowseScreen(
                         isDragging = draggedChannelId == channel.channelId,
                         dropPlacement = if (isDropAnchor) dragTarget?.placement else null,
                         showDragHandle = dragEnabled,
-                        dragHandleModifier = dragHandleModifier,
+                        dragHandleModifier = Modifier,
                         onClick = { onChannelSelected(channel.channelId) },
                         onSelectionToggle = { onChannelSelectionToggle(channel.channelId) },
                     )
@@ -328,11 +340,13 @@ private fun resolveDragTarget(
     pointerY: Float,
     draggedChannelId: String,
     visibleItems: List<androidx.compose.foundation.lazy.LazyListItemInfo>,
+    validChannelIds: Set<String>,
 ): ChannelDragTarget? = ChannelDragTargetResolver.resolve(
     pointerY = pointerY,
     draggedChannelId = draggedChannelId,
     visibleItems = visibleItems.mapNotNull { item ->
         val channelId = item.key as? String ?: return@mapNotNull null
+        if (channelId !in validChannelIds) return@mapNotNull null
         VisibleChannelBounds(
             channelId = channelId,
             top = item.offset.toFloat(),
@@ -567,9 +581,9 @@ private fun BulkEditBar(
         if (dragEnabled) {
             Text(
                 text = if (favoriteDragEnabled) {
-                    "Drag the ≡ handle to reorder Favorite order."
+                    "Hold a channel, then drag to reorder Favorite order."
                 } else {
-                    "Drag the ≡ handle to reorder My Order."
+                    "Hold a channel, then drag to reorder My Order."
                 },
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
