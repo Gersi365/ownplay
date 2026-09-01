@@ -44,7 +44,13 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import app.ownplay.player.live.LiveCategory
 import app.ownplay.player.personalization.ManualOrderPlacement
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+
+private const val CATEGORY_DRAG_EDGE_PX = 72f
+private const val CATEGORY_DRAG_SCROLL_STEP_PX = 32f
+private const val DRAG_SCROLL_FRAME_MILLIS = 16L
 
 private data class CategoryDropTarget(
     val anchorKey: String,
@@ -67,6 +73,7 @@ internal fun CategoryReorderSheet(
     var pointerY by remember { mutableStateOf<Float?>(null) }
     var dragVisualOffsetY by remember { mutableFloatStateOf(0f) }
     var dropTarget by remember { mutableStateOf<CategoryDropTarget?>(null) }
+    var autoScrollJob by remember { mutableStateOf<Job?>(null) }
     val listState = rememberLazyListState()
     val scope = rememberCoroutineScope()
 
@@ -77,6 +84,8 @@ internal fun CategoryReorderSheet(
     }
 
     fun clearDrag() {
+        autoScrollJob?.cancel()
+        autoScrollJob = null
         draggedKey = null
         pointerY = null
         dragVisualOffsetY = 0f
@@ -87,6 +96,63 @@ internal fun CategoryReorderSheet(
         if (next == working) return
         working = next
         onOrderChanged(next.map(LiveCategory::providerCategoryKey))
+    }
+
+    fun refreshDropTarget() {
+        val dragged = draggedKey ?: return
+        val y = pointerY ?: return
+        dropTarget = resolveCategoryTarget(
+            pointerY = y,
+            draggedKey = dragged,
+            visibleItems = listState.layoutInfo.visibleItemsInfo,
+        )
+    }
+
+    fun updateAutoScroll() {
+        val dragged = draggedKey
+        val y = pointerY
+        if (dragged == null || y == null) {
+            autoScrollJob?.cancel()
+            autoScrollJob = null
+            return
+        }
+
+        val layout = listState.layoutInfo
+        val initialDelta = DragAutoScrollPolicy.delta(
+            pointerY = y,
+            viewportStart = layout.viewportStartOffset,
+            viewportEnd = layout.viewportEndOffset,
+            edgeSize = CATEGORY_DRAG_EDGE_PX,
+            step = CATEGORY_DRAG_SCROLL_STEP_PX,
+        )
+        if (initialDelta == 0f) {
+            autoScrollJob?.cancel()
+            autoScrollJob = null
+            return
+        }
+        if (autoScrollJob?.isActive == true) return
+
+        autoScrollJob = scope.launch {
+            while (draggedKey == dragged) {
+                val currentY = pointerY ?: break
+                val currentLayout = listState.layoutInfo
+                val scrollDelta = DragAutoScrollPolicy.delta(
+                    pointerY = currentY,
+                    viewportStart = currentLayout.viewportStartOffset,
+                    viewportEnd = currentLayout.viewportEndOffset,
+                    edgeSize = CATEGORY_DRAG_EDGE_PX,
+                    step = CATEGORY_DRAG_SCROLL_STEP_PX,
+                )
+                if (scrollDelta == 0f) break
+
+                val consumed = listState.scrollBy(scrollDelta)
+                if (consumed == 0f) break
+                dragVisualOffsetY += consumed
+                refreshDropTarget()
+                delay(DRAG_SCROLL_FRAME_MILLIS)
+            }
+            autoScrollJob = null
+        }
     }
 
     fun moveWithRemote(index: Int, delta: Int) {
@@ -175,36 +241,25 @@ internal fun CategoryReorderSheet(
                                     pointerY = itemInfo?.let { info ->
                                         info.offset + (info.size / 2f)
                                     }
-                                    dropTarget = pointerY?.let { y ->
-                                        resolveCategoryTarget(y, key, listState.layoutInfo.visibleItemsInfo)
-                                    }
+                                    refreshDropTarget()
+                                    updateAutoScroll()
                                 },
                                 onDrag = { change, dragAmount ->
                                     change.consume()
-                                    val dragged = draggedKey ?: return@detectDragGesturesAfterLongPress
-                                    val nextY = (pointerY ?: return@detectDragGesturesAfterLongPress) + dragAmount.y
+                                    if (draggedKey == null) {
+                                        return@detectDragGesturesAfterLongPress
+                                    }
+                                    val nextY = (pointerY
+                                        ?: return@detectDragGesturesAfterLongPress) + dragAmount.y
                                     pointerY = nextY
                                     dragVisualOffsetY += dragAmount.y
-                                    val layout = listState.layoutInfo
-                                    val edge = 72f
-                                    val scrollDelta = when {
-                                        nextY < layout.viewportStartOffset + edge -> -36f
-                                        nextY > layout.viewportEndOffset - edge -> 36f
-                                        else -> 0f
-                                    }
-                                    if (scrollDelta != 0f) {
-                                        scope.launch {
-                                            val consumed = listState.scrollBy(scrollDelta)
-                                            dragVisualOffsetY += consumed
-                                        }
-                                    }
-                                    dropTarget = resolveCategoryTarget(
-                                        pointerY = nextY,
-                                        draggedKey = dragged,
-                                        visibleItems = layout.visibleItemsInfo,
-                                    )
+                                    refreshDropTarget()
+                                    updateAutoScroll()
                                 },
                                 onDragEnd = {
+                                    autoScrollJob?.cancel()
+                                    autoScrollJob = null
+                                    refreshDropTarget()
                                     val dragged = draggedKey
                                     val target = dropTarget
                                     if (dragged != null && target != null) {
@@ -343,9 +398,11 @@ private fun resolveCategoryTarget(
     draggedKey: String,
     visibleItems: List<androidx.compose.foundation.lazy.LazyListItemInfo>,
 ): CategoryDropTarget? {
+    if (!pointerY.isFinite() || draggedKey.isBlank()) return null
+
     val candidates = visibleItems.mapNotNull { info ->
         val key = info.key as? String ?: return@mapNotNull null
-        if (key == draggedKey) return@mapNotNull null
+        if (key == draggedKey || info.size < 0) return@mapNotNull null
         info to key
     }
     val containing = candidates.firstOrNull { (info, _) ->
