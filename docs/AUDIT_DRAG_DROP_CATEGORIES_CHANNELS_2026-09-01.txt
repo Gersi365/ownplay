@@ -1,0 +1,90 @@
+OwnPlay drag-and-drop correction audit — 2026-09-01
+
+Scope
+- Fix drag-and-drop behavior for Live categories and channels.
+- Continue from the verified branding checkpoint on agent/ownplay-brand-icon-no-apk.
+- Keep the correction presentation/interaction scoped.
+- Do not change playback, download storage, database/schema, authentication, source ingestion, application ID, signing, deployment, or release behavior.
+
+Authoritative base
+- Repository: Gersi365/ownplay
+- Branch: agent/ownplay-brand-icon-no-apk
+- Exact base commit before this slice: fb7a794c4cd9170573f3967509eabd60e0cfd3eb
+
+Findings before mutation
+1. Channel drag targeting selected the nearest row center rather than preferring the row physically under the pointer. With different row heights this could make the drop target jump early.
+2. Channel target filtering depended on UUID-shaped channel IDs to distinguish real channel rows from other LazyColumn String keys. The UI should explicitly restrict targets to visible channel IDs instead of depending on identifier shape.
+3. Channel drag feedback changed target-row layout by adding "Drop before" / "Drop after" text. That altered row height while target resolution was active and could move the target under the pointer.
+4. The dragged channel row did not follow the pointer visually; only the target row changed presentation.
+5. Category and channel edge scrolling happened only from individual pointer-move events. Holding the pointer at a viewport edge did not continuously scroll through a long list.
+6. Category auto-scroll resolved its target from the pre-scroll layout until another pointer event occurred.
+
+Implemented corrections
+
+Channel target resolution
+- ChannelDragTargetResolver now prefers the candidate row that physically contains pointerY.
+- Nearest-center selection remains only as the gap fallback.
+- The resolver accepts an optional validChannelIds set.
+- LiveBrowseScreen passes the current visible channel IDs and excludes non-channel LazyColumn keys explicitly.
+- The dragged channel remains excluded as its own anchor.
+
+Channel drag interaction
+- Added a visual translation for the dragged channel so it follows pointer movement.
+- Auto-scroll compensation keeps the translated row under the pointer while the LazyColumn scrolls.
+- Replaced layout-changing "Drop before" / "Drop after" text with a 3 dp insertion divider drawn as an overlay above/below the anchor row.
+- Dragged/target rows keep stable layout geometry.
+- My Order and Favorite order persistence callbacks remain unchanged.
+
+Category drag interaction
+- Added continuous edge auto-scroll while a category drag remains near the top or bottom viewport edge.
+- Re-resolves the category drop target after each consumed scroll step.
+- Keeps existing moving-card translation and insertion indicator behavior.
+- Remote Up/Down category ordering remains unchanged.
+
+Shared policy
+- Added DragAutoScrollPolicy for deterministic top-edge / bottom-edge / safe-zone scroll direction.
+- Both category and channel drag use the same edge policy.
+
+Regression coverage
+- ChannelDragTargetResolverTest now covers:
+  - valid-channel filtering independent of UUID shape;
+  - containing-row preference;
+  - before/after placement;
+  - invalid bounds;
+  - null target cases.
+- CategoryReorderPolicyTest now covers moving to first and last positions plus invalid-anchor stability.
+- DragAutoScrollPolicyTest covers top edge, bottom edge, safe viewport, and invalid viewport.
+
+Changed files
+- app/src/main/java/app/ownplay/player/personalization/ChannelDragTargetResolver.kt
+- app/src/main/java/app/ownplay/player/ui/CategoryReorderSheet.kt
+- app/src/main/java/app/ownplay/player/ui/DragAutoScrollPolicy.kt
+- app/src/main/java/app/ownplay/player/ui/live/LiveBrowseScreen.kt
+- app/src/test/java/app/ownplay/player/personalization/ChannelDragTargetResolverTest.kt
+- app/src/test/java/app/ownplay/player/ui/CategoryReorderPolicyTest.kt
+- app/src/test/java/app/ownplay/player/ui/DragAutoScrollPolicyTest.kt
+
+Static validation completed
+- Pre-mutation branch head was re-read and matched the expected base.
+- Post-mutation base-to-head comparison is ahead-only with no base drift.
+- Read-back confirmed the new channel target filtering, continuous edge-scroll loop, visual translation, and stable insertion indicator.
+- Read-back confirmed the category continuous edge-scroll loop and target refresh after scrolling.
+- Persistence APIs for category order, manual channel order, and favorite order were not changed.
+
+Executable validation boundary
+- No GitHub status checks are attached to the current no-APK head.
+- The repository's Android Validation No APK lane is workflow_dispatch-only and cannot be started with the connected GitHub actions exposed in this session.
+- Standard Android CI is not used because it includes assembleDebug / APK production and the current work branch is intentionally a -no-apk branch.
+- Therefore Gradle compilation, unit-test execution, lint, AndroidTest compilation, and physical touch-device QA are NOT claimed as PASS in this checkpoint.
+
+Physical QA targets
+1. Categories: long-press the ≡ handle, drag several rows, hold near bottom/top edge, verify continuous scroll and accurate before/after insertion.
+2. Categories: drop at first and last positions and verify order persists after closing/reopening management.
+3. Channels / My Order: drag by the ≡ handle; the dragged row should follow the pointer and target rows should not change height.
+4. Channels / My Order: hold near top/bottom edge and verify continuous scroll through a long list.
+5. Channels / Favorite order: repeat the same behavior with Favorites enabled and verify favorite order persistence.
+6. Verify scrolling never targets browse header, category strip, bulk edit bar, or divider rows.
+7. Verify normal selection checkbox behavior remains unchanged when not dragging.
+8. TV remote category/channel reorder controls remain functional; this slice does not replace D-pad ordering with touch drag on TV.
+
+No APK, deployment, schema/database migration, auth change, or playback change was performed.
