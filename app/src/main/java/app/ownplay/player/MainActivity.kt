@@ -63,7 +63,7 @@ private const val DOUBLE_TAP_SEEK_MILLIS = 10_000L
 
 class MainActivity : ComponentActivity() {
     private lateinit var runtime: OwnPlayAppRuntime
-    private lateinit var offlineDownloadRuntime: OfflineDownloadFeatureRuntime
+    private var offlineDownloadRuntime: OfflineDownloadFeatureRuntime? = null
     private lateinit var playbackWindowController: PlaybackWindowController
     private lateinit var appDeviceProfileStore: AppDeviceProfileStore
     private lateinit var playbackGestureDetector: GestureDetector
@@ -77,7 +77,11 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         runtime = OwnPlayAppRuntime(applicationContext)
-        offlineDownloadRuntime = OfflineDownloadFeatureRuntime(applicationContext)
+        offlineDownloadRuntime = if (BuildConfig.IS_TV_BUILD) {
+            null
+        } else {
+            OfflineDownloadFeatureRuntime(applicationContext)
+        }
         appDeviceProfileStore = AppDeviceProfileStore(applicationContext)
         playbackWindowController = PlaybackWindowController(this)
         playbackGestureDetector = GestureDetector(
@@ -126,6 +130,7 @@ class MainActivity : ComponentActivity() {
                     ?.settings
                     ?.profile
             val playbackOrigin by runtime.playbackController.resolvedOrigin.collectAsState()
+            val downloadRuntime = offlineDownloadRuntime
             var downloadPlaybackSession by remember {
                 mutableStateOf<LibraryPlaybackSession?>(null)
             }
@@ -143,33 +148,37 @@ class MainActivity : ComponentActivity() {
                 if (!usesDpad) tvRemoteKeySuppression.clear()
             }
 
-            DisposableEffect(downloadPlaybackOwner) {
-                DownloadPlaybackBridge.register(downloadPlaybackOwner) { download ->
-                    activityScope.launch {
-                        val request = offlineDownloadRuntime.playbackRequest(download.downloadId)
-                        if (request == null) {
-                            offlineDownloadRuntime.reconcileCompletedFiles()
-                            Toast.makeText(
-                                applicationContext,
-                                "The offline file is unavailable. Download it again to restore offline playback.",
-                                Toast.LENGTH_LONG,
-                            ).show()
-                            return@launch
+            DisposableEffect(downloadPlaybackOwner, downloadRuntime) {
+                if (downloadRuntime == null) {
+                    onDispose { }
+                } else {
+                    DownloadPlaybackBridge.register(downloadPlaybackOwner) { download ->
+                        activityScope.launch {
+                            val request = downloadRuntime.playbackRequest(download.downloadId)
+                            if (request == null) {
+                                downloadRuntime.reconcileCompletedFiles()
+                                Toast.makeText(
+                                    applicationContext,
+                                    "The offline file is unavailable. Download it again to restore offline playback.",
+                                    Toast.LENGTH_LONG,
+                                ).show()
+                                return@launch
+                            }
+                            val progress = downloadRuntime.playbackProgress(download.downloadId)
+                            runtime.playbackController.start(request)
+                            downloadPlaybackSession = LibraryPlaybackSession(
+                                download = download,
+                                initialPositionMs = progress
+                                    ?.takeIf { !it.completed }
+                                    ?.positionMs
+                                    ?.coerceAtLeast(0L)
+                                    ?: 0L,
+                            )
                         }
-                        val progress = offlineDownloadRuntime.playbackProgress(download.downloadId)
-                        runtime.playbackController.start(request)
-                        downloadPlaybackSession = LibraryPlaybackSession(
-                            download = download,
-                            initialPositionMs = progress
-                                ?.takeIf { !it.completed }
-                                ?.positionMs
-                                ?.coerceAtLeast(0L)
-                                ?: 0L,
-                        )
                     }
-                }
-                onDispose {
-                    DownloadPlaybackBridge.clear(downloadPlaybackOwner)
+                    onDispose {
+                        DownloadPlaybackBridge.clear(downloadPlaybackOwner)
+                    }
                 }
             }
 
@@ -216,9 +225,9 @@ class MainActivity : ComponentActivity() {
                                                 is PlaybackState.Paused -> state.request
                                                 else -> null
                                             }
-                                            if (request != null) {
+                                            if (request != null && downloadRuntime != null) {
                                                 activityScope.launch {
-                                                    offlineDownloadRuntime.savePlaybackProgress(
+                                                    downloadRuntime.savePlaybackProgress(
                                                         request = request,
                                                         positionMs = positionMs,
                                                         durationMs = durationMs,
@@ -228,7 +237,7 @@ class MainActivity : ComponentActivity() {
                                         },
                                     )
                                 }
-                                downloadPlaybackSession != null -> {
+                                downloadPlaybackSession != null && downloadRuntime != null -> {
                                     val session = downloadPlaybackSession ?: return@OwnPlayTheme
                                     LibraryPlaybackScreen(
                                         runtime = runtime,
@@ -241,7 +250,7 @@ class MainActivity : ComponentActivity() {
                                         },
                                         onProgress = { positionMs, durationMs ->
                                             activityScope.launch {
-                                                offlineDownloadRuntime.savePlaybackProgress(
+                                                downloadRuntime.savePlaybackProgress(
                                                     downloadId = session.download.downloadId,
                                                     positionMs = positionMs,
                                                     durationMs = durationMs,
@@ -340,9 +349,9 @@ class MainActivity : ComponentActivity() {
             runtime.playbackController.resumeAfterBackground()
         }
         hideStatusBar()
-        if (::offlineDownloadRuntime.isInitialized) {
+        offlineDownloadRuntime?.let { downloadRuntime ->
             activityScope.launch {
-                offlineDownloadRuntime.reconcileCompletedFiles()
+                downloadRuntime.reconcileCompletedFiles()
             }
         }
     }
@@ -410,7 +419,8 @@ class MainActivity : ComponentActivity() {
         exitConfirmationDialog = null
         PlaybackInteractionBridge.discardLifecycleSuspendedSurface()
         activityScope.cancel()
-        offlineDownloadRuntime.close()
+        offlineDownloadRuntime?.close()
+        offlineDownloadRuntime = null
         playbackWindowController.release()
         runtime.close()
         super.onDestroy()
