@@ -37,7 +37,6 @@ internal fun LandscapeSettingsShell(
     syncState: SourceSyncState,
     deviceProfile: AppDeviceProfile?,
     orientationMode: AppOrientationMode,
-    onSetDeviceProfile: (AppDeviceProfile) -> Unit,
     onSetOrientation: (AppOrientationMode) -> Unit,
     onOpenSourceInLive: (String) -> Unit,
 ) {
@@ -92,7 +91,6 @@ internal fun LandscapeSettingsShell(
                     InterfaceSettingsContent(
                         deviceProfile = deviceProfile,
                         orientationMode = orientationMode,
-                        onSetDeviceProfile = onSetDeviceProfile,
                         onSetOrientation = onSetOrientation,
                     )
                 }

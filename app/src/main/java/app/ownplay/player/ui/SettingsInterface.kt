@@ -27,7 +27,6 @@ import app.ownplay.player.personalization.AppOrientationMode
 internal fun PortraitSettingsMenu(
     deviceProfile: AppDeviceProfile?,
     orientationMode: AppOrientationMode,
-    onSetDeviceProfile: (AppDeviceProfile) -> Unit,
     onSetOrientation: (AppOrientationMode) -> Unit,
     summaries: List<PlaylistSourceSummary>,
     onOpenLiveManagement: () -> Unit,
@@ -71,7 +70,6 @@ internal fun PortraitSettingsMenu(
                 InterfaceSettingsContent(
                     deviceProfile = deviceProfile,
                     orientationMode = orientationMode,
-                    onSetDeviceProfile = onSetDeviceProfile,
                     onSetOrientation = onSetOrientation,
                 )
             }
@@ -109,12 +107,10 @@ internal fun PortraitSettingsMenu(
     }
 }
 
-@Suppress("UNUSED_PARAMETER")
 @Composable
 internal fun InterfaceSettingsContent(
     deviceProfile: AppDeviceProfile?,
     orientationMode: AppOrientationMode,
-    onSetDeviceProfile: (AppDeviceProfile) -> Unit,
     onSetOrientation: (AppOrientationMode) -> Unit,
 ) {
     SettingValueRow(

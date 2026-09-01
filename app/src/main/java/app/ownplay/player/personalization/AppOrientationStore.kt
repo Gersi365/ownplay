@@ -74,7 +74,6 @@ data class AppDeviceSettings(
 
 sealed interface AppDeviceProfileSelection {
     data object Loading : AppDeviceProfileSelection
-    data object Unconfigured : AppDeviceProfileSelection
     data class Configured(
         val settings: AppDeviceSettings,
     ) : AppDeviceProfileSelection
@@ -97,35 +96,9 @@ class AppDeviceProfileStore(
             )
         }
 
-    suspend fun configure(
-        profile: AppDeviceProfile,
-        smartphoneOrientation: AppOrientationMode? = null,
-    ): Boolean {
-        val targetProfile = buildTargetDeviceProfile()
-        if (profile != targetProfile) return false
-        if (targetProfile == AppDeviceProfile.SMARTPHONE && smartphoneOrientation == null) {
-            return false
-        }
-        return editSafely { preferences ->
-            preferences[DEVICE_PROFILE_KEY] = targetProfile.storedValue
-            if (targetProfile == AppDeviceProfile.SMARTPHONE) {
-                preferences[ORIENTATION_KEY] = smartphoneOrientation!!.storedValue
-            }
-        }
-    }
-
-    suspend fun setProfile(profile: AppDeviceProfile): Boolean {
-        val targetProfile = buildTargetDeviceProfile()
-        if (profile != targetProfile) return false
-        return editSafely { preferences ->
-            preferences[DEVICE_PROFILE_KEY] = targetProfile.storedValue
-        }
-    }
-
     suspend fun setSmartphoneOrientation(mode: AppOrientationMode): Boolean {
         if (buildTargetDeviceProfile() != AppDeviceProfile.SMARTPHONE) return false
         return editSafely { preferences ->
-            preferences[DEVICE_PROFILE_KEY] = AppDeviceProfile.SMARTPHONE.storedValue
             preferences[ORIENTATION_KEY] = mode.storedValue
         }
     }
@@ -180,7 +153,6 @@ class AppOrientationStore(
         if (buildTargetDeviceProfile() != AppDeviceProfile.SMARTPHONE) return false
         return try {
             dataStore.edit { preferences ->
-                preferences[DEVICE_PROFILE_KEY] = AppDeviceProfile.SMARTPHONE.storedValue
                 preferences[ORIENTATION_KEY] = mode.storedValue
             }
             true
@@ -214,5 +186,4 @@ private fun safePreferences(dataStore: DataStore<Preferences>): Flow<Preferences
         }
     }
 
-private val DEVICE_PROFILE_KEY = stringPreferencesKey("device_profile")
 private val ORIENTATION_KEY = stringPreferencesKey("app_orientation")

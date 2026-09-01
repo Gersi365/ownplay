@@ -8,7 +8,6 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <application
-        android:name=".OwnPlayTargetApplication"
         android:allowBackup="false"
         android:icon="@mipmap/ic_launcher"
         android:label="${appLabel}"

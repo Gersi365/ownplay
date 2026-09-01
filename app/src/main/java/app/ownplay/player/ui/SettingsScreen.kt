@@ -82,9 +82,6 @@ internal fun SettingsScreen(
             syncState = syncState,
             deviceProfile = deviceProfile,
             orientationMode = orientationMode,
-            onSetDeviceProfile = { profile ->
-                scope.launch { deviceProfileStore.setProfile(profile) }
-            },
             onSetOrientation = { mode ->
                 scope.launch { deviceProfileStore.setSmartphoneOrientation(mode) }
             },
@@ -127,9 +124,6 @@ internal fun SettingsScreen(
     PortraitSettingsMenu(
         deviceProfile = deviceProfile,
         orientationMode = orientationMode,
-        onSetDeviceProfile = { profile ->
-            scope.launch { deviceProfileStore.setProfile(profile) }
-        },
         onSetOrientation = { mode ->
             scope.launch { deviceProfileStore.setSmartphoneOrientation(mode) }
         },

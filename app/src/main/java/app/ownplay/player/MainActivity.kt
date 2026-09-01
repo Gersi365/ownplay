@@ -33,13 +33,11 @@ import app.ownplay.player.download.OfflineDownloadFeatureRuntime
 import app.ownplay.player.personalization.AppDeviceProfile
 import app.ownplay.player.personalization.AppDeviceProfileSelection
 import app.ownplay.player.personalization.AppDeviceProfileStore
-import app.ownplay.player.personalization.AppOrientationMode
 import app.ownplay.player.playback.LiveActivityBackgroundAction
 import app.ownplay.player.playback.LiveActivityLifecyclePolicy
 import app.ownplay.player.playback.PlaybackInteractionBridge
 import app.ownplay.player.playback.PlaybackMediaKind
 import app.ownplay.player.playback.PlaybackState
-import app.ownplay.player.ui.DeviceProfileSetupScreen
 import app.ownplay.player.ui.DownloadPlaybackBridge
 import app.ownplay.player.ui.OrientationSetupLoadingSurface
 import app.ownplay.player.ui.OwnPlayRoot
@@ -179,27 +177,6 @@ class MainActivity : ComponentActivity() {
                 when (deviceProfileSelection) {
                     AppDeviceProfileSelection.Loading -> {
                         OrientationSetupLoadingSurface()
-                    }
-                    AppDeviceProfileSelection.Unconfigured -> {
-                        DeviceProfileSetupScreen(
-                            onConfigured = { profile, smartphoneOrientation ->
-                                activityScope.launch {
-                                    if (
-                                        appDeviceProfileStore.configure(
-                                            profile = profile,
-                                            smartphoneOrientation = smartphoneOrientation,
-                                        )
-                                    ) {
-                                        playbackWindowController.updateAppOrientation(
-                                            configuredOrientation(
-                                                profile = profile,
-                                                smartphoneOrientation = smartphoneOrientation,
-                                            ),
-                                        )
-                                    }
-                                }
-                            },
-                        )
                     }
                     is AppDeviceProfileSelection.Configured -> {
                         Box(modifier = Modifier.fillMaxSize()) {
@@ -485,15 +462,6 @@ private fun KeyEvent.isRemoteActivationKey(): Boolean =
         keyCode == KeyEvent.KEYCODE_MEDIA_PLAY ||
         keyCode == KeyEvent.KEYCODE_MEDIA_PAUSE ||
         keyCode == KeyEvent.KEYCODE_BACK
-
-private fun configuredOrientation(
-    profile: AppDeviceProfile,
-    smartphoneOrientation: AppOrientationMode?,
-): AppOrientationMode = if (profile == AppDeviceProfile.SMARTPHONE) {
-    smartphoneOrientation ?: AppOrientationMode.PORTRAIT
-} else {
-    AppOrientationMode.LANDSCAPE
-}
 
 /**
  * PiP owns the active playback surface. Rotation-triggered Live presentation changes must stay
