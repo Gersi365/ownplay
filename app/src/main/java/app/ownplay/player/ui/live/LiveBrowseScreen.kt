@@ -468,7 +468,7 @@ private fun CategoryStrip(
             FilterChip(
                 selected = selectedCategoryKey == null,
                 onClick = { onCategorySelected(null) },
-                label = { Text("All") },
+                label = { Text("No category filter") },
             )
         }
         items(
@@ -509,7 +509,7 @@ private fun CustomGroupStrip(
             FilterChip(
                 selected = selectedGroupId == null,
                 onClick = { onGroupSelected(null) },
-                label = { Text("All groups") },
+                label = { Text("No group filter") },
             )
         }
         items(
