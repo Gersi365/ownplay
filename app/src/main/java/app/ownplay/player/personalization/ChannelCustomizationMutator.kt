@@ -4,7 +4,6 @@ import androidx.room.withTransaction
 import app.ownplay.player.persistence.OwnPlayDatabase
 import app.ownplay.player.persistence.secure.SensitiveValueRef
 import app.ownplay.player.persistence.secure.SensitiveValueStore
-import app.ownplay.player.persistence.sync.DeviceSyncLocalMutationWriter
 import kotlinx.coroutines.CancellationException
 
 enum class ChannelCustomizationFailureReason {
@@ -30,8 +29,6 @@ class ChannelCustomizationMutator(
     private val database: OwnPlayDatabase,
     private val sensitiveValueStore: SensitiveValueStore,
 ) {
-    private val syncWriter = DeviceSyncLocalMutationWriter(database)
-
     suspend fun setLocalDisplayName(
         sourceId: String,
         channelId: String,
@@ -184,11 +181,6 @@ class ChannelCustomizationMutator(
                 val existing = dao.customizationForChannel(sourceId, channelId)
                 val updated = patch(existing)
                 dao.upsertCustomization(updated)
-                syncWriter.recordLocalDisplayName(
-                    sourceId = sourceId,
-                    channelId = channelId,
-                    localDisplayName = updated.localDisplayName,
-                )
                 ChannelCustomizationMutationResult.Success(channelId)
             }
         } catch (error: Exception) {
