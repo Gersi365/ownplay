@@ -14,6 +14,20 @@ The two APKs must not rely on runtime device-profile selection to decide which p
 
 Shared core may include playlist ingestion, Room persistence, reconciliation, Media3 playback, EPG data, personalization models, and other non-presentation logic that is already validated and does not force one target's UX onto the other.
 
+## Branding contract
+
+- The user-visible application/product name is exactly `OwnPlay` on both targets.
+- `mobile` and `tv` are internal build-target identifiers only; they must not be appended to the launcher/application label.
+- Launcher icon and TV banner must follow the current dark-purple visual system and must not embed `Mobile` or `TV` as part of the OwnPlay brand name.
+
+## Retired scope
+
+Cross-device Device Sync / device pairing is retired from the OwnPlay product scope. It is not a current objective, roadmap item, or implementation backlog.
+
+- Do not expose a Device Sync destination, pairing flow, or cross-device synchronization action in the current product UI.
+- `SourceSyncState` and source refresh status refer to playlist/source ingestion and refresh; they are unrelated to the retired cross-device Device Sync objective.
+- Historical internal sync/schema-compatibility code may remain dormant where removing it would require unrelated database/architecture churn. Its presence must not be interpreted as pending product work.
+
 ## Global navigation contract
 
 Visible primary navigation is exactly:

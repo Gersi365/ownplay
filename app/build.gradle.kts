@@ -23,16 +23,14 @@ android {
         create("mobile") {
             dimension = "device"
             applicationId = "app.ownplay.mobile"
-            versionName = "0.1.0-mobile-dev"
-            manifestPlaceholders["appLabel"] = "OwnPlay Mobile"
+            manifestPlaceholders["appLabel"] = "OwnPlay"
             buildConfigField("boolean", "IS_TV_BUILD", "false")
             buildConfigField("String", "TARGET_DEVICE", "\"mobile\"")
         }
         create("tv") {
             dimension = "device"
             applicationId = "app.ownplay.tv"
-            versionName = "0.1.0-tv-dev"
-            manifestPlaceholders["appLabel"] = "OwnPlay TV"
+            manifestPlaceholders["appLabel"] = "OwnPlay"
             buildConfigField("boolean", "IS_TV_BUILD", "true")
             buildConfigField("String", "TARGET_DEVICE", "\"tv\"")
         }

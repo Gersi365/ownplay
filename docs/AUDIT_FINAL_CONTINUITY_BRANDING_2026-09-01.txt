@@ -1,0 +1,64 @@
+OwnPlay final continuity / branding closure audit — 2026-09-01
+
+Scope
+- Close the carry-over work on the current integration line, Draft PR #89.
+- Keep the current Mobile/TV target architecture and all validated UX/reorder work intact.
+- Make the user-visible product/application name exactly OwnPlay on both targets.
+- Align launcher and TV banner branding with the current dark-purple visual system.
+- Record the explicit product decision that cross-device Device Sync is retired scope, not backlog.
+- Do not create an APK, merge, release, deploy, or alter signing/database/playback architecture.
+
+Authoritative implementation line before this closure
+- Repository: Gersi365/ownplay
+- Draft PR: #89 — Consolidate target-shell UX fixes and modernize Live landing
+- Branch: agent/live-home-header-modernization-no-apk
+- Base head before closure: a421edcf3ac22c14d78556eed25371660f22ce27
+- Base tree: ee3135857fdd2bc589138b7e30932072e1190ec4
+- Base exact-head Android Validation No APK #100 / run 33471822339: SUCCESS
+
+Findings closed
+1. Branding label carry-over
+- mobile flavor still used appLabel = OwnPlay Mobile.
+- tv flavor still used appLabel = OwnPlay TV.
+- flavor versionName overrides also embedded mobile/tv target words.
+- Corrected both appLabel placeholders to exactly OwnPlay.
+- Removed target-specific versionName overrides so both targets inherit the neutral default 0.1.0-dev.
+- Technical application IDs and TARGET_DEVICE build constants remain target-specific and unchanged.
+
+2. Launcher icon carry-over
+- Current integration line still carried the historical cyan/periwinkle launcher mark.
+- Replaced launcher background with #080A0F.
+- Replaced the foreground with the current OwnPlay broken-ring/play mark using:
+  primary #9B7BFF;
+  secondary #B8A6E8;
+  play glyph #F3F1F7.
+- Updated both legacy launcher fallback vectors.
+- Adaptive v26 wiring remains unchanged and continues to reference the shared background/foreground resources.
+
+3. TV banner carry-over
+- Historical tv_banner.png was a binary asset that the connected GitHub reader could not decode for visual/text audit.
+- Removed that opaque binary resource rather than leaving an unverified branding surface.
+- Replaced it with a deterministic 320x180 vector banner using the same current dark-purple OwnPlay logomark and no embedded Mobile/TV text.
+- TV manifest continues to reference @drawable/tv_banner.
+
+4. Device Sync scope clarification
+- Current Settings navigation has no Device Sync destination; SourceSyncState is source/playlist refresh state.
+- Cross-device Device Sync / pairing is explicitly retired from current product scope and must not be treated as pending work.
+- The authoritative Mobile/TV specification now records this retirement.
+- No legacy sync/schema architecture was deleted or reactivated in this branding/continuity closure; dormant historical compatibility code is not an active feature or backlog item.
+
+Files changed by this closure
+- app/build.gradle.kts
+- app/src/main/res/drawable/ic_launcher_background.xml
+- app/src/main/res/drawable/ic_ownplay_launcher_foreground.xml
+- app/src/main/res/mipmap-anydpi/ic_launcher.xml
+- app/src/main/res/mipmap-anydpi/ic_launcher_round.xml
+- app/src/main/res/drawable-xhdpi/tv_banner.png (removed)
+- app/src/main/res/drawable/tv_banner.xml (added)
+- docs/OWNPLAY_MOBILE_TV_SEPARATE_TARGETS_SPEC_2026-08-31.md
+- docs/AUDIT_FINAL_CONTINUITY_BRANDING_2026-09-01.txt
+
+Validation boundary
+- This document records source/resource intent and the exact pre-change baseline.
+- The closure is not complete until the resulting exact PR head passes Android Validation No APK for both Mobile and TV, including the explicit no-APK and Room-schema gates.
+- Physical-device QA remains a release acceptance gate defined by the authoritative specification; it is validation work, not missing source implementation.
