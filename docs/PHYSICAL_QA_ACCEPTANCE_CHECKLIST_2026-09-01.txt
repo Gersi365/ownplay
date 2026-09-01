@@ -1,0 +1,109 @@
+OwnPlay — Physical QA Acceptance Checklist
+Date: 2026-09-01
+Status: REQUIRED BEFORE RELEASE ACCEPTANCE
+Source-code parent checkpoint: 8845a4770889e08f410b5693182ecc7a66a7770f
+PR: #89 / agent/live-home-header-modernization-no-apk
+
+PURPOSE
+This checklist is the physical-device acceptance gate for the separate OwnPlay Mobile and TV targets. It does not claim PASS by itself. Record PASS only after running the listed checks on the exact release candidate built from the current PR line.
+
+GLOBAL ACCEPTANCE RULES
+- User-visible application name is exactly OwnPlay.
+- Primary navigation is exactly Live / Library / Settings.
+- No runtime device-target chooser is exposed.
+- Cross-device Device Sync / pairing is absent from active product UI and runtime flows.
+- No visible aggregate All / All categories / All channels is exposed where the current specification forbids it.
+- Selected/active state is expressed primarily by color without geometry-changing active labels.
+- Back/ESC follows screen hierarchy; exit confirmation appears only at the actual app-exit boundary.
+
+MOBILE — PHONE/TABLET PHYSICAL QA
+[ ] Fresh install launches as OwnPlay with current launcher branding.
+[ ] App opens directly into the Mobile touch-first shell; no device-profile chooser appears.
+[ ] Portrait and Landscape orientation options work from Settings.
+[ ] Primary navigation shows only Live / Library / Settings.
+[ ] Live categories show real provider categories only.
+[ ] Category drag-and-drop follows the finger, preserves stable row geometry, and persists the new order after leaving/re-entering Live.
+[ ] Channel drag-and-drop follows the finger, supports edge auto-scroll, resolves before/after drop correctly, and persists the new order.
+[ ] Channel active state changes color without adding an Active label or changing row/card geometry.
+[ ] Selecting a channel opens Preview.
+[ ] Preview shows video plus EPG/current-next information without generic playback buttons.
+[ ] Back/ESC closes Preview before leaving the channel list.
+[ ] Opening Fullscreen keeps EPG separate from generic playback controls.
+[ ] Fullscreen EPG can be shown/dismissed without breaking playback.
+[ ] Returning from Fullscreen restores the expected Live browsing context.
+[ ] Rotating with an active Live preview behaves according to the Mobile fullscreen policy and does not create duplicate playback surfaces/audio.
+[ ] Library exposes Offline / Movies / Series.
+[ ] Movies and Series use real provider categories only; no aggregate All category is shown.
+[ ] Movie Details opens with Play/Resume immediately usable.
+[ ] Movie Back hierarchy: Playback -> Movie Details -> previous catalog/category -> Library.
+[ ] Series hierarchy works: Series -> Season -> Episode -> Playback and Back reverses that hierarchy correctly.
+[ ] Download/Offline actions remain available on Mobile and downloaded playback works.
+[ ] Settings has no Device Sync/pairing destination.
+[ ] App can be backgrounded/resumed without losing navigation state or creating duplicate audio.
+
+TV / TV BOX — PHYSICAL QA
+Release blocker: every P1 reliability condition below must PASS.
+
+P1 RELIABILITY
+[ ] Zero app/device restart during Live Preview <-> Fullscreen transitions.
+[ ] Zero freeze during repeated Preview <-> Fullscreen transitions.
+[ ] Zero black/stuck video Surface after transitions, Back, Home/resume, or channel changes.
+[ ] Zero duplicate audio / parallel audible playback.
+
+TV SHELL / FOCUS
+[ ] Fresh install launches as OwnPlay with current launcher icon/banner branding.
+[ ] App opens directly into the TV D-pad/remote-first shell; no device-profile chooser appears.
+[ ] Primary navigation shows only Live / Library / Settings.
+[ ] Focus is always visible and primarily color-based; focus does not resize cards, change shapes, or shift layout geometry.
+[ ] Repeated OK/Enter presses do not double-activate actions.
+[ ] ESC behaves as Back.
+
+TV LIVE HIERARCHY
+[ ] Initial Live state is Categories with a real provider category focused.
+[ ] No All channels / aggregate All category appears.
+[ ] Categories -> Channels -> Preview + EPG -> Fullscreen hierarchy works exactly in that order.
+[ ] Back/ESC from Preview returns to Channels.
+[ ] Back/ESC from Channels returns to Categories.
+[ ] First OK on a channel opens Preview; Preview has no generic playback buttons.
+[ ] OK from Preview opens Fullscreen.
+[ ] Category reorder works with the TV reorder controls and persists.
+[ ] Channel reorder supports Top / Move up / Move down / Bottom and persists.
+[ ] Channel selection/focus does not add an Active label or change row geometry.
+
+TV FULLSCREEN EPG
+[ ] Opening/changing a channel shows lightweight EPG temporarily.
+[ ] OK reveals EPG.
+[ ] Down enters the EPG timeline when data exists.
+[ ] Left/Right navigate programmes.
+[ ] Up exits the EPG timeline.
+[ ] Full EPG opens and returns to Preview as specified.
+[ ] No generic playback menu appears in Live fullscreen.
+
+TV LIBRARY / SETTINGS
+[ ] Library exposes Movies / Series only.
+[ ] No Offline/Downloads presentation or management entry appears anywhere on TV.
+[ ] Movies/Series show real provider categories only; no aggregate All category appears.
+[ ] Movie Details initial focus is Play/Resume, never Back.
+[ ] Series root initial focus reaches the first season when available.
+[ ] Season/Episode details initial focus reaches the first actionable Play/Resume control.
+[ ] Back hierarchy restores the prior Library category/catalog context where practical.
+[ ] Settings contains Interface / Content / About and no Downloads/Offline management.
+[ ] Settings has no Device Sync/pairing destination.
+
+LONGER TV STABILITY PASS
+[ ] Change channels repeatedly across multiple categories without restart/freeze/black Surface/duplicate audio.
+[ ] Repeat Preview -> Fullscreen -> Preview/Back transitions at least 20 times.
+[ ] Background/Home and resume during Live playback several times.
+[ ] Leave Live running long enough to observe EPG updates without row geometry/focus instability.
+[ ] Exercise EPG reveal/timeline navigation repeatedly while playback continues.
+
+ACCEPTANCE EVIDENCE TO RECORD
+- Exact candidate commit SHA.
+- Mobile device model + Android version used.
+- TV/TV Box model + Android/Google TV version used.
+- PASS/FAIL for every checkbox above.
+- For each FAIL: exact reproduction sequence, screen, channel/media type, observed behavior, and whether reproducible.
+- Explicit statement whether all four TV P1 reliability conditions passed.
+
+RELEASE DECISION
+Do not mark the candidate physically validated unless every required item relevant to the target passes and all TV P1 reliability blockers pass. Source/CI validation is separate from physical-device acceptance.
