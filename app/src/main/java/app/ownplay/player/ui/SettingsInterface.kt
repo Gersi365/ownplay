@@ -118,19 +118,15 @@ internal fun InterfaceSettingsContent(
         value = when (deviceProfile) {
             AppDeviceProfile.SMARTPHONE -> "Mobile"
             AppDeviceProfile.ANDROID_TV -> "TV"
-            AppDeviceProfile.TABLET -> "Mobile"
-            AppDeviceProfile.TV_BOX -> "TV"
             null -> "Loading…"
         },
     )
     Text(
         text = when (deviceProfile) {
-            AppDeviceProfile.SMARTPHONE,
-            AppDeviceProfile.TABLET,
-            -> "This APK is touch-first. Device target switching is disabled."
-            AppDeviceProfile.ANDROID_TV,
-            AppDeviceProfile.TV_BOX,
-            -> "This APK is D-pad/remote-first. Device target switching is disabled."
+            AppDeviceProfile.SMARTPHONE ->
+                "This APK is touch-first. Device target switching is disabled."
+            AppDeviceProfile.ANDROID_TV ->
+                "This APK is D-pad/remote-first. Device target switching is disabled."
             null -> "Loading app target…"
         },
         style = MaterialTheme.typography.labelSmall,
@@ -146,8 +142,8 @@ internal fun InterfaceSettingsContent(
             } else {
                 "Portrait"
             }
+            AppDeviceProfile.ANDROID_TV -> "Landscape · fixed"
             null -> "Loading…"
-            else -> "Landscape · fixed"
         },
     )
     if (deviceProfile == AppDeviceProfile.SMARTPHONE) {
@@ -173,11 +169,9 @@ internal fun InterfaceSettingsContent(
         text = when (deviceProfile) {
             AppDeviceProfile.SMARTPHONE ->
                 "With an active Live preview, rotating to landscape can open the full player."
-            null -> "Loading orientation…"
-            AppDeviceProfile.TABLET ->
-                "Mobile target uses the touch layout."
-            else ->
+            AppDeviceProfile.ANDROID_TV ->
                 "TV target stays landscape and uses the D-pad/remote layout."
+            null -> "Loading orientation…"
         },
         style = MaterialTheme.typography.labelSmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -186,8 +180,6 @@ internal fun InterfaceSettingsContent(
 
 internal fun deviceProfileLabel(profile: AppDeviceProfile?): String = when (profile) {
     AppDeviceProfile.SMARTPHONE -> "Smartphone"
-    AppDeviceProfile.TABLET -> "Tablet"
     AppDeviceProfile.ANDROID_TV -> "Android TV"
-    AppDeviceProfile.TV_BOX -> "TV Box"
     null -> "Loading…"
 }

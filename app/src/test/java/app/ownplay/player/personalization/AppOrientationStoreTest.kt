@@ -30,31 +30,13 @@ class AppOrientationStoreTest {
     }
 
     @Test
-    fun deviceProfilesRestoreOnlyKnownStoredValues() {
-        assertEquals(
-            AppDeviceProfile.SMARTPHONE,
-            AppDeviceProfile.fromStoredOrNull("smartphone"),
-        )
-        assertEquals(AppDeviceProfile.TABLET, AppDeviceProfile.fromStoredOrNull("tablet"))
-        assertEquals(
-            AppDeviceProfile.ANDROID_TV,
-            AppDeviceProfile.fromStoredOrNull("android_tv"),
-        )
-        assertEquals(AppDeviceProfile.TV_BOX, AppDeviceProfile.fromStoredOrNull("tv_box"))
-        assertNull(AppDeviceProfile.fromStoredOrNull(null))
-        assertNull(AppDeviceProfile.fromStoredOrNull("television"))
-    }
-
-    @Test
-    fun onlyTelevisionProfilesUseDpad() {
+    fun onlyTvTargetUsesDpad() {
         assertFalse(AppDeviceProfile.SMARTPHONE.usesDpad)
-        assertFalse(AppDeviceProfile.TABLET.usesDpad)
         assertTrue(AppDeviceProfile.ANDROID_TV.usesDpad)
-        assertTrue(AppDeviceProfile.TV_BOX.usesDpad)
     }
 
     @Test
-    fun smartphoneRespectsOrientationWhileOtherProfilesStayLandscape() {
+    fun smartphoneRespectsOrientationWhileTvStaysLandscape() {
         assertEquals(
             AppOrientationMode.PORTRAIT,
             AppDeviceSettings(
@@ -69,18 +51,12 @@ class AppOrientationStoreTest {
                 smartphoneOrientation = AppOrientationMode.LANDSCAPE,
             ).effectiveOrientation,
         )
-        listOf(
-            AppDeviceProfile.TABLET,
-            AppDeviceProfile.ANDROID_TV,
-            AppDeviceProfile.TV_BOX,
-        ).forEach { profile ->
-            assertEquals(
-                AppOrientationMode.LANDSCAPE,
-                AppDeviceSettings(
-                    profile = profile,
-                    smartphoneOrientation = AppOrientationMode.PORTRAIT,
-                ).effectiveOrientation,
-            )
-        }
+        assertEquals(
+            AppOrientationMode.LANDSCAPE,
+            AppDeviceSettings(
+                profile = AppDeviceProfile.ANDROID_TV,
+                smartphoneOrientation = AppOrientationMode.PORTRAIT,
+            ).effectiveOrientation,
+        )
     }
 }

@@ -40,21 +40,13 @@ enum class AppInputMode {
 }
 
 enum class AppDeviceProfile(
-    val storedValue: String,
     val inputMode: AppInputMode,
 ) {
-    SMARTPHONE("smartphone", AppInputMode.TOUCHSCREEN),
-    TABLET("tablet", AppInputMode.TOUCHSCREEN),
-    ANDROID_TV("android_tv", AppInputMode.DPAD),
-    TV_BOX("tv_box", AppInputMode.DPAD);
+    SMARTPHONE(AppInputMode.TOUCHSCREEN),
+    ANDROID_TV(AppInputMode.DPAD);
 
     val usesDpad: Boolean
         get() = inputMode == AppInputMode.DPAD
-
-    companion object {
-        fun fromStoredOrNull(value: String?): AppDeviceProfile? =
-            entries.firstOrNull { profile -> profile.storedValue == value }
-    }
 }
 
 data class AppDeviceSettings(
