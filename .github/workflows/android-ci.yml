@@ -17,7 +17,7 @@ jobs:
   validate:
     if: ${{ github.event_name != 'pull_request' || !endsWith(github.head_ref, '-no-apk') }}
     runs-on: ubuntu-latest
-    timeout-minutes: 40
+    timeout-minutes: 45
 
     steps:
       - name: Checkout
@@ -34,33 +34,22 @@ jobs:
         with:
           gradle-version: "9.5.0"
 
-      - name: Restore QA signing identity
-        uses: actions/cache@v4
+      - name: Restore stable signing identity
+        uses: actions/cache/restore@v4
         with:
           path: ~/.android/debug.keystore
           key: ownplay-pr16-debug-keystore-v1
+          fail-on-cache-miss: true
 
-      - name: Ensure QA signing identity
+      - name: Verify stable signing identity
         shell: bash
         run: |
           set -euo pipefail
           KEYSTORE="$HOME/.android/debug.keystore"
-          if [ ! -f "$KEYSTORE" ]; then
-            mkdir -p "$HOME/.android"
-            keytool -genkeypair \
-              -keystore "$KEYSTORE" \
-              -storepass android \
-              -alias androiddebugkey \
-              -keypass android \
-              -keyalg RSA \
-              -keysize 2048 \
-              -validity 10000 \
-              -dname "CN=Android Debug,O=Android,C=US"
-          fi
-          keytool -list -v \
-            -keystore "$KEYSTORE" \
-            -storepass android \
-            -alias androiddebugkey
+          test -f "$KEYSTORE"
+          CERT_OUTPUT="$(keytool -list -v -keystore "$KEYSTORE" -storepass android -alias androiddebugkey)"
+          printf '%s\n' "$CERT_OUTPUT"
+          printf '%s\n' "$CERT_OUTPUT" | grep -F "SHA256: 1B:B7:83:D4:52:C8:5F:3A:A5:C6:25:2C:81:14:99:E2:4A:83:0D:A2:F4:77:EB:92:D9:E2:37:FF:78:17:D5:3A"
 
       - name: Verify Android SDK 36
         shell: bash
@@ -70,58 +59,64 @@ jobs:
           test -x "${ANDROID_HOME}/build-tools/36.0.0/zipalign"
           test -x "${ANDROID_HOME}/build-tools/36.0.0/apksigner"
 
-      - name: Validate and assemble Mobile and TV QA APKs
-        run: >-
-          gradle
-          :app:kspMobileReleaseKotlin
-          :app:kspTvReleaseKotlin
-          :app:testMobileDebugUnitTest
-          :app:testTvDebugUnitTest
-          :app:lintMobileRelease
-          :app:lintTvRelease
-          :app:assembleMobileRelease
-          :app:assembleTvRelease
-          --stacktrace
+      - name: Validate and assemble Mobile and TV stable APKs
+        shell: bash
+        run: |
+          set -euo pipefail
+          gradle \
+            :app:kspMobileReleaseKotlin \
+            :app:kspTvReleaseKotlin \
+            :app:testMobileDebugUnitTest \
+            :app:testTvDebugUnitTest \
+            :app:lintMobileRelease \
+            :app:lintTvRelease \
+            :app:compileMobileDebugAndroidTestKotlin \
+            :app:compileTvDebugAndroidTestKotlin \
+            :app:assembleMobileRelease \
+            :app:assembleTvRelease \
+            --stacktrace
 
-      - name: Align and sign QA APKs
+      - name: Align and sign stable APKs
         if: success()
         shell: bash
         run: |
           set -euo pipefail
-          test -f "$HOME/.android/debug.keystore"
+          KEYSTORE="$HOME/.android/debug.keystore"
+          BUILD_TOOLS="${ANDROID_HOME}/build-tools/36.0.0"
+          test -f "$KEYSTORE"
 
-          MOBILE_INPUT="app/build/outputs/apk/mobile/release/app-mobile-release-unsigned.apk"
-          MOBILE_ALIGNED="app/build/outputs/apk/mobile/release/app-mobile-release-aligned.apk"
-          MOBILE_OUTPUT="app/build/outputs/apk/mobile/release/OwnPlay-Mobile-QA.apk"
-          test -f "$MOBILE_INPUT"
-          "${ANDROID_HOME}/build-tools/36.0.0/zipalign" -f -p 4 "$MOBILE_INPUT" "$MOBILE_ALIGNED"
-          "${ANDROID_HOME}/build-tools/36.0.0/apksigner" sign \
-            --ks "$HOME/.android/debug.keystore" \
-            --ks-key-alias androiddebugkey \
-            --ks-pass pass:android \
-            --key-pass pass:android \
-            --out "$MOBILE_OUTPUT" \
-            "$MOBILE_ALIGNED"
-          "${ANDROID_HOME}/build-tools/36.0.0/apksigner" verify --verbose --print-certs "$MOBILE_OUTPUT"
+          sign_one() {
+            local input="$1"
+            local aligned="$2"
+            local output="$3"
+            test -f "$input"
+            "$BUILD_TOOLS/zipalign" -f -p 4 "$input" "$aligned"
+            "$BUILD_TOOLS/apksigner" sign \
+              --ks "$KEYSTORE" \
+              --ks-key-alias androiddebugkey \
+              --ks-pass pass:android \
+              --key-pass pass:android \
+              --out "$output" \
+              "$aligned"
+            "$BUILD_TOOLS/apksigner" verify --verbose --print-certs "$output"
+            sha256sum "$output" | tee "$output.sha256"
+          }
 
-          TV_INPUT="app/build/outputs/apk/tv/release/app-tv-release-unsigned.apk"
-          TV_ALIGNED="app/build/outputs/apk/tv/release/app-tv-release-aligned.apk"
-          TV_OUTPUT="app/build/outputs/apk/tv/release/OwnPlay-TV-QA.apk"
-          test -f "$TV_INPUT"
-          "${ANDROID_HOME}/build-tools/36.0.0/zipalign" -f -p 4 "$TV_INPUT" "$TV_ALIGNED"
-          "${ANDROID_HOME}/build-tools/36.0.0/apksigner" sign \
-            --ks "$HOME/.android/debug.keystore" \
-            --ks-key-alias androiddebugkey \
-            --ks-pass pass:android \
-            --key-pass pass:android \
-            --out "$TV_OUTPUT" \
-            "$TV_ALIGNED"
-          "${ANDROID_HOME}/build-tools/36.0.0/apksigner" verify --verbose --print-certs "$TV_OUTPUT"
+          sign_one \
+            app/build/outputs/apk/mobile/release/app-mobile-release-unsigned.apk \
+            app/build/outputs/apk/mobile/release/app-mobile-release-aligned.apk \
+            app/build/outputs/apk/mobile/release/OwnPlay-Mobile-Stable-1.0.0.apk
+
+          sign_one \
+            app/build/outputs/apk/tv/release/app-tv-release-unsigned.apk \
+            app/build/outputs/apk/tv/release/app-tv-release-aligned.apk \
+            app/build/outputs/apk/tv/release/OwnPlay-TV-Stable-1.0.0.apk
 
       - name: Verify Room schema is committed
         if: success()
         shell: bash
         run: |
+          set -euo pipefail
           python3 - <<'PY'
           import json
           import pathlib
@@ -164,29 +159,35 @@ jobs:
               sys.exit(1)
           PY
 
-      - name: Upload Mobile QA APK
+      - name: Upload Mobile stable APK
         if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: ownplay-mobile-qa-apk
-          path: app/build/outputs/apk/mobile/release/OwnPlay-Mobile-QA.apk
+          name: ownplay-mobile-stable-1.0.0
+          path: |
+            app/build/outputs/apk/mobile/release/OwnPlay-Mobile-Stable-1.0.0.apk
+            app/build/outputs/apk/mobile/release/OwnPlay-Mobile-Stable-1.0.0.apk.sha256
           if-no-files-found: error
           retention-days: 7
+          compression-level: 0
 
-      - name: Upload TV QA APK
+      - name: Upload TV stable APK
         if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: ownplay-tv-qa-apk
-          path: app/build/outputs/apk/tv/release/OwnPlay-TV-QA.apk
+          name: ownplay-tv-stable-1.0.0
+          path: |
+            app/build/outputs/apk/tv/release/OwnPlay-TV-Stable-1.0.0.apk
+            app/build/outputs/apk/tv/release/OwnPlay-TV-Stable-1.0.0.apk.sha256
           if-no-files-found: error
           retention-days: 7
+          compression-level: 0
 
       - name: Upload Room schema
         if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: ownplay-room-schema-qa
+          name: ownplay-room-schema-stable-1.0.0
           path: app/schemas
           if-no-files-found: error
           retention-days: 7
