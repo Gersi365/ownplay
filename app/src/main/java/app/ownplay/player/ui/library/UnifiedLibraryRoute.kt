@@ -93,9 +93,9 @@ import kotlinx.coroutines.launch
 private const val MISSING_FILE_REASON = "Downloaded file is missing"
 
 private enum class UnifiedLibraryFilter {
-    ALL,
     MOVIES,
     SERIES,
+    ALL,
 }
 
 @Composable
@@ -145,13 +145,11 @@ internal fun UnifiedLibraryRoute(
     val seriesCatalog by seriesFlow.collectAsState(initial = SeriesCatalog())
 
     var filter by remember(isTelevision) {
-        mutableStateOf(
-            if (isTelevision) UnifiedLibraryFilter.MOVIES else UnifiedLibraryFilter.ALL,
-        )
+        mutableStateOf(UnifiedLibraryFilter.MOVIES)
     }
     var movieCategoryKey by remember(sourceId) { mutableStateOf<String?>(null) }
     var seriesCategoryKey by remember(sourceId) { mutableStateOf<String?>(null) }
-    var offlineOnly by remember(isTelevision) { mutableStateOf(!isTelevision) }
+    var offlineOnly by remember(isTelevision) { mutableStateOf(false) }
     var query by remember { mutableStateOf("") }
     var searchExpanded by remember(isTelevision) { mutableStateOf(isTelevision) }
     var refreshing by remember(sourceId) { mutableStateOf(false) }
@@ -448,7 +446,18 @@ internal fun UnifiedLibraryRoute(
     } else {
         visibleSeries.size + orphanedOfflineSeries.size
     }
-    val hasItems = movieCount + seriesCount > 0
+    val showMovieContinueWatching =
+        filter == UnifiedLibraryFilter.MOVIES &&
+            !offlineOnly &&
+            normalizedQuery.isBlank() &&
+            vodCatalog.continueWatching.isNotEmpty()
+    val showSeriesContinueWatching =
+        filter == UnifiedLibraryFilter.SERIES &&
+            !offlineOnly &&
+            normalizedQuery.isBlank() &&
+            seriesCatalog.continueWatching.isNotEmpty()
+    val hasItems =
+        movieCount + seriesCount > 0 || showMovieContinueWatching || showSeriesContinueWatching
     val visibleFocusKeys = remember(
         filter,
         sourceId,
@@ -689,6 +698,20 @@ internal fun UnifiedLibraryRoute(
                 text = message,
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.error,
+            )
+        }
+
+        if (showMovieContinueWatching && sourceId != null) {
+            LibraryMovieContinueWatchingStrip(
+                movies = vodCatalog.continueWatching,
+                onOpenMovie = { movie -> onOpenMovieDetails(sourceId, movie.movieId) },
+            )
+        }
+
+        if (showSeriesContinueWatching && sourceId != null) {
+            LibrarySeriesContinueWatchingStrip(
+                episodes = seriesCatalog.continueWatching,
+                onOpenSeries = { episode -> onOpenSeriesDetails(sourceId, episode.seriesId) },
             )
         }
 
