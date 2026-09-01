@@ -393,7 +393,6 @@ private fun MobileLiveBrowsePane(
     onOpenSettings: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val compactBrowseHeader = playingChannelId != null
     Surface(
         modifier = modifier.fillMaxSize(),
         shape = RoundedCornerShape(12.dp),
@@ -401,45 +400,6 @@ private fun MobileLiveBrowsePane(
         tonalElevation = 0.dp,
     ) {
         Column(modifier = Modifier.fillMaxSize()) {
-            if (!compactBrowseHeader) {
-                Surface(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 12.dp, vertical = 8.dp),
-                    shape = RoundedCornerShape(12.dp),
-                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.28f),
-                    tonalElevation = 0.dp,
-                ) {
-                    Row(
-                        modifier = Modifier.padding(
-                            start = 16.dp,
-                            end = 8.dp,
-                            top = 10.dp,
-                            bottom = 10.dp,
-                        ),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                text = "Live",
-                                style = MaterialTheme.typography.titleLarge,
-                                fontWeight = FontWeight.Bold,
-                            )
-                            Text(
-                                text = "${state.channels.size} channels",
-                                style = MaterialTheme.typography.labelMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
-                        MobileSearchButton(
-                            searchExpanded = searchExpanded,
-                            onSearchExpandedChange = onSearchExpandedChange,
-                            onSearchChange = onSearchChange,
-                        )
-                    }
-                }
-            }
-
             AnimatedVisibility(
                 visible = searchExpanded || state.query.searchTerm.isNotBlank(),
                 enter = fadeIn(),
@@ -450,10 +410,7 @@ private fun MobileLiveBrowsePane(
                     onValueChange = onSearchChange,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(
-                            horizontal = 12.dp,
-                            vertical = if (compactBrowseHeader) 2.dp else 4.dp,
-                        ),
+                        .padding(horizontal = 10.dp, vertical = 2.dp),
                     singleLine = true,
                     placeholder = { Text("Search channels") },
                     shape = RoundedCornerShape(10.dp),
@@ -463,21 +420,16 @@ private fun MobileLiveBrowsePane(
             if (state.categories.isNotEmpty()) {
                 LazyRow(
                     modifier = Modifier.fillMaxWidth(),
-                    contentPadding = PaddingValues(
-                        horizontal = 12.dp,
-                        vertical = if (compactBrowseHeader) 2.dp else 6.dp,
-                    ),
+                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    if (compactBrowseHeader) {
-                        item {
-                            MobileSearchButton(
-                                searchExpanded = searchExpanded,
-                                onSearchExpandedChange = onSearchExpandedChange,
-                                onSearchChange = onSearchChange,
-                            )
-                        }
+                    item(key = "search") {
+                        MobileSearchButton(
+                            searchExpanded = searchExpanded,
+                            onSearchExpandedChange = onSearchExpandedChange,
+                            onSearchChange = onSearchChange,
+                        )
                     }
                     items(
                         items = state.categories,
@@ -496,11 +448,11 @@ private fun MobileLiveBrowsePane(
                         )
                     }
                 }
-            } else if (compactBrowseHeader) {
+            } else {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 8.dp),
+                        .padding(horizontal = 8.dp, vertical = 2.dp),
                     horizontalArrangement = Arrangement.End,
                 ) {
                     MobileSearchButton(

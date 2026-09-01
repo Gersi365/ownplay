@@ -31,11 +31,12 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -54,7 +55,6 @@ import app.ownplay.player.personalization.ChannelDragTargetResolver
 import app.ownplay.player.personalization.ChannelEditState
 import app.ownplay.player.personalization.ManualOrderPlacement
 import app.ownplay.player.personalization.VisibleChannelBounds
-import kotlinx.coroutines.launch
 
 @Composable
 fun LiveBrowseScreen(
@@ -86,10 +86,10 @@ fun LiveBrowseScreen(
     modifier: Modifier = Modifier,
 ) {
     val listState = rememberLazyListState()
-    val dragScope = rememberCoroutineScope()
     var draggedChannelId by remember { mutableStateOf<String?>(null) }
     var draggedPointerY by remember { mutableStateOf<Float?>(null) }
     var dragTarget by remember { mutableStateOf<ChannelDragTarget?>(null) }
+    var dragAutoScrollStep by remember { mutableStateOf(0f) }
     val manualDragEnabled = editState.isEditing && state.query.order == LiveBrowseOrder.MY_ORDER
     val favoriteDragEnabled = editState.isEditing &&
         state.query.favoritesOnly &&
@@ -100,6 +100,27 @@ fun LiveBrowseScreen(
         draggedChannelId = null
         draggedPointerY = null
         dragTarget = null
+        dragAutoScrollStep = 0f
+    }
+
+    LaunchedEffect(draggedChannelId, dragAutoScrollStep) {
+        val draggedId = draggedChannelId ?: return@LaunchedEffect
+        if (dragAutoScrollStep == 0f) return@LaunchedEffect
+        while (draggedChannelId == draggedId && dragAutoScrollStep != 0f) {
+            val consumed = listState.scrollBy(dragAutoScrollStep)
+            draggedPointerY?.let { pointerY ->
+                dragTarget = resolveDragTarget(
+                    pointerY = pointerY,
+                    draggedChannelId = draggedId,
+                    visibleItems = listState.layoutInfo.visibleItemsInfo,
+                )
+            }
+            if (consumed == 0f) {
+                dragAutoScrollStep = 0f
+                break
+            }
+            withFrameNanos { }
+        }
     }
 
     Surface(
@@ -207,6 +228,7 @@ fun LiveBrowseScreen(
                                     draggedPointerY = itemInfo?.let { info ->
                                         info.offset + (info.size / 2f)
                                     }
+                                    dragAutoScrollStep = 0f
                                     dragTarget = draggedPointerY?.let { pointerY ->
                                         resolveDragTarget(
                                             pointerY = pointerY,
@@ -225,15 +247,11 @@ fun LiveBrowseScreen(
                                         ) + dragAmount.y
                                     draggedPointerY = pointerY
                                     val layout = listState.layoutInfo
-                                    val edge = 80f
-                                    when {
-                                        pointerY < layout.viewportStartOffset + edge -> {
-                                            dragScope.launch { listState.scrollBy(-40f) }
-                                        }
-                                        pointerY > layout.viewportEndOffset - edge -> {
-                                            dragScope.launch { listState.scrollBy(40f) }
-                                        }
-                                    }
+                                    dragAutoScrollStep = dragAutoScrollStepForPointer(
+                                        pointerY = pointerY,
+                                        viewportStartOffset = layout.viewportStartOffset,
+                                        viewportEndOffset = layout.viewportEndOffset,
+                                    )
                                     dragTarget = resolveDragTarget(
                                         pointerY = pointerY,
                                         draggedChannelId = draggedId,
@@ -289,6 +307,20 @@ fun LiveBrowseScreen(
                 }
             }
         }
+    }
+}
+
+private fun dragAutoScrollStepForPointer(
+    pointerY: Float,
+    viewportStartOffset: Int,
+    viewportEndOffset: Int,
+): Float {
+    val edge = 88f
+    val step = 28f
+    return when {
+        pointerY < viewportStartOffset + edge -> -step
+        pointerY > viewportEndOffset - edge -> step
+        else -> 0f
     }
 }
 
