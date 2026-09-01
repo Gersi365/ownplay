@@ -1,0 +1,60 @@
+OwnPlay Device Sync runtime retirement audit — 2026-09-01
+
+Scope
+- Continue directly on Draft PR #89 / agent/live-home-header-modernization-no-apk.
+- Correct the remaining historical cross-device Device Sync behavior after the product feature was retired.
+- Do not change Room database version/schema, migrations, application IDs, signing, playback architecture, or release state.
+- Do not create an APK.
+
+Exact green baseline
+- Repository: Gersi365/ownplay
+- PR: #89 (Draft, unmerged)
+- Baseline head: b1d058282766901b379d5b2c2dea9438df3cd218
+- Baseline tree: 84c36a624e0a8db292cf3df30537c2cc7c2bb483
+- Android Validation No APK #102 / run 33496690685: SUCCESS
+- Baseline validation artifact: ownplay-room-schema-no-apk only; no APK.
+
+Audit findings
+1. UI/product routing was already retired.
+- Settings has no Device Sync destination or pairing UI.
+- OwnPlayAppRuntime and target bootstrap do not instantiate a cross-device sync coordinator, pairing coordinator, or transport session.
+- SourceSyncState is playlist/source refresh state and is unrelated.
+
+2. Runtime write-through was still active.
+Normal local product mutations still instantiated DeviceSyncLocalMutationWriter and wrote retired device_sync_* metadata:
+- source create / rename / delete;
+- favorite add/remove/reorder;
+- manual channel ordering;
+- channel hide/unhide;
+- local channel display-name edits;
+- custom group create/rename/delete and membership edits.
+This meant the removed feature still changed persistent sync metadata during ordinary app use.
+
+3. Retired implementation remained compiled.
+The source tree still contained historical cross-device pairing, transport, merge, portable-secret encryption, secure source transfer, and their dedicated tests.
+
+4. Database compatibility boundary.
+OwnPlayDatabase is Room version 6 and still declares device_sync_* entities/DAO plus MIGRATION_5_6.
+Removing those tables/entities now would be a database/schema migration and is intentionally outside this cleanup.
+Existing installations must remain able to open their v6 database without destructive migration.
+
+Changes in this cleanup
+- DeviceSyncLocalMutationWriter is converted into an explicit no-op compatibility shim. Its old call surface remains temporarily so normal feature code does not require broad transaction restructuring, but it performs zero DeviceSyncDao reads/writes and starts no cross-device work.
+- Remove production cross-device pairing/transport/merge/portable-secret implementation under app.ownplay.player.sync.
+- Remove obsolete persistence orchestration/transport/source-transfer implementation that depends on the retired feature.
+- Remove dedicated unit/instrumentation tests for the retired Device Sync feature.
+- Preserve only the historical Room v6 persistence entities/DAO and MIGRATION_5_6 needed for database compatibility.
+- Preserve migration tests that validate the committed historical schema.
+
+Explicit non-changes
+- Room database version remains 6.
+- device_sync_* tables remain in the committed v6 schema.
+- MIGRATION_5_6 remains available.
+- OwnPlayDatabase continues to declare the historical entities/DAO so existing DB files remain compatible.
+- No current source-refresh behavior is removed.
+- No APK, merge, release, deployment, signing, or physical-device PASS is produced/claimed.
+
+Completion gate
+- Exact resulting PR head must pass Android Validation No APK for Mobile and TV.
+- The explicit no-APK verification and committed Room-schema verification must pass.
+- Artifact list must contain no APK.
