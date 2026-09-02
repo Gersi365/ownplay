@@ -54,6 +54,20 @@ interface ProviderCatalogDao {
     suspend fun upsertChannels(channels: List<ProviderChannelEntity>)
 
     @Query(
+        """
+        UPDATE provider_channels
+        SET availability = 'removed'
+        WHERE sourceId = :sourceId
+            AND lastSeenGeneration != :generation
+            AND availability != 'removed'
+        """,
+    )
+    suspend fun markChannelsMissingFromGeneration(
+        sourceId: String,
+        generation: Long,
+    )
+
+    @Query(
         "SELECT * FROM provider_channels " +
             "WHERE sourceId = :sourceId ORDER BY providerOrder ASC",
     )
