@@ -259,7 +259,13 @@ internal fun PlaylistSettingsScreen(
             onDismissRequest = { deleteTarget = null },
             title = { Text("Delete playlist?") },
             text = {
-                Text("${target.name} and its imported catalog will be removed from OwnPlay.")
+                Text(
+                    if (target.enabled) {
+                        "${target.name} and its imported catalog will be removed from OwnPlay."
+                    } else {
+                        "${target.name} will be removed and any pending import will be cancelled."
+                    },
+                )
             },
             confirmButton = {
                 Button(
@@ -391,7 +397,7 @@ private fun PlaylistCard(
                     Text(if (summary.enabled) "Refresh" else "Retry")
                 }
                 TextButton(onClick = onEdit, enabled = summary.enabled && !syncing) { Text("Edit") }
-                TextButton(onClick = onDelete, enabled = !syncing) { Text("Delete") }
+                TextButton(onClick = onDelete) { Text("Delete") }
             }
         }
     }
