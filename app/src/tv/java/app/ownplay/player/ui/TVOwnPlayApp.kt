@@ -434,7 +434,7 @@ private fun TVOwnPlayAppContent(
                                 fullscreenSelection = null
                             }
                         }
-                        activeSourceId = sourceId
+                        rememberActiveSource(sourceId)
                         section = TVSection.LIVE
                     },
                     onStopPlayback = {
