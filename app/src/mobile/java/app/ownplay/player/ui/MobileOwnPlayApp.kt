@@ -488,7 +488,7 @@ private fun MobileOwnPlayAppContent(
                                 fullscreenEntryReason = null
                             }
                         }
-                        activeSourceId = sourceId
+                        rememberActiveSource(sourceId)
                         section = MobileSection.LIVE
                     },
                     onStopPlayback = {
