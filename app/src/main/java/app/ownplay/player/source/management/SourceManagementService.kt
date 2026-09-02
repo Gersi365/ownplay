@@ -12,6 +12,7 @@ import app.ownplay.player.source.SourceValidator
 import app.ownplay.player.source.UrlValidationResult
 import app.ownplay.player.source.credential.CredentialStore
 import app.ownplay.player.source.credential.XtreamCredentials
+import app.ownplay.player.source.m3u.M3uSourceLocatorCodec
 import app.ownplay.player.source.xtream.XtreamClient
 import app.ownplay.player.source.xtream.XtreamSourceLocator
 import app.ownplay.player.source.xtream.XtreamSourceLocatorCodec
@@ -76,13 +77,27 @@ class SourceManagementService(
                 )
             }
 
-            SourceKinds.REMOTE_M3U -> SourceEditSnapshot(
-                sourceId = source.sourceId,
-                name = source.name,
-                sourceKind = source.sourceKind,
-                endpoint = locatorValue,
-                allowCleartext = false,
-            )
+            SourceKinds.REMOTE_M3U -> {
+                val locator = locatorValue?.let(M3uSourceLocatorCodec::parseOrLegacy)
+                SourceEditSnapshot(
+                    sourceId = source.sourceId,
+                    name = source.name,
+                    sourceKind = source.sourceKind,
+                    endpoint = locator?.endpoint,
+                    allowCleartext = locator?.allowCleartext == true,
+                )
+            }
+
+            SourceKinds.LOCAL_M3U -> {
+                val locator = locatorValue?.let(M3uSourceLocatorCodec::parseOrLegacy)
+                SourceEditSnapshot(
+                    sourceId = source.sourceId,
+                    name = source.name,
+                    sourceKind = source.sourceKind,
+                    endpoint = null,
+                    allowCleartext = locator?.allowCleartext == true,
+                )
+            }
 
             else -> SourceEditSnapshot(
                 sourceId = source.sourceId,
