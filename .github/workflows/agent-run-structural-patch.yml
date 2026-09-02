@@ -1,0 +1,38 @@
+name: Run Agent Structural Patch
+
+on:
+  push:
+    branches:
+      - agent/multisource-lifecycle-hardening-no-apk
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Extract and execute patch script
+        shell: bash
+        run: |
+          set -euo pipefail
+          sed -n "/python3 - <<'PY'/,/^          PY$/p" .github/workflows/agent-multisource-structural-patch.yml \
+            | sed '1d;$d;s/^          //' > /tmp/agent_patch.py
+          python3 /tmp/agent_patch.py
+
+      - name: Commit patched source
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -f .github/workflows/agent-multisource-structural-patch.yml
+          rm -f .github/workflows/agent-run-structural-patch.yml
+          git config user.name "Gersi365"
+          git config user.email "Gersi365@outlook.com"
+          git add -A
+          git diff --cached --check
+          git commit -m "Make multi-source onboarding recoverable and active-aware"
+          git push origin HEAD:agent/multisource-lifecycle-hardening-no-apk
