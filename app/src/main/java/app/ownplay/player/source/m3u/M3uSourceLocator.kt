@@ -62,9 +62,12 @@ object M3uSourceLocatorCodec {
         )
     }
 
+    fun parseOrLegacy(value: String): M3uSourceLocator =
+        parseOrLegacy(value = value, allowCleartext = false)
+
     fun parseOrLegacy(
         value: String,
-        allowCleartext: Boolean = false,
+        allowCleartext: Boolean,
     ): M3uSourceLocator = parse(value) ?: M3uSourceLocator(
         endpoint = value.trim(),
         allowCleartext = allowCleartext,
