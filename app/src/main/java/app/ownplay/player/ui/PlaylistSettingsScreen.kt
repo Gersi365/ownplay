@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
@@ -33,6 +34,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
@@ -86,7 +88,9 @@ internal fun PlaylistSettingsScreen(
         ""
     }
     val showPendingSubmission =
-        pendingSourceName.isNotEmpty() && summaries.none { summary -> summary.name == pendingSourceName }
+        pendingSourceName.isNotEmpty() && summaries.none { summary ->
+            !summary.enabled && summary.name == pendingSourceName
+        }
     val configuredCount = summaries.size + if (showPendingSubmission) 1 else 0
 
     Column(
@@ -379,13 +383,20 @@ private fun PlaylistCard(
             }
 
             Row(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .selectable(
+                        selected = isActive,
+                        enabled = summary.enabled,
+                        role = Role.RadioButton,
+                        onClick = onSetActive,
+                    ),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 RadioButton(
                     selected = isActive,
-                    onClick = onSetActive,
+                    onClick = null,
                     enabled = summary.enabled,
                 )
                 Text(
@@ -411,7 +422,7 @@ private fun PlaylistCard(
                 TextButton(onClick = onOpen, enabled = summary.enabled) { Text("Live") }
                 TextButton(onClick = onRefresh, enabled = summary.enabled && !syncing) { Text("Refresh") }
                 TextButton(onClick = onEdit, enabled = summary.enabled && !syncing) { Text("Edit") }
-                TextButton(onClick = onDelete, enabled = summary.enabled && !syncing) { Text("Delete") }
+                TextButton(onClick = onDelete, enabled = !syncing) { Text("Delete") }
             }
         }
     }
