@@ -1,0 +1,936 @@
+name: Agent Multi-source Structural Patch
+
+on:
+  push:
+    branches:
+      - agent/multisource-lifecycle-hardening-no-apk
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Apply structural multi-source patch
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          def replace(path, old, new, count=1):
+              p = Path(path)
+              text = p.read_text()
+              actual = text.count(old)
+              if actual < count:
+                  raise SystemExit(f"{path}: expected at least {count} occurrence(s), found {actual}: {old[:120]!r}")
+              text = text.replace(old, new, count)
+              p.write_text(text)
+
+          def regex_replace(path, pattern, repl, count=1):
+              p = Path(path)
+              text = p.read_text()
+              new, n = re.subn(pattern, repl, text, count=count, flags=re.S | re.M)
+              if n != count:
+                  raise SystemExit(f"{path}: regex replacement expected {count}, got {n}: {pattern[:120]!r}")
+              p.write_text(new)
+
+          staging = r'''package app.ownplay.player.source.onboarding
+
+import androidx.room.withTransaction
+import app.ownplay.player.persistence.OwnPlayDatabase
+import app.ownplay.player.persistence.PlaylistRefreshStateEntity
+import app.ownplay.player.persistence.PlaylistSourceEntity
+import app.ownplay.player.persistence.RefreshStates
+import app.ownplay.player.persistence.SourceKinds
+import app.ownplay.player.persistence.secure.SensitiveValueRef
+import app.ownplay.player.persistence.secure.SensitiveValueStore
+import app.ownplay.player.source.CredentialRef
+import app.ownplay.player.source.SourceError
+import app.ownplay.player.source.SourceValidator
+import app.ownplay.player.source.UrlValidationResult
+import app.ownplay.player.source.credential.CredentialStore
+import app.ownplay.player.source.credential.XtreamCredentials
+import app.ownplay.player.source.m3u.M3uSourceLocator
+import app.ownplay.player.source.m3u.M3uSourceLocatorCodec
+import app.ownplay.player.source.xtream.XtreamSourceLocator
+import app.ownplay.player.source.xtream.XtreamSourceLocatorCodec
+import java.util.UUID
+import kotlinx.coroutines.CancellationException
+
+/**
+ * Persists a playlist identity and its secure locator before any network/catalog work starts.
+ *
+ * A staged source is intentionally disabled until its first live catalog import succeeds. This
+ * gives every submission a stable sourceId immediately, makes Configured playlists deterministic,
+ * and lets the runtime resume an interrupted import on the next app start.
+ */
+class SourceStagingService(
+    private val database: OwnPlayDatabase,
+    private val sensitiveValueStore: SensitiveValueStore,
+    private val credentialStore: CredentialStore,
+) {
+    suspend fun stageXtream(
+        name: String,
+        serverUrl: String,
+        username: String,
+        password: String,
+        allowCleartext: Boolean,
+    ): SourceOnboardingResult {
+        val normalizedName = name.trim()
+        if (normalizedName.isEmpty()) {
+            return SourceOnboardingResult.Failure(SourceOnboardingFailure.InvalidName)
+        }
+        val validated = when (val validation = SourceValidator.validateXtreamServer(serverUrl)) {
+            is UrlValidationResult.Invalid -> return SourceOnboardingResult.Failure(
+                SourceOnboardingFailure.SourceFailure(validation.error),
+            )
+            is UrlValidationResult.Valid -> validation
+        }
+        if (validated.usesCleartext && !allowCleartext) {
+            return SourceOnboardingResult.Failure(
+                SourceOnboardingFailure.SourceFailure(SourceError.CleartextTransportRequiresOptIn),
+            )
+        }
+        if (username.trim().isEmpty() || password.isEmpty()) {
+            return SourceOnboardingResult.Failure(
+                SourceOnboardingFailure.SourceFailure(SourceError.InvalidCredentials),
+            )
+        }
+
+        val credentialRef = try {
+            credentialStore.put(
+                XtreamCredentials(
+                    username = username.trim(),
+                    password = password,
+                ),
+            )
+        } catch (error: Exception) {
+            error.rethrowCancellation()
+            return SourceOnboardingResult.Failure(SourceOnboardingFailure.SecureStorageFailure)
+        }
+
+        val result = persistPending(
+            name = normalizedName,
+            sourceKind = SourceKinds.XTREAM,
+            locatorValue = XtreamSourceLocatorCodec.encode(
+                XtreamSourceLocator(
+                    serverUrl = validated.normalizedUrl,
+                    allowCleartext = allowCleartext,
+                ),
+            ),
+            credentialRef = credentialRef,
+        )
+        if (result is SourceOnboardingResult.Failure) {
+            runCatching { credentialStore.delete(credentialRef) }
+        }
+        return result
+    }
+
+    suspend fun stageRemoteM3u(
+        name: String,
+        playlistUrl: String,
+        allowCleartext: Boolean,
+    ): SourceOnboardingResult {
+        val normalizedName = name.trim()
+        if (normalizedName.isEmpty()) {
+            return SourceOnboardingResult.Failure(SourceOnboardingFailure.InvalidName)
+        }
+        val validated = when (val validation = SourceValidator.validateRemotePlaylistUrl(playlistUrl)) {
+            is UrlValidationResult.Invalid -> return SourceOnboardingResult.Failure(
+                SourceOnboardingFailure.SourceFailure(validation.error),
+            )
+            is UrlValidationResult.Valid -> validation
+        }
+        if (validated.usesCleartext && !allowCleartext) {
+            return SourceOnboardingResult.Failure(
+                SourceOnboardingFailure.SourceFailure(SourceError.CleartextTransportRequiresOptIn),
+            )
+        }
+        return persistPending(
+            name = normalizedName,
+            sourceKind = SourceKinds.REMOTE_M3U,
+            locatorValue = M3uSourceLocatorCodec.encode(
+                M3uSourceLocator(
+                    endpoint = validated.normalizedUrl,
+                    allowCleartext = allowCleartext,
+                    epgUrls = emptyList(),
+                ),
+            ),
+            credentialRef = null,
+        )
+    }
+
+    suspend fun stageLocalM3u(
+        name: String,
+        documentUri: String,
+        allowCleartext: Boolean,
+    ): SourceOnboardingResult {
+        val normalizedName = name.trim()
+        if (normalizedName.isEmpty()) {
+            return SourceOnboardingResult.Failure(SourceOnboardingFailure.InvalidName)
+        }
+        val normalizedUri = documentUri.trim()
+        SourceValidator.validateLocalDocumentUri(normalizedUri)?.let { error ->
+            return SourceOnboardingResult.Failure(SourceOnboardingFailure.SourceFailure(error))
+        }
+        return persistPending(
+            name = normalizedName,
+            sourceKind = SourceKinds.LOCAL_M3U,
+            locatorValue = M3uSourceLocatorCodec.encode(
+                M3uSourceLocator(
+                    endpoint = normalizedUri,
+                    allowCleartext = allowCleartext,
+                    epgUrls = emptyList(),
+                ),
+            ),
+            credentialRef = null,
+        )
+    }
+
+    private suspend fun persistPending(
+        name: String,
+        sourceKind: String,
+        locatorValue: String,
+        credentialRef: CredentialRef?,
+    ): SourceOnboardingResult {
+        val locatorRef = try {
+            sensitiveValueStore.put(locatorValue)
+        } catch (error: Exception) {
+            error.rethrowCancellation()
+            return SourceOnboardingResult.Failure(SourceOnboardingFailure.SecureStorageFailure)
+        }
+        val sourceId = UUID.randomUUID().toString()
+        val now = System.currentTimeMillis()
+        val source = PlaylistSourceEntity(
+            sourceId = sourceId,
+            name = name,
+            sourceKind = sourceKind,
+            locatorRef = locatorRef.value,
+            credentialRef = credentialRef?.value,
+            enabled = false,
+            createdAtEpochMillis = now,
+            updatedAtEpochMillis = now,
+        )
+        try {
+            database.withTransaction {
+                database.playlistSourceDao().upsert(source)
+                database.refreshStateDao().upsert(
+                    PlaylistRefreshStateEntity(
+                        sourceId = sourceId,
+                        generation = now,
+                        state = RefreshStates.RUNNING,
+                        lastAttemptAtEpochMillis = now,
+                        lastSuccessAtEpochMillis = null,
+                        lastErrorCode = null,
+                    ),
+                )
+            }
+        } catch (error: Exception) {
+            runCatching { sensitiveValueStore.delete(SensitiveValueRef(locatorRef.value)) }
+            error.rethrowCancellation()
+            return SourceOnboardingResult.Failure(SourceOnboardingFailure.PersistenceFailure)
+        }
+        return SourceOnboardingResult.Success(sourceId = sourceId, channelCount = 0)
+    }
+}
+
+private fun Exception.rethrowCancellation() {
+    if (this is CancellationException) throw this
+}
+'''
+          Path('app/src/main/java/app/ownplay/player/source/onboarding/SourceStagingService.kt').write_text(staging)
+
+          policy = r'''package app.ownplay.player.source
+
+internal const val SOURCE_REFRESH_STALE_MILLIS: Long = 6L * 60L * 60L * 1000L
+
+internal fun shouldRefreshSource(
+    lastSuccessAtEpochMillis: Long?,
+    nowEpochMillis: Long,
+    staleAfterMillis: Long = SOURCE_REFRESH_STALE_MILLIS,
+): Boolean =
+    lastSuccessAtEpochMillis == null ||
+        nowEpochMillis - lastSuccessAtEpochMillis >= staleAfterMillis
+'''
+          Path('app/src/main/java/app/ownplay/player/source/SourceRefreshPolicy.kt').write_text(policy)
+
+          policy_test = r'''package app.ownplay.player.source
+
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
+import org.junit.Test
+
+class SourceRefreshPolicyTest {
+    @Test
+    fun missingSuccess_isStale() {
+        assertTrue(shouldRefreshSource(null, nowEpochMillis = 100L, staleAfterMillis = 50L))
+    }
+
+    @Test
+    fun recentSuccess_isNotStale() {
+        assertFalse(shouldRefreshSource(80L, nowEpochMillis = 100L, staleAfterMillis = 50L))
+    }
+
+    @Test
+    fun oldSuccess_isStale() {
+        assertTrue(shouldRefreshSource(50L, nowEpochMillis = 100L, staleAfterMillis = 50L))
+    }
+}
+'''
+          Path('app/src/test/java/app/ownplay/player/source/SourceRefreshPolicyTest.kt').write_text(policy_test)
+
+          runtime = 'app/src/main/java/app/ownplay/player/OwnPlayAppRuntime.kt'
+          replace(runtime, 'import android.content.Context\n', 'import android.content.Context\nimport androidx.room.withTransaction\n')
+          replace(
+              runtime,
+              'import app.ownplay.player.persistence.PlaylistSourceEntity\nimport app.ownplay.player.persistence.PlaylistSourceSummary\nimport app.ownplay.player.persistence.SourceKinds\n',
+              'import app.ownplay.player.persistence.PlaylistRefreshStateEntity\nimport app.ownplay.player.persistence.PlaylistSourceEntity\nimport app.ownplay.player.persistence.PlaylistSourceSummary\nimport app.ownplay.player.persistence.RefreshStates\nimport app.ownplay.player.persistence.SourceKinds\n',
+          )
+          replace(
+              runtime,
+              'import app.ownplay.player.source.SourceSyncState\n',
+              'import app.ownplay.player.source.SourceSyncState\nimport app.ownplay.player.source.shouldRefreshSource\n',
+          )
+          replace(
+              runtime,
+              'import app.ownplay.player.source.onboarding.SourceOnboardingService\n',
+              'import app.ownplay.player.source.onboarding.SourceOnboardingService\nimport app.ownplay.player.source.onboarding.SourceStagingService\n',
+          )
+          replace(
+              runtime,
+              'import app.ownplay.player.source.onboarding.toSourceSyncFailure\n',
+              'import app.ownplay.player.source.onboarding.toSourceSyncFailure\nimport app.ownplay.player.source.selection.ActivePlaylistSelection\nimport app.ownplay.player.source.selection.ActivePlaylistStore\n',
+          )
+          replace(runtime, 'import kotlinx.coroutines.flow.first\n', 'import kotlinx.coroutines.flow.first\nimport kotlinx.coroutines.flow.update\n')
+          replace(
+              runtime,
+              '''    private val sourceOnboardingService = SourceOnboardingService(
+        database = database,
+        sensitiveValueStore = sensitiveValueStore,
+        credentialStore = credentialStore,
+        contentResolver = applicationContext.contentResolver,
+    )
+''',
+              '''    private val sourceOnboardingService = SourceOnboardingService(
+        database = database,
+        sensitiveValueStore = sensitiveValueStore,
+        credentialStore = credentialStore,
+        contentResolver = applicationContext.contentResolver,
+    )
+    private val sourceStagingService = SourceStagingService(
+        database = database,
+        sensitiveValueStore = sensitiveValueStore,
+        credentialStore = credentialStore,
+    )
+''',
+          )
+          replace(
+              runtime,
+              '''    private val _sourceSyncState = MutableStateFlow(SourceSyncState())
+    val sourceSyncState: StateFlow<SourceSyncState> = _sourceSyncState.asStateFlow()
+''',
+              '''    private val _sourceSyncState = MutableStateFlow(SourceSyncState())
+    val sourceSyncState: StateFlow<SourceSyncState> = _sourceSyncState.asStateFlow()
+    private val _sourceSyncStates = MutableStateFlow<Map<String, SourceSyncState>>(emptyMap())
+    val sourceSyncStates: StateFlow<Map<String, SourceSyncState>> = _sourceSyncStates.asStateFlow()
+
+    private fun rememberSourceState(state: SourceSyncState) {
+        val sourceId = state.sourceId ?: return
+        _sourceSyncStates.update { current -> current + (sourceId to state) }
+    }
+''',
+          )
+
+          old_startup = '''        runtimeScope.launch {
+            val sources = try {
+                observeSources().first()
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                emptyList()
+            }
+            sources.forEach { source ->
+                refreshSource(source.sourceId)
+            }
+        }
+'''
+          new_startup = '''        runtimeScope.launch {
+            _sourceSyncState.collect(::rememberSourceState)
+        }
+        runtimeScope.launch {
+            val sources = try {
+                database.playlistSourceDao().allForBackup()
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                emptyList()
+            }
+
+            // Resume only imports that were actually in progress when the previous runtime stopped.
+            // Failed imports stay visible and wait for an explicit Retry from Configured playlists.
+            sources.filter { source -> !source.enabled }.forEach { source ->
+                val persistedRefresh = runCatching {
+                    database.refreshStateDao().get(source.sourceId)
+                }.getOrNull()
+                when (persistedRefresh?.state) {
+                    RefreshStates.FAILED -> rememberSourceState(
+                        SourceSyncState(
+                            sourceId = source.sourceId,
+                            sourceName = source.name,
+                            stage = SourceSyncStage.ChannelsFailed,
+                            failure = SourceSyncFailure.Unexpected,
+                        ),
+                    )
+                    else -> completePendingSource(source.sourceId)
+                }
+            }
+
+            // Cached catalogs are usable immediately. Only the persisted active source is considered
+            // for automatic startup refresh, and even that is skipped while still fresh.
+            val readySources = sources.filter(PlaylistSourceEntity::enabled)
+            val persistedActiveSourceId = try {
+                (ActivePlaylistStore(applicationContext).observe().first() as? ActivePlaylistSelection.Ready)
+                    ?.sourceId
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                null
+            }
+            val startupSource = readySources.firstOrNull { source ->
+                source.sourceId == persistedActiveSourceId
+            } ?: readySources.firstOrNull()
+            startupSource?.let { source -> refreshSourceIfStale(source.sourceId) }
+        }
+'''
+          replace(runtime, old_startup, new_startup)
+
+          add_block = r'''    suspend fun addXtreamSource(
+        name: String,
+        serverUrl: String,
+        username: String,
+        password: String,
+        allowCleartext: Boolean = false,
+    ): SourceOnboardingResult = withContext(Dispatchers.IO) {
+        val result = sourceStagingService.stageXtream(
+            name = name,
+            serverUrl = serverUrl,
+            username = username,
+            password = password,
+            allowCleartext = allowCleartext,
+        )
+        handleStagedSourceResult(result, name.trim().ifBlank { "Xtream" })
+        result
+    }
+
+    suspend fun addRemoteM3uSource(
+        name: String,
+        playlistUrl: String,
+        allowCleartext: Boolean = false,
+    ): SourceOnboardingResult = withContext(Dispatchers.IO) {
+        val result = sourceStagingService.stageRemoteM3u(
+            name = name,
+            playlistUrl = playlistUrl,
+            allowCleartext = allowCleartext,
+        )
+        handleStagedSourceResult(result, name.trim().ifBlank { "M3U" })
+        result
+    }
+
+    suspend fun addLocalM3uSource(
+        name: String,
+        documentUri: String,
+        allowCleartext: Boolean = false,
+    ): SourceOnboardingResult = withContext(Dispatchers.IO) {
+        val result = sourceStagingService.stageLocalM3u(
+            name = name,
+            documentUri = documentUri,
+            allowCleartext = allowCleartext,
+        )
+        handleStagedSourceResult(result, name.trim().ifBlank { "Local M3U" })
+        result
+    }
+
+    private fun handleStagedSourceResult(
+        result: SourceOnboardingResult,
+        fallbackName: String,
+    ) {
+        when (result) {
+            is SourceOnboardingResult.Success -> {
+                val state = SourceSyncState(
+                    sourceId = result.sourceId,
+                    sourceName = fallbackName,
+                    stage = SourceSyncStage.LoadingChannels,
+                )
+                _sourceSyncState.value = state
+                rememberSourceState(state)
+                launchPendingImport(result.sourceId)
+            }
+            is SourceOnboardingResult.Failure -> {
+                _sourceSyncState.value = SourceSyncState(
+                    sourceName = fallbackName,
+                    stage = SourceSyncStage.ChannelsFailed,
+                    failure = result.reason.toSourceSyncFailure(),
+                )
+            }
+        }
+    }
+
+    private fun launchPendingImport(sourceId: String) {
+        runtimeScope.launch { completePendingSource(sourceId) }
+    }
+
+    suspend fun retryPendingSource(sourceId: String) {
+        completePendingSource(sourceId)
+    }
+
+    fun onActiveSourceSelected(sourceId: String) {
+        runtimeScope.launch { refreshSourceIfStale(sourceId) }
+    }
+
+    private suspend fun refreshSourceIfStale(sourceId: String) {
+        val refreshState = try {
+            database.refreshStateDao().get(sourceId)
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            null
+        }
+        if (
+            shouldRefreshSource(
+                lastSuccessAtEpochMillis = refreshState?.lastSuccessAtEpochMillis,
+                nowEpochMillis = System.currentTimeMillis(),
+            )
+        ) {
+            refreshSource(sourceId)
+        }
+    }
+
+    private suspend fun completePendingSource(sourceId: String) = withContext(Dispatchers.IO) {
+        refreshMutex.withLock {
+            val source = database.playlistSourceDao().getById(sourceId) ?: return@withLock
+            if (source.enabled) return@withLock
+
+            val existingCount = runCatching {
+                database.providerCatalogDao().channelsForSource(sourceId)
+                    .count { channel -> channel.availability != ChannelAvailability.REMOVED }
+            }.getOrDefault(0)
+            val loadingState = SourceSyncState(
+                sourceId = sourceId,
+                sourceName = source.name,
+                stage = SourceSyncStage.LoadingChannels,
+                channelCount = existingCount,
+            )
+            _sourceSyncState.value = loadingState
+            rememberSourceState(loadingState)
+            markRefreshRunning(sourceId)
+
+            val channelResult = refreshLiveCatalogInternal(
+                sourceId = sourceId,
+                sourceKind = source.sourceKind,
+            )
+            if (channelResult is SourceOnboardingResult.Failure) {
+                val failedState = SourceSyncState(
+                    sourceId = sourceId,
+                    sourceName = source.name,
+                    stage = SourceSyncStage.ChannelsFailed,
+                    channelCount = existingCount,
+                    failure = channelResult.reason.toSourceSyncFailure(),
+                )
+                _sourceSyncState.value = failedState
+                rememberSourceState(failedState)
+                markRefreshFailed(sourceId, failedState.failure.toString())
+                return@withLock
+            }
+            channelResult as SourceOnboardingResult.Success
+
+            val now = System.currentTimeMillis()
+            try {
+                database.withTransaction {
+                    database.playlistSourceDao().upsert(
+                        source.copy(
+                            enabled = true,
+                            updatedAtEpochMillis = now,
+                        ),
+                    )
+                    val previous = database.refreshStateDao().get(sourceId)
+                    database.refreshStateDao().upsert(
+                        PlaylistRefreshStateEntity(
+                            sourceId = sourceId,
+                            generation = previous?.generation ?: now,
+                            state = RefreshStates.SUCCEEDED,
+                            lastAttemptAtEpochMillis = previous?.lastAttemptAtEpochMillis ?: now,
+                            lastSuccessAtEpochMillis = now,
+                            lastErrorCode = null,
+                        ),
+                    )
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                val failedState = SourceSyncState(
+                    sourceId = sourceId,
+                    sourceName = source.name,
+                    stage = SourceSyncStage.ChannelsFailed,
+                    channelCount = channelResult.channelCount,
+                    failure = SourceSyncFailure.Persistence,
+                )
+                _sourceSyncState.value = failedState
+                rememberSourceState(failedState)
+                markRefreshFailed(sourceId, "persistence")
+                return@withLock
+            }
+
+            loadEpgAfterChannels(
+                sourceId = sourceId,
+                sourceName = source.name,
+                channelCount = channelResult.channelCount,
+            )
+            if (source.sourceKind == SourceKinds.XTREAM) {
+                runtimeScope.launch { refreshXtreamMediaCatalogs(sourceId) }
+            }
+        }
+    }
+
+    private suspend fun markRefreshRunning(sourceId: String) {
+        val now = System.currentTimeMillis()
+        val previous = database.refreshStateDao().get(sourceId)
+        database.refreshStateDao().upsert(
+            PlaylistRefreshStateEntity(
+                sourceId = sourceId,
+                generation = now,
+                state = RefreshStates.RUNNING,
+                lastAttemptAtEpochMillis = now,
+                lastSuccessAtEpochMillis = previous?.lastSuccessAtEpochMillis,
+                lastErrorCode = null,
+            ),
+        )
+    }
+
+    private suspend fun markRefreshSucceeded(sourceId: String) {
+        val now = System.currentTimeMillis()
+        val previous = database.refreshStateDao().get(sourceId)
+        database.refreshStateDao().upsert(
+            PlaylistRefreshStateEntity(
+                sourceId = sourceId,
+                generation = previous?.generation ?: now,
+                state = RefreshStates.SUCCEEDED,
+                lastAttemptAtEpochMillis = previous?.lastAttemptAtEpochMillis ?: now,
+                lastSuccessAtEpochMillis = now,
+                lastErrorCode = null,
+            ),
+        )
+    }
+
+    private suspend fun markRefreshFailed(sourceId: String, errorCode: String?) {
+        val now = System.currentTimeMillis()
+        val previous = database.refreshStateDao().get(sourceId)
+        database.refreshStateDao().upsert(
+            PlaylistRefreshStateEntity(
+                sourceId = sourceId,
+                generation = previous?.generation ?: now,
+                state = RefreshStates.FAILED,
+                lastAttemptAtEpochMillis = previous?.lastAttemptAtEpochMillis ?: now,
+                lastSuccessAtEpochMillis = previous?.lastSuccessAtEpochMillis,
+                lastErrorCode = errorCode,
+            ),
+        )
+    }
+
+    suspend fun refreshSource(sourceId: String) {
+'''
+          regex_replace(
+              runtime,
+              r'    suspend fun addXtreamSource\(.*?^    suspend fun refreshSource\(sourceId: String\) \{\n',
+              add_block,
+          )
+
+          old_refresh = '''    suspend fun refreshSource(sourceId: String) {
+        try {
+            refreshSourcePipeline(sourceId)
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            refreshMutex.withLock {
+                if (sourceExists(sourceId)) {
+                    publishUnexpectedRefreshFailure(sourceId)
+                }
+            }
+        }
+    }
+'''
+          new_refresh = '''    suspend fun refreshSource(sourceId: String) {
+        if (!sourceExists(sourceId)) return
+        try {
+            markRefreshRunning(sourceId)
+            refreshSourcePipeline(sourceId)
+            val state = _sourceSyncState.value
+            if (
+                state.sourceId == sourceId &&
+                state.stage == SourceSyncStage.ChannelsFailed
+            ) {
+                markRefreshFailed(sourceId, state.failure.toString())
+            } else {
+                markRefreshSucceeded(sourceId)
+            }
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            refreshMutex.withLock {
+                if (sourceExists(sourceId)) {
+                    publishUnexpectedRefreshFailure(sourceId)
+                    markRefreshFailed(sourceId, "unexpected")
+                }
+            }
+        }
+    }
+'''
+          replace(runtime, old_refresh, new_refresh)
+          replace(
+              runtime,
+              '''            if (_sourceSyncState.value.sourceId == sourceId) {
+                _sourceSyncState.value = SourceSyncState()
+            }
+''',
+              '''            _sourceSyncStates.update { current -> current - sourceId }
+            if (_sourceSyncState.value.sourceId == sourceId) {
+                _sourceSyncState.value = SourceSyncState()
+            }
+''',
+          )
+
+          settings = 'app/src/main/java/app/ownplay/player/ui/PlaylistSettingsScreen.kt'
+          replace(
+              settings,
+              '''    val activeSourceId =
+        (activePlaylistSelection as? ActivePlaylistSelection.Ready)?.sourceId
+
+    var addMode''',
+              '''    val activeSourceId =
+        (activePlaylistSelection as? ActivePlaylistSelection.Ready)?.sourceId
+    val sourceSyncStates by runtime.sourceSyncStates.collectAsState()
+
+    var addMode''',
+          )
+          regex_replace(
+              settings,
+              r'''    val pendingSourceName = if \(.*?    val configuredCount = summaries\.size \+ if \(showPendingSubmission\) 1 else 0\n''',
+              '    val configuredCount = summaries.size\n',
+          )
+          replace(settings, '        if (summaries.isEmpty() && !showPendingSubmission) {', '        if (summaries.isEmpty()) {')
+          regex_replace(
+              settings,
+              r'''\n        if \(showPendingSubmission\) \{\n            PendingPlaylistCard\(name = pendingSourceName\)\n        \}\n''',
+              '\n',
+          )
+          replace(
+              settings,
+              '                syncState = syncState,\n',
+              '''                syncState = sourceSyncStates[summary.sourceId] ?: SourceSyncState(
+                    sourceId = summary.sourceId,
+                    sourceName = summary.name,
+                ),
+''',
+          )
+          replace(
+              settings,
+              '''                onRefresh = { scope.launch { runtime.refreshSource(summary.sourceId) } },
+''',
+              '''                onRefresh = {
+                    scope.launch {
+                        if (summary.enabled) {
+                            runtime.refreshSource(summary.sourceId)
+                        } else {
+                            runtime.retryPendingSource(summary.sourceId)
+                        }
+                    }
+                },
+''',
+          )
+          regex_replace(
+              settings,
+              r'''\n@Composable\nprivate fun PendingPlaylistCard\(name: String\) \{.*?\n\}\n\n@Composable\nprivate fun PlaylistCard''',
+              '\n@Composable\nprivate fun PlaylistCard',
+          )
+          replace(
+              settings,
+              '''    val importing = !summary.enabled
+    val syncing = syncState.sourceId == summary.sourceId && syncState.stage.isLoading()
+''',
+              '''    val importing = !summary.enabled
+    val syncing = syncState.stage.isLoading()
+    val importFailed = importing && syncState.stage == SourceSyncStage.ChannelsFailed
+''',
+          )
+          replace(
+              settings,
+              '''                        text = if (importing) {
+                            "${sourceKindLabel(summary.sourceKind)} • Importing…"
+                        } else {
+                            "${sourceKindLabel(summary.sourceKind)} • ${summary.channelCount} channels"
+                        },
+''',
+              '''                        text = when {
+                            importing && syncing -> "${sourceKindLabel(summary.sourceKind)} • Importing…"
+                            importFailed -> "${sourceKindLabel(summary.sourceKind)} • Import failed"
+                            importing -> "${sourceKindLabel(summary.sourceKind)} • Waiting to import…"
+                            else -> "${sourceKindLabel(summary.sourceKind)} • ${summary.channelCount} channels"
+                        },
+''',
+          )
+          replace(settings, '                if (importing || syncing) CircularProgressIndicator(strokeWidth = 2.dp)', '                if (syncing) CircularProgressIndicator(strokeWidth = 2.dp)')
+          replace(
+              settings,
+              '''                    text = when {
+                        importing -> "Available after import"
+                        isActive -> "Active playlist"
+                        else -> "Use as active playlist"
+                    },
+''',
+              '''                    text = when {
+                        importFailed -> "Retry import before activating"
+                        importing -> "Available after import"
+                        isActive -> "Active playlist"
+                        else -> "Use as active playlist"
+                    },
+''',
+          )
+          replace(
+              settings,
+              '''                TextButton(onClick = onRefresh, enabled = summary.enabled && !syncing) { Text("Refresh") }
+''',
+              '''                TextButton(onClick = onRefresh, enabled = !syncing) {
+                    Text(if (summary.enabled) "Refresh" else "Retry")
+                }
+''',
+          )
+
+          def patch_shell(path, section_name):
+              replace(path, 'import androidx.compose.runtime.remember\n', 'import androidx.compose.runtime.remember\nimport androidx.compose.runtime.rememberCoroutineScope\n')
+              if 'mobile/' in path:
+                  replace(path, 'import androidx.compose.ui.platform.LocalConfiguration\n', 'import androidx.compose.ui.platform.LocalConfiguration\nimport androidx.compose.ui.platform.LocalContext\n')
+              else:
+                  replace(path, 'import androidx.compose.ui.platform.LocalConfiguration\n', 'import androidx.compose.ui.platform.LocalConfiguration\nimport androidx.compose.ui.platform.LocalContext\n')
+              replace(
+                  path,
+                  'import app.ownplay.player.source.SourceSyncState\n',
+                  '''import app.ownplay.player.source.SourceSyncState
+import app.ownplay.player.source.selection.ActivePlaylistSelection
+import app.ownplay.player.source.selection.ActivePlaylistStore
+import app.ownplay.player.source.selection.resolveActivePlaylistId
+''',
+              )
+              replace(path, 'import app.ownplay.player.ui.vod.VodRoute\n', 'import app.ownplay.player.ui.vod.VodRoute\nimport kotlinx.coroutines.launch\n')
+
+              marker = '    val configuration = LocalConfiguration.current\n' if 'mobile/' in path else '    val summaries by runtime.observeSourceSummaries().collectAsState(initial = emptyList())\n'
+              if 'mobile/' in path:
+                  replacement = '''    val configuration = LocalConfiguration.current
+    val context = LocalContext.current
+    val activePlaylistStore = remember(context) {
+        ActivePlaylistStore(context.applicationContext)
+    }
+    val activePlaylistSelection by activePlaylistStore.observe().collectAsState(
+        initial = ActivePlaylistSelection.Loading,
+    )
+    val activePlaylistScope = rememberCoroutineScope()
+'''
+              else:
+                  replacement = '''    val context = LocalContext.current
+    val activePlaylistStore = remember(context) {
+        ActivePlaylistStore(context.applicationContext)
+    }
+    val activePlaylistSelection by activePlaylistStore.observe().collectAsState(
+        initial = ActivePlaylistSelection.Loading,
+    )
+    val activePlaylistScope = rememberCoroutineScope()
+    val summaries by runtime.observeSourceSummaries().collectAsState(initial = emptyList())
+'''
+              replace(path, marker, replacement)
+
+              helper_marker = '    val liveTransitionGate = remember { LivePlaybackTransitionGate() }\n\n'
+              helper = '''    val liveTransitionGate = remember { LivePlaybackTransitionGate() }
+
+    fun rememberActiveSource(sourceId: String?) {
+        activeSourceId = sourceId
+        activePlaylistScope.launch {
+            activePlaylistStore.set(sourceId)
+        }
+    }
+
+'''
+              replace(path, helper_marker, helper)
+              replace(path, '                activeSourceId = selection.request.sourceId\n', '                rememberActiveSource(selection.request.sourceId)\n')
+
+              new_effect = f'''    LaunchedEffect(summaries, activePlaylistSelection) {{
+        val persistedSelection = activePlaylistSelection as? ActivePlaylistSelection.Ready
+            ?: return@LaunchedEffect
+        val enabledSourceIds = summaries
+            .asSequence()
+            .filter {{ summary -> summary.enabled }}
+            .map {{ summary -> summary.sourceId }}
+            .toList()
+        val previousSourceId = activeSourceId
+        val resolvedSourceId = resolveActivePlaylistId(
+            persistedSourceId = persistedSelection.sourceId,
+            currentSourceId = activeSourceId,
+            enabledSourceIds = enabledSourceIds,
+        )
+        activeSourceId = resolvedSourceId
+
+        if (enabledSourceIds.isNotEmpty() && persistedSelection.sourceId != resolvedSourceId) {{
+            activePlaylistStore.set(resolvedSourceId)
+        }}
+        if (resolvedSourceId != null && previousSourceId != resolvedSourceId) {{
+            runtime.onActiveSourceSelected(resolvedSourceId)
+        }}
+
+        val selectionSourceId = activeSelection?.request?.sourceId
+        if (selectionSourceId != null && selectionSourceId != resolvedSourceId) {{
+            stopLivePresentation {{
+                activeSelection = null
+                fullscreenSelection = null
+'''
+              if section_name == 'MobileSection':
+                  new_effect += '                fullscreenEntryReason = null\n'
+              new_effect += f'''            }}
+        }}
+        if (resolvedSourceId == null) {{
+            requestedVodMovieId = null
+            requestedSeriesId = null
+            movieDetailReturnToLibrary = false
+            seriesDetailReturnToLibrary = false
+        }}
+    }}
+
+    val previewActive'''
+              regex_replace(
+                  path,
+                  r'    LaunchedEffect\(summaries\) \{.*?^    \}\n\n    val previewActive',
+                  new_effect,
+              )
+              replace(path, '    val activeSummary = summaries.firstOrNull { it.sourceId == activeSourceId }', '    val activeSummary = summaries.firstOrNull { it.sourceId == activeSourceId && it.enabled }')
+              replace(path, '                        activeSourceId = sourceId\n', '                        rememberActiveSource(sourceId)\n', count=3)
+
+          patch_shell('app/src/mobile/java/app/ownplay/player/ui/MobileOwnPlayApp.kt', 'MobileSection')
+          patch_shell('app/src/tv/java/app/ownplay/player/ui/TVOwnPlayApp.kt', 'TVSection')
+
+          # Remove this one-shot patch workflow from the resulting source commit.
+          Path('.github/workflows/agent-multisource-structural-patch.yml').unlink()
+          PY
+
+      - name: Commit patched source
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "Gersi365"
+          git config user.email "Gersi365@outlook.com"
+          git add -A
+          git diff --cached --check
+          git commit -m "Make multi-source onboarding recoverable and active-aware"
+          git push origin HEAD:agent/multisource-lifecycle-hardening-no-apk
