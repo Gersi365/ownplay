@@ -72,6 +72,7 @@ internal fun PlaylistSettingsScreen(
     )
     val activeSourceId =
         (activePlaylistSelection as? ActivePlaylistSelection.Ready)?.sourceId
+    val sourceSyncStates by runtime.sourceSyncStates.collectAsState()
 
     var addMode by remember { mutableStateOf<AddPlaylistMode?>(null) }
     var editSnapshot by remember { mutableStateOf<SourceEditSnapshot?>(null) }
@@ -79,19 +80,7 @@ internal fun PlaylistSettingsScreen(
     var actionError by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
 
-    val pendingSourceName = if (
-        syncState.stage == SourceSyncStage.LoadingChannels &&
-        syncState.sourceId == null
-    ) {
-        syncState.sourceName?.trim().orEmpty()
-    } else {
-        ""
-    }
-    val showPendingSubmission =
-        pendingSourceName.isNotEmpty() && summaries.none { summary ->
-            !summary.enabled && summary.name == pendingSourceName
-        }
-    val configuredCount = summaries.size + if (showPendingSubmission) 1 else 0
+    val configuredCount = summaries.size
 
     Column(
         modifier = Modifier.fillMaxWidth(),
@@ -150,7 +139,7 @@ internal fun PlaylistSettingsScreen(
             )
         }
 
-        if (summaries.isEmpty() && !showPendingSubmission) {
+        if (summaries.isEmpty()) {
             Surface(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(20.dp),
@@ -172,23 +161,35 @@ internal fun PlaylistSettingsScreen(
             }
         }
 
-        if (showPendingSubmission) {
-            PendingPlaylistCard(name = pendingSourceName)
-        }
-
         summaries.forEach { summary ->
             PlaylistCard(
                 summary = summary,
-                syncState = syncState,
+                syncState = sourceSyncStates[summary.sourceId] ?: SourceSyncState(
+                    sourceId = summary.sourceId,
+                    sourceName = summary.name,
+                ),
                 isActive = summary.enabled && summary.sourceId == activeSourceId,
                 onSetActive = {
                     scope.launch {
                         val saved = activePlaylistStore.set(summary.sourceId)
-                        actionError = if (saved) null else "Could not save the active playlist."
+                        if (saved) {
+                            runtime.onActiveSourceSelected(summary.sourceId)
+                            actionError = null
+                        } else {
+                            actionError = "Could not save the active playlist."
+                        }
                     }
                 },
                 onOpen = { onOpenInLive(summary.sourceId) },
-                onRefresh = { scope.launch { runtime.refreshSource(summary.sourceId) } },
+                onRefresh = {
+                    scope.launch {
+                        if (summary.enabled) {
+                            runtime.refreshSource(summary.sourceId)
+                        } else {
+                            runtime.retryPendingSource(summary.sourceId)
+                        }
+                    }
+                },
                 onEdit = {
                     scope.launch {
                         val loaded = runtime.loadSourceEditSnapshot(summary.sourceId)
@@ -286,43 +287,6 @@ internal fun PlaylistSettingsScreen(
 }
 
 @Composable
-private fun PendingPlaylistCard(name: String) {
-    Surface(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(20.dp),
-        tonalElevation = 2.dp,
-        color = MaterialTheme.colorScheme.surface,
-    ) {
-        Row(
-            modifier = Modifier.padding(16.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            CircularProgressIndicator(strokeWidth = 2.dp)
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = name,
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.SemiBold,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                Text(
-                    text = "Importing playlist…",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-            RadioButton(
-                selected = false,
-                onClick = null,
-                enabled = false,
-            )
-        }
-    }
-}
-
-@Composable
 private fun PlaylistCard(
     summary: PlaylistSourceSummary,
     syncState: SourceSyncState,
@@ -334,7 +298,8 @@ private fun PlaylistCard(
     onDelete: () -> Unit,
 ) {
     val importing = !summary.enabled
-    val syncing = syncState.sourceId == summary.sourceId && syncState.stage.isLoading()
+    val syncing = syncState.stage.isLoading()
+    val importFailed = importing && syncState.stage == SourceSyncStage.ChannelsFailed
     Surface(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(20.dp),
@@ -370,16 +335,17 @@ private fun PlaylistCard(
                         overflow = TextOverflow.Ellipsis,
                     )
                     Text(
-                        text = if (importing) {
-                            "${sourceKindLabel(summary.sourceKind)} • Importing…"
-                        } else {
-                            "${sourceKindLabel(summary.sourceKind)} • ${summary.channelCount} channels"
+                        text = when {
+                            importing && syncing -> "${sourceKindLabel(summary.sourceKind)} • Importing…"
+                            importFailed -> "${sourceKindLabel(summary.sourceKind)} • Import failed"
+                            importing -> "${sourceKindLabel(summary.sourceKind)} • Waiting to import…"
+                            else -> "${sourceKindLabel(summary.sourceKind)} • ${summary.channelCount} channels"
                         },
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
-                if (importing || syncing) CircularProgressIndicator(strokeWidth = 2.dp)
+                if (syncing) CircularProgressIndicator(strokeWidth = 2.dp)
             }
 
             Row(
@@ -401,6 +367,7 @@ private fun PlaylistCard(
                 )
                 Text(
                     text = when {
+                        importFailed -> "Retry import before activating"
                         importing -> "Available after import"
                         isActive -> "Active playlist"
                         else -> "Use as active playlist"
@@ -420,7 +387,9 @@ private fun PlaylistCard(
                 horizontalArrangement = Arrangement.spacedBy(4.dp),
             ) {
                 TextButton(onClick = onOpen, enabled = summary.enabled) { Text("Live") }
-                TextButton(onClick = onRefresh, enabled = summary.enabled && !syncing) { Text("Refresh") }
+                TextButton(onClick = onRefresh, enabled = !syncing) {
+                    Text(if (summary.enabled) "Refresh" else "Retry")
+                }
                 TextButton(onClick = onEdit, enabled = summary.enabled && !syncing) { Text("Edit") }
                 TextButton(onClick = onDelete, enabled = !syncing) { Text("Delete") }
             }
