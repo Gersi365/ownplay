@@ -37,6 +37,10 @@ android {
     }
 
     buildTypes {
+        debug {
+            applicationIdSuffix = ".qa"
+            versionNameSuffix = "-m3u-qa"
+        }
         release {
             isMinifyEnabled = false
             proguardFiles(
