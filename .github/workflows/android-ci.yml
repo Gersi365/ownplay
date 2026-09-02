@@ -15,10 +15,9 @@ concurrency:
 
 jobs:
   validate:
-    # Branches explicitly ending in -no-apk use Android Validation No APK instead.
     if: ${{ github.event_name != 'pull_request' || !endsWith(github.head_ref, '-no-apk') }}
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
 
     steps:
       - name: Checkout
@@ -35,44 +34,71 @@ jobs:
         with:
           gradle-version: "9.5.0"
 
-      - name: Preserve manual-test debug signing identity
+      - name: Preserve isolated QA debug signing identity
         uses: actions/cache@v4
         with:
           path: ~/.android/debug.keystore
-          key: ownplay-pr16-debug-keystore-v1
+          key: ownplay-m3u-qa-debug-keystore-v1
 
       - name: Verify Android SDK 36
         shell: bash
         run: |
+          set -euo pipefail
           test -d "${ANDROID_HOME}/platforms/android-36"
-          test -d "${ANDROID_HOME}/build-tools/36.0.0"
+          test -x "${ANDROID_HOME}/build-tools/36.0.0/apksigner"
+          test -x "${ANDROID_HOME}/build-tools/36.0.0/aapt"
 
-      - name: Validate
-        run: gradle :app:testDebugUnitTest :app:lintDebug :app:assembleDebug :app:compileDebugAndroidTestKotlin --stacktrace
+      - name: Validate and assemble Mobile and TV QA APKs
+        shell: bash
+        run: |
+          set -euo pipefail
+          gradle \
+            :app:kspMobileDebugKotlin \
+            :app:kspTvDebugKotlin \
+            :app:testMobileDebugUnitTest \
+            :app:testTvDebugUnitTest \
+            :app:lintMobileDebug \
+            :app:lintTvDebug \
+            :app:compileMobileDebugAndroidTestKotlin \
+            :app:compileTvDebugAndroidTestKotlin \
+            :app:assembleMobileDebug \
+            :app:assembleTvDebug \
+            --stacktrace
 
-      - name: Verify debug signing identity
+      - name: Verify isolated QA package IDs and signatures
         if: success()
         shell: bash
         run: |
-          test -f "$HOME/.android/debug.keystore"
-          keytool -list \
-            -keystore "$HOME/.android/debug.keystore" \
-            -storepass android \
-            -alias androiddebugkey
+          set -euo pipefail
+          BUILD_TOOLS="${ANDROID_HOME}/build-tools/36.0.0"
+          MOBILE_INPUT="app/build/outputs/apk/mobile/debug/app-mobile-debug.apk"
+          TV_INPUT="app/build/outputs/apk/tv/debug/app-tv-debug.apk"
+          MOBILE_OUTPUT="app/build/outputs/apk/mobile/debug/OwnPlay-Mobile-M3U-QA.apk"
+          TV_OUTPUT="app/build/outputs/apk/tv/debug/OwnPlay-TV-M3U-QA.apk"
 
-      - name: Upload Room schema
-        if: success()
-        uses: actions/upload-artifact@v4
-        with:
-          name: ownplay-room-schema
-          path: app/schemas
-          if-no-files-found: error
-          retention-days: 7
+          test -f "$MOBILE_INPUT"
+          test -f "$TV_INPUT"
+          cp "$MOBILE_INPUT" "$MOBILE_OUTPUT"
+          cp "$TV_INPUT" "$TV_OUTPUT"
+
+          "$BUILD_TOOLS/apksigner" verify --verbose --print-certs "$MOBILE_OUTPUT"
+          "$BUILD_TOOLS/apksigner" verify --verbose --print-certs "$TV_OUTPUT"
+
+          MOBILE_BADGING="$("$BUILD_TOOLS/aapt" dump badging "$MOBILE_OUTPUT" | head -n 1)"
+          TV_BADGING="$("$BUILD_TOOLS/aapt" dump badging "$TV_OUTPUT" | head -n 1)"
+          printf '%s\n' "$MOBILE_BADGING"
+          printf '%s\n' "$TV_BADGING"
+          printf '%s\n' "$MOBILE_BADGING" | grep -F "name='app.ownplay.mobile.qa'"
+          printf '%s\n' "$TV_BADGING" | grep -F "name='app.ownplay.tv.qa'"
+
+          sha256sum "$MOBILE_OUTPUT" | tee "$MOBILE_OUTPUT.sha256"
+          sha256sum "$TV_OUTPUT" | tee "$TV_OUTPUT.sha256"
 
       - name: Verify Room schema is committed
         if: success()
         shell: bash
         run: |
+          set -euo pipefail
           python3 - <<'PY'
           import json
           import pathlib
@@ -81,8 +107,10 @@ jobs:
 
           root = pathlib.Path("app/schemas")
           problems = []
-
           generated = sorted(root.rglob("*.json"))
+          if not generated:
+              problems.append("No Room schema JSON generated.")
+
           for path in generated:
               relative = path.as_posix()
               try:
@@ -118,11 +146,35 @@ jobs:
               sys.exit(1)
           PY
 
-      - name: Upload debug APK
+      - name: Upload Mobile M3U QA APK
         if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: ownplay-debug-apk
-          path: app/build/outputs/apk/debug/app-debug.apk
+          name: ownplay-mobile-m3u-qa
+          path: |
+            app/build/outputs/apk/mobile/debug/OwnPlay-Mobile-M3U-QA.apk
+            app/build/outputs/apk/mobile/debug/OwnPlay-Mobile-M3U-QA.apk.sha256
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0
+
+      - name: Upload TV M3U QA APK
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ownplay-tv-m3u-qa
+          path: |
+            app/build/outputs/apk/tv/debug/OwnPlay-TV-M3U-QA.apk
+            app/build/outputs/apk/tv/debug/OwnPlay-TV-M3U-QA.apk.sha256
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0
+
+      - name: Upload Room schema
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ownplay-room-schema-m3u-qa
+          path: app/schemas
           if-no-files-found: error
           retention-days: 7
