@@ -31,7 +31,6 @@ interface PlaylistSourceDao {
         LEFT JOIN provider_channels AS channel
             ON channel.sourceId = source.sourceId
             AND channel.availability != 'removed'
-        WHERE source.enabled = 1
         GROUP BY source.sourceId
         ORDER BY source.createdAtEpochMillis ASC
         """,
