@@ -33,6 +33,23 @@ class M3uSourceLocatorTest {
     }
 
     @Test
+    fun locatorRenderingRedactsEndpointAndEpgUrls() {
+        val endpointSecret = "playlist-secret-token"
+        val epgSecret = "epg-secret-token"
+        val locator = M3uSourceLocator(
+            endpoint = "https://provider.example/playlist.m3u?token=$endpointSecret",
+            allowCleartext = false,
+            epgUrls = listOf("https://epg.example/guide.xml?token=$epgSecret"),
+        )
+
+        val rendered = locator.toString()
+
+        assertFalse(rendered.contains(endpointSecret))
+        assertFalse(rendered.contains(epgSecret))
+        assertTrue(rendered.contains("<redacted>"))
+    }
+
+    @Test
     fun parseOrLegacy_keepsExistingRawLocatorWithoutMigration() {
         val legacy = "https://provider.example/playlist.m3u?token=abc"
 
