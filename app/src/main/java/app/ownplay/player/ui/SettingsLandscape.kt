@@ -55,6 +55,7 @@ internal fun LandscapeSettingsShell(
         -> SettingsDestination.CONTENT
         else -> resolvedDestination
     }
+    val readySummaries = summaries.filter { summary -> summary.enabled }
 
     LaunchedEffect(isTelevision, resolvedDestination) {
         if (isTelevision) {
@@ -121,7 +122,7 @@ internal fun LandscapeSettingsShell(
 
                 SettingsDestination.LIVE_MANAGEMENT -> LiveManagementScreen(
                     runtime = runtime,
-                    summaries = summaries,
+                    summaries = readySummaries,
                     onBack = { onDestinationChange(SettingsDestination.CONTENT) },
                 )
 
