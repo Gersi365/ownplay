@@ -10,6 +10,7 @@ import app.ownplay.player.live.ingest.InitialLiveCatalogFactory
 import app.ownplay.player.live.ingest.InitialLiveCatalogIngestResult
 import app.ownplay.player.live.ingest.InitialLiveCatalogIngestor
 import app.ownplay.player.live.ingest.RoomLiveCatalogPersistence
+import app.ownplay.player.persistence.ChannelAvailability
 import app.ownplay.player.persistence.OwnPlayDatabase
 import app.ownplay.player.persistence.PlaylistSourceEntity
 import app.ownplay.player.persistence.PlaylistSourceSummary
@@ -272,6 +273,7 @@ class OwnPlayAppRuntime(
     suspend fun addRemoteM3uSource(
         name: String,
         playlistUrl: String,
+        allowCleartext: Boolean = false,
     ): SourceOnboardingResult = withContext(Dispatchers.IO) {
         refreshMutex.withLock {
             _sourceSyncState.value = SourceSyncState(
@@ -281,19 +283,21 @@ class OwnPlayAppRuntime(
             val result = sourceOnboardingService.addRemoteM3u(
                 name = name,
                 playlistUrl = playlistUrl,
+                allowCleartext = allowCleartext,
             )
-            _sourceSyncState.value = when (result) {
-                is SourceOnboardingResult.Success -> SourceSyncState(
+            when (result) {
+                is SourceOnboardingResult.Success -> loadEpgAfterChannels(
                     sourceId = result.sourceId,
                     sourceName = name.trim(),
-                    stage = SourceSyncStage.Ready,
                     channelCount = result.channelCount,
                 )
-                is SourceOnboardingResult.Failure -> SourceSyncState(
-                    sourceName = name.trim().ifBlank { "M3U" },
-                    stage = SourceSyncStage.ChannelsFailed,
-                    failure = result.reason.toSourceSyncFailure(),
-                )
+                is SourceOnboardingResult.Failure -> {
+                    _sourceSyncState.value = SourceSyncState(
+                        sourceName = name.trim().ifBlank { "M3U" },
+                        stage = SourceSyncStage.ChannelsFailed,
+                        failure = result.reason.toSourceSyncFailure(),
+                    )
+                }
             }
             result
         }
@@ -302,6 +306,7 @@ class OwnPlayAppRuntime(
     suspend fun addLocalM3uSource(
         name: String,
         documentUri: String,
+        allowCleartext: Boolean = false,
     ): SourceOnboardingResult = withContext(Dispatchers.IO) {
         refreshMutex.withLock {
             _sourceSyncState.value = SourceSyncState(
@@ -311,19 +316,21 @@ class OwnPlayAppRuntime(
             val result = sourceOnboardingService.addLocalM3u(
                 name = name,
                 documentUri = documentUri,
+                allowCleartext = allowCleartext,
             )
-            _sourceSyncState.value = when (result) {
-                is SourceOnboardingResult.Success -> SourceSyncState(
+            when (result) {
+                is SourceOnboardingResult.Success -> loadEpgAfterChannels(
                     sourceId = result.sourceId,
                     sourceName = name.trim(),
-                    stage = SourceSyncStage.Ready,
                     channelCount = result.channelCount,
                 )
-                is SourceOnboardingResult.Failure -> SourceSyncState(
-                    sourceName = name.trim().ifBlank { "Local M3U" },
-                    stage = SourceSyncStage.ChannelsFailed,
-                    failure = result.reason.toSourceSyncFailure(),
-                )
+                is SourceOnboardingResult.Failure -> {
+                    _sourceSyncState.value = SourceSyncState(
+                        sourceName = name.trim().ifBlank { "Local M3U" },
+                        stage = SourceSyncStage.ChannelsFailed,
+                        failure = result.reason.toSourceSyncFailure(),
+                    )
+                }
             }
             result
         }
@@ -362,7 +369,8 @@ class OwnPlayAppRuntime(
     private suspend fun refreshSourcePipeline(sourceId: String) = refreshMutex.withLock {
         val source = database.playlistSourceDao().getById(sourceId) ?: return@withLock
         val existingCount = try {
-            database.providerCatalogDao().channelsForSource(sourceId).size
+            database.providerCatalogDao().channelsForSource(sourceId)
+                .count { channel -> channel.availability != ChannelAvailability.REMOVED }
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (_: Exception) {
@@ -375,10 +383,10 @@ class OwnPlayAppRuntime(
             channelCount = existingCount,
         )
 
-        val channelResult = when (source.sourceKind) {
-            SourceKinds.XTREAM -> refreshXtreamLiveCatalogInternal(sourceId)
-            else -> SourceOnboardingResult.Success(sourceId, existingCount)
-        }
+        val channelResult = refreshLiveCatalogInternal(
+            sourceId = sourceId,
+            sourceKind = source.sourceKind,
+        )
         if (channelResult is SourceOnboardingResult.Failure) {
             _sourceSyncState.value = SourceSyncState(
                 sourceId = sourceId,
@@ -394,20 +402,13 @@ class OwnPlayAppRuntime(
         }
         channelResult as SourceOnboardingResult.Success
 
+        loadEpgAfterChannels(
+            sourceId = sourceId,
+            sourceName = source.name,
+            channelCount = channelResult.channelCount,
+        )
         if (source.sourceKind == SourceKinds.XTREAM) {
-            loadEpgAfterChannels(
-                sourceId = sourceId,
-                sourceName = source.name,
-                channelCount = channelResult.channelCount,
-            )
             refreshXtreamMediaCatalogs(sourceId)
-        } else {
-            _sourceSyncState.value = SourceSyncState(
-                sourceId = sourceId,
-                sourceName = source.name,
-                stage = SourceSyncStage.Ready,
-                channelCount = channelResult.channelCount,
-            )
         }
     }
 
@@ -453,7 +454,8 @@ class OwnPlayAppRuntime(
             current.channelCount
         } else {
             try {
-                database.providerCatalogDao().channelsForSource(sourceId).size
+                database.providerCatalogDao().channelsForSource(sourceId)
+                    .count { channel -> channel.availability != ChannelAvailability.REMOVED }
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (_: Exception) {
@@ -575,8 +577,18 @@ class OwnPlayAppRuntime(
     suspend fun ensureLiveCatalog(sourceId: String): SourceOnboardingResult =
         withContext(Dispatchers.IO) {
             refreshMutex.withLock {
+                val source = try {
+                    database.playlistSourceDao().getById(sourceId)
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (_: Exception) {
+                    null
+                } ?: return@withLock SourceOnboardingResult.Failure(
+                    SourceOnboardingFailure.PersistenceFailure,
+                )
                 val existingChannels = try {
                     database.providerCatalogDao().channelsForSource(sourceId)
+                        .count { channel -> channel.availability != ChannelAvailability.REMOVED }
                 } catch (cancelled: CancellationException) {
                     throw cancelled
                 } catch (_: Exception) {
@@ -584,22 +596,48 @@ class OwnPlayAppRuntime(
                         SourceOnboardingFailure.PersistenceFailure,
                     )
                 }
-                if (existingChannels.isNotEmpty()) {
+                if (existingChannels > 0) {
                     return@withLock SourceOnboardingResult.Success(
                         sourceId = sourceId,
-                        channelCount = existingChannels.size,
+                        channelCount = existingChannels,
                     )
                 }
-                refreshXtreamLiveCatalogInternal(sourceId)
+                refreshLiveCatalogInternal(
+                    sourceId = sourceId,
+                    sourceKind = source.sourceKind,
+                )
             }
         }
 
     suspend fun refreshLiveCatalog(sourceId: String): SourceOnboardingResult =
         withContext(Dispatchers.IO) {
             refreshMutex.withLock {
-                refreshXtreamLiveCatalogInternal(sourceId)
+                val source = try {
+                    database.playlistSourceDao().getById(sourceId)
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (_: Exception) {
+                    null
+                } ?: return@withLock SourceOnboardingResult.Failure(
+                    SourceOnboardingFailure.PersistenceFailure,
+                )
+                refreshLiveCatalogInternal(
+                    sourceId = sourceId,
+                    sourceKind = source.sourceKind,
+                )
             }
         }
+
+    private suspend fun refreshLiveCatalogInternal(
+        sourceId: String,
+        sourceKind: String,
+    ): SourceOnboardingResult = when (sourceKind) {
+        SourceKinds.XTREAM -> refreshXtreamLiveCatalogInternal(sourceId)
+        SourceKinds.REMOTE_M3U,
+        SourceKinds.LOCAL_M3U,
+        -> sourceOnboardingService.refreshM3u(sourceId)
+        else -> SourceOnboardingResult.Failure(SourceOnboardingFailure.CatalogImportFailure)
+    }
 
     private suspend fun refreshXtreamLiveCatalogInternal(
         sourceId: String,

@@ -413,6 +413,20 @@ private fun AddPlaylistDialog(
                             singleLine = true,
                             modifier = Modifier.fillMaxWidth(),
                         )
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Checkbox(
+                                checked = allowCleartext,
+                                onCheckedChange = { allowCleartext = it },
+                            )
+                            Text("Allow HTTP for this playlist and EPG")
+                        }
+                        if (allowCleartext) {
+                            Text(
+                                text = "HTTP does not encrypt playlist, EPG, or stream traffic.",
+                                color = MaterialTheme.colorScheme.error,
+                                style = MaterialTheme.typography.bodySmall,
+                            )
+                        }
                     }
                     AddPlaylistMode.LOCAL_M3U -> {
                         OutlinedButton(
@@ -420,6 +434,20 @@ private fun AddPlaylistDialog(
                             modifier = Modifier.fillMaxWidth(),
                         ) {
                             Text(if (localUri == null) "Choose file" else "File selected")
+                        }
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Checkbox(
+                                checked = allowCleartext,
+                                onCheckedChange = { allowCleartext = it },
+                            )
+                            Text("Allow HTTP EPG links from this file")
+                        }
+                        if (allowCleartext) {
+                            Text(
+                                text = "HTTP EPG traffic is not encrypted.",
+                                color = MaterialTheme.colorScheme.error,
+                                style = MaterialTheme.typography.bodySmall,
+                            )
                         }
                     }
                 }
@@ -461,11 +489,13 @@ private fun AddPlaylistDialog(
                             runtime = runtime,
                             name = name,
                             playlistUrl = endpoint,
+                            allowCleartext = allowCleartext,
                         )
                         AddPlaylistMode.LOCAL_M3U -> SourceSubmissionCoordinator.submitLocalM3u(
                             runtime = runtime,
                             name = name,
                             documentUri = checkNotNull(localUri),
+                            allowCleartext = allowCleartext,
                         )
                     }
                     onCompleted()
@@ -620,7 +650,11 @@ private fun validateAddPlaylistInput(
         AddPlaylistMode.REMOTE_M3U -> {
             when (val validation = SourceValidator.validateRemotePlaylistUrl(endpoint)) {
                 is UrlValidationResult.Invalid -> sourceErrorMessage(validation.error)
-                is UrlValidationResult.Valid -> null
+                is UrlValidationResult.Valid -> when {
+                    validation.usesCleartext && !allowCleartext ->
+                        sourceErrorMessage(SourceError.CleartextTransportRequiresOptIn)
+                    else -> null
+                }
             }
         }
         AddPlaylistMode.LOCAL_M3U -> {
