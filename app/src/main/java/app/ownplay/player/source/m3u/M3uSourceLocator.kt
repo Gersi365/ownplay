@@ -8,7 +8,15 @@ data class M3uSourceLocator(
     val endpoint: String,
     val allowCleartext: Boolean,
     val epgUrls: List<String>,
-)
+) {
+    init {
+        require(endpoint.isNotBlank()) { "M3U endpoint must not be blank" }
+    }
+
+    override fun toString(): String =
+        "M3uSourceLocator(endpoint=<redacted>, allowCleartext=$allowCleartext, " +
+            "epgUrls=${if (epgUrls.isEmpty()) "empty" else "<redacted>"})"
+}
 
 /**
  * Versioned storage format for M3U source metadata.
