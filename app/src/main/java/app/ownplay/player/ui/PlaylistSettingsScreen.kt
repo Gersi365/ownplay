@@ -46,8 +46,6 @@ import app.ownplay.player.source.UrlValidationResult
 import app.ownplay.player.source.management.SourceEditSnapshot
 import app.ownplay.player.source.management.SourceMutationFailure
 import app.ownplay.player.source.management.SourceMutationResult
-import app.ownplay.player.source.onboarding.SourceOnboardingFailure
-import app.ownplay.player.source.onboarding.SourceOnboardingResult
 import kotlinx.coroutines.launch
 
 private enum class AddPlaylistMode { XTREAM, REMOTE_M3U, LOCAL_M3U }
@@ -319,14 +317,12 @@ private fun AddPlaylistDialog(
     onCompleted: () -> Unit,
 ) {
     val context = LocalContext.current
-    val scope = rememberCoroutineScope()
     var name by remember(mode) { mutableStateOf("") }
     var endpoint by remember(mode) { mutableStateOf("") }
     var username by remember(mode) { mutableStateOf("") }
     var password by remember(mode) { mutableStateOf("") }
     var allowCleartext by remember(mode) { mutableStateOf(false) }
     var localUri by remember(mode) { mutableStateOf<String?>(null) }
-    var working by remember(mode) { mutableStateOf(false) }
     var error by remember(mode) { mutableStateOf<String?>(null) }
 
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
@@ -347,7 +343,7 @@ private fun AddPlaylistDialog(
     }
 
     AlertDialog(
-        onDismissRequest = { if (!working) onDismiss() },
+        onDismissRequest = onDismiss,
         title = { Text("Add playlist") },
         text = {
             Column(
@@ -368,7 +364,6 @@ private fun AddPlaylistDialog(
                     onValueChange = { name = it },
                     label = { Text("Playlist name") },
                     singleLine = true,
-                    enabled = !working,
                     modifier = Modifier.fillMaxWidth(),
                 )
                 when (mode) {
@@ -378,7 +373,6 @@ private fun AddPlaylistDialog(
                             onValueChange = { endpoint = it },
                             label = { Text("Server URL") },
                             singleLine = true,
-                            enabled = !working,
                             modifier = Modifier.fillMaxWidth(),
                         )
                         OutlinedTextField(
@@ -386,7 +380,6 @@ private fun AddPlaylistDialog(
                             onValueChange = { username = it },
                             label = { Text("Username") },
                             singleLine = true,
-                            enabled = !working,
                             modifier = Modifier.fillMaxWidth(),
                         )
                         OutlinedTextField(
@@ -395,14 +388,12 @@ private fun AddPlaylistDialog(
                             label = { Text("Password") },
                             visualTransformation = PasswordVisualTransformation(),
                             singleLine = true,
-                            enabled = !working,
                             modifier = Modifier.fillMaxWidth(),
                         )
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Checkbox(
                                 checked = allowCleartext,
                                 onCheckedChange = { allowCleartext = it },
-                                enabled = !working,
                             )
                             Text("Allow HTTP for this provider")
                         }
@@ -420,14 +411,12 @@ private fun AddPlaylistDialog(
                             onValueChange = { endpoint = it },
                             label = { Text("Playlist URL") },
                             singleLine = true,
-                            enabled = !working,
                             modifier = Modifier.fillMaxWidth(),
                         )
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Checkbox(
                                 checked = allowCleartext,
                                 onCheckedChange = { allowCleartext = it },
-                                enabled = !working,
                             )
                             Text("Allow HTTP for this playlist and EPG")
                         }
@@ -442,7 +431,6 @@ private fun AddPlaylistDialog(
                     AddPlaylistMode.LOCAL_M3U -> {
                         OutlinedButton(
                             onClick = { picker.launch(arrayOf("*/*")) },
-                            enabled = !working,
                             modifier = Modifier.fillMaxWidth(),
                         ) {
                             Text(if (localUri == null) "Choose file" else "File selected")
@@ -451,7 +439,6 @@ private fun AddPlaylistDialog(
                             Checkbox(
                                 checked = allowCleartext,
                                 onCheckedChange = { allowCleartext = it },
-                                enabled = !working,
                             )
                             Text("Allow HTTP EPG links from this file")
                         }
@@ -464,27 +451,16 @@ private fun AddPlaylistDialog(
                         }
                     }
                 }
-                if (working) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(10.dp),
-                    ) {
-                        CircularProgressIndicator(strokeWidth = 2.dp)
-                        Text("Verifying and importing playlist…")
-                    }
-                } else {
-                    Text(
-                        text = "OwnPlay verifies the source and imports its channel catalog before closing this form.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
+                Text(
+                    text = "After you tap Add, this form closes immediately. Channel and EPG import continue in the background.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
                 error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
             }
         },
         confirmButton = {
             Button(
-                enabled = !working,
                 onClick = {
                     val validationError = validateAddPlaylistInput(
                         mode = mode,
@@ -500,41 +476,34 @@ private fun AddPlaylistDialog(
                         return@Button
                     }
 
-                    working = true
-                    error = null
-                    scope.launch {
-                        val result = when (mode) {
-                            AddPlaylistMode.XTREAM -> runtime.addXtreamSource(
-                                name = name,
-                                serverUrl = endpoint,
-                                username = username,
-                                password = password,
-                                allowCleartext = allowCleartext,
-                            )
-                            AddPlaylistMode.REMOTE_M3U -> runtime.addRemoteM3uSource(
-                                name = name,
-                                playlistUrl = endpoint,
-                                allowCleartext = allowCleartext,
-                            )
-                            AddPlaylistMode.LOCAL_M3U -> runtime.addLocalM3uSource(
-                                name = name,
-                                documentUri = checkNotNull(localUri),
-                                allowCleartext = allowCleartext,
-                            )
-                        }
-                        when (result) {
-                            is SourceOnboardingResult.Success -> onCompleted()
-                            is SourceOnboardingResult.Failure -> {
-                                working = false
-                                error = onboardingFailureMessage(result.reason)
-                            }
-                        }
+                    when (mode) {
+                        AddPlaylistMode.XTREAM -> SourceSubmissionCoordinator.submitXtream(
+                            runtime = runtime,
+                            name = name,
+                            serverUrl = endpoint,
+                            username = username,
+                            password = password,
+                            allowCleartext = allowCleartext,
+                        )
+                        AddPlaylistMode.REMOTE_M3U -> SourceSubmissionCoordinator.submitRemoteM3u(
+                            runtime = runtime,
+                            name = name,
+                            playlistUrl = endpoint,
+                            allowCleartext = allowCleartext,
+                        )
+                        AddPlaylistMode.LOCAL_M3U -> SourceSubmissionCoordinator.submitLocalM3u(
+                            runtime = runtime,
+                            name = name,
+                            documentUri = checkNotNull(localUri),
+                            allowCleartext = allowCleartext,
+                        )
                     }
+                    onCompleted()
                 },
-            ) { Text(if (working) "Adding…" else "Add") }
+            ) { Text("Add") }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss, enabled = !working) { Text("Cancel") }
+            TextButton(onClick = onDismiss) { Text("Cancel") }
         },
     )
 }
@@ -703,14 +672,6 @@ private fun sourceKindLabel(kind: String): String = when (kind) {
     SourceKinds.REMOTE_M3U -> "M3U URL"
     SourceKinds.LOCAL_M3U -> "Local M3U"
     else -> "Playlist"
-}
-
-private fun onboardingFailureMessage(failure: SourceOnboardingFailure): String = when (failure) {
-    SourceOnboardingFailure.InvalidName -> "Enter a playlist name."
-    SourceOnboardingFailure.SecureStorageFailure -> "Secure storage failed."
-    SourceOnboardingFailure.PersistenceFailure -> "Could not save the playlist."
-    SourceOnboardingFailure.CatalogImportFailure -> "Could not import the playlist channel catalog."
-    is SourceOnboardingFailure.SourceFailure -> sourceErrorMessage(failure.error)
 }
 
 private fun mutationFailureMessage(failure: SourceMutationFailure): String = when (failure) {
