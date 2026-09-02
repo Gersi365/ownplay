@@ -34,6 +34,10 @@ class RoomLiveCatalogPersistence(
         channels: List<ProviderChannelEntity>,
     ) {
         database.withTransaction {
+            val sourceId = channels.firstOrNull()?.sourceId ?: categories.firstOrNull()?.sourceId
+            if (sourceId != null) {
+                database.providerCatalogDao().deleteCategoriesForSource(sourceId)
+            }
             database.providerCatalogDao().upsertCategories(categories)
             database.providerCatalogDao().upsertChannels(channels)
             val firstChannel = channels.firstOrNull()
