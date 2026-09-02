@@ -61,20 +61,33 @@ jobs:
           test -x "$BUILD_TOOLS/apksigner"
           test -x "$BUILD_TOOLS/aapt"
 
-      - name: Validate and assemble Mobile and TV update APKs
+      - name: Validate and assemble Mobile update APK
         shell: bash
         run: |
           set -euo pipefail
           gradle \
+            -Dorg.gradle.jvmargs="-Xmx4g -XX:MaxMetaspaceSize=1g" \
+            --max-workers=2 \
+            --no-daemon \
             :app:kspMobileReleaseKotlin \
-            :app:kspTvReleaseKotlin \
             :app:testMobileDebugUnitTest \
-            :app:testTvDebugUnitTest \
             :app:lintMobileRelease \
-            :app:lintTvRelease \
             :app:compileMobileDebugAndroidTestKotlin \
-            :app:compileTvDebugAndroidTestKotlin \
             :app:assembleMobileRelease \
+            --stacktrace
+
+      - name: Validate and assemble TV update APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          gradle \
+            -Dorg.gradle.jvmargs="-Xmx4g -XX:MaxMetaspaceSize=1g" \
+            --max-workers=2 \
+            --no-daemon \
+            :app:kspTvReleaseKotlin \
+            :app:testTvDebugUnitTest \
+            :app:lintTvRelease \
+            :app:compileTvDebugAndroidTestKotlin \
             :app:assembleTvRelease \
             --stacktrace
 
