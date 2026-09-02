@@ -15,10 +15,9 @@ concurrency:
 
 jobs:
   validate:
-    # Branches explicitly ending in -no-apk use Android Validation No APK instead.
     if: ${{ github.event_name != 'pull_request' || !endsWith(github.head_ref, '-no-apk') }}
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
 
     steps:
       - name: Checkout
@@ -35,44 +34,102 @@ jobs:
         with:
           gradle-version: "9.5.0"
 
-      - name: Preserve manual-test debug signing identity
-        uses: actions/cache@v4
+      - name: Restore stable signing identity
+        uses: actions/cache/restore@v4
         with:
           path: ~/.android/debug.keystore
           key: ownplay-pr16-debug-keystore-v1
+          fail-on-cache-miss: true
+
+      - name: Verify stable signing identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          KEYSTORE="$HOME/.android/debug.keystore"
+          test -f "$KEYSTORE"
+          CERT_OUTPUT="$(keytool -list -v -keystore "$KEYSTORE" -storepass android -alias androiddebugkey)"
+          printf '%s\n' "$CERT_OUTPUT"
+          printf '%s\n' "$CERT_OUTPUT" | grep -F "SHA256: 1B:B7:83:D4:52:C8:5F:3A:A5:C6:25:2C:81:14:99:E2:4A:83:0D:A2:F4:77:EB:92:D9:E2:37:FF:78:17:D5:3A"
 
       - name: Verify Android SDK 36
         shell: bash
         run: |
+          set -euo pipefail
+          BUILD_TOOLS="${ANDROID_HOME}/build-tools/36.0.0"
           test -d "${ANDROID_HOME}/platforms/android-36"
-          test -d "${ANDROID_HOME}/build-tools/36.0.0"
+          test -x "$BUILD_TOOLS/zipalign"
+          test -x "$BUILD_TOOLS/apksigner"
+          test -x "$BUILD_TOOLS/aapt"
 
-      - name: Validate
-        run: gradle :app:testDebugUnitTest :app:lintDebug :app:assembleDebug :app:compileDebugAndroidTestKotlin --stacktrace
+      - name: Validate and assemble Mobile and TV update APKs
+        shell: bash
+        run: |
+          set -euo pipefail
+          gradle \
+            :app:kspMobileReleaseKotlin \
+            :app:kspTvReleaseKotlin \
+            :app:testMobileDebugUnitTest \
+            :app:testTvDebugUnitTest \
+            :app:lintMobileRelease \
+            :app:lintTvRelease \
+            :app:compileMobileDebugAndroidTestKotlin \
+            :app:compileTvDebugAndroidTestKotlin \
+            :app:assembleMobileRelease \
+            :app:assembleTvRelease \
+            --stacktrace
 
-      - name: Verify debug signing identity
+      - name: Align sign and verify stable-compatible APKs
         if: success()
         shell: bash
         run: |
-          test -f "$HOME/.android/debug.keystore"
-          keytool -list \
-            -keystore "$HOME/.android/debug.keystore" \
-            -storepass android \
-            -alias androiddebugkey
+          set -euo pipefail
+          KEYSTORE="$HOME/.android/debug.keystore"
+          BUILD_TOOLS="${ANDROID_HOME}/build-tools/36.0.0"
+          EXPECTED_CERT="1bb783d452c85f3aa5c6252c811499e24a830da2f477eb92d9e237ff7817d53a"
+          test -f "$KEYSTORE"
 
-      - name: Upload Room schema
-        if: success()
-        uses: actions/upload-artifact@v4
-        with:
-          name: ownplay-room-schema
-          path: app/schemas
-          if-no-files-found: error
-          retention-days: 7
+          sign_one() {
+            local input="$1"
+            local aligned="$2"
+            local output="$3"
+            local expected_package="$4"
+            test -f "$input"
+            "$BUILD_TOOLS/zipalign" -f -p 4 "$input" "$aligned"
+            "$BUILD_TOOLS/apksigner" sign \
+              --ks "$KEYSTORE" \
+              --ks-key-alias androiddebugkey \
+              --ks-pass pass:android \
+              --key-pass pass:android \
+              --out "$output" \
+              "$aligned"
+            SIGN_OUTPUT="$("$BUILD_TOOLS/apksigner" verify --verbose --print-certs "$output")"
+            printf '%s\n' "$SIGN_OUTPUT"
+            printf '%s\n' "$SIGN_OUTPUT" | grep -F "Signer #1 certificate SHA-256 digest: $EXPECTED_CERT"
+            BADGING="$("$BUILD_TOOLS/aapt" dump badging "$output" | head -n 1)"
+            printf '%s\n' "$BADGING"
+            printf '%s\n' "$BADGING" | grep -F "name='$expected_package'"
+            printf '%s\n' "$BADGING" | grep -F "versionCode='3'"
+            printf '%s\n' "$BADGING" | grep -F "versionName='1.0.1-m3u-update'"
+            sha256sum "$output" | tee "$output.sha256"
+          }
+
+          sign_one \
+            app/build/outputs/apk/mobile/release/app-mobile-release-unsigned.apk \
+            app/build/outputs/apk/mobile/release/app-mobile-release-aligned.apk \
+            app/build/outputs/apk/mobile/release/OwnPlay-Mobile-M3U-Update-1.0.1.apk \
+            app.ownplay.mobile
+
+          sign_one \
+            app/build/outputs/apk/tv/release/app-tv-release-unsigned.apk \
+            app/build/outputs/apk/tv/release/app-tv-release-aligned.apk \
+            app/build/outputs/apk/tv/release/OwnPlay-TV-M3U-Update-1.0.1.apk \
+            app.ownplay.tv
 
       - name: Verify Room schema is committed
         if: success()
         shell: bash
         run: |
+          set -euo pipefail
           python3 - <<'PY'
           import json
           import pathlib
@@ -81,8 +138,10 @@ jobs:
 
           root = pathlib.Path("app/schemas")
           problems = []
-
           generated = sorted(root.rglob("*.json"))
+          if not generated:
+              problems.append("No Room schema JSON generated.")
+
           for path in generated:
               relative = path.as_posix()
               try:
@@ -94,14 +153,12 @@ jobs:
               except subprocess.CalledProcessError:
                   problems.append(f"Uncommitted Room schema: {relative}")
                   continue
-
               try:
                   generated_json = json.loads(path.read_text(encoding="utf-8"))
                   committed_json = json.loads(committed_text)
               except json.JSONDecodeError as error:
                   problems.append(f"Invalid Room schema JSON in {relative}: {error}")
                   continue
-
               if generated_json != committed_json:
                   problems.append(f"Room schema drift: {relative}")
 
@@ -118,11 +175,35 @@ jobs:
               sys.exit(1)
           PY
 
-      - name: Upload debug APK
+      - name: Upload Mobile stable-compatible update APK
         if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: ownplay-debug-apk
-          path: app/build/outputs/apk/debug/app-debug.apk
+          name: ownplay-mobile-m3u-update-1.0.1
+          path: |
+            app/build/outputs/apk/mobile/release/OwnPlay-Mobile-M3U-Update-1.0.1.apk
+            app/build/outputs/apk/mobile/release/OwnPlay-Mobile-M3U-Update-1.0.1.apk.sha256
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0
+
+      - name: Upload TV stable-compatible update APK
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ownplay-tv-m3u-update-1.0.1
+          path: |
+            app/build/outputs/apk/tv/release/OwnPlay-TV-M3U-Update-1.0.1.apk
+            app/build/outputs/apk/tv/release/OwnPlay-TV-M3U-Update-1.0.1.apk.sha256
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0
+
+      - name: Upload Room schema
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ownplay-room-schema-m3u-update-1.0.1
+          path: app/schemas
           if-no-files-found: error
           retention-days: 7
