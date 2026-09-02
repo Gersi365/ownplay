@@ -36,6 +36,13 @@ class RoomLiveCatalogPersistence(
         database.withTransaction {
             database.providerCatalogDao().upsertCategories(categories)
             database.providerCatalogDao().upsertChannels(channels)
+            val firstChannel = channels.firstOrNull()
+            if (firstChannel != null) {
+                database.providerCatalogDao().markChannelsMissingFromGeneration(
+                    sourceId = firstChannel.sourceId,
+                    generation = firstChannel.lastSeenGeneration,
+                )
+            }
         }
     }
 }
