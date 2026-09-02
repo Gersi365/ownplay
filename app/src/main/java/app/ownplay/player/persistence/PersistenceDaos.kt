@@ -50,6 +50,9 @@ interface ProviderCatalogDao {
     @Upsert
     suspend fun upsertCategories(categories: List<ProviderCategoryEntity>)
 
+    @Query("DELETE FROM provider_categories WHERE sourceId = :sourceId")
+    suspend fun deleteCategoriesForSource(sourceId: String): Int
+
     @Upsert
     suspend fun upsertChannels(channels: List<ProviderChannelEntity>)
 
