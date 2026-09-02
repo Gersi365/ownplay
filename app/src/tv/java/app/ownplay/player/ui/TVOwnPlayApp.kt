@@ -121,7 +121,7 @@ private fun TVOwnPlayAppContent(
     val liveTransitionGate = remember { LivePlaybackTransitionGate() }
 
     fun rememberActiveSource(sourceId: String?) {
-        rememberActiveSource(sourceId)
+        activeSourceId = sourceId
         activePlaylistScope.launch {
             activePlaylistStore.set(sourceId)
         }
