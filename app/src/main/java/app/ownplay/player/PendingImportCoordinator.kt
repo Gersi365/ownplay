@@ -27,7 +27,10 @@ internal class PendingImportCoordinator(
 
         var jobToStart: Job? = null
         synchronized(lock) {
-            if (jobs[normalizedId]?.isActive == true) return
+            // A LAZY coroutine is not active until start(), so checking isActive here leaves a
+            // race where two concurrent schedule() calls can create duplicate imports. Presence in
+            // the map is the reservation; completion/cancel removes that reservation.
+            if (jobs.containsKey(normalizedId)) return
             val job = scope.launch(start = CoroutineStart.LAZY) {
                 val thisJob = coroutineContext.job
                 try {
