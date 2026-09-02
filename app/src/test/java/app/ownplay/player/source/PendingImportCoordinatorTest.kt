@@ -66,5 +66,6 @@ class PendingImportCoordinatorTest {
 
         assertEquals(2, maxActive.get())
         release.complete(Unit)
+        Unit
     }
 }
