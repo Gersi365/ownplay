@@ -4,6 +4,7 @@ import app.ownplay.player.persistence.ChannelAvailability
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 
 data class LiveBrowseState(
@@ -15,40 +16,39 @@ data class LiveBrowseState(
     val query: LiveBrowseQuery = LiveBrowseQuery(),
 )
 
+private data class PreparedLiveCatalogSnapshot(
+    val categories: List<LiveCategory>,
+    val customGroups: List<LiveCustomGroup>,
+    val channels: List<PreparedLiveChannel>,
+    val channelCategoryKeyById: Map<String, String?>,
+    val catalogChannelCount: Int,
+)
+
 class LiveBrowseSession(
     initialQuery: LiveBrowseQuery = LiveBrowseQuery(),
 ) {
     private val query = MutableStateFlow(initialQuery)
 
-    fun observe(catalog: Flow<LiveCatalogSnapshot>): Flow<LiveBrowseState> = combine(
-        catalog,
-        query,
-    ) { snapshot, currentQuery ->
-        LiveBrowseState(
-            categories = snapshot.categories
-                .asSequence()
-                .filter { category -> currentQuery.includeHidden || !category.isHidden }
-                .sortedWith(
-                    compareBy<LiveCategory> { it.manualOrder == null }
-                        .thenBy { it.manualOrder ?: Long.MAX_VALUE }
-                        .thenBy(LiveCategory::providerOrder),
-                )
-                .toList(),
-            customGroups = snapshot.customGroups.sortedBy(LiveCustomGroup::groupOrder),
-            channels = LiveBrowseProjector.project(
-                records = snapshot.channels,
+    fun observe(catalog: Flow<LiveCatalogSnapshot>): Flow<LiveBrowseState> {
+        val preparedCatalog = catalog.map(::prepareCatalog)
+        return combine(
+            preparedCatalog,
+            query,
+        ) { prepared, currentQuery ->
+            LiveBrowseState(
+                categories = prepared.categories.filter { category ->
+                    currentQuery.includeHidden || !category.isHidden
+                },
+                customGroups = prepared.customGroups,
+                channels = LiveBrowseProjector.projectPrepared(
+                    prepared = prepared.channels,
+                    query = currentQuery,
+                ),
+                channelCategoryKeyById = prepared.channelCategoryKeyById,
+                catalogChannelCount = prepared.catalogChannelCount,
                 query = currentQuery,
-                customGroupIdsByChannelId = snapshot.customGroupIdsByChannelId,
-                hiddenCategoryKeys = snapshot.hiddenCategoryKeys,
-            ),
-            channelCategoryKeyById = snapshot.channels.associate { channel ->
-                channel.channelId to channel.providerCategoryKey
-            },
-            catalogChannelCount = snapshot.channels.count { channel ->
-                channel.availability != ChannelAvailability.REMOVED
-            },
-            query = currentQuery,
-        )
+            )
+        }
     }
 
     fun updateSearch(searchTerm: String) {
@@ -95,4 +95,25 @@ class LiveBrowseSession(
     fun setIncludeRemoved(enabled: Boolean) {
         query.update { current -> current.copy(includeRemoved = enabled) }
     }
+
+    private fun prepareCatalog(snapshot: LiveCatalogSnapshot): PreparedLiveCatalogSnapshot =
+        PreparedLiveCatalogSnapshot(
+            categories = snapshot.categories.sortedWith(
+                compareBy<LiveCategory> { it.manualOrder == null }
+                    .thenBy { it.manualOrder ?: Long.MAX_VALUE }
+                    .thenBy(LiveCategory::providerOrder),
+            ),
+            customGroups = snapshot.customGroups.sortedBy(LiveCustomGroup::groupOrder),
+            channels = LiveBrowseProjector.prepare(
+                records = snapshot.channels,
+                customGroupIdsByChannelId = snapshot.customGroupIdsByChannelId,
+                hiddenCategoryKeys = snapshot.hiddenCategoryKeys,
+            ),
+            channelCategoryKeyById = snapshot.channels.associate { channel ->
+                channel.channelId to channel.providerCategoryKey
+            },
+            catalogChannelCount = snapshot.channels.count { channel ->
+                channel.availability != ChannelAvailability.REMOVED
+            },
+        )
 }
