@@ -122,6 +122,31 @@ enum class VodSortOrder {
     RATING,
 }
 
+internal enum class VodPlaybackStartMode {
+    RESUME,
+    FROM_BEGINNING,
+}
+
+internal fun vodPlaybackStartPosition(
+    movie: VodMovie,
+    startMode: VodPlaybackStartMode,
+): Long = when (startMode) {
+    VodPlaybackStartMode.RESUME -> movie.positionMs
+        ?.takeIf { it > 5_000L && !movie.progressCompleted }
+        ?: 0L
+    VodPlaybackStartMode.FROM_BEGINNING -> 0L
+}
+
+internal fun vodPrimaryPlaybackLabel(
+    movie: VodMovie,
+    offlineCopyAvailable: Boolean,
+): String = when {
+    offlineCopyAvailable && movie.resumeAvailable -> "Resume Offline"
+    offlineCopyAvailable -> "Play Offline"
+    movie.resumeAvailable -> "Resume"
+    else -> "Play"
+}
+
 @Composable
 internal fun VodRoute(
     runtime: OwnPlayAppRuntime,
@@ -182,6 +207,7 @@ internal fun VodRoute(
     var detailsLoading by remember(sourceId) { mutableStateOf(false) }
     var detailsError by remember(sourceId) { mutableStateOf<SourceError?>(null) }
     var playingMovie by remember(sourceId) { mutableStateOf<VodMovie?>(null) }
+    var playbackStartMode by remember(sourceId) { mutableStateOf(VodPlaybackStartMode.RESUME) }
     var restoreDetailFocusAfterPlayback by remember(sourceId) { mutableStateOf(false) }
     val detailsBackOwner = remember(sourceId) { Any() }
 
@@ -281,6 +307,19 @@ internal fun VodRoute(
         }
     }
 
+    fun playMovie(movie: VodMovie, startMode: VodPlaybackStartMode) {
+        restoreDetailFocusAfterPlayback = false
+        playbackStartMode = startMode
+        runtime.playbackController.start(
+            PlaybackRequest(
+                sourceId = sourceId,
+                channelId = movie.movieId,
+                mediaKind = PlaybackMediaKind.MOVIE,
+            ),
+        )
+        playingMovie = movie
+    }
+
     fun refresh() {
         scope.launch {
             loading = true
@@ -374,6 +413,7 @@ internal fun VodRoute(
             featureRuntime = featureRuntime,
             sourceId = sourceId,
             movie = movieToPlay,
+            startMode = playbackStartMode,
             onExit = {
                 playingMovie = null
                 restoreDetailFocusAfterPlayback = true
@@ -398,16 +438,9 @@ internal fun VodRoute(
                 onPauseDownload = ::pauseDownload,
                 onResumeDownload = ::resumeDownload,
                 onClearProgress = { clearMovieProgress(movie) },
-                onPlay = { target ->
-                    restoreDetailFocusAfterPlayback = false
-                    runtime.playbackController.start(
-                        PlaybackRequest(
-                            sourceId = sourceId,
-                            channelId = target.movieId,
-                            mediaKind = PlaybackMediaKind.MOVIE,
-                        ),
-                    )
-                    playingMovie = target
+                onPlay = { target -> playMovie(target, VodPlaybackStartMode.RESUME) },
+                onPlayFromBeginning = { target ->
+                    playMovie(target, VodPlaybackStartMode.FROM_BEGINNING)
                 },
                 modifier = Modifier.fillMaxSize(),
             )
@@ -468,16 +501,9 @@ internal fun VodRoute(
                     onPauseDownload = ::pauseDownload,
                     onResumeDownload = ::resumeDownload,
                     onClearProgress = { clearMovieProgress(movie) },
-                    onPlay = { target ->
-                        restoreDetailFocusAfterPlayback = false
-                        runtime.playbackController.start(
-                            PlaybackRequest(
-                                sourceId = sourceId,
-                                channelId = target.movieId,
-                                mediaKind = PlaybackMediaKind.MOVIE,
-                            ),
-                        )
-                        playingMovie = target
+                    onPlay = { target -> playMovie(target, VodPlaybackStartMode.RESUME) },
+                    onPlayFromBeginning = { target ->
+                        playMovie(target, VodPlaybackStartMode.FROM_BEGINNING)
                     },
                     modifier = Modifier
                         .weight(0.37f)
@@ -933,6 +959,7 @@ private fun MovieDetailsPane(
     onResumeDownload: (OfflineDownload) -> Unit,
     onClearProgress: () -> Unit,
     onPlay: (VodMovie) -> Unit,
+    onPlayFromBeginning: (VodMovie) -> Unit,
     modifier: Modifier,
 ) {
     val configuration = LocalConfiguration.current
@@ -1034,14 +1061,7 @@ private fun MovieDetailsPane(
                 ) {
                     Icon(Icons.Filled.PlayArrow, contentDescription = null)
                     Spacer(Modifier.width(6.dp))
-                    Text(
-                        when {
-                            offlineCopyAvailable && movie.resumeAvailable -> "Resume Offline"
-                            offlineCopyAvailable -> "Play Offline"
-                            movie.resumeAvailable -> "Resume"
-                            else -> "Play"
-                        },
-                    )
+                    Text(vodPrimaryPlaybackLabel(movie, offlineCopyAvailable))
                 }
                 FilledTonalButton(
                     onClick = { onFavoriteChanged(!movie.isFavorite) },
@@ -1050,6 +1070,12 @@ private fun MovieDetailsPane(
                         if (movie.isFavorite) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,
                         contentDescription = null,
                     )
+                }
+            }
+
+            if (movie.resumeAvailable) {
+                TextButton(onClick = { onPlayFromBeginning(movie) }) {
+                    Text("Play from beginning")
                 }
             }
 
@@ -1192,6 +1218,7 @@ private fun VodPlaybackScreen(
     featureRuntime: VodFeatureRuntime,
     sourceId: String,
     movie: VodMovie,
+    startMode: VodPlaybackStartMode,
     onExit: () -> Unit,
     onFullscreenStateChanged: (Boolean) -> Unit,
 ) {
@@ -1202,17 +1229,18 @@ private fun VodPlaybackScreen(
         configuration.uiMode and android.content.res.Configuration.UI_MODE_TYPE_MASK ==
             android.content.res.Configuration.UI_MODE_TYPE_TELEVISION
     val scope = rememberCoroutineScope()
-    val backOwner = remember(movie.movieId) { Any() }
-    val backFocusRequester = remember(movie.movieId) { FocusRequester() }
-    val controlsFocusRequester = remember(movie.movieId) { FocusRequester() }
-    val wakeFocusRequester = remember(movie.movieId) { FocusRequester() }
-    var playerView by remember(movie.movieId) { mutableStateOf<PlayerView?>(null) }
-    var currentPosition by remember(movie.movieId) { mutableStateOf(movie.positionMs ?: 0L) }
-    var duration by remember(movie.movieId) { mutableStateOf(movie.durationMs ?: 0L) }
-    var resumeApplied by remember(movie.movieId) { mutableStateOf(false) }
-    var controlsVisible by remember(movie.movieId) { mutableStateOf(true) }
-    var controlsInteractionToken by remember(movie.movieId) { mutableStateOf(0) }
-    var exitRequested by remember(movie.movieId) { mutableStateOf(false) }
+    val backOwner = remember(movie.movieId, startMode) { Any() }
+    val backFocusRequester = remember(movie.movieId, startMode) { FocusRequester() }
+    val controlsFocusRequester = remember(movie.movieId, startMode) { FocusRequester() }
+    val wakeFocusRequester = remember(movie.movieId, startMode) { FocusRequester() }
+    val initialPosition = vodPlaybackStartPosition(movie, startMode)
+    var playerView by remember(movie.movieId, startMode) { mutableStateOf<PlayerView?>(null) }
+    var currentPosition by remember(movie.movieId, startMode) { mutableStateOf(initialPosition) }
+    var duration by remember(movie.movieId, startMode) { mutableStateOf(movie.durationMs ?: 0L) }
+    var startPositionApplied by remember(movie.movieId, startMode) { mutableStateOf(false) }
+    var controlsVisible by remember(movie.movieId, startMode) { mutableStateOf(true) }
+    var controlsInteractionToken by remember(movie.movieId, startMode) { mutableStateOf(0) }
+    var exitRequested by remember(movie.movieId, startMode) { mutableStateOf(false) }
 
     fun revealControls() {
         controlsVisible = true
@@ -1232,7 +1260,7 @@ private fun VodPlaybackScreen(
         }
     }
 
-    DisposableEffect(movie.movieId, backOwner) {
+    DisposableEffect(movie.movieId, startMode, backOwner) {
         onFullscreenStateChanged(true)
         PlaybackInteractionBridge.registerBackAction(backOwner, ::exitPlayback)
         onDispose {
@@ -1246,26 +1274,24 @@ private fun VodPlaybackScreen(
         }
     }
 
-    LaunchedEffect(playbackState, playerView, movie.movieId) {
+    LaunchedEffect(playbackState, playerView, movie.movieId, startMode) {
         val stateRequest = when (val state = playbackState) {
             is PlaybackState.Playing -> state.request
             is PlaybackState.Paused -> state.request
             else -> null
         }
         if (
-            !resumeApplied &&
+            !startPositionApplied &&
             stateRequest?.mediaKind == PlaybackMediaKind.MOVIE &&
             stateRequest.channelId == movie.movieId
         ) {
-            movie.positionMs?.takeIf { it > 5_000L && !movie.progressCompleted }?.let { position ->
-                playerView?.player?.seekTo(position)
-                currentPosition = position
-            }
-            resumeApplied = true
+            playerView?.player?.seekTo(initialPosition)
+            currentPosition = initialPosition
+            startPositionApplied = true
         }
     }
 
-    LaunchedEffect(playerView, movie.movieId) {
+    LaunchedEffect(playerView, movie.movieId, startMode) {
         var saveTick = 0
         while (currentCoroutineContext().isActive) {
             delay(1_000L)
@@ -1285,7 +1311,7 @@ private fun VodPlaybackScreen(
         }
     }
 
-    LaunchedEffect(playbackState, controlsVisible, controlsInteractionToken, movie.movieId) {
+    LaunchedEffect(playbackState, controlsVisible, controlsInteractionToken, movie.movieId, startMode) {
         when (playbackState) {
             is PlaybackState.Playing -> {
                 if (controlsVisible) {
@@ -1301,7 +1327,7 @@ private fun VodPlaybackScreen(
         }
     }
 
-    LaunchedEffect(isTelevision, controlsVisible, playbackState, movie.movieId) {
+    LaunchedEffect(isTelevision, controlsVisible, playbackState, movie.movieId, startMode) {
         if (!isTelevision) return@LaunchedEffect
         when {
             playbackState is PlaybackState.Failed -> backFocusRequester.requestFocus()
@@ -1369,7 +1395,7 @@ private fun VodPlaybackScreen(
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .pointerInput(movie.movieId, controlsVisible) {
+                    .pointerInput(movie.movieId, controlsVisible, startMode) {
                         detectTapGestures {
                             if (controlsVisible) {
                                 controlsVisible = false
