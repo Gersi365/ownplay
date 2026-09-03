@@ -1,22 +1,29 @@
 package app.ownplay.player.ui
 
 import android.content.Context
+import android.content.res.Configuration
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import app.ownplay.player.backup.BackupExportResult
@@ -39,6 +46,7 @@ internal fun BackupRestoreSettingsContent() {
         PersonalizationBackupService(context.applicationContext)
     }
     var status by remember { mutableStateOf<String?>(null) }
+    var pendingRestoreRaw by remember { mutableStateOf<String?>(null) }
 
     val exportLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.CreateDocument("application/json"),
@@ -78,12 +86,13 @@ internal fun BackupRestoreSettingsContent() {
     ) { uri ->
         if (uri == null) return@rememberLauncherForActivityResult
         scope.launch {
-            status = "Validating backup…"
+            status = "Reading backup…"
             val raw = readBackup(context, uri)
-            status = if (raw == null) {
-                "Backup could not be read or exceeds the supported size limit."
+            if (raw == null) {
+                status = "Backup could not be read or exceeds the supported size limit."
             } else {
-                restoreStatus(service.restoreBackup(raw))
+                status = null
+                pendingRestoreRaw = raw
             }
         }
     }
@@ -94,15 +103,15 @@ internal fun BackupRestoreSettingsContent() {
     ) {
         SettingsActionRow(
             title = "Backup personalization",
-            detail = "Personalization only · credentials excluded",
+            detail = "Favorites, hidden channels, names, order & groups · credentials excluded",
             actionLabel = "Export",
             onClick = { exportLauncher.launch("ownplay-personalization-v1.json") },
         )
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
         SettingsActionRow(
             title = "Restore personalization",
-            detail = "Import a previous OwnPlay personalization backup",
-            actionLabel = "Import",
+            detail = "Adds or updates matching personalization · keeps other settings",
+            actionLabel = "Restore",
             onClick = {
                 importLauncher.launch(arrayOf("application/json", "text/plain"))
             },
@@ -115,6 +124,63 @@ internal fun BackupRestoreSettingsContent() {
             )
         }
     }
+
+    pendingRestoreRaw?.let { raw ->
+        RestorePersonalizationConfirmationDialog(
+            onConfirm = {
+                pendingRestoreRaw = null
+                scope.launch {
+                    status = "Restoring personalization…"
+                    status = restoreStatus(service.restoreBackup(raw))
+                }
+            },
+            onDismiss = {
+                pendingRestoreRaw = null
+            },
+        )
+    }
+}
+
+@Composable
+private fun RestorePersonalizationConfirmationDialog(
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val configuration = LocalConfiguration.current
+    val isTelevision =
+        configuration.uiMode and Configuration.UI_MODE_TYPE_MASK == Configuration.UI_MODE_TYPE_TELEVISION
+    val cancelFocusRequester = remember { FocusRequester() }
+
+    LaunchedEffect(isTelevision) {
+        if (isTelevision) {
+            cancelFocusRequester.requestFocus()
+        }
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Restore personalization?") },
+        text = {
+            Text(
+                "OwnPlay will validate the selected backup, then add or update matching favorites, " +
+                    "hidden channels, names, order and groups. Personalization not represented in " +
+                    "the backup stays unchanged. Playlists and credentials are not restored.",
+            )
+        },
+        confirmButton = {
+            TextButton(onClick = onConfirm) {
+                Text("Restore")
+            }
+        },
+        dismissButton = {
+            TextButton(
+                onClick = onDismiss,
+                modifier = Modifier.focusRequester(cancelFocusRequester),
+            ) {
+                Text("Cancel")
+            }
+        },
+    )
 }
 
 private suspend fun writeBackup(
@@ -159,7 +225,7 @@ private suspend fun readBackup(
     }
 }
 
-private fun restoreStatus(result: BackupRestoreResult): String = when (result) {
+internal fun restoreStatus(result: BackupRestoreResult): String = when (result) {
     is BackupRestoreResult.Success -> buildString {
         append("Restore complete: ")
         append(result.appliedChannelRecords)
@@ -169,7 +235,7 @@ private fun restoreStatus(result: BackupRestoreResult): String = when (result) {
         append(result.appliedMemberships)
         append(" memberships applied.")
         if (result.unmatchedChannelIdentities > 0 || result.ambiguousChannelIdentities > 0) {
-            append(" Skipped identities: ")
+            append(" Skipped channels: ")
             append(result.unmatchedChannelIdentities)
             append(" unmatched, ")
             append(result.ambiguousChannelIdentities)
@@ -183,10 +249,13 @@ private fun restoreStatus(result: BackupRestoreResult): String = when (result) {
     }
     is BackupRestoreResult.Failure -> when (result.reason) {
         BackupRestoreFailureReason.INVALID_JSON -> "Restore rejected: file is not valid JSON."
-        BackupRestoreFailureReason.UNSUPPORTED_FORMAT -> "Restore rejected: unsupported backup format."
-        BackupRestoreFailureReason.UNSUPPORTED_VERSION -> "Restore rejected: unsupported backup version."
-        BackupRestoreFailureReason.INVALID_PAYLOAD -> "Restore rejected: backup payload is invalid."
+        BackupRestoreFailureReason.UNSUPPORTED_FORMAT ->
+            "Restore rejected: this is not a supported OwnPlay personalization backup."
+        BackupRestoreFailureReason.UNSUPPORTED_VERSION ->
+            "Restore rejected: this backup version is not supported by this OwnPlay version."
+        BackupRestoreFailureReason.INVALID_PAYLOAD ->
+            "Restore rejected: backup data is incomplete or invalid."
         BackupRestoreFailureReason.PERSISTENCE_FAILURE ->
-            "Restore failed safely while applying data; the database transaction was rolled back."
+            "Restore failed safely. No partial changes were kept."
     }
 }
