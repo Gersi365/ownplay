@@ -12,22 +12,44 @@ class SourceSyncPublicationContractTest {
         assertTrue(source.contains("private fun publishSourceState(state: SourceSyncState)"))
         assertFalse(source.contains("_sourceSyncState.collect(::rememberSourceState)"))
 
-        val refresh = source
-  .substringAfter("suspend fun refreshSource(sourceId: String)")
-  .substringBefore("suspend fun refreshAllSources()")
-        assertTrue(refresh.contains("refreshMutex.withLock"))
-        assertTrue(refresh.contains("markRefreshRunning(sourceId)"))
-        assertTrue(refresh.contains("refreshSourcePipelineLocked(sourceId)"))
-        assertTrue(refresh.contains("markRefreshSucceeded(sourceId)"))
-        assertTrue(refresh.contains("markRefreshFailed(sourceId, outcome.failure.toString())"))
-        assertFalse(refresh.contains("_sourceSyncState.value"))
-        assertFalse(refresh.contains("_sourceSyncStates.value[sourceId]"))
+        val staleRefresh = source
+  .substringAfter("private suspend fun refreshSourceIfStale(sourceId: String)")
+  .substringBefore("private suspend fun completePendingSource(sourceId: String)")
+        assertTrue(staleRefresh.contains("runReadyRefresh("))
+        assertTrue(staleRefresh.contains("onlyIfStale = true"))
+        assertFalse(staleRefresh.contains("refreshSource(sourceId)"))
 
-        val runningIndex = refresh.indexOf("markRefreshRunning(sourceId)")
-        val pipelineIndex = refresh.indexOf("refreshSourcePipelineLocked(sourceId)")
-        val successIndex = refresh.indexOf("markRefreshSucceeded(sourceId)")
+        val lifecycle = source
+  .substringAfter("private suspend fun runReadyRefresh(")
+  .substringBefore("private suspend fun executeReadyRefreshLocked")
+        assertTrue(lifecycle.contains("refreshMutex.withLock"))
+        assertTrue(lifecycle.contains("if (onlyIfStale)"))
+        assertTrue(lifecycle.contains("database.refreshStateDao().get(sourceId)"))
+        assertTrue(lifecycle.contains("shouldRefreshSource("))
+        assertTrue(lifecycle.contains("executeReadyRefreshLocked(sourceId)"))
+        val freshnessIndex = lifecycle.indexOf("shouldRefreshSource(")
+        val executionIndex = lifecycle.indexOf("executeReadyRefreshLocked(sourceId)")
+        assertTrue(freshnessIndex >= 0 && freshnessIndex < executionIndex)
+
+        val execution = source
+  .substringAfter("private suspend fun executeReadyRefreshLocked(sourceId: String)")
+  .substringBefore("suspend fun refreshSource(sourceId: String)")
+        assertTrue(execution.contains("markRefreshRunning(sourceId)"))
+        assertTrue(execution.contains("refreshSourcePipelineLocked(sourceId)"))
+        assertTrue(execution.contains("markRefreshSucceeded(sourceId)"))
+        assertTrue(execution.contains("markRefreshFailed(sourceId, outcome.failure.toString())"))
+        assertFalse(execution.contains("refreshMutex.withLock"))
+        val runningIndex = execution.indexOf("markRefreshRunning(sourceId)")
+        val pipelineIndex = execution.indexOf("refreshSourcePipelineLocked(sourceId)")
+        val successIndex = execution.indexOf("markRefreshSucceeded(sourceId)")
         assertTrue(runningIndex >= 0 && runningIndex < pipelineIndex)
         assertTrue(pipelineIndex >= 0 && pipelineIndex < successIndex)
+
+        val manualRefresh = source
+  .substringAfter("suspend fun refreshSource(sourceId: String)")
+  .substringBefore("suspend fun refreshAllSources()")
+        assertTrue(manualRefresh.contains("runReadyRefresh("))
+        assertTrue(manualRefresh.contains("onlyIfStale = false"))
 
         val pipeline = source
   .substringAfter("private suspend fun refreshSourcePipelineLocked(")

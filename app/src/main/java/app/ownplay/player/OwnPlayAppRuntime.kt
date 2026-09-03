@@ -102,7 +102,6 @@ private sealed interface ReadyRefreshOutcome {
     ) : ReadyRefreshOutcome
 }
 
-
 class OwnPlayAppRuntime(
     context: Context,
 ) : AutoCloseable {
@@ -385,22 +384,11 @@ class OwnPlayAppRuntime(
     }
 
     private suspend fun refreshSourceIfStale(sourceId: String) {
-        val refreshState = try {
-            database.refreshStateDao().get(sourceId)
-        } catch (cancelled: CancellationException) {
-            throw cancelled
-        } catch (_: Exception) {
-            null
-        }
-        if (
-            shouldRefreshSource(
-                lastSuccessAtEpochMillis = refreshState?.lastSuccessAtEpochMillis,
-                nowEpochMillis = System.currentTimeMillis(),
-            )
-        ) {
-            refreshSource(sourceId)
-        }
-    }
+    runReadyRefresh(
+        sourceId = sourceId,
+        onlyIfStale = true,
+    )
+}
 
     private suspend fun completePendingSource(sourceId: String) = withContext(Dispatchers.IO) {
         try {
@@ -600,18 +588,31 @@ class OwnPlayAppRuntime(
         )
     }
 
-    suspend fun refreshSource(sourceId: String) {
+    private suspend fun runReadyRefresh(
+    sourceId: String,
+    onlyIfStale: Boolean,
+) {
     try {
         refreshMutex.withLock {
   if (!sourceExists(sourceId)) return@withLock
-  markRefreshRunning(sourceId)
-  when (val outcome = refreshSourcePipelineLocked(sourceId)) {
-      ReadyRefreshOutcome.Missing -> Unit
-      ReadyRefreshOutcome.Succeeded -> markRefreshSucceeded(sourceId)
-      is ReadyRefreshOutcome.ChannelsFailed -> {
-          markRefreshFailed(sourceId, outcome.failure.toString())
+  if (onlyIfStale) {
+      val refreshState = try {
+          database.refreshStateDao().get(sourceId)
+      } catch (cancelled: CancellationException) {
+          throw cancelled
+      } catch (_: Exception) {
+          null
+      }
+      if (
+          !shouldRefreshSource(
+              lastSuccessAtEpochMillis = refreshState?.lastSuccessAtEpochMillis,
+              nowEpochMillis = System.currentTimeMillis(),
+          )
+      ) {
+          return@withLock
       }
   }
+  executeReadyRefreshLocked(sourceId)
         }
     } catch (cancelled: CancellationException) {
         throw cancelled
@@ -623,6 +624,24 @@ class OwnPlayAppRuntime(
   }
         }
     }
+}
+
+private suspend fun executeReadyRefreshLocked(sourceId: String) {
+    markRefreshRunning(sourceId)
+    when (val outcome = refreshSourcePipelineLocked(sourceId)) {
+        ReadyRefreshOutcome.Missing -> Unit
+        ReadyRefreshOutcome.Succeeded -> markRefreshSucceeded(sourceId)
+        is ReadyRefreshOutcome.ChannelsFailed -> {
+  markRefreshFailed(sourceId, outcome.failure.toString())
+        }
+    }
+}
+
+suspend fun refreshSource(sourceId: String) {
+    runReadyRefresh(
+        sourceId = sourceId,
+        onlyIfStale = false,
+    )
 }
 
     suspend fun refreshAllSources() {
