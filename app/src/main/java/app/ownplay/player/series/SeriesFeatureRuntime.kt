@@ -3,10 +3,18 @@ package app.ownplay.player.series
 import android.content.Context
 import app.ownplay.player.persistence.OwnPlayDatabase
 import app.ownplay.player.persistence.secure.AndroidKeystoreSensitiveValueStore
+import app.ownplay.player.persistence.series.SeriesMediaKinds
 import app.ownplay.player.source.SourceResult
 import app.ownplay.player.source.credential.AndroidKeystoreCredentialStore
 import app.ownplay.player.source.xtream.XtreamSeriesClient
 import kotlinx.coroutines.flow.Flow
+
+data class SeriesEpisodeProgressSnapshot(
+    val positionMs: Long,
+    val durationMs: Long?,
+    val completed: Boolean,
+    val updatedAtEpochMillis: Long,
+)
 
 class SeriesFeatureRuntime(
     context: Context,
@@ -36,6 +44,24 @@ class SeriesFeatureRuntime(
         positionMs: Long,
         durationMs: Long?,
     ): Boolean = repository.saveEpisodeProgress(sourceId, episodeId, positionMs, durationMs)
+
+    suspend fun episodeProgress(
+        sourceId: String,
+        episodeId: String,
+    ): SeriesEpisodeProgressSnapshot? = database.seriesCatalogDao()
+        .progress(
+            sourceId = sourceId,
+            mediaKind = SeriesMediaKinds.EPISODE,
+            contentId = episodeId,
+        )
+        ?.let { progress ->
+            SeriesEpisodeProgressSnapshot(
+                positionMs = progress.positionMs,
+                durationMs = progress.durationMs,
+                completed = progress.completed,
+                updatedAtEpochMillis = progress.updatedAtEpochMillis,
+            )
+        }
 
     suspend fun clearEpisodeProgress(sourceId: String, episodeId: String): Boolean =
         repository.clearEpisodeProgress(sourceId, episodeId)
