@@ -69,6 +69,8 @@ internal fun LiveRoute(
     val configuration = LocalConfiguration.current
     val context = LocalContext.current
     val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
+    val isTelevision =
+        configuration.uiMode and Configuration.UI_MODE_TYPE_MASK == Configuration.UI_MODE_TYPE_TELEVISION
     val browseSession = remember(sourceId) { LiveBrowseSession() }
     val browseFlow = remember(sourceId) {
         browseSession.observe(runtime.observeLiveCatalog(sourceId))
@@ -152,6 +154,16 @@ internal fun LiveRoute(
     }
 
     fun selectChannel(channelId: String) {
+        val currentPreview = preview
+        if (
+            isTelevision &&
+            currentPreview != null &&
+            currentPreview.request.channelId == channelId
+        ) {
+            onOpenFullscreen(currentPreview)
+            return
+        }
+
         val channel = browseState.channels.firstOrNull { item -> item.channelId == channelId } ?: return
         val browseContext = LivePlaybackBrowseContext.capture(
             sourceId = sourceId,
