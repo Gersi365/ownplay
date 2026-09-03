@@ -51,6 +51,7 @@ class XtreamEpgRepository(
     private data class SourceCache(
         val channelIdsByEpgChannelId: Map<String, List<String>>,
         val programsByEpgChannelId: Map<String, List<EpgProgram>>,
+        val currentProgramIndexesByEpgChannelId: Map<String, EpgCurrentProgramIndex.Prepared>,
     )
 
     private data class ShortCacheKey(
@@ -60,6 +61,7 @@ class XtreamEpgRepository(
 
     private data class ShortCacheEntry(
         val programs: List<EpgProgram>,
+        val currentProgramIndex: EpgCurrentProgramIndex.Prepared,
         val loadedAtEpochSeconds: Long,
     )
 
@@ -96,6 +98,7 @@ class XtreamEpgRepository(
                 cache[sourceId] = SourceCache(
                     channelIdsByEpgChannelId = emptyMap(),
                     programsByEpgChannelId = emptyMap(),
+                    currentProgramIndexesByEpgChannelId = emptyMap(),
                 )
                 clearShortCache(sourceId)
             }
@@ -119,10 +122,14 @@ class XtreamEpgRepository(
         val mapped = snapshot.programsByChannelId.mapValues { (_, entries) ->
             EpgTimelineProjector.normalize(entries.map(::toProgram))
         }
+        val currentProgramIndexes = mapped.mapValues { (_, programs) ->
+            EpgCurrentProgramIndex.prepareNormalized(programs)
+        }
         val published = refreshGeneration.runIfCurrentAndAdvance(sourceId, generation) {
             cache[sourceId] = SourceCache(
                 channelIdsByEpgChannelId = channelIdsByEpgChannelId,
                 programsByEpgChannelId = mapped,
+                currentProgramIndexesByEpgChannelId = currentProgramIndexes,
             )
             clearShortCache(sourceId)
         }
@@ -176,9 +183,9 @@ class XtreamEpgRepository(
         val current = if (sourceCache == null) {
             mutableMapOf()
         } else {
-            EpgCurrentProgramIndex.currentByChannel(
+            EpgCurrentProgramIndex.currentByChannelPrepared(
                 channelIdsByEpgChannelId = sourceCache.channelIdsByEpgChannelId,
-                programsByEpgChannelId = sourceCache.programsByEpgChannelId,
+                preparedByEpgChannelId = sourceCache.currentProgramIndexesByEpgChannelId,
                 nowEpochSeconds = nowEpochSeconds,
             ).toMutableMap()
         }
@@ -195,10 +202,8 @@ class XtreamEpgRepository(
                 shortCache.remove(key, entry)
                 return@forEach
             }
-            val fallbackCurrent = EpgCurrentProgramIndex.currentProgram(
-                programs = entry.programs,
-                nowEpochSeconds = nowEpochSeconds,
-            ) ?: return@forEach
+            val fallbackCurrent = entry.currentProgramIndex.currentProgram(nowEpochSeconds)
+                ?: return@forEach
             current.putIfAbsent(key.channelId, fallbackCurrent)
         }
         return current
@@ -250,6 +255,7 @@ class XtreamEpgRepository(
         val published = refreshGeneration.runIfCurrent(sourceId, generation) {
             shortCache[key] = ShortCacheEntry(
                 programs = programs,
+                currentProgramIndex = EpgCurrentProgramIndex.prepareNormalized(programs),
                 loadedAtEpochSeconds = nowEpochSeconds,
             )
         }
