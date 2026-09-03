@@ -74,6 +74,11 @@ import app.ownplay.player.series.SeriesSeason
 import app.ownplay.player.series.SeriesSummary
 import app.ownplay.player.source.SourceError
 import app.ownplay.player.source.SourceResult
+import app.ownplay.player.ui.MediaCatalogPresentationState
+import app.ownplay.player.ui.MediaCatalogRefreshWarning
+import app.ownplay.player.ui.MediaCatalogStatePanel
+import app.ownplay.player.ui.mediaCatalogPresentationState
+import app.ownplay.player.ui.mediaCatalogSourceErrorLabel
 import app.ownplay.player.ui.playbackStatusLabel
 import app.ownplay.player.ui.vod.RemotePoster
 import kotlinx.coroutines.currentCoroutineContext
@@ -534,6 +539,12 @@ private fun SeriesCatalogPane(
             query.isBlank() &&
             !favoritesOnly &&
             selectedCategoryKey == null
+    val catalogState = mediaCatalogPresentationState(
+        hasCatalogContent = catalog.series.isNotEmpty(),
+        visibleItemCount = series.size + if (continueWatchingVisible) catalog.continueWatching.size else 0,
+        loading = loading,
+        failed = refreshError != null,
+    )
     val continueFocusIndex = if (continueWatchingVisible && restoreFocusEpisodeId != null) {
         catalog.continueWatching.indexOfFirst { episode -> episode.episodeId == restoreFocusEpisodeId }
     } else {
@@ -624,11 +635,9 @@ private fun SeriesCatalogPane(
                 )
             }
         }
-        refreshError?.let {
-            Text(
-                text = "Series refresh failed. Existing catalog remains available.",
-                color = MaterialTheme.colorScheme.error,
-                style = MaterialTheme.typography.bodySmall,
+        if (refreshError != null && catalog.series.isNotEmpty()) {
+            MediaCatalogRefreshWarning(
+                message = "Series refresh failed. Showing saved Series.",
                 modifier = Modifier.padding(vertical = 6.dp),
             )
         }
@@ -683,65 +692,92 @@ private fun SeriesCatalogPane(
                 }
             }
         }
-        LazyColumn(
-            state = seriesListState,
-            modifier = Modifier
-                .fillMaxWidth()
-                .weight(1f),
-            verticalArrangement = Arrangement.spacedBy(4.dp),
-        ) {
-            items(series, key = { it.seriesId }) { item ->
-                val restoreHere = continueFocusIndex < 0 && restoreFocusSeriesId == item.seriesId
-                Surface(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .then(
-                            if (restoreHere) {
-                                Modifier.focusRequester(catalogReturnFocusRequester)
-                            } else {
-                                Modifier
-                            },
-                        )
-                        .clickable { onSeriesSelected(item) },
-                    shape = RoundedCornerShape(8.dp),
-                    color = if (selectedSeriesId == item.seriesId) {
-                        MaterialTheme.colorScheme.surfaceVariant
-                    } else {
-                        MaterialTheme.colorScheme.background
-                    },
-                ) {
-                    Row(
-                        modifier = Modifier.padding(8.dp),
-                        horizontalArrangement = Arrangement.spacedBy(10.dp),
-                        verticalAlignment = Alignment.CenterVertically,
+        when (catalogState) {
+            MediaCatalogPresentationState.LOADING -> MediaCatalogStatePanel(
+                title = "Loading Series",
+                body = "Fetching Series from the active playlist.",
+                loading = true,
+                modifier = Modifier.weight(1f),
+            )
+            MediaCatalogPresentationState.ERROR -> MediaCatalogStatePanel(
+                title = "Series could not be loaded",
+                body = refreshError?.let(::mediaCatalogSourceErrorLabel)
+                    ?: "The Series catalog could not be refreshed.",
+                error = true,
+                actionLabel = "Retry",
+                onAction = onRefresh,
+                focusActionOnEntry = true,
+                modifier = Modifier.weight(1f),
+            )
+            MediaCatalogPresentationState.EMPTY -> MediaCatalogStatePanel(
+                title = if (catalog.series.isEmpty()) "No Series available" else "No matching Series",
+                body = if (catalog.series.isEmpty()) {
+                    "This playlist did not return any Series."
+                } else {
+                    "Try another category, search term or Favorites filter."
+                },
+                modifier = Modifier.weight(1f),
+            )
+            MediaCatalogPresentationState.CONTENT -> LazyColumn(
+                state = seriesListState,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                items(series, key = { it.seriesId }) { item ->
+                    val restoreHere = continueFocusIndex < 0 && restoreFocusSeriesId == item.seriesId
+                    Surface(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .then(
+                                if (restoreHere) {
+                                    Modifier.focusRequester(catalogReturnFocusRequester)
+                                } else {
+                                    Modifier
+                                },
+                            )
+                            .clickable { onSeriesSelected(item) },
+                        shape = RoundedCornerShape(8.dp),
+                        color = if (selectedSeriesId == item.seriesId) {
+                            MaterialTheme.colorScheme.surfaceVariant
+                        } else {
+                            MaterialTheme.colorScheme.background
+                        },
                     ) {
-                        RemotePoster(
-                            url = item.posterUrl,
-                            title = item.name,
-                            modifier = Modifier
-                                .width(64.dp)
-                                .aspectRatio(2f / 3f),
-                        )
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(item.name, fontWeight = FontWeight.SemiBold)
-                            item.rating?.let { rating ->
-                                Text(
-                                    "Rating ${"%.1f".format(rating)}",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
-                            }
-                            item.description?.takeIf(String::isNotBlank)?.let { description ->
-                                Text(
-                                    text = description,
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    maxLines = 2,
-                                    overflow = TextOverflow.Ellipsis,
-                                )
-                            }
-                            if (item.isFavorite) {
-                                Text("Favorite", style = MaterialTheme.typography.labelSmall)
+                        Row(
+                            modifier = Modifier.padding(8.dp),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            RemotePoster(
+                                url = item.posterUrl,
+                                title = item.name,
+                                modifier = Modifier
+                                    .width(64.dp)
+                                    .aspectRatio(2f / 3f),
+                            )
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(item.name, fontWeight = FontWeight.SemiBold)
+                                item.rating?.let { rating ->
+                                    Text(
+                                        "Rating ${"%.1f".format(rating)}",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                }
+                                item.description?.takeIf(String::isNotBlank)?.let { description ->
+                                    Text(
+                                        text = description,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        maxLines = 2,
+                                        overflow = TextOverflow.Ellipsis,
+                                    )
+                                }
+                                if (item.isFavorite) {
+                                    Text("Favorite", style = MaterialTheme.typography.labelSmall)
+                                }
                             }
                         }
                     }
