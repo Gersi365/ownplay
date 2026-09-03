@@ -2,6 +2,7 @@ package app.ownplay.player.ui.live
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.focusGroup
+import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -21,6 +22,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
@@ -55,10 +57,11 @@ import app.ownplay.player.ui.view.ContentViewMode
  * that destination instead of consuming permanent channel-list space.
  *
  * D-pad focus is split into three predictable zones: Browser -> Preview -> EPG. The channel
- * browser owns initial focus, Right enters Preview, Down enters EPG, and Left/Back from either
- * right-side zone returns to the currently active channel. The channel focus request scrolls the
- * active row/card into the viewport before requesting focus, so Preview navigation cannot leave
- * Back pointing at a stale channel.
+ * browser owns initial focus, Right from channel content enters Preview, Down enters EPG, and
+ * Left/Back from either right-side zone returns to the currently active channel. Toolbar,
+ * Search and category controls retain their native horizontal traversal. Returning from Full
+ * View may explicitly restore Preview focus once. Channel focus requests scroll the active
+ * row/card into the viewport before requesting focus.
  */
 @Composable
 internal fun LandscapeLiveWorkspaceAdaptive(
@@ -85,6 +88,8 @@ internal fun LandscapeLiveWorkspaceAdaptive(
     onOpenFullscreen: (LivePlaybackSelection) -> Unit,
     onPreviewClosed: () -> Unit,
     onOpenEpgGuide: () -> Unit,
+    focusPreviewOnEntry: Boolean = false,
+    onPreviewEntryFocusRestored: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val channelFocusRequester = remember { FocusRequester() }
@@ -129,6 +134,7 @@ internal fun LandscapeLiveWorkspaceAdaptive(
     LaunchedEffect(
         state.channels.firstOrNull()?.channelId,
         preview?.request?.channelId,
+        focusPreviewOnEntry,
     ) {
         val currentPreviewChannelId = preview?.request?.channelId
         if (currentPreviewChannelId != null) {
@@ -136,12 +142,21 @@ internal fun LandscapeLiveWorkspaceAdaptive(
         }
         if (!initialBrowserFocusRequested && state.channels.isNotEmpty()) {
             initialBrowserFocusRequested = true
-            requestChannelFocus(currentPreviewChannelId ?: state.channels.first().channelId)
+            if (!focusPreviewOnEntry) {
+                requestChannelFocus(currentPreviewChannelId ?: state.channels.first().channelId)
+            }
         }
         if (currentPreviewChannelId == null && previousPreviewChannelId != null) {
             requestChannelFocus(previousPreviewChannelId)
         }
         previousPreviewChannelId = currentPreviewChannelId
+    }
+
+    LaunchedEffect(focusPreviewOnEntry, preview?.request?.channelId) {
+        if (!focusPreviewOnEntry || preview == null) return@LaunchedEffect
+        withFrameNanos { }
+        previewFocusRequester.requestFocus()
+        onPreviewEntryFocusRestored()
     }
 
     BackHandler(
@@ -169,7 +184,7 @@ internal fun LandscapeLiveWorkspaceAdaptive(
             focusChannelId = focusChannelId,
             focusRequestGeneration = channelFocusRequestGeneration,
             channelFocusRequester = channelFocusRequester,
-            onPreviewKeyEvent = { false },
+            onChannelPreviewKeyEvent = { false },
             modifier = modifier
                 .fillMaxSize()
                 .padding(horizontal = 8.dp, vertical = 6.dp),
@@ -198,7 +213,7 @@ internal fun LandscapeLiveWorkspaceAdaptive(
             focusChannelId = focusChannelId,
             focusRequestGeneration = channelFocusRequestGeneration,
             channelFocusRequester = channelFocusRequester,
-            onPreviewKeyEvent = { event ->
+            onChannelPreviewKeyEvent = { event ->
                 if (event.isKeyDown(Key.DirectionRight)) {
                     applyFocusAction(
                         zone = LandscapeLiveFocusZone.BROWSER,
@@ -265,6 +280,7 @@ internal fun LandscapeLiveWorkspaceAdaptive(
 
                 HorizontalDivider()
 
+                val guideAvailable = epgSnapshot?.programs?.isNotEmpty() == true && !epgLoading
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -282,10 +298,14 @@ internal fun LandscapeLiveWorkspaceAdaptive(
                                     zone = LandscapeLiveFocusZone.EPG,
                                     action = LandscapeLiveFocusAction.UP,
                                 )
+                                event.isConfirmKeyDown() && guideAvailable -> {
+                                    onOpenEpgGuide()
+                                    true
+                                }
                                 else -> false
                             }
                         }
-                        .focusGroup(),
+                        .focusable(),
                 ) {
                     EpgPanel(
                         snapshot = epgSnapshot,
@@ -316,11 +336,11 @@ private fun LandscapeBrowseSurface(
     focusChannelId: String?,
     focusRequestGeneration: Int,
     channelFocusRequester: FocusRequester,
-    onPreviewKeyEvent: (KeyEvent) -> Boolean,
+    onChannelPreviewKeyEvent: (KeyEvent) -> Boolean,
     modifier: Modifier,
 ) {
     Surface(
-        modifier = modifier.onPreviewKeyEvent(onPreviewKeyEvent),
+        modifier = modifier,
         shape = RoundedCornerShape(16.dp),
         color = MaterialTheme.colorScheme.background,
         tonalElevation = 1.dp,
@@ -340,6 +360,7 @@ private fun LandscapeBrowseSurface(
             focusChannelId = focusChannelId,
             focusRequestGeneration = focusRequestGeneration,
             channelFocusRequester = channelFocusRequester,
+            onChannelPreviewKeyEvent = onChannelPreviewKeyEvent,
             modifier = Modifier.fillMaxSize(),
         )
     }
@@ -390,3 +411,7 @@ internal object LandscapeLiveFocusPolicy {
 
 private fun KeyEvent.isKeyDown(expected: Key): Boolean =
     type == KeyEventType.KeyDown && key == expected
+
+private fun KeyEvent.isConfirmKeyDown(): Boolean =
+    type == KeyEventType.KeyDown &&
+        key in setOf(Key.Enter, Key.NumPadEnter, Key.DirectionCenter)
