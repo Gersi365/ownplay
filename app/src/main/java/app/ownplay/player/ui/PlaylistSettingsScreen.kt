@@ -40,6 +40,7 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import app.ownplay.player.OwnPlayAppRuntime
+import app.ownplay.player.PendingImportExecutionTracker
 import app.ownplay.player.persistence.PlaylistSourceSummary
 import app.ownplay.player.persistence.SourceKinds
 import app.ownplay.player.source.SourceError
@@ -73,6 +74,15 @@ internal fun PlaylistSettingsScreen(
     val activeSourceId =
         (activePlaylistSelection as? ActivePlaylistSelection.Ready)?.sourceId
     val sourceSyncStates by runtime.sourceSyncStates.collectAsState()
+    val pendingImportExecution by PendingImportExecutionTracker.state.collectAsState()
+    val bannerSyncState = if (
+        syncState.stage == SourceSyncStage.LoadingChannels &&
+        syncState.sourceId in pendingImportExecution.queuedSourceIds
+    ) {
+        syncState.copy(stage = SourceSyncStage.Idle)
+    } else {
+        syncState
+    }
 
     var addMode by remember { mutableStateOf<AddPlaylistMode?>(null) }
     var editSnapshot by remember { mutableStateOf<SourceEditSnapshot?>(null) }
@@ -107,7 +117,7 @@ internal fun PlaylistSettingsScreen(
             }
         }
 
-        sourceSyncStatus(syncState)?.let { status ->
+        sourceSyncStatus(bannerSyncState)?.let { status ->
             Surface(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(16.dp),
@@ -118,7 +128,7 @@ internal fun PlaylistSettingsScreen(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
-                    if (syncState.stage.isLoading()) {
+                    if (bannerSyncState.stage.isLoading()) {
                         CircularProgressIndicator(strokeWidth = 2.dp)
                     }
                     Text(
@@ -168,6 +178,8 @@ internal fun PlaylistSettingsScreen(
                     sourceId = summary.sourceId,
                     sourceName = summary.name,
                 ),
+                importQueued = summary.sourceId in pendingImportExecution.queuedSourceIds,
+                importActive = summary.sourceId in pendingImportExecution.activeSourceIds,
                 isActive = summary.enabled && summary.sourceId == activeSourceId,
                 onSetActive = {
                     scope.launch {
@@ -296,6 +308,8 @@ internal fun PlaylistSettingsScreen(
 private fun PlaylistCard(
     summary: PlaylistSourceSummary,
     syncState: SourceSyncState,
+    importQueued: Boolean,
+    importActive: Boolean,
     isActive: Boolean,
     onSetActive: () -> Unit,
     onOpen: () -> Unit,
@@ -304,8 +318,12 @@ private fun PlaylistCard(
     onDelete: () -> Unit,
 ) {
     val importing = !summary.enabled
-    val syncing = syncState.stage.isLoading()
-    val importFailed = importing && syncState.stage == SourceSyncStage.ChannelsFailed
+    val queued = importing && importQueued
+    val activelyImporting = importing && importActive
+    val syncing = if (importing) activelyImporting else syncState.stage.isLoading()
+    val busy = if (importing) queued || activelyImporting else syncing
+    val importFailed =
+        importing && !queued && !activelyImporting && syncState.stage == SourceSyncStage.ChannelsFailed
     Surface(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(20.dp),
@@ -342,7 +360,8 @@ private fun PlaylistCard(
                     )
                     Text(
                         text = when {
-                            importing && syncing -> "${sourceKindLabel(summary.sourceKind)} • Importing…"
+                            activelyImporting -> "${sourceKindLabel(summary.sourceKind)} • Importing…"
+                            queued -> "${sourceKindLabel(summary.sourceKind)} • Waiting to import…"
                             importFailed -> "${sourceKindLabel(summary.sourceKind)} • Import failed"
                             importing -> "${sourceKindLabel(summary.sourceKind)} • Waiting to import…"
                             else -> "${sourceKindLabel(summary.sourceKind)} • ${summary.channelCount} channels"
@@ -373,6 +392,8 @@ private fun PlaylistCard(
                 )
                 Text(
                     text = when {
+                        activelyImporting -> "Import in progress"
+                        queued -> "Queued for import"
                         importFailed -> "Retry import before activating"
                         importing -> "Available after import"
                         isActive -> "Active playlist"
@@ -393,7 +414,7 @@ private fun PlaylistCard(
                 horizontalArrangement = Arrangement.spacedBy(4.dp),
             ) {
                 TextButton(onClick = onOpen, enabled = summary.enabled) { Text("Live") }
-                TextButton(onClick = onRefresh, enabled = !syncing) {
+                TextButton(onClick = onRefresh, enabled = !busy) {
                     Text(if (summary.enabled) "Refresh" else "Retry")
                 }
                 TextButton(onClick = onEdit, enabled = summary.enabled && !syncing) { Text("Edit") }

@@ -93,6 +93,15 @@ import kotlinx.coroutines.withTimeout
 
 private const val PENDING_IMPORT_TIMEOUT_MILLIS = 120_000L
 
+private sealed interface ReadyRefreshOutcome {
+    data object Missing : ReadyRefreshOutcome
+    data object Succeeded : ReadyRefreshOutcome
+
+    data class ChannelsFailed(
+        val failure: SourceSyncFailure,
+    ) : ReadyRefreshOutcome
+}
+
 class OwnPlayAppRuntime(
     context: Context,
 ) : AutoCloseable {
@@ -177,6 +186,11 @@ class OwnPlayAppRuntime(
         _sourceSyncStates.update { current -> current + (sourceId to state) }
     }
 
+    private fun publishSourceState(state: SourceSyncState) {
+        _sourceSyncState.value = state
+        rememberSourceState(state)
+    }
+
     private val channelVisibilityMutator = ChannelVisibilityMutator(database)
     private val categoryVisibilityMutator = CategoryVisibilityMutator(
         store = categoryVisibilityStore,
@@ -231,9 +245,6 @@ class OwnPlayAppRuntime(
                     // Recent history is best-effort and must never interrupt playback.
                 }
             }
-        }
-        runtimeScope.launch {
-            _sourceSyncState.collect(::rememberSourceState)
         }
         runtimeScope.launch {
             val sources = try {
@@ -351,8 +362,7 @@ class OwnPlayAppRuntime(
                     sourceName = fallbackName,
                     stage = SourceSyncStage.LoadingChannels,
                 )
-                _sourceSyncState.value = state
-                rememberSourceState(state)
+                publishSourceState(state)
                 pendingImportCoordinator.schedule(result.sourceId)
             }
             is SourceOnboardingResult.Failure -> {
@@ -374,21 +384,10 @@ class OwnPlayAppRuntime(
     }
 
     private suspend fun refreshSourceIfStale(sourceId: String) {
-        val refreshState = try {
-            database.refreshStateDao().get(sourceId)
-        } catch (cancelled: CancellationException) {
-            throw cancelled
-        } catch (_: Exception) {
-            null
-        }
-        if (
-            shouldRefreshSource(
-                lastSuccessAtEpochMillis = refreshState?.lastSuccessAtEpochMillis,
-                nowEpochMillis = System.currentTimeMillis(),
-            )
-        ) {
-            refreshSource(sourceId)
-        }
+        runReadyRefresh(
+            sourceId = sourceId,
+            onlyIfStale = true,
+        )
     }
 
     private suspend fun completePendingSource(sourceId: String) = withContext(Dispatchers.IO) {
@@ -411,8 +410,7 @@ class OwnPlayAppRuntime(
                     stage = SourceSyncStage.LoadingChannels,
                     channelCount = existingCount,
                 )
-                _sourceSyncState.value = loadingState
-                rememberSourceState(loadingState)
+                publishSourceState(loadingState)
                 markRefreshRunning(sourceId)
 
                 val channelResult = refreshLiveCatalogInternal(
@@ -477,8 +475,7 @@ class OwnPlayAppRuntime(
                     stage = SourceSyncStage.LoadingEpg,
                     channelCount = channelResult.channelCount,
                 )
-                _sourceSyncState.value = epgState
-                rememberSourceState(epgState)
+                publishSourceState(epgState)
                 runtimeScope.launch {
                     loadEpgAfterChannels(
                         sourceId = sourceId,
@@ -536,8 +533,7 @@ class OwnPlayAppRuntime(
             channelCount = channelCount,
             failure = failure,
         )
-        _sourceSyncState.value = failedState
-        rememberSourceState(failedState)
+        publishSourceState(failedState)
         try {
             markRefreshFailed(sourceId, errorCode)
         } catch (cancelled: CancellationException) {
@@ -592,19 +588,31 @@ class OwnPlayAppRuntime(
         )
     }
 
-    suspend fun refreshSource(sourceId: String) {
-        if (!sourceExists(sourceId)) return
+    private suspend fun runReadyRefresh(
+        sourceId: String,
+        onlyIfStale: Boolean,
+    ) {
         try {
-            markRefreshRunning(sourceId)
-            refreshSourcePipeline(sourceId)
-            val state = _sourceSyncState.value
-            if (
-                state.sourceId == sourceId &&
-                state.stage == SourceSyncStage.ChannelsFailed
-            ) {
-                markRefreshFailed(sourceId, state.failure.toString())
-            } else {
-                markRefreshSucceeded(sourceId)
+            refreshMutex.withLock {
+                if (!sourceExists(sourceId)) return@withLock
+                if (onlyIfStale) {
+                    val refreshState = try {
+                        database.refreshStateDao().get(sourceId)
+                    } catch (cancelled: CancellationException) {
+                        throw cancelled
+                    } catch (_: Exception) {
+                        null
+                    }
+                    if (
+                        !shouldRefreshSource(
+                            lastSuccessAtEpochMillis = refreshState?.lastSuccessAtEpochMillis,
+                            nowEpochMillis = System.currentTimeMillis(),
+                        )
+                    ) {
+                        return@withLock
+                    }
+                }
+                executeReadyRefreshLocked(sourceId)
             }
         } catch (cancelled: CancellationException) {
             throw cancelled
@@ -616,6 +624,24 @@ class OwnPlayAppRuntime(
                 }
             }
         }
+    }
+
+    private suspend fun executeReadyRefreshLocked(sourceId: String) {
+        markRefreshRunning(sourceId)
+        when (val outcome = refreshSourcePipelineLocked(sourceId)) {
+            ReadyRefreshOutcome.Missing -> Unit
+            ReadyRefreshOutcome.Succeeded -> markRefreshSucceeded(sourceId)
+            is ReadyRefreshOutcome.ChannelsFailed -> {
+                markRefreshFailed(sourceId, outcome.failure.toString())
+            }
+        }
+    }
+
+    suspend fun refreshSource(sourceId: String) {
+        runReadyRefresh(
+            sourceId = sourceId,
+            onlyIfStale = false,
+        )
     }
 
     suspend fun refreshAllSources() {
@@ -634,8 +660,11 @@ class OwnPlayAppRuntime(
         sources.forEach { source -> refreshSource(source.sourceId) }
     }
 
-    private suspend fun refreshSourcePipeline(sourceId: String) = refreshMutex.withLock {
-        val source = database.playlistSourceDao().getById(sourceId) ?: return@withLock
+    private suspend fun refreshSourcePipelineLocked(
+        sourceId: String,
+    ): ReadyRefreshOutcome {
+        val source = database.playlistSourceDao().getById(sourceId)
+            ?: return ReadyRefreshOutcome.Missing
         val existingCount = try {
             database.providerCatalogDao().channelsForSource(sourceId)
                 .count { channel -> channel.availability != ChannelAvailability.REMOVED }
@@ -644,11 +673,13 @@ class OwnPlayAppRuntime(
         } catch (_: Exception) {
             0
         }
-        _sourceSyncState.value = SourceSyncState(
-            sourceId = sourceId,
-            sourceName = source.name,
-            stage = SourceSyncStage.LoadingChannels,
-            channelCount = existingCount,
+        publishSourceState(
+            SourceSyncState(
+                sourceId = sourceId,
+                sourceName = source.name,
+                stage = SourceSyncStage.LoadingChannels,
+                channelCount = existingCount,
+            ),
         )
 
         val channelResult = refreshLiveCatalogInternal(
@@ -656,17 +687,20 @@ class OwnPlayAppRuntime(
             sourceKind = source.sourceKind,
         )
         if (channelResult is SourceOnboardingResult.Failure) {
-            _sourceSyncState.value = SourceSyncState(
-                sourceId = sourceId,
-                sourceName = source.name,
-                stage = SourceSyncStage.ChannelsFailed,
-                channelCount = existingCount,
-                failure = channelResult.reason.toSourceSyncFailure(),
+            val failure = channelResult.reason.toSourceSyncFailure()
+            publishSourceState(
+                SourceSyncState(
+                    sourceId = sourceId,
+                    sourceName = source.name,
+                    stage = SourceSyncStage.ChannelsFailed,
+                    channelCount = existingCount,
+                    failure = failure,
+                ),
             )
             if (source.sourceKind == SourceKinds.XTREAM) {
                 refreshXtreamMediaCatalogs(sourceId)
             }
-            return@withLock
+            return ReadyRefreshOutcome.ChannelsFailed(failure)
         }
         channelResult as SourceOnboardingResult.Success
 
@@ -678,6 +712,7 @@ class OwnPlayAppRuntime(
         if (source.sourceKind == SourceKinds.XTREAM) {
             refreshXtreamMediaCatalogs(sourceId)
         }
+        return ReadyRefreshOutcome.Succeeded
     }
 
     private suspend fun refreshXtreamMediaCatalogs(sourceId: String) {
@@ -706,36 +741,30 @@ class OwnPlayAppRuntime(
     }
 
     private suspend fun publishUnexpectedRefreshFailure(sourceId: String) {
-        val current = _sourceSyncState.value
-        val sourceName = if (current.sourceId == sourceId) {
-            current.sourceName
-        } else {
-            try {
-                database.playlistSourceDao().getById(sourceId)?.name
-            } catch (cancelled: CancellationException) {
-                throw cancelled
-            } catch (_: Exception) {
-                null
-            }
+        val current = _sourceSyncStates.value[sourceId]
+        val sourceName = current?.sourceName ?: try {
+            database.playlistSourceDao().getById(sourceId)?.name
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            null
         }
-        val channelCount = if (current.sourceId == sourceId) {
-            current.channelCount
-        } else {
-            try {
-                database.providerCatalogDao().channelsForSource(sourceId)
-                    .count { channel -> channel.availability != ChannelAvailability.REMOVED }
-            } catch (cancelled: CancellationException) {
-                throw cancelled
-            } catch (_: Exception) {
-                0
-            }
+        val channelCount = current?.channelCount ?: try {
+            database.providerCatalogDao().channelsForSource(sourceId)
+                .count { channel -> channel.availability != ChannelAvailability.REMOVED }
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            0
         }
-        _sourceSyncState.value = SourceSyncState(
-            sourceId = sourceId,
-            sourceName = sourceName,
-            stage = SourceSyncStage.ChannelsFailed,
-            channelCount = channelCount,
-            failure = SourceSyncFailure.Unexpected,
+        publishSourceState(
+            SourceSyncState(
+                sourceId = sourceId,
+                sourceName = sourceName,
+                stage = SourceSyncStage.ChannelsFailed,
+                channelCount = channelCount,
+                failure = SourceSyncFailure.Unexpected,
+            ),
         )
     }
 
@@ -744,11 +773,13 @@ class OwnPlayAppRuntime(
         sourceName: String,
         channelCount: Int,
     ) {
-        _sourceSyncState.value = SourceSyncState(
-            sourceId = sourceId,
-            sourceName = sourceName,
-            stage = SourceSyncStage.LoadingEpg,
-            channelCount = channelCount,
+        publishSourceState(
+            SourceSyncState(
+                sourceId = sourceId,
+                sourceName = sourceName,
+                stage = SourceSyncStage.LoadingEpg,
+                channelCount = channelCount,
+            ),
         )
         val epg = try {
             epgRepository.refreshSource(sourceId)
@@ -763,22 +794,24 @@ class OwnPlayAppRuntime(
             }
             return
         }
-        _sourceSyncState.value = if (epg == null) {
-            SourceSyncState(
-                sourceId = sourceId,
-                sourceName = sourceName,
-                stage = SourceSyncStage.EpgFailed,
-                channelCount = channelCount,
-            )
-        } else {
-            SourceSyncState(
-                sourceId = sourceId,
-                sourceName = sourceName,
-                stage = SourceSyncStage.Ready,
-                channelCount = channelCount,
-                epgChannelCount = epg.matchedChannelCount,
-            )
-        }
+        publishSourceState(
+            if (epg == null) {
+                SourceSyncState(
+                    sourceId = sourceId,
+                    sourceName = sourceName,
+                    stage = SourceSyncStage.EpgFailed,
+                    channelCount = channelCount,
+                )
+            } else {
+                SourceSyncState(
+                    sourceId = sourceId,
+                    sourceName = sourceName,
+                    stage = SourceSyncStage.Ready,
+                    channelCount = channelCount,
+                    epgChannelCount = epg.matchedChannelCount,
+                )
+            },
+        )
     }
 
     suspend fun epgSnapshot(
