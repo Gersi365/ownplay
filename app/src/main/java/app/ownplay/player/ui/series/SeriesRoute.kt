@@ -1064,6 +1064,7 @@ private fun SeriesSeasonRow(
     Surface(
         modifier = Modifier
             .fillMaxWidth()
+            .mediaCardVisualTint()
             .clickable(onClick = onClick),
         shape = RoundedCornerShape(10.dp),
         tonalElevation = 1.dp,
@@ -1241,6 +1242,7 @@ private fun EpisodeRow(
     } else {
         Modifier
             .fillMaxWidth()
+            .mediaCardVisualTint()
             .clickable(onClick = onOpen)
     }
 
@@ -1415,8 +1417,7 @@ private fun SeriesPlaybackScreen(
                 channelId = episode.episodeId,
                 mediaKind = PlaybackMediaKind.SERIES_EPISODE,
             )
-            PlaybackInteractionBridge.clearBackAction(backOwner)
-            onFullscreenStateChanged(false)
+            PlaybackInteractionBridge.clearBackAction(detailsBackOwner)
         }
     }
 
