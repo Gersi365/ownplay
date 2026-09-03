@@ -28,6 +28,13 @@ import app.ownplay.player.personalization.AppDeviceProfile
 import app.ownplay.player.personalization.AppOrientationMode
 import app.ownplay.player.source.SourceSyncState
 
+internal fun settingsRailShouldOwnFocus(destination: SettingsDestination): Boolean = when (destination) {
+    SettingsDestination.LIVE_MANAGEMENT,
+    SettingsDestination.PLAYLISTS,
+    -> false
+    else -> true
+}
+
 @Composable
 internal fun LandscapeSettingsShell(
     destination: SettingsDestination,
@@ -53,7 +60,7 @@ internal fun LandscapeSettingsShell(
     }
 
     LaunchedEffect(isTelevision, destination) {
-        if (isTelevision) {
+        if (isTelevision && settingsRailShouldOwnFocus(destination)) {
             selectedRailFocusRequester.requestFocus()
         }
     }
@@ -120,6 +127,7 @@ internal fun LandscapeSettingsShell(
                     runtime = runtime,
                     summaries = summaries,
                     onBack = { onDestinationChange(SettingsDestination.CONTENT) },
+                    focusBackOnEntry = isTelevision,
                 )
 
                 SettingsDestination.PLAYLISTS -> PlaylistManagementSubscreen(
@@ -128,6 +136,7 @@ internal fun LandscapeSettingsShell(
                     syncState = syncState,
                     onBack = { onDestinationChange(SettingsDestination.CONTENT) },
                     onOpenInLive = onOpenSourceInLive,
+                    focusBackOnEntry = isTelevision,
                 )
             }
         }
