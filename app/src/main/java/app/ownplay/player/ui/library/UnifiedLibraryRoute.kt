@@ -301,6 +301,24 @@ internal fun UnifiedLibraryRoute(
     }
 
     val normalizedQuery = query.trim().lowercase()
+    val continueWatchingMovies = remember(
+        vodCatalog.continueWatching,
+        filter,
+        offlineOnly,
+        normalizedQuery,
+        movieCategoryKey,
+    ) {
+        if (
+            offlineOnly ||
+            filter == UnifiedLibraryFilter.SERIES ||
+            normalizedQuery.isNotBlank() ||
+            (filter == UnifiedLibraryFilter.MOVIES && movieCategoryKey != null)
+        ) {
+            emptyList()
+        } else {
+            vodCatalog.continueWatching.filter(VodMovie::resumeAvailable)
+        }
+    }
     val movieDownloadsByKey = remember(downloads) {
         downloads
             .filter { it.mediaKind == DownloadMediaKinds.MOVIE }
@@ -496,6 +514,17 @@ internal fun UnifiedLibraryRoute(
                 },
                 prefix = "View",
             )
+        }
+
+        sourceId?.let { activeSourceId ->
+            if (continueWatchingMovies.isNotEmpty()) {
+                LibraryContinueWatchingShelf(
+                    movies = continueWatchingMovies,
+                    onOpenMovie = { movie ->
+                        onOpenMovieDetails(activeSourceId, movie.movieId)
+                    },
+                )
+            }
         }
 
         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
