@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
@@ -82,6 +83,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 
 private const val SERIES_EXIT_PROGRESS_SAVE_TIMEOUT_MILLIS = 1_000L
+private const val SERIES_FOCUS_RESTORE_LAYOUT_DELAY_MILLIS = 50L
 
 @Composable
 internal fun SeriesRoute(
@@ -144,10 +146,19 @@ internal fun SeriesRoute(
     var playingEpisode by remember(sourceId) { mutableStateOf<SeriesEpisode?>(null) }
     var playbackStartMode by remember(sourceId) { mutableStateOf(SeriesPlaybackStartMode.RESUME) }
     var playbackReturnsToCatalog by remember(sourceId) { mutableStateOf(false) }
-    var restoreCatalogFocusAfterPlayback by remember(sourceId) { mutableStateOf(false) }
+    var restoreCatalogFocusEpisodeId by remember(sourceId) { mutableStateOf<String?>(null) }
+    var restoreCatalogFocusSeriesId by remember(sourceId) { mutableStateOf<String?>(null) }
+    var restoreEpisodePlaybackFocusId by remember(sourceId) { mutableStateOf<String?>(null) }
     val detailsBackOwner = remember(sourceId) { Any() }
 
+    fun clearPlaybackFocusRestore() {
+        restoreCatalogFocusEpisodeId = null
+        restoreCatalogFocusSeriesId = null
+        restoreEpisodePlaybackFocusId = null
+    }
+
     fun closeSeriesLevel() {
+        clearPlaybackFocusRestore()
         when {
             selectedEpisodeId != null -> selectedEpisodeId = null
             selectedSeasonNumber != null -> {
@@ -192,7 +203,7 @@ internal fun SeriesRoute(
         returnFocusToCatalog: Boolean,
         startMode: SeriesPlaybackStartMode = SeriesPlaybackStartMode.RESUME,
     ) {
-        restoreCatalogFocusAfterPlayback = false
+        clearPlaybackFocusRestore()
         playbackReturnsToCatalog = returnFocusToCatalog
         playbackStartMode = startMode
         runtime.playbackController.start(
@@ -264,7 +275,7 @@ internal fun SeriesRoute(
         favoritesOnly = false
         selectedSeasonNumber = null
         selectedEpisodeId = null
-        restoreCatalogFocusAfterPlayback = false
+        clearPlaybackFocusRestore()
         selectedSeries = target
         onRequestedSeriesConsumed()
     }
@@ -326,7 +337,10 @@ internal fun SeriesRoute(
                     )
                 }
                 if (playbackReturnsToCatalog) {
-                    restoreCatalogFocusAfterPlayback = true
+                    restoreCatalogFocusEpisodeId = currentEpisode.episodeId
+                    restoreCatalogFocusSeriesId = currentEpisode.seriesId
+                } else {
+                    restoreEpisodePlaybackFocusId = currentEpisode.episodeId
                 }
                 playbackReturnsToCatalog = false
             },
@@ -353,11 +367,17 @@ internal fun SeriesRoute(
             selectedEpisodeId = selectedEpisodeId,
             downloads = downloads,
             focusBackOnEntry = true,
+            restorePlaybackFocusEpisodeId = restoreEpisodePlaybackFocusId,
+            onPlaybackFocusRestored = { restoreEpisodePlaybackFocusId = null },
             onSeasonSelected = {
+                restoreEpisodePlaybackFocusId = null
                 selectedSeasonNumber = it
                 selectedEpisodeId = null
             },
-            onEpisodeSelected = { selectedEpisodeId = it },
+            onEpisodeSelected = {
+                restoreEpisodePlaybackFocusId = null
+                selectedEpisodeId = it
+            },
             onFavoriteChanged = { favorite ->
                 selectedSeries = portraitSelection.copy(isFavorite = favorite)
                 scope.launch {
@@ -403,14 +423,18 @@ internal fun SeriesRoute(
             selectedCategoryKey = categoryKey,
             favoritesOnly = favoritesOnly,
             selectedSeriesId = selectedSeries?.seriesId,
-            restoreFocusOnEntry = restoreCatalogFocusAfterPlayback,
-            onFocusRestored = { restoreCatalogFocusAfterPlayback = false },
+            restoreFocusEpisodeId = restoreCatalogFocusEpisodeId,
+            restoreFocusSeriesId = restoreCatalogFocusSeriesId,
+            onFocusRestored = {
+                restoreCatalogFocusEpisodeId = null
+                restoreCatalogFocusSeriesId = null
+            },
             onQueryChanged = { query = it },
             onCategoryChanged = { categoryKey = it },
             onFavoritesChanged = { favoritesOnly = it },
             onRefresh = ::refresh,
             onSeriesSelected = {
-                restoreCatalogFocusAfterPlayback = false
+                clearPlaybackFocusRestore()
                 selectedSeasonNumber = null
                 selectedEpisodeId = null
                 selectedSeries = it
@@ -434,11 +458,17 @@ internal fun SeriesRoute(
                 selectedEpisodeId = selectedEpisodeId,
                 downloads = downloads,
                 focusBackOnEntry = returnToLibraryOnDetailBack,
+                restorePlaybackFocusEpisodeId = restoreEpisodePlaybackFocusId,
+                onPlaybackFocusRestored = { restoreEpisodePlaybackFocusId = null },
                 onSeasonSelected = {
+                    restoreEpisodePlaybackFocusId = null
                     selectedSeasonNumber = it
                     selectedEpisodeId = null
                 },
-                onEpisodeSelected = { selectedEpisodeId = it },
+                onEpisodeSelected = {
+                    restoreEpisodePlaybackFocusId = null
+                    selectedEpisodeId = it
+                },
                 onFavoriteChanged = { favorite ->
                     selectedSeries = selected.copy(isFavorite = favorite)
                     scope.launch {
@@ -482,7 +512,8 @@ private fun SeriesCatalogPane(
     selectedCategoryKey: String?,
     favoritesOnly: Boolean,
     selectedSeriesId: String?,
-    restoreFocusOnEntry: Boolean,
+    restoreFocusEpisodeId: String?,
+    restoreFocusSeriesId: String?,
     onFocusRestored: () -> Unit,
     onQueryChanged: (String) -> Unit,
     onCategoryChanged: (String?) -> Unit,
@@ -496,14 +527,47 @@ private fun SeriesCatalogPane(
     val isTelevision =
         configuration.uiMode and Configuration.UI_MODE_TYPE_MASK == Configuration.UI_MODE_TYPE_TELEVISION
     val catalogReturnFocusRequester = remember { FocusRequester() }
+    val continueWatchingListState = rememberLazyListState()
+    val seriesListState = rememberLazyListState()
+    val continueWatchingVisible =
+        catalog.continueWatching.isNotEmpty() &&
+            query.isBlank() &&
+            !favoritesOnly &&
+            selectedCategoryKey == null
+    val continueFocusIndex = if (continueWatchingVisible && restoreFocusEpisodeId != null) {
+        catalog.continueWatching.indexOfFirst { episode -> episode.episodeId == restoreFocusEpisodeId }
+    } else {
+        -1
+    }
+    val seriesFocusIndex = if (restoreFocusSeriesId != null) {
+        series.indexOfFirst { item -> item.seriesId == restoreFocusSeriesId }
+    } else {
+        -1
+    }
 
-    LaunchedEffect(isTelevision, restoreFocusOnEntry) {
-        if (isTelevision && restoreFocusOnEntry) {
-            catalogReturnFocusRequester.requestFocus()
+    LaunchedEffect(
+        isTelevision,
+        restoreFocusEpisodeId,
+        restoreFocusSeriesId,
+        continueFocusIndex,
+        seriesFocusIndex,
+    ) {
+        if (restoreFocusEpisodeId == null && restoreFocusSeriesId == null) return@LaunchedEffect
+        if (isTelevision) {
+            when {
+                continueFocusIndex >= 0 -> {
+                    continueWatchingListState.scrollToItem(continueFocusIndex)
+                    delay(SERIES_FOCUS_RESTORE_LAYOUT_DELAY_MILLIS)
+                    catalogReturnFocusRequester.requestFocus()
+                }
+                seriesFocusIndex >= 0 -> {
+                    seriesListState.scrollToItem(seriesFocusIndex)
+                    delay(SERIES_FOCUS_RESTORE_LAYOUT_DELAY_MILLIS)
+                    catalogReturnFocusRequester.requestFocus()
+                }
+            }
         }
-        if (restoreFocusOnEntry) {
-            onFocusRestored()
-        }
+        onFocusRestored()
     }
 
     Column(modifier = modifier.fillMaxSize()) {
@@ -544,7 +608,6 @@ private fun SeriesCatalogPane(
                 selected = selectedCategoryKey == null,
                 onClick = { onCategoryChanged(null) },
                 label = { Text("All") },
-                modifier = Modifier.focusRequester(catalogReturnFocusRequester),
             )
             FilterChip(
                 selected = favoritesOnly,
@@ -569,23 +632,29 @@ private fun SeriesCatalogPane(
                 modifier = Modifier.padding(vertical = 6.dp),
             )
         }
-        if (
-            catalog.continueWatching.isNotEmpty() &&
-            query.isBlank() &&
-            !favoritesOnly &&
-            selectedCategoryKey == null
-        ) {
+        if (continueWatchingVisible) {
             Text(
                 "Continue Watching",
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.SemiBold,
                 modifier = Modifier.padding(top = 8.dp, bottom = 4.dp),
             )
-            LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            LazyRow(
+                state = continueWatchingListState,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
                 items(catalog.continueWatching, key = { it.episodeId }) { episode ->
+                    val restoreHere = restoreFocusEpisodeId == episode.episodeId
                     Surface(
                         modifier = Modifier
                             .width(210.dp)
+                            .then(
+                                if (restoreHere) {
+                                    Modifier.focusRequester(catalogReturnFocusRequester)
+                                } else {
+                                    Modifier
+                                },
+                            )
                             .clickable { onContinueEpisode(episode) },
                         shape = RoundedCornerShape(12.dp),
                         tonalElevation = 1.dp,
@@ -615,15 +684,24 @@ private fun SeriesCatalogPane(
             }
         }
         LazyColumn(
+            state = seriesListState,
             modifier = Modifier
                 .fillMaxWidth()
                 .weight(1f),
             verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
             items(series, key = { it.seriesId }) { item ->
+                val restoreHere = continueFocusIndex < 0 && restoreFocusSeriesId == item.seriesId
                 Surface(
                     modifier = Modifier
                         .fillMaxWidth()
+                        .then(
+                            if (restoreHere) {
+                                Modifier.focusRequester(catalogReturnFocusRequester)
+                            } else {
+                                Modifier
+                            },
+                        )
                         .clickable { onSeriesSelected(item) },
                     shape = RoundedCornerShape(8.dp),
                     color = if (selectedSeriesId == item.seriesId) {
@@ -683,6 +761,8 @@ private fun SeriesDetailsPane(
     selectedEpisodeId: String?,
     downloads: List<OfflineDownload>,
     focusBackOnEntry: Boolean,
+    restorePlaybackFocusEpisodeId: String?,
+    onPlaybackFocusRestored: () -> Unit,
     onSeasonSelected: (Int) -> Unit,
     onEpisodeSelected: (String) -> Unit,
     onFavoriteChanged: (Boolean) -> Unit,
@@ -699,8 +779,17 @@ private fun SeriesDetailsPane(
     val isTelevision =
         configuration.uiMode and Configuration.UI_MODE_TYPE_MASK == Configuration.UI_MODE_TYPE_TELEVISION
     val hierarchyBackFocusRequester = remember(selected.seriesId) { FocusRequester() }
+    val playbackReturnFocusRequester = remember(selected.seriesId) { FocusRequester() }
+    val episodeListState = rememberLazyListState()
     val selectedSeason = details?.seasons?.firstOrNull { it.seasonNumber == selectedSeasonNumber }
     val selectedEpisode = selectedSeason?.episodes?.firstOrNull { it.episodeId == selectedEpisodeId }
+    val restoreEpisodeIndex = if (restorePlaybackFocusEpisodeId != null && selectedSeason != null) {
+        selectedSeason.episodes.indexOfFirst { episode -> episode.episodeId == restorePlaybackFocusEpisodeId }
+    } else {
+        -1
+    }
+    val restoreToSelectedEpisode = selectedEpisode?.episodeId == restorePlaybackFocusEpisodeId
+    val canRestorePlaybackFocus = restoreToSelectedEpisode || restoreEpisodeIndex >= 0
 
     LaunchedEffect(
         isTelevision,
@@ -708,8 +797,19 @@ private fun SeriesDetailsPane(
         selected.seriesId,
         selectedSeasonNumber,
         selectedEpisodeId,
+        restorePlaybackFocusEpisodeId,
+        restoreEpisodeIndex,
     ) {
-        if (
+        if (restorePlaybackFocusEpisodeId != null) {
+            if (isTelevision && canRestorePlaybackFocus) {
+                if (!restoreToSelectedEpisode && restoreEpisodeIndex >= 0) {
+                    episodeListState.scrollToItem(restoreEpisodeIndex)
+                    delay(SERIES_FOCUS_RESTORE_LAYOUT_DELAY_MILLIS)
+                }
+                playbackReturnFocusRequester.requestFocus()
+            }
+            onPlaybackFocusRestored()
+        } else if (
             isTelevision &&
             (focusBackOnEntry || selectedSeasonNumber != null || selectedEpisodeId != null)
         ) {
@@ -780,6 +880,9 @@ private fun SeriesDetailsPane(
                                 item.mediaKind == DownloadMediaKinds.SERIES_EPISODE &&
                                     item.contentId == selectedEpisode.episodeId
                             },
+                            playbackFocusRequester = playbackReturnFocusRequester.takeIf {
+                                restoreToSelectedEpisode
+                            },
                             onPlay = { onPlay(selectedEpisode) },
                             onPlayFromBeginning = { onPlayFromBeginning(selectedEpisode) },
                             onDownload = { onDownload(selectedEpisode) },
@@ -814,6 +917,7 @@ private fun SeriesDetailsPane(
                             }
                         } else {
                             LazyColumn(
+                                state = episodeListState,
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .weight(1f),
@@ -827,6 +931,9 @@ private fun SeriesDetailsPane(
                                         episode = episode,
                                         download = download,
                                         onOpen = { onEpisodeSelected(episode.episodeId) },
+                                        playbackFocusRequester = playbackReturnFocusRequester.takeIf {
+                                            restorePlaybackFocusEpisodeId == episode.episodeId
+                                        },
                                         onPlay = { onPlay(episode) },
                                         onPlayFromBeginning = { onPlayFromBeginning(episode) },
                                         onDownload = { onDownload(episode) },
@@ -981,6 +1088,7 @@ private fun SeriesSeasonHeader(
 private fun SeriesEpisodeDetailsPane(
     episode: SeriesEpisode,
     download: OfflineDownload?,
+    playbackFocusRequester: FocusRequester? = null,
     onPlay: () -> Unit,
     onPlayFromBeginning: () -> Unit,
     onDownload: () -> Unit,
@@ -1040,6 +1148,7 @@ private fun SeriesEpisodeDetailsPane(
         download = download,
         onOpen = null,
         showHeader = false,
+        playbackFocusRequester = playbackFocusRequester,
         onPlay = onPlay,
         onPlayFromBeginning = onPlayFromBeginning,
         onDownload = onDownload,
@@ -1055,6 +1164,7 @@ private fun EpisodeRow(
     download: OfflineDownload?,
     onOpen: (() -> Unit)? = null,
     showHeader: Boolean = true,
+    playbackFocusRequester: FocusRequester? = null,
     onPlay: () -> Unit,
     onPlayFromBeginning: () -> Unit,
     onDownload: () -> Unit,
@@ -1106,7 +1216,14 @@ private fun EpisodeRow(
             modifier = Modifier.padding(top = if (showHeader) 6.dp else 0.dp),
             horizontalArrangement = Arrangement.spacedBy(6.dp),
         ) {
-            Button(onClick = onPlay) {
+            Button(
+                onClick = onPlay,
+                modifier = if (playbackFocusRequester != null) {
+                    Modifier.focusRequester(playbackFocusRequester)
+                } else {
+                    Modifier
+                },
+            ) {
                 Text(seriesEpisodePrimaryPlaybackLabel(episode, offlineCopyAvailable))
             }
             if (!offlineCopyAvailable) {
