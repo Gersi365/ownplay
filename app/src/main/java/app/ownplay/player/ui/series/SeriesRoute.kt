@@ -40,6 +40,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
@@ -77,8 +78,11 @@ import app.ownplay.player.source.SourceResult
 import app.ownplay.player.ui.MediaCatalogPresentationState
 import app.ownplay.player.ui.MediaCatalogRefreshWarning
 import app.ownplay.player.ui.MediaCatalogStatePanel
+import app.ownplay.player.ui.MediaDetailsFocusTarget
+import app.ownplay.player.ui.MediaDetailsStatePanel
 import app.ownplay.player.ui.mediaCatalogPresentationState
 import app.ownplay.player.ui.mediaCatalogSourceErrorLabel
+import app.ownplay.player.ui.mediaDetailsFocusTarget
 import app.ownplay.player.ui.playbackStatusLabel
 import app.ownplay.player.ui.vod.RemotePoster
 import kotlinx.coroutines.currentCoroutineContext
@@ -261,6 +265,24 @@ internal fun SeriesRoute(
         }
     }
 
+    suspend fun loadSeriesDetails(selected: SeriesSummary) {
+        detailsLoading = true
+        detailsError = null
+        val result = featureRuntime.details(sourceId, selected.seriesId)
+        if (selectedSeries?.seriesId != selected.seriesId) {
+            if (selectedSeries == null) detailsLoading = false
+            return
+        }
+        details = when (result) {
+            is SourceResult.Success -> result.value
+            is SourceResult.Failure -> {
+                detailsError = result.error
+                null
+            }
+        }
+        detailsLoading = false
+    }
+
     LaunchedEffect(sourceId) {
         loading = true
         refreshError = null
@@ -292,18 +314,10 @@ internal fun SeriesRoute(
         if (selected == null) {
             details = null
             detailsError = null
+            detailsLoading = false
             return@LaunchedEffect
         }
-        detailsLoading = true
-        detailsError = null
-        details = when (val result = featureRuntime.details(sourceId, selected.seriesId)) {
-            is SourceResult.Success -> result.value
-            is SourceResult.Failure -> {
-                detailsError = result.error
-                null
-            }
-        }
-        detailsLoading = false
+        loadSeriesDetails(selected)
     }
 
     LaunchedEffect(details, selectedSeasonNumber, selectedEpisodeId) {
@@ -374,6 +388,7 @@ internal fun SeriesRoute(
             focusBackOnEntry = true,
             restorePlaybackFocusEpisodeId = restoreEpisodePlaybackFocusId,
             onPlaybackFocusRestored = { restoreEpisodePlaybackFocusId = null },
+            onRetryDetails = { scope.launch { loadSeriesDetails(portraitSelection) } },
             onSeasonSelected = {
                 restoreEpisodePlaybackFocusId = null
                 selectedSeasonNumber = it
@@ -465,6 +480,7 @@ internal fun SeriesRoute(
                 focusBackOnEntry = returnToLibraryOnDetailBack,
                 restorePlaybackFocusEpisodeId = restoreEpisodePlaybackFocusId,
                 onPlaybackFocusRestored = { restoreEpisodePlaybackFocusId = null },
+                onRetryDetails = { scope.launch { loadSeriesDetails(selected) } },
                 onSeasonSelected = {
                     restoreEpisodePlaybackFocusId = null
                     selectedSeasonNumber = it
@@ -799,6 +815,7 @@ private fun SeriesDetailsPane(
     focusBackOnEntry: Boolean,
     restorePlaybackFocusEpisodeId: String?,
     onPlaybackFocusRestored: () -> Unit,
+    onRetryDetails: () -> Unit,
     onSeasonSelected: (Int) -> Unit,
     onEpisodeSelected: (String) -> Unit,
     onFavoriteChanged: (Boolean) -> Unit,
@@ -816,6 +833,7 @@ private fun SeriesDetailsPane(
         configuration.uiMode and Configuration.UI_MODE_TYPE_MASK == Configuration.UI_MODE_TYPE_TELEVISION
     val hierarchyBackFocusRequester = remember(selected.seriesId) { FocusRequester() }
     val playbackReturnFocusRequester = remember(selected.seriesId) { FocusRequester() }
+    val detailsRetryFocusRequester = remember(selected.seriesId) { FocusRequester() }
     val episodeListState = rememberLazyListState()
     val selectedSeason = details?.seasons?.firstOrNull { it.seasonNumber == selectedSeasonNumber }
     val selectedEpisode = selectedSeason?.episodes?.firstOrNull { it.episodeId == selectedEpisodeId }
@@ -826,10 +844,15 @@ private fun SeriesDetailsPane(
     }
     val restoreToSelectedEpisode = selectedEpisode?.episodeId == restorePlaybackFocusEpisodeId
     val canRestorePlaybackFocus = restoreToSelectedEpisode || restoreEpisodeIndex >= 0
+    val focusTarget = mediaDetailsFocusTarget(
+        isTelevision = isTelevision,
+        playbackReturnRequested = restorePlaybackFocusEpisodeId != null,
+        errorActionAvailable = error != null && details == null,
+        backRequested = focusBackOnEntry || selectedSeasonNumber != null || selectedEpisodeId != null,
+    )
 
     LaunchedEffect(
-        isTelevision,
-        focusBackOnEntry,
+        focusTarget,
         selected.seriesId,
         selectedSeasonNumber,
         selectedEpisodeId,
@@ -845,11 +868,15 @@ private fun SeriesDetailsPane(
                 playbackReturnFocusRequester.requestFocus()
             }
             onPlaybackFocusRestored()
-        } else if (
-            isTelevision &&
-            (focusBackOnEntry || selectedSeasonNumber != null || selectedEpisodeId != null)
-        ) {
-            hierarchyBackFocusRequester.requestFocus()
+        } else if (isTelevision) {
+            withFrameNanos { }
+            when (focusTarget) {
+                MediaDetailsFocusTarget.RETRY -> detailsRetryFocusRequester.requestFocus()
+                MediaDetailsFocusTarget.BACK -> hierarchyBackFocusRequester.requestFocus()
+                MediaDetailsFocusTarget.PLAYBACK,
+                MediaDetailsFocusTarget.NONE,
+                -> Unit
+            }
         }
     }
 
@@ -900,11 +927,20 @@ private fun SeriesDetailsPane(
                 }
             }
 
-            if (loading) {
-                CircularProgressIndicator(modifier = Modifier.padding(12.dp))
-            }
-            error?.let {
-                Text("Series details failed to load.", color = MaterialTheme.colorScheme.error)
+            when {
+                loading && details == null -> MediaDetailsStatePanel(
+                    title = "Loading Series details",
+                    body = "Fetching seasons and episodes from the provider.",
+                    loading = true,
+                )
+                error != null && details == null -> MediaDetailsStatePanel(
+                    title = "Series details unavailable",
+                    body = mediaCatalogSourceErrorLabel(error),
+                    error = true,
+                    actionLabel = "Retry",
+                    onAction = onRetryDetails,
+                    actionFocusRequester = detailsRetryFocusRequester,
+                )
             }
 
             details?.let { loaded ->
@@ -940,17 +976,11 @@ private fun SeriesDetailsPane(
                             fontWeight = FontWeight.SemiBold,
                         )
                         if (selectedSeason.episodes.isEmpty()) {
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .weight(1f),
-                                contentAlignment = Alignment.Center,
-                            ) {
-                                Text(
-                                    "No episodes available for this season.",
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
-                            }
+                            MediaDetailsStatePanel(
+                                title = "No episodes available",
+                                body = "The provider returned this season without episodes.",
+                                modifier = Modifier.weight(1f),
+                            )
                         } else {
                             LazyColumn(
                                 state = episodeListState,
@@ -994,17 +1024,11 @@ private fun SeriesDetailsPane(
                             fontWeight = FontWeight.SemiBold,
                         )
                         if (loaded.seasons.isEmpty()) {
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .weight(1f),
-                                contentAlignment = Alignment.Center,
-                            ) {
-                                Text(
-                                    "No seasons available.",
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
-                            }
+                            MediaDetailsStatePanel(
+                                title = "No seasons available",
+                                body = "The provider returned this Series without seasons.",
+                                modifier = Modifier.weight(1f),
+                            )
                         } else {
                             LazyColumn(
                                 modifier = Modifier
