@@ -489,7 +489,7 @@ private fun LiveChannelCompactRow(
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
-            liveSecondaryLabel(channel, currentProgram)?.let { label ->
+            liveSecondaryLabel(channel, currentProgram, compact = true)?.let { label ->
                 Text(
                     text = label,
                     style = MaterialTheme.typography.labelSmall,
@@ -535,7 +535,7 @@ private fun LiveChannelListRow(
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
-            liveSecondaryLabel(channel, currentProgram)?.let { label ->
+            liveSecondaryLabel(channel, currentProgram, compact = false)?.let { label ->
                 Text(
                     text = label,
                     style = MaterialTheme.typography.bodySmall,
@@ -596,7 +596,7 @@ private fun LiveChannelCard(
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
             )
-            liveSecondaryLabel(channel, currentProgram)?.let { label ->
+            liveSecondaryLabel(channel, currentProgram, compact = false)?.let { label ->
                 Text(
                     text = label,
                     style = MaterialTheme.typography.labelSmall,
@@ -736,17 +736,39 @@ private fun liveSelectionBackground(playing: Boolean) = if (playing) {
 private fun liveSecondaryLabel(
     channel: LiveChannelItem,
     currentProgram: EpgProgram?,
+    compact: Boolean,
 ): String? = currentProgram?.let { program ->
-    buildString {
-        append("Now")
-        program.startLabel?.let { start ->
+    liveCurrentProgramLabel(program = program, compact = compact)
+} ?: channel.categoryName?.takeIf(String::isNotBlank)
+
+internal fun liveCurrentProgramLabel(
+    program: EpgProgram,
+    compact: Boolean,
+): String = buildString {
+    val timeRange = when {
+        program.startLabel != null && program.endLabel != null ->
+            "${program.startLabel}–${program.endLabel}"
+        program.startLabel != null -> program.startLabel
+        program.endLabel != null -> program.endLabel
+        else -> null
+    }
+
+    if (compact) {
+        if (timeRange != null) {
+            append(timeRange)
             append(" · ")
-            append(start)
+        }
+        append(program.title)
+    } else {
+        append("Now")
+        if (timeRange != null) {
+            append(" · ")
+            append(timeRange)
         }
         append(" · ")
         append(program.title)
     }
-} ?: channel.categoryName?.takeIf(String::isNotBlank)
+}
 
 private fun LiveBrowseOrder.liveViewLabel(): String = when (this) {
     LiveBrowseOrder.PROVIDER -> "Provider order"
