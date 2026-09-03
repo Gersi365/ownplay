@@ -34,6 +34,7 @@ internal fun LandscapeSettingsRail(
     selectedRailDestination: SettingsDestination,
     selectedRailFocusRequester: FocusRequester,
     onDestinationChange: (SettingsDestination) -> Unit,
+    showDownloads: Boolean = true,
 ) {
     Surface(
         modifier = Modifier
@@ -77,13 +78,15 @@ internal fun LandscapeSettingsRail(
                 focusRequester = selectedRailFocusRequester,
                 onClick = { onDestinationChange(SettingsDestination.CONTENT) },
             )
-            SettingsRailItem(
-                label = "Downloads",
-                detail = "Offline movies & episodes",
-                selected = selectedRailDestination == SettingsDestination.DOWNLOADS,
-                focusRequester = selectedRailFocusRequester,
-                onClick = { onDestinationChange(SettingsDestination.DOWNLOADS) },
-            )
+            if (showDownloads) {
+                SettingsRailItem(
+                    label = "Downloads",
+                    detail = "Offline movies & episodes",
+                    selected = selectedRailDestination == SettingsDestination.DOWNLOADS,
+                    focusRequester = selectedRailFocusRequester,
+                    onClick = { onDestinationChange(SettingsDestination.DOWNLOADS) },
+                )
+            }
             SettingsRailItem(
                 label = "About",
                 detail = "OwnPlay information",
