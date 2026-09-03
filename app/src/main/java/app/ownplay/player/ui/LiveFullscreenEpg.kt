@@ -264,9 +264,12 @@ internal fun fullscreenEpgRefreshDelayMillis(
     val end = currentProgramEndEpochSeconds ?: return FULLSCREEN_EPG_REFRESH_MILLIS
     val secondsUntilBoundary = end - nowEpochSeconds
     if (secondsUntilBoundary <= 0L) return FULLSCREEN_EPG_MIN_REFRESH_MILLIS
+    if (secondsUntilBoundary >= FULLSCREEN_EPG_REFRESH_MILLIS / 1_000L) {
+        return FULLSCREEN_EPG_REFRESH_MILLIS
+    }
 
     return (secondsUntilBoundary * 1_000L + FULLSCREEN_EPG_BOUNDARY_GRACE_MILLIS)
-        .coerceIn(FULLSCREEN_EPG_MIN_REFRESH_MILLIS, FULLSCREEN_EPG_REFRESH_MILLIS)
+        .coerceAtLeast(FULLSCREEN_EPG_MIN_REFRESH_MILLIS)
 }
 
 private fun fullscreenEpgTimeRange(program: EpgProgram): String = when {
