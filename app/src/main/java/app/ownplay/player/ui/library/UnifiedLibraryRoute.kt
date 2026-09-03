@@ -514,14 +514,16 @@ internal fun UnifiedLibraryRoute(
                     },
                 )
             }
-            FilterChip(
-                selected = offlineOnly,
-                onClick = { offlineOnly = !offlineOnly },
-                label = { Text("Offline") },
-                leadingIcon = {
-                    Icon(Icons.Filled.DownloadDone, contentDescription = null, modifier = Modifier.size(16.dp))
-                },
-            )
+            if (!isTelevision) {
+                FilterChip(
+                    selected = offlineOnly,
+                    onClick = { offlineOnly = !offlineOnly },
+                    label = { Text("Offline") },
+                    leadingIcon = {
+                        Icon(Icons.Filled.DownloadDone, contentDescription = null, modifier = Modifier.size(16.dp))
+                    },
+                )
+            }
         }
 
         when (filter) {
