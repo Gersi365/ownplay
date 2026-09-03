@@ -22,6 +22,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -102,6 +103,7 @@ internal fun PlaybackScreen(
     onNavigate: (PlaybackNavigationDirection) -> Unit,
     onReturnToChannels: () -> Unit,
     onFullscreenStateChanged: (Boolean) -> Unit,
+    epgContent: @Composable () -> Unit = {},
 ) {
     val configuration = LocalConfiguration.current
     val isTelevision =
@@ -247,6 +249,16 @@ internal fun PlaybackScreen(
                     },
                     modifier = Modifier.align(Alignment.Center),
                 )
+            }
+
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .statusBarsPadding()
+                    .padding(16.dp)
+                    .fillMaxWidth(0.72f),
+            ) {
+                epgContent()
             }
 
             if (controlsVisible || state !is PlaybackState.Playing) {
