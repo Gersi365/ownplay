@@ -23,6 +23,54 @@ class LiveFullscreenEpgProgressTest {
         assertNull(fullscreenEpgProgress(epgProgram(start = 100L, end = 100L), 100L))
     }
 
+    @Test
+    fun epgRefreshUsesNormalIntervalWithoutCurrentProgramBoundary() {
+        assertEquals(30_000L, fullscreenEpgRefreshDelayMillis(null, nowEpochSeconds = 100L))
+        assertEquals(
+            30_000L,
+            fullscreenEpgRefreshDelayMillis(
+                currentProgramEndEpochSeconds = 200L,
+                nowEpochSeconds = 100L,
+            ),
+        )
+    }
+
+    @Test
+    fun epgRefreshMovesCloseToUpcomingProgramBoundary() {
+        assertEquals(
+            5_250L,
+            fullscreenEpgRefreshDelayMillis(
+                currentProgramEndEpochSeconds = 105L,
+                nowEpochSeconds = 100L,
+            ),
+        )
+        assertEquals(
+            1_250L,
+            fullscreenEpgRefreshDelayMillis(
+                currentProgramEndEpochSeconds = 101L,
+                nowEpochSeconds = 100L,
+            ),
+        )
+    }
+
+    @Test
+    fun expiredProgramBoundaryRetriesSoonWithoutTightLoop() {
+        assertEquals(
+            1_000L,
+            fullscreenEpgRefreshDelayMillis(
+                currentProgramEndEpochSeconds = 100L,
+                nowEpochSeconds = 100L,
+            ),
+        )
+        assertEquals(
+            1_000L,
+            fullscreenEpgRefreshDelayMillis(
+                currentProgramEndEpochSeconds = 99L,
+                nowEpochSeconds = 100L,
+            ),
+        )
+    }
+
     private fun epgProgram(start: Long?, end: Long?) = EpgProgram(
         title = "Programme",
         description = null,
