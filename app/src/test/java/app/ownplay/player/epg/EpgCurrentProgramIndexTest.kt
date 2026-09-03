@@ -124,7 +124,7 @@ class EpgCurrentProgramIndexTest {
 
     @Test
     fun preparedChannelLookupMapsSharedEpgIdsWithoutRescanningProgramLists() {
-        val current = program("Current", 10_000, 20_000)
+        val current = program("Current", 50_000, 60_000)
         val programs = EpgTimelineProjector.normalize(
             (0 until 5_000).map { index ->
                 val start = index.toLong() * 10L
@@ -136,7 +136,7 @@ class EpgCurrentProgramIndexTest {
         val result = EpgCurrentProgramIndex.currentByChannelPrepared(
             channelIdsByEpgChannelId = mapOf("epg" to listOf("one", "two", "three")),
             preparedByEpgChannelId = mapOf("epg" to prepared),
-            nowEpochSeconds = 15_000,
+            nowEpochSeconds = 55_000,
         )
 
         assertSame(current, result["one"])
