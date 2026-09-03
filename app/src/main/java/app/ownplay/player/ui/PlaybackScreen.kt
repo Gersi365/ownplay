@@ -54,6 +54,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
@@ -112,6 +113,7 @@ internal fun PlaybackScreen(
     val wakeFocusRequester = remember { FocusRequester() }
     val tracksFocusRequester = remember { FocusRequester() }
     val diagnosticsFocusRequester = remember { FocusRequester() }
+    val failureFocusRequester = remember { FocusRequester() }
     var isFullscreen by remember { mutableStateOf(false) }
     var resizeMode by remember { mutableStateOf(PlaybackResizeMode.FIT) }
     var controlsVisible by remember { mutableStateOf(true) }
@@ -136,12 +138,21 @@ internal fun PlaybackScreen(
         onDispose { onFullscreenStateChanged(false) }
     }
 
+    LaunchedEffect(state) {
+        if (state is PlaybackState.Failed) {
+            showTracks = false
+            showDiagnostics = false
+            controlsVisible = true
+        }
+    }
+
     LaunchedEffect(state, controlsVisible, showTracks, showDiagnostics, controlsInteractionToken) {
         if (
-            state is PlaybackState.Playing &&
-            controlsVisible &&
-            !showTracks &&
-            !showDiagnostics
+            playbackControlsShouldAutoHide(
+                state = state,
+                controlsVisible = controlsVisible,
+                transientPanelVisible = showTracks || showDiagnostics,
+            )
         ) {
             delay(3_000L)
             controlsVisible = false
@@ -158,6 +169,10 @@ internal fun PlaybackScreen(
     ) {
         if (!isTelevision) return@LaunchedEffect
         when {
+            state is PlaybackState.Failed -> {
+                withFrameNanos { }
+                failureFocusRequester.requestFocus()
+            }
             showTracks -> tracksFocusRequester.requestFocus()
             showDiagnostics -> diagnosticsFocusRequester.requestFocus()
             !controlsVisible && state is PlaybackState.Playing -> wakeFocusRequester.requestFocus()
@@ -177,7 +192,11 @@ internal fun PlaybackScreen(
         }
     }
 
-    val remoteWakeModifier = if (isTelevision && !controlsVisible) {
+    val remoteWakeModifier = if (
+        isTelevision &&
+        !controlsVisible &&
+        state is PlaybackState.Playing
+    ) {
         Modifier
             .focusRequester(wakeFocusRequester)
             .onKeyEvent { event ->
@@ -203,6 +222,7 @@ internal fun PlaybackScreen(
                 .onPreviewKeyEvent { event ->
                     if (
                         isTelevision &&
+                        state !is PlaybackState.Failed &&
                         controlsVisible &&
                         !showTracks &&
                         !showDiagnostics &&
@@ -222,9 +242,10 @@ internal fun PlaybackScreen(
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .pointerInput(controlsVisible, showTracks, showDiagnostics) {
+                    .pointerInput(state, controlsVisible, showTracks, showDiagnostics) {
                         detectTapGestures {
                             when {
+                                state is PlaybackState.Failed -> Unit
                                 showDiagnostics -> showDiagnostics = false
                                 showTracks -> showTracks = false
                                 controlsVisible -> controlsVisible = false
@@ -239,18 +260,6 @@ internal fun PlaybackScreen(
                 CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
             }
 
-            if (state is PlaybackState.Failed) {
-                PlaybackFailureOverlay(
-                    state = state,
-                    canRetry = controls.canRetry,
-                    onRetry = {
-                        revealControls()
-                        onRetry()
-                    },
-                    modifier = Modifier.align(Alignment.Center),
-                )
-            }
-
             Box(
                 modifier = Modifier
                     .align(Alignment.TopStart)
@@ -261,7 +270,10 @@ internal fun PlaybackScreen(
                 epgContent()
             }
 
-            if (controlsVisible || state !is PlaybackState.Playing) {
+            if (
+                state !is PlaybackState.Failed &&
+                (controlsVisible || state !is PlaybackState.Playing)
+            ) {
                 PlaybackControlsOverlay(
                     selection = selection,
                     state = state,
@@ -308,6 +320,20 @@ internal fun PlaybackScreen(
                 )
             }
 
+            if (state is PlaybackState.Failed) {
+                PlaybackFailureOverlay(
+                    state = state,
+                    canRetry = controls.canRetry,
+                    onRetry = {
+                        revealControls()
+                        onRetry()
+                    },
+                    onReturnToChannels = onReturnToChannels,
+                    entryFocusRequester = failureFocusRequester,
+                    modifier = Modifier.align(Alignment.Center),
+                )
+            }
+
             if (showTracks) {
                 PlaybackTracksPanel(
                     state = trackState,
@@ -345,6 +371,21 @@ internal fun PlaybackScreen(
     }
 }
 
+internal fun playbackControlsShouldAutoHide(
+    state: PlaybackState,
+    controlsVisible: Boolean,
+    transientPanelVisible: Boolean,
+): Boolean =
+    state is PlaybackState.Playing && controlsVisible && !transientPanelVisible
+
+internal enum class PlaybackFailureEntryAction {
+    RETRY,
+    RETURN_TO_CHANNELS,
+}
+
+internal fun playbackFailureEntryAction(canRetry: Boolean): PlaybackFailureEntryAction =
+    if (canRetry) PlaybackFailureEntryAction.RETRY else PlaybackFailureEntryAction.RETURN_TO_CHANNELS
+
 @OptIn(UnstableApi::class)
 @Composable
 private fun PlayerVideoSurface(
@@ -374,8 +415,12 @@ private fun PlaybackFailureOverlay(
     state: PlaybackState.Failed,
     canRetry: Boolean,
     onRetry: () -> Unit,
+    onReturnToChannels: () -> Unit,
+    entryFocusRequester: FocusRequester,
     modifier: Modifier = Modifier,
 ) {
+    val entryAction = playbackFailureEntryAction(canRetry)
+
     Surface(
         modifier = modifier.padding(24.dp),
         tonalElevation = 6.dp,
@@ -391,8 +436,25 @@ private fun PlaybackFailureOverlay(
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Medium,
             )
-            if (canRetry) {
-                TextButton(onClick = onRetry) { Text("Retry") }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                if (canRetry) {
+                    TextButton(
+                        onClick = onRetry,
+                        modifier = if (entryAction == PlaybackFailureEntryAction.RETRY) {
+                            Modifier.focusRequester(entryFocusRequester)
+                        } else {
+                            Modifier
+                        },
+                    ) { Text("Retry") }
+                }
+                TextButton(
+                    onClick = onReturnToChannels,
+                    modifier = if (entryAction == PlaybackFailureEntryAction.RETURN_TO_CHANNELS) {
+                        Modifier.focusRequester(entryFocusRequester)
+                    } else {
+                        Modifier
+                    },
+                ) { Text("Back to channels") }
             }
         }
     }
