@@ -84,10 +84,14 @@ internal class PendingImportCoordinator(
                         importSource(normalizedId)
                     }
                 } finally {
-                    PendingImportExecutionTracker.clear(normalizedId)
                     synchronized(lock) {
+                        // A cancelled job may already have been replaced by a new schedule for the
+                        // same source. Only the job that still owns the reservation may clear the
+                        // execution snapshot; otherwise the old cleanup would erase the new job's
+                        // queued/active state.
                         if (jobs[normalizedId] === thisJob) {
                             jobs.remove(normalizedId)
+                            PendingImportExecutionTracker.clear(normalizedId)
                         }
                     }
                 }
@@ -102,8 +106,13 @@ internal class PendingImportCoordinator(
     fun cancel(sourceId: String) {
         val normalizedId = sourceId.trim()
         if (normalizedId.isEmpty()) return
-        val job = synchronized(lock) { jobs.remove(normalizedId) }
-        PendingImportExecutionTracker.clear(normalizedId)
+        val job = synchronized(lock) {
+            val removed = jobs.remove(normalizedId)
+            // Clear while holding the same reservation lock used by schedule(). This prevents a
+            // replacement schedule from being marked queued and then erased by a late cancel clear.
+            PendingImportExecutionTracker.clear(normalizedId)
+            removed
+        }
         job?.cancel()
     }
 
