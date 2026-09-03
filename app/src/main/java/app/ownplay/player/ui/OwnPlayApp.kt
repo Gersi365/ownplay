@@ -304,6 +304,12 @@ fun OwnPlayApp(
                 )
             },
             onFullscreenStateChanged = {},
+            epgContent = {
+                LiveFullscreenEpg(
+                    runtime = runtime,
+                    selection = openedFullscreen,
+                )
+            },
         )
         return
     }
