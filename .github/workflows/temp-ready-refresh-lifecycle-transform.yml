@@ -1,0 +1,209 @@
+name: TEMP Ready Refresh Lifecycle Transform
+
+on:
+  push:
+    branches:
+      - agent/ready-refresh-lifecycle-transform-no-apk
+
+permissions:
+  contents: write
+
+jobs:
+  transform:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - name: Serialize ready refresh lifecycle
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path('app/src/main/java/app/ownplay/player/OwnPlayAppRuntime.kt')
+          text = path.read_text()
+
+          anchor = 'private const val PENDING_IMPORT_TIMEOUT_MILLIS = 120_000L\n'
+          if text.count(anchor) != 1:
+              raise SystemExit('timeout anchor mismatch')
+          outcome = '''private sealed interface ReadyRefreshOutcome {
+              data object Missing : ReadyRefreshOutcome
+              data object Succeeded : ReadyRefreshOutcome
+
+              data class ChannelsFailed(
+                  val failure: SourceSyncFailure,
+              ) : ReadyRefreshOutcome
+          }
+
+          '''.replace('\n          ', '\n')
+          text = text.replace(anchor, anchor + '\n' + outcome, 1)
+
+          refresh_start = text.index('    suspend fun refreshSource(sourceId: String) {')
+          refresh_end = text.index('    suspend fun refreshAllSources()', refresh_start)
+          refresh_block = '''    suspend fun refreshSource(sourceId: String) {
+              try {
+                  refreshMutex.withLock {
+                      if (!sourceExists(sourceId)) return@withLock
+                      markRefreshRunning(sourceId)
+                      when (val outcome = refreshSourcePipelineLocked(sourceId)) {
+                          ReadyRefreshOutcome.Missing -> Unit
+                          ReadyRefreshOutcome.Succeeded -> markRefreshSucceeded(sourceId)
+                          is ReadyRefreshOutcome.ChannelsFailed -> {
+                              markRefreshFailed(sourceId, outcome.failure.toString())
+                          }
+                      }
+                  }
+              } catch (cancelled: CancellationException) {
+                  throw cancelled
+              } catch (_: Exception) {
+                  refreshMutex.withLock {
+                      if (sourceExists(sourceId)) {
+                          publishUnexpectedRefreshFailure(sourceId)
+                          markRefreshFailed(sourceId, "unexpected")
+                      }
+                  }
+              }
+          }
+
+          '''.replace('\n          ', '\n')
+          text = text[:refresh_start] + refresh_block + text[refresh_end:]
+
+          pipeline_start = text.index('    private suspend fun refreshSourcePipeline(sourceId: String)')
+          pipeline_end = text.index('    private suspend fun refreshXtreamMediaCatalogs', pipeline_start)
+          pipeline_block = '''    private suspend fun refreshSourcePipelineLocked(
+              sourceId: String,
+          ): ReadyRefreshOutcome {
+              val source = database.playlistSourceDao().getById(sourceId)
+                  ?: return ReadyRefreshOutcome.Missing
+              val existingCount = try {
+                  database.providerCatalogDao().channelsForSource(sourceId)
+                      .count { channel -> channel.availability != ChannelAvailability.REMOVED }
+              } catch (cancelled: CancellationException) {
+                  throw cancelled
+              } catch (_: Exception) {
+                  0
+              }
+              publishSourceState(
+                  SourceSyncState(
+                      sourceId = sourceId,
+                      sourceName = source.name,
+                      stage = SourceSyncStage.LoadingChannels,
+                      channelCount = existingCount,
+                  ),
+              )
+
+              val channelResult = refreshLiveCatalogInternal(
+                  sourceId = sourceId,
+                  sourceKind = source.sourceKind,
+              )
+              if (channelResult is SourceOnboardingResult.Failure) {
+                  val failure = channelResult.reason.toSourceSyncFailure()
+                  publishSourceState(
+                      SourceSyncState(
+                          sourceId = sourceId,
+                          sourceName = source.name,
+                          stage = SourceSyncStage.ChannelsFailed,
+                          channelCount = existingCount,
+                          failure = failure,
+                      ),
+                  )
+                  if (source.sourceKind == SourceKinds.XTREAM) {
+                      refreshXtreamMediaCatalogs(sourceId)
+                  }
+                  return ReadyRefreshOutcome.ChannelsFailed(failure)
+              }
+              channelResult as SourceOnboardingResult.Success
+
+              loadEpgAfterChannels(
+                  sourceId = sourceId,
+                  sourceName = source.name,
+                  channelCount = channelResult.channelCount,
+              )
+              if (source.sourceKind == SourceKinds.XTREAM) {
+                  refreshXtreamMediaCatalogs(sourceId)
+              }
+              return ReadyRefreshOutcome.Succeeded
+          }
+
+          '''.replace('\n          ', '\n')
+          text = text[:pipeline_start] + pipeline_block + text[pipeline_end:]
+
+          if 'refreshSourcePipeline(sourceId)' in text:
+              raise SystemExit('old pipeline caller remains')
+          if 'private suspend fun refreshSourcePipeline(sourceId: String)' in text:
+              raise SystemExit('old pipeline declaration remains')
+          path.write_text(text)
+
+          test_path = Path('app/src/test/java/app/ownplay/player/SourceSyncPublicationContractTest.kt')
+          test_path.write_text('''package app.ownplay.player
+
+          import java.io.File
+          import org.junit.Assert.assertFalse
+          import org.junit.Assert.assertTrue
+          import org.junit.Test
+
+          class SourceSyncPublicationContractTest {
+              @Test
+              fun sourceSpecificStatesArePublishedSynchronously() {
+                  val source = sourceText("src/main/java/app/ownplay/player/OwnPlayAppRuntime.kt")
+                  assertTrue(source.contains("private fun publishSourceState(state: SourceSyncState)"))
+                  assertFalse(source.contains("_sourceSyncState.collect(::rememberSourceState)"))
+
+                  val refresh = source
+                      .substringAfter("suspend fun refreshSource(sourceId: String)")
+                      .substringBefore("suspend fun refreshAllSources()")
+                  assertTrue(refresh.contains("refreshMutex.withLock"))
+                  assertTrue(refresh.contains("markRefreshRunning(sourceId)"))
+                  assertTrue(refresh.contains("refreshSourcePipelineLocked(sourceId)"))
+                  assertTrue(refresh.contains("markRefreshSucceeded(sourceId)"))
+                  assertTrue(refresh.contains("markRefreshFailed(sourceId, outcome.failure.toString())"))
+                  assertFalse(refresh.contains("_sourceSyncState.value"))
+                  assertFalse(refresh.contains("_sourceSyncStates.value[sourceId]"))
+
+                  val runningIndex = refresh.indexOf("markRefreshRunning(sourceId)")
+                  val pipelineIndex = refresh.indexOf("refreshSourcePipelineLocked(sourceId)")
+                  val successIndex = refresh.indexOf("markRefreshSucceeded(sourceId)")
+                  assertTrue(runningIndex >= 0 && runningIndex < pipelineIndex)
+                  assertTrue(pipelineIndex >= 0 && pipelineIndex < successIndex)
+
+                  val pipeline = source
+                      .substringAfter("private suspend fun refreshSourcePipelineLocked(")
+                      .substringBefore("private suspend fun refreshXtreamMediaCatalogs")
+                  assertTrue(pipeline.contains("publishSourceState("))
+                  assertTrue(pipeline.contains("ReadyRefreshOutcome.ChannelsFailed(failure)"))
+                  assertTrue(pipeline.contains("ReadyRefreshOutcome.Succeeded"))
+                  assertFalse(pipeline.contains("refreshMutex.withLock"))
+                  assertFalse(pipeline.contains("_sourceSyncState.value = SourceSyncState("))
+
+                  val unexpectedFailure = source
+                      .substringAfter("private suspend fun publishUnexpectedRefreshFailure(sourceId: String)")
+                      .substringBefore("private suspend fun loadEpgAfterChannels(")
+                  assertTrue(unexpectedFailure.contains("val current = _sourceSyncStates.value[sourceId]"))
+                  assertFalse(unexpectedFailure.contains("val current = _sourceSyncState.value"))
+
+                  val epg = source
+                      .substringAfter("private suspend fun loadEpgAfterChannels(")
+                      .substringBefore("suspend fun epgSnapshot(")
+                  assertTrue(epg.contains("publishSourceState("))
+                  assertFalse(epg.contains("_sourceSyncState.value = if (epg == null)"))
+              }
+
+              private fun sourceText(relativePath: String): String {
+                  val candidates = listOf(File(relativePath), File("app/$relativePath"))
+                  return candidates.firstOrNull(File::isFile)?.readText()
+                      ?: error("Could not locate source file: $relativePath")
+              }
+          }
+          '''.replace('\n          ', '\n').lstrip())
+          PY
+
+          git rm .github/workflows/temp-ready-refresh-lifecycle-transform.yml
+          git add app/src/main/java/app/ownplay/player/OwnPlayAppRuntime.kt \
+                  app/src/test/java/app/ownplay/player/SourceSyncPublicationContractTest.kt
+          git diff --check
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git commit -m "Serialize ready source refresh lifecycle"
+          git push origin HEAD:${GITHUB_REF_NAME}
