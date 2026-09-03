@@ -7,6 +7,7 @@ import app.ownplay.player.persistence.series.SeriesMediaKinds
 import app.ownplay.player.source.SourceResult
 import app.ownplay.player.source.credential.AndroidKeystoreCredentialStore
 import app.ownplay.player.source.xtream.XtreamSeriesClient
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.Flow
 
 data class SeriesEpisodeProgressSnapshot(
@@ -48,20 +49,26 @@ class SeriesFeatureRuntime(
     suspend fun episodeProgress(
         sourceId: String,
         episodeId: String,
-    ): SeriesEpisodeProgressSnapshot? = database.seriesCatalogDao()
-        .progress(
-            sourceId = sourceId,
-            mediaKind = SeriesMediaKinds.EPISODE,
-            contentId = episodeId,
-        )
-        ?.let { progress ->
-            SeriesEpisodeProgressSnapshot(
-                positionMs = progress.positionMs,
-                durationMs = progress.durationMs,
-                completed = progress.completed,
-                updatedAtEpochMillis = progress.updatedAtEpochMillis,
+    ): SeriesEpisodeProgressSnapshot? = try {
+        database.seriesCatalogDao()
+            .progress(
+                sourceId = sourceId,
+                mediaKind = SeriesMediaKinds.EPISODE,
+                contentId = episodeId,
             )
-        }
+            ?.let { progress ->
+                SeriesEpisodeProgressSnapshot(
+                    positionMs = progress.positionMs,
+                    durationMs = progress.durationMs,
+                    completed = progress.completed,
+                    updatedAtEpochMillis = progress.updatedAtEpochMillis,
+                )
+            }
+    } catch (cancelled: CancellationException) {
+        throw cancelled
+    } catch (_: Exception) {
+        null
+    }
 
     suspend fun clearEpisodeProgress(sourceId: String, episodeId: String): Boolean =
         repository.clearEpisodeProgress(sourceId, episodeId)
