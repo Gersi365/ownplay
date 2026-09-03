@@ -58,6 +58,8 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.input.key.KeyEvent
+import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -98,6 +100,7 @@ internal fun PortraitLiveBrowseWithViewModes(
     focusChannelId: String? = null,
     focusRequestGeneration: Int = 0,
     channelFocusRequester: FocusRequester? = null,
+    onChannelPreviewKeyEvent: (KeyEvent) -> Boolean = { false },
     modifier: Modifier = Modifier,
 ) {
     var searchExpanded by remember { mutableStateOf(false) }
@@ -156,6 +159,7 @@ internal fun PortraitLiveBrowseWithViewModes(
             focusChannelId = focusChannelId,
             focusRequestGeneration = focusRequestGeneration,
             channelFocusRequester = channelFocusRequester,
+            onPreviewKeyEvent = onChannelPreviewKeyEvent,
             modifier = Modifier.weight(1f),
         )
     }
@@ -339,6 +343,7 @@ private fun LiveChannelView(
     focusChannelId: String?,
     focusRequestGeneration: Int,
     channelFocusRequester: FocusRequester?,
+    onPreviewKeyEvent: (KeyEvent) -> Boolean,
     modifier: Modifier = Modifier,
 ) {
     if (channels.isEmpty()) {
@@ -384,7 +389,9 @@ private fun LiveChannelView(
     when (viewMode) {
         ContentViewMode.LIST -> LazyColumn(
             state = listState,
-            modifier = modifier.fillMaxSize(),
+            modifier = modifier
+                .fillMaxSize()
+                .onPreviewKeyEvent(onPreviewKeyEvent),
             contentPadding = PaddingValues(vertical = 2.dp),
         ) {
             items(channels, key = LiveChannelItem::channelId) { channel ->
@@ -408,7 +415,9 @@ private fun LiveChannelView(
 
         ContentViewMode.COMPACT -> LazyColumn(
             state = listState,
-            modifier = modifier.fillMaxSize(),
+            modifier = modifier
+                .fillMaxSize()
+                .onPreviewKeyEvent(onPreviewKeyEvent),
         ) {
             items(channels, key = LiveChannelItem::channelId) { channel ->
                 val channelModifier = if (
@@ -432,7 +441,9 @@ private fun LiveChannelView(
         ContentViewMode.CARDS -> LazyVerticalGrid(
             state = gridState,
             columns = GridCells.Adaptive(minSize = 156.dp),
-            modifier = modifier.fillMaxSize(),
+            modifier = modifier
+                .fillMaxSize()
+                .onPreviewKeyEvent(onPreviewKeyEvent),
             contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
