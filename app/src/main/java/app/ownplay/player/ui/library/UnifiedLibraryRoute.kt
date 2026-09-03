@@ -866,7 +866,7 @@ private fun LibraryCatalogView(
                         download = download,
                         onPlay = { onPlayOfflineMovie(download) },
                         onRetry = { onRetryMovie(download) },
-                        onRemove = onRemoveMovie,
+                        onRemove = { onRemoveMovie(download) },
                         modifier = itemModifier(libraryOfflineMovieFocusKey(download.downloadId)),
                     )
                 }
