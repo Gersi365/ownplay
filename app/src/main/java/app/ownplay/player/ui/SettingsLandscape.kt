@@ -52,14 +52,18 @@ internal fun LandscapeSettingsShell(
     val isTelevision =
         configuration.uiMode and Configuration.UI_MODE_TYPE_MASK == Configuration.UI_MODE_TYPE_TELEVISION
     val selectedRailFocusRequester = remember { FocusRequester() }
-    val selectedRailDestination = when (destination) {
-        SettingsDestination.LIVE_MANAGEMENT,
-        SettingsDestination.PLAYLISTS,
-        -> SettingsDestination.CONTENT
+    val selectedRailDestination = when {
+        isTelevision && destination == SettingsDestination.DOWNLOADS -> SettingsDestination.CONTENT
+        destination == SettingsDestination.LIVE_MANAGEMENT ||
+            destination == SettingsDestination.PLAYLISTS -> SettingsDestination.CONTENT
         else -> destination
     }
 
     LaunchedEffect(isTelevision, destination) {
+        if (isTelevision && destination == SettingsDestination.DOWNLOADS) {
+            onDestinationChange(SettingsDestination.CONTENT)
+            return@LaunchedEffect
+        }
         if (isTelevision && settingsRailShouldOwnFocus(destination)) {
             selectedRailFocusRequester.requestFocus()
         }
@@ -76,6 +80,7 @@ internal fun LandscapeSettingsShell(
             selectedRailDestination = selectedRailDestination,
             selectedRailFocusRequester = selectedRailFocusRequester,
             onDestinationChange = onDestinationChange,
+            showDownloads = !isTelevision,
         )
 
         Surface(
