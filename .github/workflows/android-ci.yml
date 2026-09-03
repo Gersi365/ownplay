@@ -91,8 +91,8 @@ jobs:
           EXPECTED_CERT="1bb783d452c85f3aa5c6252c811499e24a830da2f477eb92d9e237ff7817d53a"
           MOBILE_INPUT="app/build/outputs/apk/mobile/debug/app-mobile-debug.apk"
           TV_INPUT="app/build/outputs/apk/tv/debug/app-tv-debug.apk"
-          MOBILE_OUTPUT="app/build/outputs/apk/mobile/debug/OwnPlay-Mobile-M3U-Update-1.0.3.apk"
-          TV_OUTPUT="app/build/outputs/apk/tv/debug/OwnPlay-TV-M3U-Update-1.0.3.apk"
+          MOBILE_OUTPUT="app/build/outputs/apk/mobile/debug/OwnPlay-Mobile-Live-Rotation-Fix-1.0.7.apk"
+          TV_OUTPUT="app/build/outputs/apk/tv/debug/OwnPlay-TV-Live-Rotation-Fix-1.0.7.apk"
 
           verify_one() {
             local input="$1"
@@ -106,8 +106,8 @@ jobs:
             BADGING="$("$BUILD_TOOLS/aapt" dump badging "$output" | head -n 1)"
             printf '%s\n' "$BADGING"
             printf '%s\n' "$BADGING" | grep -F "name='$expected_package'"
-            printf '%s\n' "$BADGING" | grep -F "versionCode='5'"
-            printf '%s\n' "$BADGING" | grep -F "versionName='1.0.3-m3u-update'"
+            printf '%s\n' "$BADGING" | grep -F "versionCode='9'"
+            printf '%s\n' "$BADGING" | grep -F "versionName='1.0.7-live-rotation-fix'"
             sha256sum "$output" | tee "$output.sha256"
           }
 
@@ -118,10 +118,10 @@ jobs:
         if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: ownplay-mobile-m3u-update-1.0.3
+          name: ownplay-mobile-live-rotation-fix-1.0.7
           path: |
-            app/build/outputs/apk/mobile/debug/OwnPlay-Mobile-M3U-Update-1.0.3.apk
-            app/build/outputs/apk/mobile/debug/OwnPlay-Mobile-M3U-Update-1.0.3.apk.sha256
+            app/build/outputs/apk/mobile/debug/OwnPlay-Mobile-Live-Rotation-Fix-1.0.7.apk
+            app/build/outputs/apk/mobile/debug/OwnPlay-Mobile-Live-Rotation-Fix-1.0.7.apk.sha256
           if-no-files-found: error
           retention-days: 7
           compression-level: 0
@@ -130,10 +130,10 @@ jobs:
         if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: ownplay-tv-m3u-update-1.0.3
+          name: ownplay-tv-live-rotation-fix-1.0.7
           path: |
-            app/build/outputs/apk/tv/debug/OwnPlay-TV-M3U-Update-1.0.3.apk
-            app/build/outputs/apk/tv/debug/OwnPlay-TV-M3U-Update-1.0.3.apk.sha256
+            app/build/outputs/apk/tv/debug/OwnPlay-TV-Live-Rotation-Fix-1.0.7.apk
+            app/build/outputs/apk/tv/debug/OwnPlay-TV-Live-Rotation-Fix-1.0.7.apk.sha256
           if-no-files-found: error
           retention-days: 7
           compression-level: 0
