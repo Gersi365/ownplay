@@ -1,8 +1,11 @@
 package app.ownplay.player.ui.series
 
 import app.ownplay.player.series.SeriesEpisode
+import app.ownplay.player.series.SeriesEpisodeProgressSnapshot
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class SeriesPlaybackStartPolicyTest {
@@ -67,6 +70,39 @@ class SeriesPlaybackStartPolicyTest {
         assertEquals("Resume Offline", seriesEpisodePrimaryPlaybackLabel(resumable, offlineCopyAvailable = true))
         assertEquals("Play", seriesEpisodePrimaryPlaybackLabel(fresh, offlineCopyAvailable = false))
         assertEquals("Play Offline", seriesEpisodePrimaryPlaybackLabel(fresh, offlineCopyAvailable = true))
+    }
+
+    @Test
+    fun savedProgressSnapshotRefreshesEpisodePresentation() {
+        val fresh = episode(positionMs = null, durationMs = null, completed = false)
+        val progress = SeriesEpisodeProgressSnapshot(
+            positionMs = 60_000L,
+            durationMs = 120_000L,
+            completed = false,
+            updatedAtEpochMillis = 99L,
+        )
+
+        val synced = seriesEpisodeWithProgress(fresh, progress)
+
+        assertEquals(60_000L, synced.positionMs)
+        assertEquals(120_000L, synced.durationMs)
+        assertEquals(99L, synced.progressUpdatedAtEpochMillis)
+        assertTrue(synced.resumeAvailable)
+        assertEquals("Resume · 50%", seriesEpisodeProgressLabel(synced))
+    }
+
+    @Test
+    fun nullProgressSnapshotClearsEpisodePresentation() {
+        val watched = episode(positionMs = 120_000L, durationMs = 120_000L, completed = true)
+
+        val cleared = seriesEpisodeWithProgress(watched, progress = null)
+
+        assertNull(cleared.positionMs)
+        assertNull(cleared.durationMs)
+        assertFalse(cleared.progressCompleted)
+        assertNull(cleared.progressUpdatedAtEpochMillis)
+        assertFalse(cleared.resumeAvailable)
+        assertNull(seriesEpisodeProgressLabel(cleared))
     }
 
     private fun episode(
