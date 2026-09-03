@@ -142,6 +142,7 @@ internal fun SeriesRoute(
     var selectedSeasonNumber by remember(sourceId) { mutableStateOf<Int?>(null) }
     var selectedEpisodeId by remember(sourceId) { mutableStateOf<String?>(null) }
     var playingEpisode by remember(sourceId) { mutableStateOf<SeriesEpisode?>(null) }
+    var playbackStartMode by remember(sourceId) { mutableStateOf(SeriesPlaybackStartMode.RESUME) }
     var playbackReturnsToCatalog by remember(sourceId) { mutableStateOf(false) }
     var restoreCatalogFocusAfterPlayback by remember(sourceId) { mutableStateOf(false) }
     val detailsBackOwner = remember(sourceId) { Any() }
@@ -186,9 +187,14 @@ internal fun SeriesRoute(
         }
     }
 
-    fun playEpisode(episode: SeriesEpisode, returnFocusToCatalog: Boolean) {
+    fun playEpisode(
+        episode: SeriesEpisode,
+        returnFocusToCatalog: Boolean,
+        startMode: SeriesPlaybackStartMode = SeriesPlaybackStartMode.RESUME,
+    ) {
         restoreCatalogFocusAfterPlayback = false
         playbackReturnsToCatalog = returnFocusToCatalog
+        playbackStartMode = startMode
         runtime.playbackController.start(
             PlaybackRequest(
                 sourceId = sourceId,
@@ -298,6 +304,7 @@ internal fun SeriesRoute(
             featureRuntime = featureRuntime,
             sourceId = sourceId,
             episode = currentEpisode,
+            startMode = playbackStartMode,
             onExit = {
                 playingEpisode = null
                 if (playbackReturnsToCatalog) {
@@ -339,7 +346,20 @@ internal fun SeriesRoute(
                     featureRuntime.setFavorite(sourceId, portraitSelection.seriesId, favorite)
                 }
             },
-            onPlay = { episode -> playEpisode(episode, returnFocusToCatalog = false) },
+            onPlay = { episode ->
+                playEpisode(
+                    episode = episode,
+                    returnFocusToCatalog = false,
+                    startMode = SeriesPlaybackStartMode.RESUME,
+                )
+            },
+            onPlayFromBeginning = { episode ->
+                playEpisode(
+                    episode = episode,
+                    returnFocusToCatalog = false,
+                    startMode = SeriesPlaybackStartMode.FROM_BEGINNING,
+                )
+            },
             onDownload = ::downloadEpisode,
             onPauseDownload = ::pauseDownload,
             onResumeDownload = ::resumeDownload,
@@ -381,7 +401,13 @@ internal fun SeriesRoute(
                 selectedEpisodeId = null
                 selectedSeries = it
             },
-            onContinueEpisode = { episode -> playEpisode(episode, returnFocusToCatalog = true) },
+            onContinueEpisode = { episode ->
+                playEpisode(
+                    episode = episode,
+                    returnFocusToCatalog = true,
+                    startMode = SeriesPlaybackStartMode.RESUME,
+                )
+            },
             modifier = Modifier.weight(if (selectedSeries == null) 1f else 0.58f),
         )
         selectedSeries?.let { selected ->
@@ -405,7 +431,20 @@ internal fun SeriesRoute(
                         featureRuntime.setFavorite(sourceId, selected.seriesId, favorite)
                     }
                 },
-                onPlay = { episode -> playEpisode(episode, returnFocusToCatalog = false) },
+                onPlay = { episode ->
+                    playEpisode(
+                        episode = episode,
+                        returnFocusToCatalog = false,
+                        startMode = SeriesPlaybackStartMode.RESUME,
+                    )
+                },
+                onPlayFromBeginning = { episode ->
+                    playEpisode(
+                        episode = episode,
+                        returnFocusToCatalog = false,
+                        startMode = SeriesPlaybackStartMode.FROM_BEGINNING,
+                    )
+                },
                 onDownload = ::downloadEpisode,
                 onPauseDownload = ::pauseDownload,
                 onResumeDownload = ::resumeDownload,
@@ -520,7 +559,12 @@ private fun SeriesCatalogPane(
                 modifier = Modifier.padding(vertical = 6.dp),
             )
         }
-        if (catalog.continueWatching.isNotEmpty()) {
+        if (
+            catalog.continueWatching.isNotEmpty() &&
+            query.isBlank() &&
+            !favoritesOnly &&
+            selectedCategoryKey == null
+        ) {
             Text(
                 "Continue Watching",
                 style = MaterialTheme.typography.titleMedium,
@@ -548,6 +592,12 @@ private fun SeriesCatalogPane(
                                 style = MaterialTheme.typography.bodySmall,
                                 maxLines = 2,
                                 overflow = TextOverflow.Ellipsis,
+                            )
+                            Text(
+                                seriesEpisodeResumeLabel(episode),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.primary,
+                                maxLines = 1,
                             )
                         }
                     }
@@ -627,6 +677,7 @@ private fun SeriesDetailsPane(
     onEpisodeSelected: (String) -> Unit,
     onFavoriteChanged: (Boolean) -> Unit,
     onPlay: (SeriesEpisode) -> Unit,
+    onPlayFromBeginning: (SeriesEpisode) -> Unit,
     onDownload: (SeriesEpisode) -> Unit,
     onPauseDownload: (OfflineDownload) -> Unit,
     onResumeDownload: (OfflineDownload) -> Unit,
@@ -720,6 +771,7 @@ private fun SeriesDetailsPane(
                                     item.contentId == selectedEpisode.episodeId
                             },
                             onPlay = { onPlay(selectedEpisode) },
+                            onPlayFromBeginning = { onPlayFromBeginning(selectedEpisode) },
                             onDownload = { onDownload(selectedEpisode) },
                             onPauseDownload = onPauseDownload,
                             onResumeDownload = onResumeDownload,
@@ -766,6 +818,7 @@ private fun SeriesDetailsPane(
                                         download = download,
                                         onOpen = { onEpisodeSelected(episode.episodeId) },
                                         onPlay = { onPlay(episode) },
+                                        onPlayFromBeginning = { onPlayFromBeginning(episode) },
                                         onDownload = { onDownload(episode) },
                                         onPauseDownload = onPauseDownload,
                                         onResumeDownload = onResumeDownload,
@@ -919,6 +972,7 @@ private fun SeriesEpisodeDetailsPane(
     episode: SeriesEpisode,
     download: OfflineDownload?,
     onPlay: () -> Unit,
+    onPlayFromBeginning: () -> Unit,
     onDownload: () -> Unit,
     onPauseDownload: (OfflineDownload) -> Unit,
     onResumeDownload: (OfflineDownload) -> Unit,
@@ -957,17 +1011,15 @@ private fun SeriesEpisodeDetailsPane(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
-            if (episode.resumeAvailable) {
+            seriesEpisodeProgressLabel(episode)?.let { progressLabel ->
                 Text(
-                    "Resume available",
+                    progressLabel,
                     style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.primary,
-                )
-            } else if (episode.progressCompleted) {
-                Text(
-                    "Watched",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = if (episode.resumeAvailable) {
+                        MaterialTheme.colorScheme.primary
+                    } else {
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    },
                 )
             }
         }
@@ -979,6 +1031,7 @@ private fun SeriesEpisodeDetailsPane(
         onOpen = null,
         showHeader = false,
         onPlay = onPlay,
+        onPlayFromBeginning = onPlayFromBeginning,
         onDownload = onDownload,
         onPauseDownload = onPauseDownload,
         onResumeDownload = onResumeDownload,
@@ -993,6 +1046,7 @@ private fun EpisodeRow(
     onOpen: (() -> Unit)? = null,
     showHeader: Boolean = true,
     onPlay: () -> Unit,
+    onPlayFromBeginning: () -> Unit,
     onDownload: () -> Unit,
     onPauseDownload: (OfflineDownload) -> Unit,
     onResumeDownload: (OfflineDownload) -> Unit,
@@ -1020,9 +1074,9 @@ private fun EpisodeRow(
                         "E${episode.episodeNumber} · ${episode.title}",
                         fontWeight = FontWeight.SemiBold,
                     )
-                    episode.positionMs?.takeIf { it > 0L }?.let {
+                    seriesEpisodeProgressLabel(episode)?.let { progressLabel ->
                         Text(
-                            if (episode.resumeAvailable) "Resume available" else "Watched",
+                            progressLabel,
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
@@ -1043,14 +1097,7 @@ private fun EpisodeRow(
             horizontalArrangement = Arrangement.spacedBy(6.dp),
         ) {
             Button(onClick = onPlay) {
-                Text(
-                    when {
-                        offlineCopyAvailable && episode.resumeAvailable -> "Resume Offline"
-                        offlineCopyAvailable -> "Play Offline"
-                        episode.resumeAvailable -> "Resume"
-                        else -> "Play"
-                    },
-                )
+                Text(seriesEpisodePrimaryPlaybackLabel(episode, offlineCopyAvailable))
             }
             if (!offlineCopyAvailable) {
                 Button(
@@ -1079,6 +1126,14 @@ private fun EpisodeRow(
             }
             if ((episode.positionMs ?: 0L) > 0L) {
                 TextButton(onClick = onClearProgress) { Text("Clear") }
+            }
+        }
+        if (episode.resumeAvailable) {
+            TextButton(
+                onClick = onPlayFromBeginning,
+                modifier = Modifier.padding(top = 2.dp),
+            ) {
+                Text("Play from beginning")
             }
         }
         if (offlineCopyAvailable) {
@@ -1124,6 +1179,7 @@ private fun SeriesPlaybackScreen(
     featureRuntime: SeriesFeatureRuntime,
     sourceId: String,
     episode: SeriesEpisode,
+    startMode: SeriesPlaybackStartMode,
     onExit: () -> Unit,
     onFullscreenStateChanged: (Boolean) -> Unit,
 ) {
@@ -1133,10 +1189,10 @@ private fun SeriesPlaybackScreen(
     val isTelevision =
         configuration.uiMode and Configuration.UI_MODE_TYPE_MASK == Configuration.UI_MODE_TYPE_TELEVISION
     val scope = rememberCoroutineScope()
-    var playerView by remember { mutableStateOf<PlayerView?>(null) }
-    var exitRequested by remember(episode.episodeId) { mutableStateOf(false) }
-    val backOwner = remember(episode.episodeId) { Any() }
-    val backFocusRequester = remember(episode.episodeId) { FocusRequester() }
+    var playerView by remember(episode.episodeId, startMode) { mutableStateOf<PlayerView?>(null) }
+    var exitRequested by remember(episode.episodeId, startMode) { mutableStateOf(false) }
+    val backOwner = remember(episode.episodeId, startMode) { Any() }
+    val backFocusRequester = remember(episode.episodeId, startMode) { FocusRequester() }
 
     fun exitPlayback() {
         if (exitRequested) return
@@ -1160,7 +1216,7 @@ private fun SeriesPlaybackScreen(
         }
     }
 
-    DisposableEffect(backOwner) {
+    DisposableEffect(episode.episodeId, startMode, backOwner) {
         onFullscreenStateChanged(true)
         PlaybackInteractionBridge.registerBackAction(backOwner, ::exitPlayback)
         onDispose {
@@ -1174,7 +1230,7 @@ private fun SeriesPlaybackScreen(
         }
     }
 
-    LaunchedEffect(isTelevision, playbackState, playerView, episode.episodeId) {
+    LaunchedEffect(isTelevision, playbackState, playerView, episode.episodeId, startMode) {
         if (!isTelevision) return@LaunchedEffect
         if (playbackState is PlaybackState.Failed) {
             backFocusRequester.requestFocus()
@@ -1186,14 +1242,10 @@ private fun SeriesPlaybackScreen(
         view.requestFocus()
     }
 
-    LaunchedEffect(playerView, episode.episodeId) {
+    LaunchedEffect(playerView, episode.episodeId, startMode) {
         val view = playerView ?: return@LaunchedEffect
         delay(300)
-        val player = view.player
-        val resumePosition = episode.positionMs ?: 0L
-        if (resumePosition > 0L && player != null && player.currentPosition < 1_000L) {
-            player.seekTo(resumePosition)
-        }
+        view.player?.seekTo(seriesPlaybackStartPosition(episode, startMode))
         while (currentCoroutineContext().isActive) {
             delay(2_000L)
             val activePlayer = view.player ?: continue
