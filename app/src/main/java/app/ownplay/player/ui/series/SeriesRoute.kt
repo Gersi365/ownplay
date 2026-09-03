@@ -234,6 +234,17 @@ internal fun SeriesRoute(
         scope.launch { downloadRuntime.resume(download.downloadId) }
     }
 
+    fun clearEpisodeProgress(episode: SeriesEpisode) {
+        scope.launch {
+            if (!featureRuntime.clearEpisodeProgress(sourceId, episode.episodeId)) return@launch
+            details = seriesDetailsWithEpisodeProgress(
+                details = details,
+                episodeId = episode.episodeId,
+                progress = null,
+            )
+        }
+    }
+
     LaunchedEffect(sourceId) {
         loading = true
         refreshError = null
@@ -307,6 +318,13 @@ internal fun SeriesRoute(
             startMode = playbackStartMode,
             onExit = {
                 playingEpisode = null
+                scope.launch {
+                    details = seriesDetailsWithEpisodeProgress(
+                        details = details,
+                        episodeId = currentEpisode.episodeId,
+                        progress = featureRuntime.episodeProgress(sourceId, currentEpisode.episodeId),
+                    )
+                }
                 if (playbackReturnsToCatalog) {
                     restoreCatalogFocusAfterPlayback = true
                 }
@@ -363,11 +381,7 @@ internal fun SeriesRoute(
             onDownload = ::downloadEpisode,
             onPauseDownload = ::pauseDownload,
             onResumeDownload = ::resumeDownload,
-            onClearProgress = { episode ->
-                scope.launch {
-                    featureRuntime.clearEpisodeProgress(sourceId, episode.episodeId)
-                }
-            },
+            onClearProgress = ::clearEpisodeProgress,
             onClose = ::closeSeriesLevel,
             modifier = Modifier.fillMaxSize(),
         )
@@ -448,11 +462,7 @@ internal fun SeriesRoute(
                 onDownload = ::downloadEpisode,
                 onPauseDownload = ::pauseDownload,
                 onResumeDownload = ::resumeDownload,
-                onClearProgress = { episode ->
-                    scope.launch {
-                        featureRuntime.clearEpisodeProgress(sourceId, episode.episodeId)
-                    }
-                },
+                onClearProgress = ::clearEpisodeProgress,
                 onClose = ::closeSeriesLevel,
                 modifier = Modifier
                     .weight(0.42f)
