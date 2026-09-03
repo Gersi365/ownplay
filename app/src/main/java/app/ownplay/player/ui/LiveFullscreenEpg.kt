@@ -1,9 +1,12 @@
 package app.ownplay.player.ui
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.HorizontalDivider
@@ -15,6 +18,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.produceState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -32,6 +36,7 @@ private data class FullscreenEpgUiState(
     val snapshot: EpgSnapshot? = null,
     val loading: Boolean = true,
     val failed: Boolean = false,
+    val evaluatedAtEpochSeconds: Long = 0L,
 )
 
 /**
@@ -67,6 +72,7 @@ internal fun LiveFullscreenEpg(
                     ),
                     loading = false,
                     failed = false,
+                    evaluatedAtEpochSeconds = System.currentTimeMillis() / 1_000L,
                 )
             } catch (cancelled: CancellationException) {
                 throw cancelled
@@ -75,6 +81,7 @@ internal fun LiveFullscreenEpg(
                     snapshot = null,
                     loading = false,
                     failed = true,
+                    evaluatedAtEpochSeconds = System.currentTimeMillis() / 1_000L,
                 )
             }
             firstLookup = false
@@ -89,19 +96,19 @@ internal fun LiveFullscreenEpg(
 
     Surface(
         modifier = modifier,
-        shape = RoundedCornerShape(14.dp),
-        color = Color.Black.copy(alpha = 0.72f),
+        shape = RoundedCornerShape(12.dp),
+        color = Color.Black.copy(alpha = 0.74f),
         tonalElevation = 0.dp,
     ) {
         Column(
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
-            verticalArrangement = Arrangement.spacedBy(5.dp),
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
             Text(
                 text = selection.displayName,
-                style = MaterialTheme.typography.labelLarge,
+                style = MaterialTheme.typography.labelMedium,
                 fontWeight = FontWeight.SemiBold,
-                color = Color.White,
+                color = Color.White.copy(alpha = 0.86f),
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
@@ -110,25 +117,16 @@ internal fun LiveFullscreenEpg(
                 epgState.loading -> FullscreenEpgStatus("Updating EPG…")
                 epgState.failed -> FullscreenEpgStatus("EPG unavailable")
                 current != null -> {
-                    FullscreenEpgProgramLine(
-                        prefix = "Now",
+                    FullscreenCurrentProgram(
                         program = current,
-                        emphasized = true,
+                        nowEpochSeconds = epgState.evaluatedAtEpochSeconds,
                     )
                     if (next != null) {
-                        HorizontalDivider(color = Color.White.copy(alpha = 0.18f))
-                        FullscreenEpgProgramLine(
-                            prefix = "Next",
-                            program = next,
-                            emphasized = false,
-                        )
+                        HorizontalDivider(color = Color.White.copy(alpha = 0.14f))
+                        FullscreenUpcomingProgram(program = next)
                     }
                 }
-                firstUpcoming != null -> FullscreenEpgProgramLine(
-                    prefix = "Next",
-                    program = firstUpcoming,
-                    emphasized = false,
-                )
+                firstUpcoming != null -> FullscreenUpcomingProgram(program = firstUpcoming)
                 else -> FullscreenEpgStatus("No EPG for this channel")
             }
         }
@@ -136,30 +134,86 @@ internal fun LiveFullscreenEpg(
 }
 
 @Composable
-private fun FullscreenEpgProgramLine(
-    prefix: String,
+private fun FullscreenCurrentProgram(
     program: EpgProgram,
-    emphasized: Boolean,
+    nowEpochSeconds: Long,
 ) {
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = "NOW",
+                style = MaterialTheme.typography.labelSmall,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.primary,
+                maxLines = 1,
+            )
+            Text(
+                text = program.title,
+                modifier = Modifier.weight(1f),
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.SemiBold,
+                color = Color.White,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Text(
+                text = fullscreenEpgTimeRange(program),
+                style = MaterialTheme.typography.labelSmall,
+                color = Color.White.copy(alpha = 0.72f),
+                maxLines = 1,
+            )
+        }
+
+        fullscreenEpgProgress(program, nowEpochSeconds)?.let { progress ->
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(3.dp)
+                    .clip(RoundedCornerShape(999.dp))
+                    .background(Color.White.copy(alpha = 0.18f)),
+            ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth(progress)
+                        .height(3.dp)
+                        .background(MaterialTheme.colorScheme.primary),
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun FullscreenUpcomingProgram(program: EpgProgram) {
     Row(
         modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(
-            text = fullscreenEpgTimeRange(program),
+            text = "NEXT",
             style = MaterialTheme.typography.labelSmall,
-            color = Color.White.copy(alpha = 0.72f),
+            fontWeight = FontWeight.SemiBold,
+            color = Color.White.copy(alpha = 0.62f),
             maxLines = 1,
         )
         Text(
-            text = "$prefix · ${program.title}",
+            text = program.title,
             modifier = Modifier.weight(1f),
             style = MaterialTheme.typography.bodySmall,
-            fontWeight = if (emphasized) FontWeight.SemiBold else FontWeight.Normal,
-            color = Color.White,
+            color = Color.White.copy(alpha = 0.9f),
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
+        )
+        Text(
+            text = fullscreenEpgTimeRange(program),
+            style = MaterialTheme.typography.labelSmall,
+            color = Color.White.copy(alpha = 0.62f),
+            maxLines = 1,
         )
     }
 }
@@ -172,6 +226,19 @@ private fun FullscreenEpgStatus(text: String) {
         color = Color.White.copy(alpha = 0.76f),
         maxLines = 1,
     )
+}
+
+internal fun fullscreenEpgProgress(
+    program: EpgProgram,
+    nowEpochSeconds: Long,
+): Float? {
+    val start = program.startEpochSeconds ?: return null
+    val end = program.endEpochSeconds ?: return null
+    val duration = end - start
+    if (duration <= 0L) return null
+    return ((nowEpochSeconds - start).toDouble() / duration.toDouble())
+        .coerceIn(0.0, 1.0)
+        .toFloat()
 }
 
 private fun fullscreenEpgTimeRange(program: EpgProgram): String = when {
