@@ -830,6 +830,7 @@ private fun NavRailItem(
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 6.dp, vertical = 2.dp)
+            .mediaCardVisualTint()
             .clickable(onClick = onClick),
         shape = RoundedCornerShape(10.dp),
         color = if (selected) MaterialTheme.colorScheme.primaryContainer else Color.Transparent,
@@ -843,7 +844,7 @@ private fun NavRailItem(
             Text(
                 text = label,
                 style = MaterialTheme.typography.labelLarge,
-                fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
+                fontWeight = FontWeight.Medium,
             )
         }
     }
@@ -858,6 +859,7 @@ private fun MovieCategoryRow(
     Surface(
         modifier = Modifier
             .fillMaxWidth()
+            .mediaCardVisualTint()
             .clickable(onClick = onClick),
         shape = RoundedCornerShape(9.dp),
         color = if (selected) MaterialTheme.colorScheme.secondaryContainer else Color.Transparent,
@@ -868,7 +870,7 @@ private fun MovieCategoryRow(
                 .padding(horizontal = 9.dp, vertical = 7.dp)
                 .basicMarquee(iterations = Int.MAX_VALUE),
             style = MaterialTheme.typography.bodySmall,
-            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
+            fontWeight = FontWeight.Medium,
             maxLines = 1,
             softWrap = false,
             overflow = TextOverflow.Clip,
