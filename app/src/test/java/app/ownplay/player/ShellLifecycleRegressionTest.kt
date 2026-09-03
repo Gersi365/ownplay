@@ -68,7 +68,7 @@ class ShellLifecycleRegressionTest {
     @Test
     fun mobileAndTvLiveSyncStatusIsScopedToDisplayedSource() {
         listOf(
-            "src/mobile/java/app/ownplay/player/ui/MobileTargetLiveRoute.kt",
+            "src/mobile/java/app/ownplay/player/ui/TargetLiveRoute.kt",
             "src/tv/java/app/ownplay/player/ui/LiveRoute.kt",
         ).forEach { path ->
             val normalized = sourceText(path).replace(Regex("\\s+"), " ")
