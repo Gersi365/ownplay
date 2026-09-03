@@ -14,7 +14,7 @@ enum class LiveFullscreenEntryReason {
 /**
  * Single transition policy shared by portrait, landscape, and TV Live playback.
  * Device-specific input only decides whether rotation is allowed to request fullscreen;
- * the playback transition itself remains the same safe restart path everywhere.
+ * the playback transition itself remains independent from device type.
  */
 object LivePlaybackPresentationPolicy {
     fun shouldEnterFullscreenFromRotation(
@@ -41,17 +41,23 @@ object LivePlaybackPresentationPolicy {
 }
 
 /**
- * Executes the reliability-first Live handoff between independent Preview and Fullscreen surfaces.
+ * Executes Live handoffs between independent Preview and Fullscreen surfaces.
  *
- * The current PlayerView must be detached before Compose switches presentation state; otherwise
- * Media3 can see the departing view as the previous target and attempt a surface transfer through
- * PlayerView.switchTargetView. Live intentionally restarts instead, so the safe sequence is:
- * detach old surface -> stop stream -> switch presentation -> restart the same Live request.
- *
- * This helper is deliberately generic over callbacks so the ordering is unit-testable and remains
- * scoped to Live presentation changes. VOD/Series/PiP keep their existing playback behavior.
+ * The departing PlayerView is always detached before Compose switches presentation. That leaves
+ * Media3 with no previous PlayerView target, so the new surface can bind directly to the same
+ * ExoPlayer without invoking PlayerView.switchTargetView or restarting the stream. A restart path
+ * remains available only when the requested target represents different Live content.
  */
 object LivePlaybackSurfaceHandoff {
+    fun transferAcrossPresentation(
+        detachCurrentSurface: () -> Boolean,
+        switchPresentation: () -> Unit,
+    ): Boolean {
+        val detached = detachCurrentSurface()
+        switchPresentation()
+        return detached
+    }
+
     fun restartAcrossPresentation(
         detachCurrentSurface: () -> Boolean,
         stopPlayback: () -> Unit,
@@ -95,6 +101,9 @@ data class LivePlaybackTransitionTarget(
     val sourceId: String,
     val channelId: String,
 ) {
+    fun isSameContentAs(other: LivePlaybackTransitionTarget): Boolean =
+        sourceId == other.sourceId && channelId == other.channelId
+
     companion object {
         fun preview(selection: LivePlaybackSelection): LivePlaybackTransitionTarget =
             from(selection, LivePlaybackPresentationSurface.PREVIEW)
@@ -121,12 +130,14 @@ enum class LivePlaybackTransitionDecision {
 /**
  * Deduplicates overlapping Live presentation requests without introducing a second playback queue.
  *
- * PlaybackController already cancels stale resolver work through its generation counter. This gate
- * therefore owns only presentation intent: the last presentation observed by Compose and the most
- * recent handoff requested but not yet acknowledged by composition. Repeated Back/ESC, duplicate
- * rotation callbacks, or manual + rotation fullscreen requests for the same channel are ignored.
- * A request toward the opposite destination is still accepted immediately; PlaybackController then
- * invalidates the older start through its normal generation semantics.
+ * The gate owns only presentation intent: the last presentation observed by Compose and the most
+ * recent handoff requested but not yet acknowledged by composition. Repeated requests for the same
+ * pending target are ignored. When there is no pending target, the already-observed destination is
+ * also a duplicate. A reverse request while another handoff is pending is accepted immediately.
+ *
+ * Preview <-> Fullscreen transitions for the same source/channel preserve the current controller
+ * and stream. If a future caller requests a different source/channel through this gate, the older
+ * detach -> stop -> switch -> start path is retained for content replacement safety.
  */
 class LivePlaybackTransitionGate {
     private var observedTarget: LivePlaybackTransitionTarget? = null
@@ -146,19 +157,31 @@ class LivePlaybackTransitionGate {
         switchPresentation: () -> Unit,
         startPlayback: () -> Unit,
     ): LivePlaybackTransitionDecision {
-        if (target == observedTarget || target == requestedTarget) {
+        val pendingTarget = requestedTarget
+        if (
+            target == pendingTarget ||
+            (pendingTarget == null && target == observedTarget)
+        ) {
             return LivePlaybackTransitionDecision.DUPLICATE
         }
 
+        val fromTarget = pendingTarget ?: observedTarget
         val previousRequestedTarget = requestedTarget
         requestedTarget = target
         return try {
-            LivePlaybackSurfaceHandoff.restartAcrossPresentation(
-                detachCurrentSurface = detachCurrentSurface,
-                stopPlayback = stopPlayback,
-                switchPresentation = switchPresentation,
-                startPlayback = startPlayback,
-            )
+            if (fromTarget?.isSameContentAs(target) == true) {
+                LivePlaybackSurfaceHandoff.transferAcrossPresentation(
+                    detachCurrentSurface = detachCurrentSurface,
+                    switchPresentation = switchPresentation,
+                )
+            } else {
+                LivePlaybackSurfaceHandoff.restartAcrossPresentation(
+                    detachCurrentSurface = detachCurrentSurface,
+                    stopPlayback = stopPlayback,
+                    switchPresentation = switchPresentation,
+                    startPlayback = startPlayback,
+                )
+            }
             LivePlaybackTransitionDecision.APPLIED
         } catch (failure: Throwable) {
             if (requestedTarget == target) {
