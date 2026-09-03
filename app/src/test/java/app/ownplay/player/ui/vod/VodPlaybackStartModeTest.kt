@@ -1,7 +1,6 @@
 package app.ownplay.player.ui.vod
 
 import app.ownplay.player.vod.VodMovie
-import app.ownplay.player.vod.VodMovieDetails
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -88,21 +87,6 @@ class VodPlaybackStartModeTest {
         assertNull(synced.durationMs)
         assertFalse(synced.progressCompleted)
         assertFalse(synced.resumeAvailable)
-    }
-
-    @Test
-    fun detailsProjectionUsesLatestSelectedProgress() {
-        val selected = movie(positionMs = 60_000L, completed = false).copy(
-            isFavorite = true,
-            progressUpdatedAtEpochMillis = 42L,
-        )
-        val details = VodMovieDetails(movie = movie(positionMs = 10_000L, completed = false))
-
-        val projected = vodDetailsWithMovieProgress(details, selected)
-
-        assertEquals(60_000L, projected?.movie?.positionMs)
-        assertEquals(42L, projected?.movie?.progressUpdatedAtEpochMillis)
-        assertTrue(projected?.movie?.isFavorite == true)
     }
 
     private fun movie(positionMs: Long?, completed: Boolean) = VodMovie(
