@@ -442,6 +442,8 @@ internal fun VodRoute(
                 error = detailsError,
                 download = downloadFor(movie),
                 focusBackOnEntry = true,
+                focusPlaybackOnEntry = restoreDetailFocusAfterPlayback,
+                onPlaybackFocusRestored = { restoreDetailFocusAfterPlayback = false },
                 onDismiss = ::closeMovieDetails,
                 onFavoriteChanged = { favorite -> setMovieFavorite(movie, favorite) },
                 onDownload = ::enqueueMovieDownload,
@@ -504,7 +506,9 @@ internal fun VodRoute(
                     loading = detailsLoading,
                     error = detailsError,
                     download = downloadFor(movie),
-                    focusBackOnEntry = returnToLibraryOnDetailBack || restoreDetailFocusAfterPlayback,
+                    focusBackOnEntry = returnToLibraryOnDetailBack,
+                    focusPlaybackOnEntry = restoreDetailFocusAfterPlayback,
+                    onPlaybackFocusRestored = { restoreDetailFocusAfterPlayback = false },
                     onDismiss = ::closeMovieDetails,
                     onFavoriteChanged = { favorite -> setMovieFavorite(movie, favorite) },
                     onDownload = ::enqueueMovieDownload,
@@ -962,6 +966,8 @@ private fun MovieDetailsPane(
     error: SourceError?,
     download: OfflineDownload?,
     focusBackOnEntry: Boolean,
+    focusPlaybackOnEntry: Boolean,
+    onPlaybackFocusRestored: () -> Unit,
     onDismiss: () -> Unit,
     onFavoriteChanged: (Boolean) -> Unit,
     onDownload: (VodMovie) -> Unit,
@@ -977,11 +983,16 @@ private fun MovieDetailsPane(
         configuration.uiMode and android.content.res.Configuration.UI_MODE_TYPE_MASK ==
             android.content.res.Configuration.UI_MODE_TYPE_TELEVISION
     val detailBackFocusRequester = remember(movie.movieId) { FocusRequester() }
+    val detailPlaybackFocusRequester = remember(movie.movieId) { FocusRequester() }
     val offlineCopyAvailable = download?.state == DownloadStates.COMPLETED
 
-    LaunchedEffect(isTelevision, focusBackOnEntry, movie.movieId) {
-        if (isTelevision && focusBackOnEntry) {
-            detailBackFocusRequester.requestFocus()
+    LaunchedEffect(isTelevision, focusBackOnEntry, focusPlaybackOnEntry, movie.movieId) {
+        when {
+            isTelevision && focusPlaybackOnEntry -> detailPlaybackFocusRequester.requestFocus()
+            isTelevision && focusBackOnEntry -> detailBackFocusRequester.requestFocus()
+        }
+        if (focusPlaybackOnEntry) {
+            onPlaybackFocusRestored()
         }
     }
 
@@ -1067,7 +1078,9 @@ private fun MovieDetailsPane(
             ) {
                 Button(
                     onClick = { onPlay(movie) },
-                    modifier = Modifier.weight(1f),
+                    modifier = Modifier
+                        .focusRequester(detailPlaybackFocusRequester)
+                        .weight(1f),
                 ) {
                     Icon(Icons.Filled.PlayArrow, contentDescription = null)
                     Spacer(Modifier.width(6.dp))
