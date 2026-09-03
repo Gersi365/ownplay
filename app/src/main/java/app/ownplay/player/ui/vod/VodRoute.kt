@@ -354,6 +354,15 @@ internal fun VodRoute(
         onRequestedMovieConsumed()
     }
 
+    LaunchedEffect(catalog.movies, selectedMovie?.movieId) {
+        val selected = selectedMovie ?: return@LaunchedEffect
+        val latest = catalog.movies.firstOrNull { movie -> movie.movieId == selected.movieId }
+        val synced = vodMovieWithCatalogProgress(selected, latest)
+        if (synced != selected) {
+            selectedMovie = synced
+        }
+    }
+
     LaunchedEffect(selectedMovie?.movieId) {
         val movie = selectedMovie
         if (movie == null) {
@@ -382,6 +391,7 @@ internal fun VodRoute(
         detailsLoading = false
     }
 
+    val presentedDetails = vodDetailsWithMovieProgress(details, selectedMovie)
     val filteredMovies = remember(
         catalog.movies,
         query,
@@ -427,7 +437,7 @@ internal fun VodRoute(
         selectedMovie?.let { movie ->
             MovieDetailsPane(
                 movie = movie,
-                details = details,
+                details = presentedDetails,
                 loading = detailsLoading,
                 error = detailsError,
                 download = downloadFor(movie),
@@ -490,7 +500,7 @@ internal fun VodRoute(
             selectedMovie?.let { movie ->
                 MovieDetailsPane(
                     movie = movie,
-                    details = details,
+                    details = presentedDetails,
                     loading = detailsLoading,
                     error = detailsError,
                     download = downloadFor(movie),
