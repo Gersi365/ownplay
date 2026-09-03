@@ -485,7 +485,7 @@ private fun LiveChannelCompactRow(
             Text(
                 text = channel.displayName,
                 style = MaterialTheme.typography.bodyMedium,
-                fontWeight = if (playing) FontWeight.SemiBold else FontWeight.Medium,
+                fontWeight = FontWeight.Medium,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
@@ -499,7 +499,7 @@ private fun LiveChannelCompactRow(
                 )
             }
         }
-        LiveChannelTrailingState(channel = channel, playing = playing)
+        LiveChannelTrailingState(channel = channel)
     }
 }
 
@@ -531,7 +531,7 @@ private fun LiveChannelListRow(
             Text(
                 text = channel.displayName,
                 style = MaterialTheme.typography.bodyLarge,
-                fontWeight = if (playing) FontWeight.SemiBold else FontWeight.Medium,
+                fontWeight = FontWeight.Medium,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
@@ -545,7 +545,7 @@ private fun LiveChannelListRow(
                 )
             }
         }
-        LiveChannelTrailingState(channel = channel, playing = playing)
+        LiveChannelTrailingState(channel = channel)
     }
 }
 
@@ -617,7 +617,7 @@ private fun LiveChannelCard(
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
-                LiveChannelTrailingState(channel = channel, playing = playing)
+                LiveChannelTrailingState(channel = channel)
             }
         }
     }
@@ -626,23 +626,13 @@ private fun LiveChannelCard(
 @Composable
 private fun LiveChannelTrailingState(
     channel: LiveChannelItem,
-    playing: Boolean,
 ) {
-    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-        if (channel.isFavorite) {
-            Text(
-                text = "★",
-                style = MaterialTheme.typography.labelLarge,
-                color = MaterialTheme.colorScheme.primary,
-            )
-        }
-        if (playing) {
-            Text(
-                text = "▶",
-                style = MaterialTheme.typography.labelLarge,
-                color = MaterialTheme.colorScheme.primary,
-            )
-        }
+    if (channel.isFavorite) {
+        Text(
+            text = "★",
+            style = MaterialTheme.typography.labelLarge,
+            color = MaterialTheme.colorScheme.primary,
+        )
     }
 }
 
