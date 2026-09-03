@@ -25,7 +25,7 @@ class LandscapeLiveFocusPolicyTest {
     }
 
     @Test
-    fun `preview left and back return to browser while down enters epg`() {
+    fun `preview left returns to browser while down enters epg and back stays unhandled`() {
         assertEquals(
             LandscapeLiveFocusZone.BROWSER,
             LandscapeLiveFocusPolicy.destination(
@@ -34,8 +34,7 @@ class LandscapeLiveFocusPolicyTest {
                 hasPreview = true,
             ),
         )
-        assertEquals(
-            LandscapeLiveFocusZone.BROWSER,
+        assertNull(
             LandscapeLiveFocusPolicy.destination(
                 current = LandscapeLiveFocusZone.PREVIEW,
                 action = LandscapeLiveFocusAction.BACK,
@@ -53,7 +52,7 @@ class LandscapeLiveFocusPolicyTest {
     }
 
     @Test
-    fun `epg up returns to preview and left or back returns to browser`() {
+    fun `epg up returns to preview and left returns to browser while back stays unhandled`() {
         assertEquals(
             LandscapeLiveFocusZone.PREVIEW,
             LandscapeLiveFocusPolicy.destination(
@@ -70,8 +69,7 @@ class LandscapeLiveFocusPolicyTest {
                 hasPreview = true,
             ),
         )
-        assertEquals(
-            LandscapeLiveFocusZone.BROWSER,
+        assertNull(
             LandscapeLiveFocusPolicy.destination(
                 current = LandscapeLiveFocusZone.EPG,
                 action = LandscapeLiveFocusAction.BACK,
