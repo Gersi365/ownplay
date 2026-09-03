@@ -1417,7 +1417,8 @@ private fun SeriesPlaybackScreen(
                 channelId = episode.episodeId,
                 mediaKind = PlaybackMediaKind.SERIES_EPISODE,
             )
-            PlaybackInteractionBridge.clearBackAction(detailsBackOwner)
+            PlaybackInteractionBridge.clearBackAction(backOwner)
+            onFullscreenStateChanged(false)
         }
     }
 
