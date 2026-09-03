@@ -53,68 +53,111 @@ data class LiveBrowseQuery(
     val order: LiveBrowseOrder = LiveBrowseOrder.PROVIDER,
 )
 
+internal data class PreparedLiveChannel(
+    val item: LiveChannelItem,
+    val normalizedDisplayName: String,
+    val normalizedProviderName: String,
+    val normalizedCategoryName: String,
+)
+
 object LiveBrowseProjector {
     fun project(
         records: List<LiveChannelRecord>,
         query: LiveBrowseQuery,
         customGroupIdsByChannelId: Map<String, Set<String>> = emptyMap(),
         hiddenCategoryKeys: Set<String> = emptySet(),
+    ): List<LiveChannelItem> = projectPrepared(
+        prepared = prepare(
+            records = records,
+            customGroupIdsByChannelId = customGroupIdsByChannelId,
+            hiddenCategoryKeys = hiddenCategoryKeys,
+        ),
+        query = query,
+    )
+
+    internal fun prepare(
+        records: List<LiveChannelRecord>,
+        customGroupIdsByChannelId: Map<String, Set<String>> = emptyMap(),
+        hiddenCategoryKeys: Set<String> = emptySet(),
+    ): List<PreparedLiveChannel> = records.map { record ->
+        val item = toItem(
+            record = record,
+            customGroupIds = customGroupIdsByChannelId[record.channelId].orEmpty(),
+            hiddenCategoryKeys = hiddenCategoryKeys,
+        )
+        val normalizedDisplayName = item.displayName.lowercase(Locale.ROOT)
+        PreparedLiveChannel(
+            item = item,
+            normalizedDisplayName = normalizedDisplayName,
+            normalizedProviderName = if (item.providerName == item.displayName) {
+                normalizedDisplayName
+            } else {
+                item.providerName.lowercase(Locale.ROOT)
+            },
+            normalizedCategoryName = item.categoryName.orEmpty().lowercase(Locale.ROOT),
+        )
+    }
+
+    internal fun projectPrepared(
+        prepared: List<PreparedLiveChannel>,
+        query: LiveBrowseQuery,
     ): List<LiveChannelItem> {
         val normalizedSearch = query.searchTerm.trim().lowercase(Locale.ROOT)
 
-        val filtered = records.asSequence()
-            .map { record ->
-                toItem(
-                    record = record,
-                    customGroupIds = customGroupIdsByChannelId[record.channelId].orEmpty(),
-                    hiddenCategoryKeys = hiddenCategoryKeys,
-                )
-            }
-            .filter { item ->
+        val filtered = prepared.asSequence()
+            .filter { preparedChannel ->
+                val item = preparedChannel.item
                 if (query.hiddenOnly) item.isHidden else query.includeHidden || !item.isHidden
             }
-            .filter { item -> query.includeRemoved || item.availability != ChannelAvailability.REMOVED }
-            .filter { item -> query.categoryKey == null || item.categoryKey == query.categoryKey }
-            .filter { item -> query.customGroupId == null || query.customGroupId in item.customGroupIds }
-            .filter { item -> !query.favoritesOnly || item.isFavorite }
-            .filter { item ->
+            .filter { preparedChannel ->
+                query.includeRemoved || preparedChannel.item.availability != ChannelAvailability.REMOVED
+            }
+            .filter { preparedChannel ->
+                query.categoryKey == null || preparedChannel.item.categoryKey == query.categoryKey
+            }
+            .filter { preparedChannel ->
+                query.customGroupId == null || query.customGroupId in preparedChannel.item.customGroupIds
+            }
+            .filter { preparedChannel -> !query.favoritesOnly || preparedChannel.item.isFavorite }
+            .filter { preparedChannel ->
                 normalizedSearch.isEmpty() ||
-                    item.displayName.lowercase(Locale.ROOT).contains(normalizedSearch) ||
-                    item.providerName.lowercase(Locale.ROOT).contains(normalizedSearch) ||
-                    item.categoryName.orEmpty().lowercase(Locale.ROOT).contains(normalizedSearch)
+                    preparedChannel.normalizedDisplayName.contains(normalizedSearch) ||
+                    preparedChannel.normalizedProviderName.contains(normalizedSearch) ||
+                    preparedChannel.normalizedCategoryName.contains(normalizedSearch)
             }
             .toList()
 
-        return when (query.order) {
-            LiveBrowseOrder.PROVIDER -> filtered.sortedBy(LiveChannelItem::providerOrder)
+        val ordered = when (query.order) {
+            LiveBrowseOrder.PROVIDER -> filtered.sortedBy { it.item.providerOrder }
             LiveBrowseOrder.MY_ORDER -> filtered.sortedWith(
-                compareBy<LiveChannelItem> { it.manualOrder == null }
-                    .thenBy { it.manualOrder ?: Long.MAX_VALUE }
-                    .thenBy(LiveChannelItem::providerOrder),
+                compareBy<PreparedLiveChannel> { it.item.manualOrder == null }
+                    .thenBy { it.item.manualOrder ?: Long.MAX_VALUE }
+                    .thenBy { it.item.providerOrder },
             )
             LiveBrowseOrder.FAVORITE_ORDER -> filtered.sortedWith(
-                compareBy<LiveChannelItem> { it.favoriteOrder == null }
-                    .thenBy { it.favoriteOrder ?: Long.MAX_VALUE }
-                    .thenBy(LiveChannelItem::providerOrder),
+                compareBy<PreparedLiveChannel> { it.item.favoriteOrder == null }
+                    .thenBy { it.item.favoriteOrder ?: Long.MAX_VALUE }
+                    .thenBy { it.item.providerOrder },
             )
             LiveBrowseOrder.RECENTLY_WATCHED -> filtered.sortedWith(
-                compareBy<LiveChannelItem> { it.recentAtEpochMillis == null }
-                    .thenByDescending { it.recentAtEpochMillis ?: Long.MIN_VALUE }
-                    .thenBy(LiveChannelItem::providerOrder),
+                compareBy<PreparedLiveChannel> { it.item.recentAtEpochMillis == null }
+                    .thenByDescending { it.item.recentAtEpochMillis ?: Long.MIN_VALUE }
+                    .thenBy { it.item.providerOrder },
             )
             LiveBrowseOrder.A_TO_Z -> filtered.sortedWith(
-                compareBy<LiveChannelItem> { it.displayName.lowercase(Locale.ROOT) }
-                    .thenBy(LiveChannelItem::providerOrder),
+                compareBy<PreparedLiveChannel> { it.normalizedDisplayName }
+                    .thenBy { it.item.providerOrder },
             )
             LiveBrowseOrder.Z_TO_A -> filtered.sortedWith(
-                compareByDescending<LiveChannelItem> { it.displayName.lowercase(Locale.ROOT) }
-                    .thenBy(LiveChannelItem::providerOrder),
+                compareByDescending<PreparedLiveChannel> { it.normalizedDisplayName }
+                    .thenBy { it.item.providerOrder },
             )
             LiveBrowseOrder.CATEGORY -> filtered.sortedWith(
-                compareBy<LiveChannelItem> { it.categoryName.orEmpty().lowercase(Locale.ROOT) }
-                    .thenBy(LiveChannelItem::providerOrder),
+                compareBy<PreparedLiveChannel> { it.normalizedCategoryName }
+                    .thenBy { it.item.providerOrder },
             )
         }
+        return ordered.map(PreparedLiveChannel::item)
     }
 
     private fun toItem(
