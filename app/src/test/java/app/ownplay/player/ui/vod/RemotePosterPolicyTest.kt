@@ -8,6 +8,54 @@ import org.junit.Test
 
 class RemotePosterPolicyTest {
     @Test
+    fun `poster with url is loading until request finishes`() {
+        assertEquals(
+            RemotePosterPresentationState.LOADING,
+            remotePosterPresentationState(
+                url = "https://example.test/poster.jpg",
+                requestFinished = false,
+                hasImage = false,
+            ),
+        )
+    }
+
+    @Test
+    fun `decoded poster is presented as image`() {
+        assertEquals(
+            RemotePosterPresentationState.IMAGE,
+            remotePosterPresentationState(
+                url = "https://example.test/poster.jpg",
+                requestFinished = true,
+                hasImage = true,
+            ),
+        )
+    }
+
+    @Test
+    fun `blank poster url is unavailable without loading`() {
+        assertEquals(
+            RemotePosterPresentationState.UNAVAILABLE,
+            remotePosterPresentationState(
+                url = "  ",
+                requestFinished = false,
+                hasImage = false,
+            ),
+        )
+    }
+
+    @Test
+    fun `finished poster request without image is unavailable`() {
+        assertEquals(
+            RemotePosterPresentationState.UNAVAILABLE,
+            remotePosterPresentationState(
+                url = "https://example.test/poster.jpg",
+                requestFinished = true,
+                hasImage = false,
+            ),
+        )
+    }
+
+    @Test
     fun `poster sample size keeps small images unchanged`() {
         assertEquals(1, calculatePosterInSampleSize(width = 512, height = 700, maxLongEdgePx = 768))
     }
