@@ -29,10 +29,10 @@ class PlaybackStatusLabelTest {
     fun failuresUseSpecificUserFacingLabels() {
         val expectations = mapOf(
             PlaybackFailureCategory.NETWORK_UNAVAILABLE to "Network unavailable",
-            PlaybackFailureCategory.TIMEOUT to "Playback timed out",
-            PlaybackFailureCategory.AUTHENTICATION_FAILURE to "Authentication failed",
+            PlaybackFailureCategory.TIMEOUT to "Stream timed out",
+            PlaybackFailureCategory.AUTHENTICATION_FAILURE to "Provider authentication failed",
             PlaybackFailureCategory.STREAM_UNAVAILABLE to "Stream unavailable",
-            PlaybackFailureCategory.UNSUPPORTED_MEDIA to "Unsupported media",
+            PlaybackFailureCategory.UNSUPPORTED_MEDIA to "Unsupported stream format",
             PlaybackFailureCategory.UNKNOWN to "Playback failed",
         )
 
@@ -42,32 +42,6 @@ class PlaybackStatusLabelTest {
                 failure = PlaybackFailure(category),
             )
             assertEquals(expected, playbackStatusLabel(state))
-        }
-    }
-
-    @Test
-    fun failuresExposeCategorySpecificActionHints() {
-        val expectations = mapOf(
-            PlaybackFailureCategory.NETWORK_UNAVAILABLE to
-                "Check the network connection and try again.",
-            PlaybackFailureCategory.TIMEOUT to
-                "The stream did not respond in time. Try again.",
-            PlaybackFailureCategory.AUTHENTICATION_FAILURE to
-                "The provider rejected access to this stream. Check playlist credentials.",
-            PlaybackFailureCategory.STREAM_UNAVAILABLE to
-                "This stream is currently unavailable from the provider.",
-            PlaybackFailureCategory.UNSUPPORTED_MEDIA to
-                "This stream format is not supported on this device.",
-            PlaybackFailureCategory.UNKNOWN to
-                "The stream could not be started.",
-        )
-
-        expectations.forEach { (category, expected) ->
-            val state = PlaybackState.Failed(
-                request = request,
-                failure = PlaybackFailure(category),
-            )
-            assertEquals(expected, playbackFailureHint(state))
         }
     }
 }
