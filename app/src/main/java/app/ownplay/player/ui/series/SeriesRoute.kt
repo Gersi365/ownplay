@@ -84,6 +84,7 @@ import app.ownplay.player.ui.mediaCardVisualTint
 import app.ownplay.player.ui.mediaCatalogPresentationState
 import app.ownplay.player.ui.mediaCatalogSourceErrorLabel
 import app.ownplay.player.ui.mediaDetailsFocusTarget
+import app.ownplay.player.ui.mediaPaneFocusMemory
 import app.ownplay.player.ui.playbackStatusLabel
 import app.ownplay.player.ui.vod.RemotePoster
 import kotlinx.coroutines.currentCoroutineContext
@@ -159,6 +160,8 @@ internal fun SeriesRoute(
     var restoreCatalogFocusEpisodeId by remember(sourceId) { mutableStateOf<String?>(null) }
     var restoreCatalogFocusSeriesId by remember(sourceId) { mutableStateOf<String?>(null) }
     var restoreEpisodePlaybackFocusId by remember(sourceId) { mutableStateOf<String?>(null) }
+    var restoreHierarchyEpisodeId by remember(sourceId) { mutableStateOf<String?>(null) }
+    var restoreHierarchySeasonNumber by remember(sourceId) { mutableStateOf<Int?>(null) }
     val detailsBackOwner = remember(sourceId) { Any() }
 
     fun clearPlaybackFocusRestore() {
@@ -167,16 +170,31 @@ internal fun SeriesRoute(
         restoreEpisodePlaybackFocusId = null
     }
 
+    fun clearHierarchyFocusRestore() {
+        restoreHierarchyEpisodeId = null
+        restoreHierarchySeasonNumber = null
+    }
+
     fun closeSeriesLevel() {
         clearPlaybackFocusRestore()
         when {
-            selectedEpisodeId != null -> selectedEpisodeId = null
+            selectedEpisodeId != null -> {
+                restoreHierarchyEpisodeId = selectedEpisodeId
+                selectedEpisodeId = null
+            }
             selectedSeasonNumber != null -> {
+                restoreHierarchySeasonNumber = selectedSeasonNumber
                 selectedSeasonNumber = null
                 selectedEpisodeId = null
             }
-            returnToLibraryOnDetailBack -> onReturnToLibrary()
-            else -> selectedSeries = null
+            returnToLibraryOnDetailBack -> {
+                clearHierarchyFocusRestore()
+                onReturnToLibrary()
+            }
+            else -> {
+                clearHierarchyFocusRestore()
+                selectedSeries = null
+            }
         }
     }
 
@@ -304,6 +322,7 @@ internal fun SeriesRoute(
         selectedSeasonNumber = null
         selectedEpisodeId = null
         clearPlaybackFocusRestore()
+        clearHierarchyFocusRestore()
         selectedSeries = target
         onRequestedSeriesConsumed()
     }
@@ -388,15 +407,21 @@ internal fun SeriesRoute(
             downloads = downloads,
             focusBackOnEntry = true,
             restorePlaybackFocusEpisodeId = restoreEpisodePlaybackFocusId,
+            restoreHierarchyEpisodeId = restoreHierarchyEpisodeId,
+            restoreHierarchySeasonNumber = restoreHierarchySeasonNumber,
             onPlaybackFocusRestored = { restoreEpisodePlaybackFocusId = null },
+            onHierarchyEpisodeFocusRestored = { restoreHierarchyEpisodeId = null },
+            onHierarchySeasonFocusRestored = { restoreHierarchySeasonNumber = null },
             onRetryDetails = { scope.launch { loadSeriesDetails(portraitSelection) } },
             onSeasonSelected = {
                 restoreEpisodePlaybackFocusId = null
+                clearHierarchyFocusRestore()
                 selectedSeasonNumber = it
                 selectedEpisodeId = null
             },
             onEpisodeSelected = {
                 restoreEpisodePlaybackFocusId = null
+                restoreHierarchyEpisodeId = null
                 selectedEpisodeId = it
             },
             onFavoriteChanged = { favorite ->
@@ -456,6 +481,7 @@ internal fun SeriesRoute(
             onRefresh = ::refresh,
             onSeriesSelected = {
                 clearPlaybackFocusRestore()
+                clearHierarchyFocusRestore()
                 selectedSeasonNumber = null
                 selectedEpisodeId = null
                 selectedSeries = it
@@ -480,15 +506,21 @@ internal fun SeriesRoute(
                 downloads = downloads,
                 focusBackOnEntry = returnToLibraryOnDetailBack,
                 restorePlaybackFocusEpisodeId = restoreEpisodePlaybackFocusId,
+                restoreHierarchyEpisodeId = restoreHierarchyEpisodeId,
+                restoreHierarchySeasonNumber = restoreHierarchySeasonNumber,
                 onPlaybackFocusRestored = { restoreEpisodePlaybackFocusId = null },
+                onHierarchyEpisodeFocusRestored = { restoreHierarchyEpisodeId = null },
+                onHierarchySeasonFocusRestored = { restoreHierarchySeasonNumber = null },
                 onRetryDetails = { scope.launch { loadSeriesDetails(selected) } },
                 onSeasonSelected = {
                     restoreEpisodePlaybackFocusId = null
+                    clearHierarchyFocusRestore()
                     selectedSeasonNumber = it
                     selectedEpisodeId = null
                 },
                 onEpisodeSelected = {
                     restoreEpisodePlaybackFocusId = null
+                    restoreHierarchyEpisodeId = null
                     selectedEpisodeId = it
                 },
                 onFavoriteChanged = { favorite ->
@@ -598,7 +630,7 @@ private fun SeriesCatalogPane(
         onFocusRestored()
     }
 
-    Column(modifier = modifier.fillMaxSize()) {
+    Column(modifier = modifier.fillMaxSize().mediaPaneFocusMemory()) {
         Row(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
@@ -817,7 +849,11 @@ private fun SeriesDetailsPane(
     downloads: List<OfflineDownload>,
     focusBackOnEntry: Boolean,
     restorePlaybackFocusEpisodeId: String?,
+    restoreHierarchyEpisodeId: String?,
+    restoreHierarchySeasonNumber: Int?,
     onPlaybackFocusRestored: () -> Unit,
+    onHierarchyEpisodeFocusRestored: () -> Unit,
+    onHierarchySeasonFocusRestored: () -> Unit,
     onRetryDetails: () -> Unit,
     onSeasonSelected: (Int) -> Unit,
     onEpisodeSelected: (String) -> Unit,
@@ -835,8 +871,10 @@ private fun SeriesDetailsPane(
     val isTelevision =
         configuration.uiMode and Configuration.UI_MODE_TYPE_MASK == Configuration.UI_MODE_TYPE_TELEVISION
     val hierarchyBackFocusRequester = remember(selected.seriesId) { FocusRequester() }
+    val hierarchyEntryFocusRequester = remember(selected.seriesId) { FocusRequester() }
     val playbackReturnFocusRequester = remember(selected.seriesId) { FocusRequester() }
     val detailsRetryFocusRequester = remember(selected.seriesId) { FocusRequester() }
+    val seasonListState = rememberLazyListState()
     val episodeListState = rememberLazyListState()
     val selectedSeason = details?.seasons?.firstOrNull { it.seasonNumber == selectedSeasonNumber }
     val selectedEpisode = selectedSeason?.episodes?.firstOrNull { it.episodeId == selectedEpisodeId }
@@ -845,13 +883,28 @@ private fun SeriesDetailsPane(
     } else {
         -1
     }
+    val hierarchyEpisodeIndex = if (restoreHierarchyEpisodeId != null && selectedSeason != null) {
+        selectedSeason.episodes.indexOfFirst { episode -> episode.episodeId == restoreHierarchyEpisodeId }
+    } else {
+        -1
+    }
+    val hierarchySeasonIndex = if (selectedSeason == null && restoreHierarchySeasonNumber != null) {
+        details?.seasons?.indexOfFirst { season ->
+            season.seasonNumber == restoreHierarchySeasonNumber
+        } ?: -1
+    } else {
+        -1
+    }
+    val targetHierarchyEpisodeId = restoreHierarchyEpisodeId
+        ?.takeIf { hierarchyEpisodeIndex >= 0 }
+        ?: selectedSeason?.episodes?.firstOrNull()?.episodeId
     val restoreToSelectedEpisode = selectedEpisode?.episodeId == restorePlaybackFocusEpisodeId
     val canRestorePlaybackFocus = restoreToSelectedEpisode || restoreEpisodeIndex >= 0
     val focusTarget = mediaDetailsFocusTarget(
         isTelevision = isTelevision,
         playbackReturnRequested = restorePlaybackFocusEpisodeId != null,
         errorActionAvailable = error != null && details == null,
-        backRequested = focusBackOnEntry || selectedSeasonNumber != null || selectedEpisodeId != null,
+        backRequested = focusBackOnEntry,
     )
 
     LaunchedEffect(
@@ -861,6 +914,11 @@ private fun SeriesDetailsPane(
         selectedEpisodeId,
         restorePlaybackFocusEpisodeId,
         restoreEpisodeIndex,
+        restoreHierarchyEpisodeId,
+        hierarchyEpisodeIndex,
+        restoreHierarchySeasonNumber,
+        hierarchySeasonIndex,
+        targetHierarchyEpisodeId,
     ) {
         if (restorePlaybackFocusEpisodeId != null) {
             if (isTelevision && canRestorePlaybackFocus) {
@@ -873,12 +931,47 @@ private fun SeriesDetailsPane(
             onPlaybackFocusRestored()
         } else if (isTelevision) {
             withFrameNanos { }
-            when (focusTarget) {
-                MediaDetailsFocusTarget.RETRY -> detailsRetryFocusRequester.requestFocus()
-                MediaDetailsFocusTarget.BACK -> hierarchyBackFocusRequester.requestFocus()
-                MediaDetailsFocusTarget.PLAYBACK,
-                MediaDetailsFocusTarget.NONE,
-                -> Unit
+            when {
+                selectedEpisode != null -> hierarchyEntryFocusRequester.requestFocus()
+                selectedSeason != null && targetHierarchyEpisodeId != null -> {
+                    if (restoreHierarchyEpisodeId != null && hierarchyEpisodeIndex >= 0) {
+                        episodeListState.scrollToItem(hierarchyEpisodeIndex)
+                        delay(SERIES_FOCUS_RESTORE_LAYOUT_DELAY_MILLIS)
+                    }
+                    hierarchyEntryFocusRequester.requestFocus()
+                    if (restoreHierarchyEpisodeId != null) {
+                        onHierarchyEpisodeFocusRestored()
+                    }
+                }
+                selectedSeason != null -> {
+                    if (restoreHierarchyEpisodeId != null) {
+                        onHierarchyEpisodeFocusRestored()
+                    }
+                    hierarchyBackFocusRequester.requestFocus()
+                }
+                hierarchySeasonIndex >= 0 -> {
+                    seasonListState.scrollToItem(hierarchySeasonIndex)
+                    delay(SERIES_FOCUS_RESTORE_LAYOUT_DELAY_MILLIS)
+                    hierarchyEntryFocusRequester.requestFocus()
+                    onHierarchySeasonFocusRestored()
+                }
+                restoreHierarchySeasonNumber != null -> {
+                    onHierarchySeasonFocusRestored()
+                    when (focusTarget) {
+                        MediaDetailsFocusTarget.RETRY -> detailsRetryFocusRequester.requestFocus()
+                        MediaDetailsFocusTarget.BACK -> hierarchyBackFocusRequester.requestFocus()
+                        MediaDetailsFocusTarget.PLAYBACK,
+                        MediaDetailsFocusTarget.NONE,
+                        -> Unit
+                    }
+                }
+                else -> when (focusTarget) {
+                    MediaDetailsFocusTarget.RETRY -> detailsRetryFocusRequester.requestFocus()
+                    MediaDetailsFocusTarget.BACK -> hierarchyBackFocusRequester.requestFocus()
+                    MediaDetailsFocusTarget.PLAYBACK,
+                    MediaDetailsFocusTarget.NONE,
+                    -> Unit
+                }
             }
         }
     }
@@ -890,6 +983,7 @@ private fun SeriesDetailsPane(
         Column(
             modifier = Modifier
                 .fillMaxSize()
+                .mediaPaneFocusMemory()
                 .padding(horizontal = 12.dp, vertical = 8.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
@@ -955,8 +1049,10 @@ private fun SeriesDetailsPane(
                                 item.mediaKind == DownloadMediaKinds.SERIES_EPISODE &&
                                     item.contentId == selectedEpisode.episodeId
                             },
-                            playbackFocusRequester = playbackReturnFocusRequester.takeIf {
-                                restoreToSelectedEpisode
+                            playbackFocusRequester = if (restoreToSelectedEpisode) {
+                                playbackReturnFocusRequester
+                            } else {
+                                hierarchyEntryFocusRequester
                             },
                             onPlay = { onPlay(selectedEpisode) },
                             onPlayFromBeginning = { onPlayFromBeginning(selectedEpisode) },
@@ -1000,6 +1096,9 @@ private fun SeriesDetailsPane(
                                         episode = episode,
                                         download = download,
                                         onOpen = { onEpisodeSelected(episode.episodeId) },
+                                        rowFocusRequester = hierarchyEntryFocusRequester.takeIf {
+                                            episode.episodeId == targetHierarchyEpisodeId
+                                        },
                                         playbackFocusRequester = playbackReturnFocusRequester.takeIf {
                                             restorePlaybackFocusEpisodeId == episode.episodeId
                                         },
@@ -1034,6 +1133,7 @@ private fun SeriesDetailsPane(
                             )
                         } else {
                             LazyColumn(
+                                state = seasonListState,
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .weight(1f),
@@ -1043,6 +1143,9 @@ private fun SeriesDetailsPane(
                                     SeriesSeasonRow(
                                         series = selected,
                                         season = season,
+                                        focusRequester = hierarchyEntryFocusRequester.takeIf {
+                                            season.seasonNumber == restoreHierarchySeasonNumber
+                                        },
                                         onClick = { onSeasonSelected(season.seasonNumber) },
                                     )
                                 }
@@ -1059,11 +1162,19 @@ private fun SeriesDetailsPane(
 private fun SeriesSeasonRow(
     series: SeriesSummary,
     season: SeriesSeason,
+    focusRequester: FocusRequester? = null,
     onClick: () -> Unit,
 ) {
     Surface(
         modifier = Modifier
             .fillMaxWidth()
+            .then(
+                if (focusRequester != null) {
+                    Modifier.focusRequester(focusRequester)
+                } else {
+                    Modifier
+                },
+            )
             .mediaCardVisualTint()
             .clickable(onClick = onClick),
         shape = RoundedCornerShape(10.dp),
@@ -1228,6 +1339,7 @@ private fun EpisodeRow(
     download: OfflineDownload?,
     onOpen: (() -> Unit)? = null,
     showHeader: Boolean = true,
+    rowFocusRequester: FocusRequester? = null,
     playbackFocusRequester: FocusRequester? = null,
     onPlay: () -> Unit,
     onPlayFromBeginning: () -> Unit,
@@ -1242,6 +1354,13 @@ private fun EpisodeRow(
     } else {
         Modifier
             .fillMaxWidth()
+            .then(
+                if (rowFocusRequester != null) {
+                    Modifier.focusRequester(rowFocusRequester)
+                } else {
+                    Modifier
+                },
+            )
             .mediaCardVisualTint()
             .clickable(onClick = onOpen)
     }
