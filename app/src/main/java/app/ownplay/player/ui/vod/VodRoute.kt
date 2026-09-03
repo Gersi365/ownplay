@@ -69,6 +69,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
@@ -104,8 +105,11 @@ import app.ownplay.player.source.SourceResult
 import app.ownplay.player.ui.MediaCatalogPresentationState
 import app.ownplay.player.ui.MediaCatalogRefreshWarning
 import app.ownplay.player.ui.MediaCatalogStatePanel
+import app.ownplay.player.ui.MediaDetailsFocusTarget
+import app.ownplay.player.ui.MediaDetailsStatePanel
 import app.ownplay.player.ui.mediaCatalogPresentationState
 import app.ownplay.player.ui.mediaCatalogSourceErrorLabel
+import app.ownplay.player.ui.mediaDetailsFocusTarget
 import app.ownplay.player.vod.VodCatalog
 import app.ownplay.player.vod.VodFeatureRuntime
 import app.ownplay.player.vod.VodMovie
@@ -337,6 +341,29 @@ internal fun VodRoute(
         }
     }
 
+    suspend fun loadMovieDetails(movie: VodMovie) {
+        detailsLoading = true
+        detailsError = null
+        val result = featureRuntime.details(sourceId, movie.movieId)
+        if (selectedMovie?.movieId != movie.movieId) return
+        details = when (result) {
+            is SourceResult.Success -> result.value.copy(
+                movie = result.value.movie.copy(
+                    isFavorite = movie.isFavorite,
+                    positionMs = movie.positionMs,
+                    durationMs = movie.durationMs ?: result.value.movie.durationMs,
+                    progressCompleted = movie.progressCompleted,
+                    progressUpdatedAtEpochMillis = movie.progressUpdatedAtEpochMillis,
+                ),
+            )
+            is SourceResult.Failure -> {
+                detailsError = result.error
+                null
+            }
+        }
+        detailsLoading = false
+    }
+
     LaunchedEffect(sourceId) {
         loading = true
         refreshError = null
@@ -376,24 +403,7 @@ internal fun VodRoute(
             detailsLoading = false
             return@LaunchedEffect
         }
-        detailsLoading = true
-        detailsError = null
-        details = when (val result = featureRuntime.details(sourceId, movie.movieId)) {
-            is SourceResult.Success -> result.value.copy(
-                movie = result.value.movie.copy(
-                    isFavorite = movie.isFavorite,
-                    positionMs = movie.positionMs,
-                    durationMs = movie.durationMs ?: result.value.movie.durationMs,
-                    progressCompleted = movie.progressCompleted,
-                    progressUpdatedAtEpochMillis = movie.progressUpdatedAtEpochMillis,
-                ),
-            )
-            is SourceResult.Failure -> {
-                detailsError = result.error
-                null
-            }
-        }
-        detailsLoading = false
+        loadMovieDetails(movie)
     }
 
     val presentedDetails = vodDetailsWithMovieProgress(details, selectedMovie)
@@ -449,6 +459,7 @@ internal fun VodRoute(
                 focusBackOnEntry = true,
                 focusPlaybackOnEntry = restoreDetailFocusAfterPlayback,
                 onPlaybackFocusRestored = { restoreDetailFocusAfterPlayback = false },
+                onRetryDetails = { scope.launch { loadMovieDetails(movie) } },
                 onDismiss = ::closeMovieDetails,
                 onFavoriteChanged = { favorite -> setMovieFavorite(movie, favorite) },
                 onDownload = ::enqueueMovieDownload,
@@ -514,6 +525,7 @@ internal fun VodRoute(
                     focusBackOnEntry = returnToLibraryOnDetailBack,
                     focusPlaybackOnEntry = restoreDetailFocusAfterPlayback,
                     onPlaybackFocusRestored = { restoreDetailFocusAfterPlayback = false },
+                    onRetryDetails = { scope.launch { loadMovieDetails(movie) } },
                     onDismiss = ::closeMovieDetails,
                     onFavoriteChanged = { favorite -> setMovieFavorite(movie, favorite) },
                     onDownload = ::enqueueMovieDownload,
@@ -982,6 +994,7 @@ private fun MovieDetailsPane(
     focusBackOnEntry: Boolean,
     focusPlaybackOnEntry: Boolean,
     onPlaybackFocusRestored: () -> Unit,
+    onRetryDetails: () -> Unit,
     onDismiss: () -> Unit,
     onFavoriteChanged: (Boolean) -> Unit,
     onDownload: (VodMovie) -> Unit,
@@ -998,12 +1011,28 @@ private fun MovieDetailsPane(
             android.content.res.Configuration.UI_MODE_TYPE_TELEVISION
     val detailBackFocusRequester = remember(movie.movieId) { FocusRequester() }
     val detailPlaybackFocusRequester = remember(movie.movieId) { FocusRequester() }
+    val detailRetryFocusRequester = remember(movie.movieId) { FocusRequester() }
     val offlineCopyAvailable = download?.state == DownloadStates.COMPLETED
+    val focusTarget = mediaDetailsFocusTarget(
+        isTelevision = isTelevision,
+        playbackReturnRequested = focusPlaybackOnEntry,
+        errorActionAvailable = error != null,
+        backRequested = focusBackOnEntry,
+    )
 
-    LaunchedEffect(isTelevision, focusBackOnEntry, focusPlaybackOnEntry, movie.movieId) {
-        when {
-            isTelevision && focusPlaybackOnEntry -> detailPlaybackFocusRequester.requestFocus()
-            isTelevision && focusBackOnEntry -> detailBackFocusRequester.requestFocus()
+    LaunchedEffect(
+        focusTarget,
+        focusPlaybackOnEntry,
+        movie.movieId,
+    ) {
+        if (isTelevision) {
+            withFrameNanos { }
+            when (focusTarget) {
+                MediaDetailsFocusTarget.PLAYBACK -> detailPlaybackFocusRequester.requestFocus()
+                MediaDetailsFocusTarget.RETRY -> detailRetryFocusRequester.requestFocus()
+                MediaDetailsFocusTarget.BACK -> detailBackFocusRequester.requestFocus()
+                MediaDetailsFocusTarget.NONE -> Unit
+            }
         }
         if (focusPlaybackOnEntry) {
             onPlaybackFocusRestored()
@@ -1053,19 +1082,19 @@ private fun MovieDetailsPane(
                     .align(Alignment.CenterHorizontally),
             )
 
-            if (loading) {
-                CircularProgressIndicator(
-                    modifier = Modifier
-                        .size(24.dp)
-                        .align(Alignment.CenterHorizontally),
-                    strokeWidth = 2.dp,
+            when {
+                loading -> MediaDetailsStatePanel(
+                    title = "Loading movie details",
+                    body = "Playback and download actions remain available while metadata loads.",
+                    loading = true,
                 )
-            }
-            if (error != null) {
-                Text(
-                    text = "Detailed metadata unavailable. Catalog playback remains available.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.error,
+                error != null -> MediaDetailsStatePanel(
+                    title = "Movie details unavailable",
+                    body = "${mediaCatalogSourceErrorLabel(error)} Playback remains available from catalog data.",
+                    error = true,
+                    actionLabel = "Retry",
+                    onAction = onRetryDetails,
+                    actionFocusRequester = detailRetryFocusRequester,
                 )
             }
 
@@ -1228,20 +1257,27 @@ private fun MovieDetailsPane(
             }
 
             details?.let { info ->
-                HorizontalDivider()
-                Text(
-                    text = "About",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.SemiBold,
-                )
-                info.description?.takeIf(String::isNotBlank)?.let { description ->
-                    Text(text = description, style = MaterialTheme.typography.bodyMedium)
-                }
-                info.director?.takeIf(String::isNotBlank)?.let { director ->
-                    Text("Director: $director", style = MaterialTheme.typography.bodySmall)
-                }
-                info.cast?.takeIf(String::isNotBlank)?.let { cast ->
-                    Text("Cast: $cast", style = MaterialTheme.typography.bodySmall)
+                if (hasAdditionalMovieDetails(info)) {
+                    HorizontalDivider()
+                    Text(
+                        text = "About",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                    info.description?.takeIf(String::isNotBlank)?.let { description ->
+                        Text(text = description, style = MaterialTheme.typography.bodyMedium)
+                    }
+                    info.director?.takeIf(String::isNotBlank)?.let { director ->
+                        Text("Director: $director", style = MaterialTheme.typography.bodySmall)
+                    }
+                    info.cast?.takeIf(String::isNotBlank)?.let { cast ->
+                        Text("Cast: $cast", style = MaterialTheme.typography.bodySmall)
+                    }
+                } else if (!loading && error == null) {
+                    MediaDetailsStatePanel(
+                        title = "No additional movie information",
+                        body = "Playback, favorites and download actions remain available.",
+                    )
                 }
             }
         }
@@ -1625,6 +1661,16 @@ private fun movieProgressFraction(movie: VodMovie): Float? {
     if (position <= 0L || duration <= 0L || movie.progressCompleted) return null
     return (position.toDouble() / duration.toDouble()).coerceIn(0.0, 1.0).toFloat()
 }
+
+private fun hasAdditionalMovieDetails(details: VodMovieDetails): Boolean =
+    details.releaseDate?.isNotBlank() == true ||
+        details.durationLabel?.isNotBlank() == true ||
+        details.genre?.isNotBlank() == true ||
+        details.country?.isNotBlank() == true ||
+        details.rating != null ||
+        details.description?.isNotBlank() == true ||
+        details.director?.isNotBlank() == true ||
+        details.cast?.isNotBlank() == true
 
 private fun downloadProgressLabel(download: OfflineDownload): String {
     val downloaded = humanBytes(download.bytesDownloaded)
