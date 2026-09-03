@@ -4,8 +4,11 @@ import app.ownplay.player.PendingImportCoordinator
 import app.ownplay.player.PendingImportExecutionTracker
 import java.util.concurrent.atomic.AtomicInteger
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -108,5 +111,58 @@ class PendingImportCoordinatorTest {
         withTimeout(1_000) {
             while (coordinator.isActive("source-a")) delay(10)
         }
+    }
+
+    @Test
+    fun cancelledJobCleanupDoesNotEraseImmediateReplacementState() = runBlocking {
+        val calls = AtomicInteger(0)
+        val firstStarted = CompletableDeferred<Unit>()
+        val allowFirstCleanup = CompletableDeferred<Unit>()
+        val replacementStarted = CompletableDeferred<Unit>()
+        val releaseReplacement = CompletableDeferred<Unit>()
+        val coordinator = PendingImportCoordinator(
+            scope = this,
+            maxConcurrentImports = 1,
+        ) {
+            when (calls.incrementAndGet()) {
+                1 -> {
+                    firstStarted.complete(Unit)
+                    try {
+                        awaitCancellation()
+                    } finally {
+                        // Keep the cancelled job inside the semaphore permit long enough to make
+                        // the replacement reservation observable before old-job cleanup completes.
+                        withContext(NonCancellable) { allowFirstCleanup.await() }
+                    }
+                }
+                else -> {
+                    replacementStarted.complete(Unit)
+                    releaseReplacement.await()
+                }
+            }
+        }
+
+        coordinator.schedule("source-a")
+        withTimeout(1_000) { firstStarted.await() }
+        coordinator.cancel("source-a")
+        coordinator.schedule("source-a")
+
+        withTimeout(1_000) {
+            while ("source-a" !in PendingImportExecutionTracker.state.value.queuedSourceIds) {
+                delay(10)
+            }
+        }
+        assertFalse("source-a" in PendingImportExecutionTracker.state.value.activeSourceIds)
+
+        allowFirstCleanup.complete(Unit)
+        withTimeout(1_000) { replacementStarted.await() }
+        assertTrue("source-a" in PendingImportExecutionTracker.state.value.activeSourceIds)
+        assertFalse("source-a" in PendingImportExecutionTracker.state.value.queuedSourceIds)
+
+        releaseReplacement.complete(Unit)
+        withTimeout(1_000) {
+            while (coordinator.isActive("source-a")) delay(10)
+        }
+        assertFalse("source-a" in PendingImportExecutionTracker.state.value.activeSourceIds)
     }
 }
