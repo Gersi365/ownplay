@@ -1,5 +1,6 @@
 package app.ownplay.player.ui
 
+import androidx.compose.foundation.focusGroup
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -8,6 +9,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.composed
 import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.focus.focusRestorer
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.graphics.Color
@@ -58,3 +60,8 @@ internal fun Modifier.mediaCardVisualTint(
             }
         }
 }
+
+internal fun Modifier.mediaPaneFocusMemory(): Modifier =
+    this
+        .focusRestorer()
+        .focusGroup()
