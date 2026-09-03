@@ -111,6 +111,7 @@ import app.ownplay.player.ui.mediaCardVisualTint
 import app.ownplay.player.ui.mediaCatalogPresentationState
 import app.ownplay.player.ui.mediaCatalogSourceErrorLabel
 import app.ownplay.player.ui.mediaDetailsFocusTarget
+import app.ownplay.player.ui.mediaPaneFocusMemory
 import app.ownplay.player.vod.VodCatalog
 import app.ownplay.player.vod.VodFeatureRuntime
 import app.ownplay.player.vod.VodMovie
@@ -597,7 +598,7 @@ private fun MoviesCatalogContent(
         failed = refreshError != null,
     )
 
-    Column(modifier = modifier.fillMaxSize()) {
+    Column(modifier = modifier.fillMaxSize().mediaPaneFocusMemory()) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -782,7 +783,7 @@ private fun MovieNavigationRail(
         shape = RoundedCornerShape(16.dp),
         tonalElevation = 1.dp,
     ) {
-        Column(modifier = Modifier.fillMaxSize()) {
+        Column(modifier = Modifier.fillMaxSize().mediaPaneFocusMemory()) {
             NavRailItem(Icons.Filled.LiveTv, "Live", false, onOpenLive)
             NavRailItem(Icons.Filled.Movie, "Movies", true, {})
             NavRailItem(Icons.Filled.VideoLibrary, "Series", false, onOpenSeries)
@@ -1054,6 +1055,7 @@ private fun MovieDetailsPane(
         Column(
             modifier = Modifier
                 .fillMaxSize()
+                .mediaPaneFocusMemory()
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 16.dp, vertical = 10.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
