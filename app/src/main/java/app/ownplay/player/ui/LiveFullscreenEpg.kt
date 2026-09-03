@@ -31,12 +31,14 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 
 private const val FULLSCREEN_EPG_REFRESH_MILLIS = 30_000L
+private const val FULLSCREEN_EPG_CLOCK_TICK_MILLIS = 5_000L
+private const val FULLSCREEN_EPG_MIN_REFRESH_MILLIS = 1_000L
+private const val FULLSCREEN_EPG_BOUNDARY_GRACE_MILLIS = 250L
 
 private data class FullscreenEpgUiState(
     val snapshot: EpgSnapshot? = null,
     val loading: Boolean = true,
     val failed: Boolean = false,
-    val evaluatedAtEpochSeconds: Long = 0L,
 )
 
 /**
@@ -64,7 +66,7 @@ internal fun LiveFullscreenEpg(
             if (firstLookup) {
                 value = FullscreenEpgUiState(loading = true)
             }
-            value = try {
+            val nextState = try {
                 FullscreenEpgUiState(
                     snapshot = runtime.epgSnapshot(
                         sourceId = sourceId,
@@ -72,7 +74,6 @@ internal fun LiveFullscreenEpg(
                     ),
                     loading = false,
                     failed = false,
-                    evaluatedAtEpochSeconds = System.currentTimeMillis() / 1_000L,
                 )
             } catch (cancelled: CancellationException) {
                 throw cancelled
@@ -81,11 +82,26 @@ internal fun LiveFullscreenEpg(
                     snapshot = null,
                     loading = false,
                     failed = true,
-                    evaluatedAtEpochSeconds = System.currentTimeMillis() / 1_000L,
                 )
             }
+            value = nextState
             firstLookup = false
-            delay(FULLSCREEN_EPG_REFRESH_MILLIS)
+            delay(
+                fullscreenEpgRefreshDelayMillis(
+                    currentProgramEndEpochSeconds = nextState.snapshot?.current?.endEpochSeconds,
+                    nowEpochSeconds = System.currentTimeMillis() / 1_000L,
+                ),
+            )
+        }
+    }
+    val nowEpochSeconds by produceState(
+        initialValue = System.currentTimeMillis() / 1_000L,
+        key1 = sourceId,
+        key2 = channelId,
+    ) {
+        while (true) {
+            value = System.currentTimeMillis() / 1_000L
+            delay(FULLSCREEN_EPG_CLOCK_TICK_MILLIS)
         }
     }
 
@@ -119,7 +135,7 @@ internal fun LiveFullscreenEpg(
                 current != null -> {
                     FullscreenCurrentProgram(
                         program = current,
-                        nowEpochSeconds = epgState.evaluatedAtEpochSeconds,
+                        nowEpochSeconds = nowEpochSeconds,
                     )
                     if (next != null) {
                         HorizontalDivider(color = Color.White.copy(alpha = 0.14f))
@@ -239,6 +255,18 @@ internal fun fullscreenEpgProgress(
     return ((nowEpochSeconds - start).toDouble() / duration.toDouble())
         .coerceIn(0.0, 1.0)
         .toFloat()
+}
+
+internal fun fullscreenEpgRefreshDelayMillis(
+    currentProgramEndEpochSeconds: Long?,
+    nowEpochSeconds: Long,
+): Long {
+    val end = currentProgramEndEpochSeconds ?: return FULLSCREEN_EPG_REFRESH_MILLIS
+    val secondsUntilBoundary = end - nowEpochSeconds
+    if (secondsUntilBoundary <= 0L) return FULLSCREEN_EPG_MIN_REFRESH_MILLIS
+
+    return (secondsUntilBoundary * 1_000L + FULLSCREEN_EPG_BOUNDARY_GRACE_MILLIS)
+        .coerceIn(FULLSCREEN_EPG_MIN_REFRESH_MILLIS, FULLSCREEN_EPG_REFRESH_MILLIS)
 }
 
 private fun fullscreenEpgTimeRange(program: EpgProgram): String = when {
