@@ -1,6 +1,5 @@
 package app.ownplay.player.ui.live
 
-import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Arrangement
@@ -26,7 +25,6 @@ import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEvent
 import androidx.compose.ui.input.key.KeyEventType
@@ -58,10 +56,10 @@ import app.ownplay.player.ui.view.ContentViewMode
  *
  * D-pad focus is split into three predictable zones: Browser -> Preview -> EPG. The channel
  * browser owns initial focus, Right from channel content enters Preview, Down enters EPG, and
- * Left/Back from either right-side zone returns to the currently active channel. Toolbar,
- * Search and category controls retain their native horizontal traversal. Returning from Full
- * View may explicitly restore Preview focus once. Channel focus requests scroll the active
- * row/card into the viewport before requesting focus.
+ * Left from either right-side zone returns to the currently active channel. Back/ESC remains the
+ * Preview close action owned by LivePreviewPanel. Toolbar, Search and category controls retain
+ * their native horizontal traversal. Returning from Full View may explicitly restore Preview
+ * focus once. Channel focus requests scroll the active row/card into the viewport first.
  */
 @Composable
 internal fun LandscapeLiveWorkspaceAdaptive(
@@ -100,8 +98,6 @@ internal fun LandscapeLiveWorkspaceAdaptive(
     var initialBrowserFocusRequested by remember { mutableStateOf(false) }
     var previousPreviewChannelId by remember { mutableStateOf<String?>(null) }
     var lastPreviewChannelId by remember { mutableStateOf<String?>(null) }
-    var previewZoneHasFocus by remember { mutableStateOf(false) }
-    var epgZoneHasFocus by remember { mutableStateOf(false) }
 
     fun requestChannelFocus(preferredChannelId: String?) {
         val visibleTarget = preferredChannelId?.takeIf { candidate ->
@@ -157,15 +153,6 @@ internal fun LandscapeLiveWorkspaceAdaptive(
         withFrameNanos { }
         previewFocusRequester.requestFocus()
         onPreviewEntryFocusRestored()
-    }
-
-    BackHandler(
-        enabled = preview != null && (previewZoneHasFocus || epgZoneHasFocus),
-    ) {
-        applyFocusAction(
-            zone = if (epgZoneHasFocus) LandscapeLiveFocusZone.EPG else LandscapeLiveFocusZone.PREVIEW,
-            action = LandscapeLiveFocusAction.BACK,
-        )
     }
 
     if (preview == null) {
@@ -246,9 +233,6 @@ internal fun LandscapeLiveWorkspaceAdaptive(
                     modifier = Modifier
                         .fillMaxWidth()
                         .focusRequester(previewFocusRequester)
-                        .onFocusChanged { focusState ->
-                            previewZoneHasFocus = focusState.hasFocus
-                        }
                         .onPreviewKeyEvent { event ->
                             when {
                                 event.isKeyDown(Key.DirectionLeft) -> applyFocusAction(
@@ -285,9 +269,6 @@ internal fun LandscapeLiveWorkspaceAdaptive(
                     modifier = Modifier
                         .fillMaxWidth()
                         .focusRequester(epgFocusRequester)
-                        .onFocusChanged { focusState ->
-                            epgZoneHasFocus = focusState.hasFocus
-                        }
                         .onPreviewKeyEvent { event ->
                             when {
                                 event.isKeyDown(Key.DirectionLeft) -> applyFocusAction(
@@ -391,18 +372,12 @@ internal object LandscapeLiveFocusPolicy {
             else -> null
         }
         LandscapeLiveFocusZone.PREVIEW -> when (action) {
-            LandscapeLiveFocusAction.LEFT,
-            LandscapeLiveFocusAction.BACK,
-            -> LandscapeLiveFocusZone.BROWSER
-
+            LandscapeLiveFocusAction.LEFT -> LandscapeLiveFocusZone.BROWSER
             LandscapeLiveFocusAction.DOWN -> LandscapeLiveFocusZone.EPG
             else -> null
         }
         LandscapeLiveFocusZone.EPG -> when (action) {
-            LandscapeLiveFocusAction.LEFT,
-            LandscapeLiveFocusAction.BACK,
-            -> LandscapeLiveFocusZone.BROWSER
-
+            LandscapeLiveFocusAction.LEFT -> LandscapeLiveFocusZone.BROWSER
             LandscapeLiveFocusAction.UP -> LandscapeLiveFocusZone.PREVIEW
             else -> null
         }
