@@ -147,9 +147,10 @@ internal fun DownloadsSettingsScreen(
         if (index < 0) {
             OfflineMediaTvFocusPolicy.preferredVisibleKey(
                 visibleKeys = downloadIds,
-                rememberedKey = rememberedDownloadId,
-            )?.takeIf { it != target }?.let { fallback ->
+                rememberedKey = null,
+            )?.let { fallback ->
                 focusDownloadId = fallback
+                rememberedDownloadId = fallback
                 focusRequestGeneration += 1
             }
             return@LaunchedEffect
