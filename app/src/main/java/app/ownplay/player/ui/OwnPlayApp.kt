@@ -21,16 +21,9 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.DownloadDone
-import androidx.compose.material.icons.filled.LiveTv
-import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.NavigationBar
-import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -324,30 +317,15 @@ fun OwnPlayApp(
                     activeSourceName = activeSummary?.name,
                     syncState = syncState,
                 )
-                contentLandscape && !vodFullscreen -> NavigationBar(
+                contentLandscape && !vodFullscreen -> OwnPlayNavigationBar(
+                    liveSelected = section == OwnPlaySection.LIVE,
+                    librarySelected = librarySectionActive,
+                    settingsSelected = section == OwnPlaySection.SETTINGS,
+                    onOpenLive = { openContentSection(OwnPlaySection.LIVE) },
+                    onOpenLibrary = { openContentSection(OwnPlaySection.LIBRARY) },
+                    onOpenSettings = { openContentSection(OwnPlaySection.SETTINGS) },
                     modifier = Modifier.statusBarsPadding(),
-                    containerColor = MaterialTheme.colorScheme.surface,
-                    tonalElevation = 2.dp,
-                ) {
-                    NavigationBarItem(
-                        selected = section == OwnPlaySection.LIVE,
-                        onClick = { openContentSection(OwnPlaySection.LIVE) },
-                        icon = { Icon(Icons.Filled.LiveTv, contentDescription = "Live") },
-                        label = { Text("Live") },
-                    )
-                    NavigationBarItem(
-                        selected = librarySectionActive,
-                        onClick = { openContentSection(OwnPlaySection.LIBRARY) },
-                        icon = { Icon(Icons.Filled.DownloadDone, contentDescription = "Library") },
-                        label = { Text("Library") },
-                    )
-                    NavigationBarItem(
-                        selected = section == OwnPlaySection.SETTINGS,
-                        onClick = { openContentSection(OwnPlaySection.SETTINGS) },
-                        icon = { Icon(Icons.Filled.Settings, contentDescription = "Settings") },
-                        label = { Text("Settings") },
-                    )
-                }
+                )
             }
         },
         bottomBar = {
@@ -357,30 +335,15 @@ fun OwnPlayApp(
                 !seriesFullscreen &&
                 !libraryFullscreen
             ) {
-                NavigationBar(
+                OwnPlayNavigationBar(
+                    liveSelected = section == OwnPlaySection.LIVE,
+                    librarySelected = librarySectionActive,
+                    settingsSelected = section == OwnPlaySection.SETTINGS,
+                    onOpenLive = { openContentSection(OwnPlaySection.LIVE) },
+                    onOpenLibrary = { openContentSection(OwnPlaySection.LIBRARY) },
+                    onOpenSettings = { openContentSection(OwnPlaySection.SETTINGS) },
                     modifier = Modifier.navigationBarsPadding(),
-                    containerColor = MaterialTheme.colorScheme.surface,
-                    tonalElevation = 3.dp,
-                ) {
-                    NavigationBarItem(
-                        selected = section == OwnPlaySection.LIVE,
-                        onClick = { openContentSection(OwnPlaySection.LIVE) },
-                        icon = { Icon(Icons.Filled.LiveTv, contentDescription = "Live") },
-                        label = { Text("Live") },
-                    )
-                    NavigationBarItem(
-                        selected = librarySectionActive,
-                        onClick = { openContentSection(OwnPlaySection.LIBRARY) },
-                        icon = { Icon(Icons.Filled.DownloadDone, contentDescription = "Library") },
-                        label = { Text("Library") },
-                    )
-                    NavigationBarItem(
-                        selected = section == OwnPlaySection.SETTINGS,
-                        onClick = { openContentSection(OwnPlaySection.SETTINGS) },
-                        icon = { Icon(Icons.Filled.Settings, contentDescription = "Settings") },
-                        label = { Text("Settings") },
-                    )
-                }
+                )
             }
         },
     ) { innerPadding ->
