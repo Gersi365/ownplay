@@ -80,6 +80,7 @@ import app.ownplay.player.ui.MediaCatalogRefreshWarning
 import app.ownplay.player.ui.MediaCatalogStatePanel
 import app.ownplay.player.ui.MediaDetailsFocusTarget
 import app.ownplay.player.ui.MediaDetailsStatePanel
+import app.ownplay.player.ui.mediaCardVisualTint
 import app.ownplay.player.ui.mediaCatalogPresentationState
 import app.ownplay.player.ui.mediaCatalogSourceErrorLabel
 import app.ownplay.player.ui.mediaDetailsFocusTarget
@@ -680,6 +681,7 @@ private fun SeriesCatalogPane(
                                     Modifier
                                 },
                             )
+                            .mediaCardVisualTint()
                             .clickable { onContinueEpisode(episode) },
                         shape = RoundedCornerShape(12.dp),
                         tonalElevation = 1.dp,
@@ -753,6 +755,7 @@ private fun SeriesCatalogPane(
                                     Modifier
                                 },
                             )
+                            .mediaCardVisualTint()
                             .clickable { onSeriesSelected(item) },
                         shape = RoundedCornerShape(8.dp),
                         color = if (selectedSeriesId == item.seriesId) {
