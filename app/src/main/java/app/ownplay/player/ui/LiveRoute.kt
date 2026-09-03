@@ -65,6 +65,8 @@ internal fun LiveRoute(
     onPreviewClosed: () -> Unit,
     onOpenFullscreen: (LivePlaybackSelection) -> Unit,
     onNavigatePreview: (PlaybackNavigationDirection) -> Unit,
+    focusPreviewOnEntry: Boolean = false,
+    onPreviewEntryFocusRestored: () -> Unit = {},
 ) {
     val configuration = LocalConfiguration.current
     val context = LocalContext.current
@@ -208,6 +210,8 @@ internal fun LiveRoute(
             onOpenFullscreen = onOpenFullscreen,
             onPreviewClosed = onPreviewClosed,
             onOpenEpgGuide = { showEpgGuide = true },
+            focusPreviewOnEntry = focusPreviewOnEntry,
+            onPreviewEntryFocusRestored = onPreviewEntryFocusRestored,
         )
     } else {
         Column(modifier = Modifier.fillMaxSize()) {
