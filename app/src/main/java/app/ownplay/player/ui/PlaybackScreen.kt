@@ -317,7 +317,7 @@ internal fun PlaybackScreen(
                         showTracks = false
                         revealControls()
                     },
-                    closeFocusRequester = tracksFocusRequester,
+                    entryFocusRequester = tracksFocusRequester,
                     modifier = Modifier
                         .align(Alignment.Center)
                         .fillMaxWidth()
@@ -582,9 +582,17 @@ private fun PlaybackTracksPanel(
     onAudioSelection: (PlaybackAudioSelection) -> Unit,
     onSubtitleSelection: (PlaybackSubtitleSelection) -> Unit,
     onClose: () -> Unit,
-    closeFocusRequester: FocusRequester,
+    entryFocusRequester: FocusRequester,
     modifier: Modifier = Modifier,
 ) {
+    val entryTarget = playbackTracksEntryTarget(
+        audioSelection = state.audioSelection,
+        supportedAudioTrackIds = state.audioTracks
+            .filter(PlaybackTrackOption::supported)
+            .map(PlaybackTrackOption::id)
+            .toSet(),
+    )
+
     Surface(
         modifier = modifier,
         tonalElevation = 8.dp,
@@ -607,10 +615,7 @@ private fun PlaybackTracksPanel(
                     fontWeight = FontWeight.SemiBold,
                 )
                 Spacer(modifier = Modifier.weight(1f))
-                TextButton(
-                    modifier = Modifier.focusRequester(closeFocusRequester),
-                    onClick = onClose,
-                ) {
+                TextButton(onClick = onClose) {
                     Text("Close")
                 }
             }
@@ -623,6 +628,9 @@ private fun PlaybackTracksPanel(
             TrackChoiceButton(
                 label = "Default",
                 selected = state.audioSelection == PlaybackAudioSelection.Default,
+                focusRequester = entryFocusRequester.takeIf {
+                    entryTarget == PlaybackTracksEntryTarget.DefaultAudio
+                },
                 onClick = { onAudioSelection(PlaybackAudioSelection.Default) },
             )
             if (state.audioTracks.isEmpty()) {
@@ -634,6 +642,9 @@ private fun PlaybackTracksPanel(
                     TrackOptionButton(
                         option = option,
                         selected = selected,
+                        focusRequester = entryFocusRequester.takeIf {
+                            entryTarget == PlaybackTracksEntryTarget.SpecificAudio(option.id)
+                        },
                         onClick = { onAudioSelection(PlaybackAudioSelection.Specific(option.id)) },
                     )
                 }
@@ -668,6 +679,25 @@ private fun PlaybackTracksPanel(
                     )
                 }
             }
+        }
+    }
+}
+
+internal sealed interface PlaybackTracksEntryTarget {
+    data object DefaultAudio : PlaybackTracksEntryTarget
+    data class SpecificAudio(val trackId: String) : PlaybackTracksEntryTarget
+}
+
+internal fun playbackTracksEntryTarget(
+    audioSelection: PlaybackAudioSelection,
+    supportedAudioTrackIds: Set<String>,
+): PlaybackTracksEntryTarget = when (audioSelection) {
+    PlaybackAudioSelection.Default -> PlaybackTracksEntryTarget.DefaultAudio
+    is PlaybackAudioSelection.Specific -> {
+        if (audioSelection.trackId in supportedAudioTrackIds) {
+            PlaybackTracksEntryTarget.SpecificAudio(audioSelection.trackId)
+        } else {
+            PlaybackTracksEntryTarget.DefaultAudio
         }
     }
 }
@@ -777,6 +807,7 @@ private fun DiagnosticRow(
 private fun TrackOptionButton(
     option: PlaybackTrackOption,
     selected: Boolean,
+    focusRequester: FocusRequester? = null,
     onClick: () -> Unit,
 ) {
     val activeSuffix = if (option.selectedByPlayer) " · active" else ""
@@ -784,6 +815,7 @@ private fun TrackOptionButton(
         label = option.label + activeSuffix,
         selected = selected,
         enabled = option.supported,
+        focusRequester = focusRequester,
         onClick = onClick,
     )
 }
@@ -794,11 +826,20 @@ private fun TrackChoiceButton(
     selected: Boolean,
     onClick: () -> Unit,
     enabled: Boolean = true,
+    focusRequester: FocusRequester? = null,
 ) {
     TextButton(
         onClick = onClick,
         enabled = enabled,
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .then(
+                if (focusRequester != null) {
+                    Modifier.focusRequester(focusRequester)
+                } else {
+                    Modifier
+                },
+            ),
     ) {
         Text(
             text = if (selected) "✓ $label" else label,
