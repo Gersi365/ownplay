@@ -67,11 +67,9 @@ internal enum class OwnPlaySection {
 internal fun ownPlayShellBackTarget(section: OwnPlaySection): OwnPlaySection? = when (section) {
     OwnPlaySection.LIVE -> null
     OwnPlaySection.MOVIES,
-    OwnPlaySection.SERIES,
-    -> OwnPlaySection.LIBRARY
+    OwnPlaySection.SERIES -> OwnPlaySection.LIBRARY
     OwnPlaySection.LIBRARY,
-    OwnPlaySection.SETTINGS,
-    -> OwnPlaySection.LIVE
+    OwnPlaySection.SETTINGS -> OwnPlaySection.LIVE
 }
 
 @Composable
