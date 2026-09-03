@@ -56,12 +56,22 @@ import app.ownplay.player.ui.vod.VodRoute
 
 private const val SECTION_MOTION_MILLIS = 200
 
-private enum class OwnPlaySection {
+internal enum class OwnPlaySection {
     LIVE,
     MOVIES,
     SERIES,
     LIBRARY,
     SETTINGS,
+}
+
+internal fun ownPlayShellBackTarget(section: OwnPlaySection): OwnPlaySection? = when (section) {
+    OwnPlaySection.LIVE -> null
+    OwnPlaySection.MOVIES,
+    OwnPlaySection.SERIES,
+    -> OwnPlaySection.LIBRARY
+    OwnPlaySection.LIBRARY,
+    OwnPlaySection.SETTINGS,
+    -> OwnPlaySection.LIVE
 }
 
 @Composable
@@ -182,13 +192,10 @@ fun OwnPlayApp(
         section = target
     }
 
-    BackHandler(
-        enabled =
-            section == OwnPlaySection.MOVIES &&
-                movieDetailReturnToLibrary &&
-                !vodFullscreen,
-    ) {
-        openContentSection(OwnPlaySection.LIBRARY)
+    val shellBackTarget = ownPlayShellBackTarget(section)
+    BackHandler(enabled = shellBackTarget != null) {
+        if (PlaybackInteractionBridge.handleBack()) return@BackHandler
+        shellBackTarget?.let(::openContentSection)
     }
 
     val librarySectionActive =
