@@ -15,13 +15,27 @@ class SourceSyncPublicationContractTest {
         val refresh = source
   .substringAfter("suspend fun refreshSource(sourceId: String)")
   .substringBefore("suspend fun refreshAllSources()")
-        assertTrue(refresh.contains("val state = _sourceSyncStates.value[sourceId]"))
-        assertFalse(refresh.contains("val state = _sourceSyncState.value"))
+        assertTrue(refresh.contains("refreshMutex.withLock"))
+        assertTrue(refresh.contains("markRefreshRunning(sourceId)"))
+        assertTrue(refresh.contains("refreshSourcePipelineLocked(sourceId)"))
+        assertTrue(refresh.contains("markRefreshSucceeded(sourceId)"))
+        assertTrue(refresh.contains("markRefreshFailed(sourceId, outcome.failure.toString())"))
+        assertFalse(refresh.contains("_sourceSyncState.value"))
+        assertFalse(refresh.contains("_sourceSyncStates.value[sourceId]"))
+
+        val runningIndex = refresh.indexOf("markRefreshRunning(sourceId)")
+        val pipelineIndex = refresh.indexOf("refreshSourcePipelineLocked(sourceId)")
+        val successIndex = refresh.indexOf("markRefreshSucceeded(sourceId)")
+        assertTrue(runningIndex >= 0 && runningIndex < pipelineIndex)
+        assertTrue(pipelineIndex >= 0 && pipelineIndex < successIndex)
 
         val pipeline = source
-  .substringAfter("private suspend fun refreshSourcePipeline(sourceId: String)")
+  .substringAfter("private suspend fun refreshSourcePipelineLocked(")
   .substringBefore("private suspend fun refreshXtreamMediaCatalogs")
         assertTrue(pipeline.contains("publishSourceState("))
+        assertTrue(pipeline.contains("ReadyRefreshOutcome.ChannelsFailed(failure)"))
+        assertTrue(pipeline.contains("ReadyRefreshOutcome.Succeeded"))
+        assertFalse(pipeline.contains("refreshMutex.withLock"))
         assertFalse(pipeline.contains("_sourceSyncState.value = SourceSyncState("))
 
         val unexpectedFailure = source
