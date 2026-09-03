@@ -345,7 +345,10 @@ internal fun VodRoute(
         detailsLoading = true
         detailsError = null
         val result = featureRuntime.details(sourceId, movie.movieId)
-        if (selectedMovie?.movieId != movie.movieId) return
+        if (selectedMovie?.movieId != movie.movieId) {
+            if (selectedMovie == null) detailsLoading = false
+            return
+        }
         details = when (result) {
             is SourceResult.Success -> result.value.copy(
                 movie = result.value.movie.copy(
