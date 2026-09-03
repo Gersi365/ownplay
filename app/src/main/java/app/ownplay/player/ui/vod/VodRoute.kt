@@ -107,6 +107,7 @@ import app.ownplay.player.ui.MediaCatalogRefreshWarning
 import app.ownplay.player.ui.MediaCatalogStatePanel
 import app.ownplay.player.ui.MediaDetailsFocusTarget
 import app.ownplay.player.ui.MediaDetailsStatePanel
+import app.ownplay.player.ui.mediaCardVisualTint
 import app.ownplay.player.ui.mediaCatalogPresentationState
 import app.ownplay.player.ui.mediaCatalogSourceErrorLabel
 import app.ownplay.player.ui.mediaDetailsFocusTarget
@@ -883,6 +884,7 @@ private fun MovieCard(
     Column(
         modifier = Modifier
             .fillMaxWidth()
+            .mediaCardVisualTint()
             .clickable(onClick = onClick),
         verticalArrangement = Arrangement.spacedBy(5.dp),
     ) {
@@ -954,6 +956,7 @@ private fun ContinueWatchingCard(
     Surface(
         modifier = Modifier
             .width(220.dp)
+            .mediaCardVisualTint()
             .clickable(onClick = onClick),
         shape = RoundedCornerShape(12.dp),
         tonalElevation = 1.dp,
