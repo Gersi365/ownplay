@@ -81,6 +81,8 @@ fun OwnPlayApp(
     onLivePreviewActiveChanged: (Boolean) -> Unit = {},
 ) {
     val configuration = LocalConfiguration.current
+    val isTelevision =
+        configuration.uiMode and Configuration.UI_MODE_TYPE_MASK == Configuration.UI_MODE_TYPE_TELEVISION
     val summaries by runtime.observeSourceSummaries().collectAsState(initial = emptyList())
     val syncState by runtime.sourceSyncState.collectAsState()
     val playbackState by runtime.playbackController.state.collectAsState()
@@ -92,6 +94,7 @@ fun OwnPlayApp(
     var activeSelection by remember { mutableStateOf<LivePlaybackSelection?>(null) }
     var fullscreenSelection by remember { mutableStateOf<LivePlaybackSelection?>(null) }
     var fullscreenEntryReason by remember { mutableStateOf<LiveFullscreenEntryReason?>(null) }
+    var restoreLivePreviewFocusAfterFullscreen by remember { mutableStateOf(false) }
     var requestedVodMovieId by remember { mutableStateOf<String?>(null) }
     var requestedSeriesId by remember { mutableStateOf<String?>(null) }
     var movieDetailReturnToLibrary by remember { mutableStateOf(false) }
@@ -112,6 +115,7 @@ fun OwnPlayApp(
             },
             stopPlayback = runtime.playbackController::stop,
             switchPresentation = {
+                restoreLivePreviewFocusAfterFullscreen = false
                 activeSelection = selection
                 fullscreenEntryReason = reason
                 fullscreenSelection = selection
@@ -131,6 +135,7 @@ fun OwnPlayApp(
                 activeSourceId = selection.request.sourceId
                 section = OwnPlaySection.LIVE
                 activeSelection = selection
+                restoreLivePreviewFocusAfterFullscreen = isTelevision
                 fullscreenSelection = null
                 fullscreenEntryReason = null
             },
@@ -139,6 +144,7 @@ fun OwnPlayApp(
     }
 
     fun stopLivePlaybackSurface(clearPresentation: () -> Unit) {
+        restoreLivePreviewFocusAfterFullscreen = false
         LivePlaybackSurfaceTeardown.stopAfterDetaching(
             detachCurrentSurface = {
                 PlaybackInteractionBridge.detachCurrent(runtime.playbackVideoOutput)
@@ -407,6 +413,7 @@ fun OwnPlayApp(
                                 onOpenSeries = { openContentSection(OwnPlaySection.SERIES) },
                                 onOpenSettings = { openContentSection(OwnPlaySection.SETTINGS) },
                                 onPreviewRequested = { selection ->
+                                    restoreLivePreviewFocusAfterFullscreen = false
                                     activeSelection = selection
                                     runtime.playbackController.start(selection.request)
                                 },
@@ -428,6 +435,10 @@ fun OwnPlayApp(
                                             activeSelection = target
                                             runtime.playbackController.start(target.request)
                                         }
+                                },
+                                focusPreviewOnEntry = restoreLivePreviewFocusAfterFullscreen,
+                                onPreviewEntryFocusRestored = {
+                                    restoreLivePreviewFocusAfterFullscreen = false
                                 },
                             )
                         }
