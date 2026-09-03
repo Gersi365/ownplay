@@ -3,9 +3,14 @@ package app.ownplay.player.ui.vod
 import android.graphics.BitmapFactory
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -17,6 +22,9 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import app.ownplay.player.source.network.SourceHttpClient
 import java.io.ByteArrayOutputStream
@@ -28,35 +36,69 @@ import okhttp3.Request
 private const val MAX_POSTER_BYTES = 8 * 1024 * 1024
 private const val MAX_POSTER_LONG_EDGE_PX = 768
 
+internal enum class RemotePosterPresentationState {
+    LOADING,
+    IMAGE,
+    UNAVAILABLE,
+}
+
+private data class RemotePosterLoadResult(
+    val image: ImageBitmap? = null,
+    val requestFinished: Boolean = false,
+)
+
+internal fun remotePosterPresentationState(
+    url: String?,
+    requestFinished: Boolean,
+    hasImage: Boolean,
+): RemotePosterPresentationState = when {
+    hasImage -> RemotePosterPresentationState.IMAGE
+    url.isNullOrBlank() -> RemotePosterPresentationState.UNAVAILABLE
+    !requestFinished -> RemotePosterPresentationState.LOADING
+    else -> RemotePosterPresentationState.UNAVAILABLE
+}
+
 @Composable
 internal fun RemotePoster(
     url: String?,
     title: String,
     modifier: Modifier = Modifier,
 ) {
-    val image by produceState<ImageBitmap?>(initialValue = null, key1 = url) {
-        value = url
-            ?.takeIf(String::isNotBlank)
-            ?.let { posterUrl ->
-                withContext(Dispatchers.IO) {
-                    runCatching {
-                        SourceHttpClient.shared.newCall(
-                            Request.Builder().url(posterUrl).get().build(),
-                        ).execute().use { response ->
-                            if (!response.isSuccessful) return@use null
-                            val body = response.body
-                            val contentLength = body.contentLength()
-                            if (contentLength > MAX_POSTER_BYTES.toLong()) return@use null
-                            val bytes = readPosterBytes(
-                                input = body.byteStream(),
-                                maxBytes = MAX_POSTER_BYTES,
-                            ) ?: return@use null
-                            decodePoster(bytes)
-                        }
-                    }.getOrNull()
+    val loadResult by produceState(
+        initialValue = RemotePosterLoadResult(requestFinished = url.isNullOrBlank()),
+        key1 = url,
+    ) {
+        value = RemotePosterLoadResult(requestFinished = url.isNullOrBlank())
+        val posterUrl = url?.takeIf(String::isNotBlank)
+        if (posterUrl == null) return@produceState
+
+        val decoded = withContext(Dispatchers.IO) {
+            runCatching {
+                SourceHttpClient.shared.newCall(
+                    Request.Builder().url(posterUrl).get().build(),
+                ).execute().use { response ->
+                    if (!response.isSuccessful) return@use null
+                    val body = response.body
+                    val contentLength = body.contentLength()
+                    if (contentLength > MAX_POSTER_BYTES.toLong()) return@use null
+                    val bytes = readPosterBytes(
+                        input = body.byteStream(),
+                        maxBytes = MAX_POSTER_BYTES,
+                    ) ?: return@use null
+                    decodePoster(bytes)
                 }
-            }
+            }.getOrNull()
+        }
+        value = RemotePosterLoadResult(
+            image = decoded,
+            requestFinished = true,
+        )
     }
+    val presentationState = remotePosterPresentationState(
+        url = url,
+        requestFinished = loadResult.requestFinished,
+        hasImage = loadResult.image != null,
+    )
 
     Box(
         modifier = modifier
@@ -64,18 +106,40 @@ internal fun RemotePoster(
             .background(MaterialTheme.colorScheme.surfaceVariant),
         contentAlignment = Alignment.Center,
     ) {
-        image?.let { poster ->
-            Image(
-                bitmap = poster,
-                contentDescription = title,
-                modifier = Modifier.fillMaxSize(),
-                contentScale = ContentScale.Crop,
+        when (presentationState) {
+            RemotePosterPresentationState.IMAGE -> loadResult.image?.let { poster ->
+                Image(
+                    bitmap = poster,
+                    contentDescription = title,
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = ContentScale.Crop,
+                )
+            }
+            RemotePosterPresentationState.LOADING -> CircularProgressIndicator(
+                modifier = Modifier.size(22.dp),
+                strokeWidth = 2.dp,
             )
-        } ?: Text(
-            text = title.trim().firstOrNull()?.uppercase() ?: "•",
-            style = MaterialTheme.typography.headlineMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
+            RemotePosterPresentationState.UNAVAILABLE -> Column(
+                modifier = Modifier.padding(6.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(2.dp),
+            ) {
+                Text(
+                    text = title.trim().firstOrNull()?.uppercase() ?: "•",
+                    style = MaterialTheme.typography.headlineSmall,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Text(
+                    text = "No artwork",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    textAlign = TextAlign.Center,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
     }
 }
 
