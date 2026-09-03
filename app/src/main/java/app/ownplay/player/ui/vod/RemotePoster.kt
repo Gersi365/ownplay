@@ -26,10 +26,11 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import app.ownplay.player.source.network.SourceHttpClient
+import app.ownplay.player.ui.CachedRemoteImage
+import app.ownplay.player.ui.RemoteImageMemoryCache
 import java.io.ByteArrayOutputStream
 import java.io.InputStream
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
+import java.util.concurrent.CancellationException
 import okhttp3.Request
 
 private const val MAX_POSTER_BYTES = 8 * 1024 * 1024
@@ -71,8 +72,10 @@ internal fun RemotePoster(
         val posterUrl = url?.takeIf(String::isNotBlank)
         if (posterUrl == null) return@produceState
 
-        val decoded = withContext(Dispatchers.IO) {
-            runCatching {
+        val decoded = RemoteImageMemoryCache.getOrLoad(
+            cacheKey = "poster|$posterUrl",
+        ) {
+            try {
                 SourceHttpClient.shared.newCall(
                     Request.Builder().url(posterUrl).get().build(),
                 ).execute().use { response ->
@@ -86,10 +89,14 @@ internal fun RemotePoster(
                     ) ?: return@use null
                     decodePoster(bytes)
                 }
-            }.getOrNull()
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                null
+            }
         }
         value = RemotePosterLoadResult(
-            image = decoded,
+            image = decoded?.image,
             requestFinished = true,
         )
     }
@@ -141,7 +148,7 @@ internal fun RemotePoster(
     }
 }
 
-private fun decodePoster(bytes: ByteArray): ImageBitmap? {
+private fun decodePoster(bytes: ByteArray): CachedRemoteImage? {
     val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
     BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
     if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null
@@ -153,7 +160,11 @@ private fun decodePoster(bytes: ByteArray): ImageBitmap? {
             maxLongEdgePx = MAX_POSTER_LONG_EDGE_PX,
         )
     }
-    return BitmapFactory.decodeByteArray(bytes, 0, bytes.size, options)?.asImageBitmap()
+    val bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size, options) ?: return null
+    return CachedRemoteImage(
+        image = bitmap.asImageBitmap(),
+        byteCount = bitmap.allocationByteCount.coerceAtLeast(1),
+    )
 }
 
 internal fun calculatePosterInSampleSize(
