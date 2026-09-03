@@ -1,7 +1,6 @@
 package app.ownplay.player.ui
 
 import android.content.res.Configuration
-import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -87,14 +86,25 @@ internal fun DownloadsSettingsScreen(
     var rememberedDownloadId by remember { mutableStateOf<String?>(null) }
     var initialDownloadFocusRequested by remember { mutableStateOf(false) }
 
+    fun restoreDownloadFocus(downloadId: String) {
+        if (!isTelevision) return
+        focusDownloadId = downloadId
+        rememberedDownloadId = downloadId
+        focusRequestGeneration += 1
+    }
+
     pendingRemoval?.let { download ->
         DownloadRemovalConfirmationDialog(
             download = download,
             onConfirm = {
                 pendingRemoval = null
+                restoreDownloadFocus(download.downloadId)
                 scope.launch { runtime.remove(download.downloadId) }
             },
-            onDismiss = { pendingRemoval = null },
+            onDismiss = {
+                pendingRemoval = null
+                restoreDownloadFocus(download.downloadId)
+            },
         )
     }
 
@@ -207,7 +217,7 @@ internal fun DownloadsSettingsScreen(
                         fontWeight = FontWeight.SemiBold,
                     )
                     Text(
-                        text = "Use Download from a movie or episode details screen.",
+                        text = "Open a movie or episode and choose Download.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -241,6 +251,7 @@ internal fun DownloadsSettingsScreen(
                         scope.launch { runtime.retry(download.downloadId) }
                     },
                     onRemove = {
+                        rememberedDownloadId = download.downloadId
                         pendingRemoval = download
                     },
                 )
@@ -265,21 +276,14 @@ private fun DownloadRow(
         ?.let { requester -> Modifier.focusRequester(requester) }
         ?: Modifier
     Surface(
-        modifier = Modifier
-            .fillMaxWidth()
-            .then(
-                if (rowFocused) {
-                    Modifier.border(
-                        width = 2.dp,
-                        color = MaterialTheme.colorScheme.primary,
-                        shape = RoundedCornerShape(14.dp),
-                    )
-                } else {
-                    Modifier
-                },
-            ),
+        modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(14.dp),
         tonalElevation = 1.dp,
+        color = if (rowFocused) {
+            MaterialTheme.colorScheme.primaryContainer
+        } else {
+            MaterialTheme.colorScheme.surface
+        },
     ) {
         Column(
             modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
@@ -375,7 +379,7 @@ private fun DownloadRow(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 DownloadStates.COMPLETED -> Text(
-                    text = "OFFLINE · Local file · ${downloadStorageLabel(download)} · ${humanBytes(download.bytesDownloaded)}",
+                    text = "Available offline · ${downloadStorageLabel(download)} · ${humanBytes(download.bytesDownloaded)}",
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.primary,
                 )
