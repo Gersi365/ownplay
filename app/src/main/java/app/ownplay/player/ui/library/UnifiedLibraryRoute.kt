@@ -29,7 +29,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.DownloadDone
-import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
@@ -79,7 +78,11 @@ import app.ownplay.player.series.SeriesEpisode
 import app.ownplay.player.series.SeriesFeatureRuntime
 import app.ownplay.player.series.SeriesSummary
 import app.ownplay.player.source.SourceResult
+import app.ownplay.player.ui.MediaCatalogPresentationState
+import app.ownplay.player.ui.MediaCatalogRefreshWarning
+import app.ownplay.player.ui.MediaCatalogStatePanel
 import app.ownplay.player.ui.OfflineMediaTvFocusPolicy
+import app.ownplay.player.ui.mediaCatalogPresentationState
 import app.ownplay.player.ui.view.ContentViewMode
 import app.ownplay.player.ui.view.ContentViewModeMenu
 import app.ownplay.player.ui.view.ContentViewModeStore
@@ -161,6 +164,17 @@ internal fun UnifiedLibraryRoute(
     var seriesReturnEpisodeId by remember(sourceId) { mutableStateOf<String?>(null) }
     var seriesReturnFocusGeneration by remember(sourceId) { mutableIntStateOf(0) }
 
+    suspend fun refreshLibraryCatalog() {
+        val activeSourceId = sourceId ?: return
+        if (sourceKind != SourceKinds.XTREAM || refreshing) return
+        refreshing = true
+        refreshWarning = false
+        val vodResult = vodRuntime.refresh(activeSourceId)
+        val seriesResult = seriesRuntime.refresh(activeSourceId)
+        refreshWarning = vodResult is SourceResult.Failure || seriesResult is SourceResult.Failure
+        refreshing = false
+    }
+
     LaunchedEffect(vodCatalog.categories, movieCategoryKey) {
         val selected = movieCategoryKey
         if (selected != null && vodCatalog.categories.none { it.providerCategoryKey == selected }) {
@@ -176,13 +190,7 @@ internal fun UnifiedLibraryRoute(
     }
 
     LaunchedEffect(sourceId, sourceKind) {
-        if (sourceId == null || sourceKind != SourceKinds.XTREAM) return@LaunchedEffect
-        refreshing = true
-        refreshWarning = false
-        val vodResult = vodRuntime.refresh(sourceId)
-        val seriesResult = seriesRuntime.refresh(sourceId)
-        refreshWarning = vodResult is SourceResult.Failure || seriesResult is SourceResult.Failure
-        refreshing = false
+        refreshLibraryCatalog()
     }
 
     val seriesGroups = remember(downloads) { groupLibrarySeries(downloads) }
@@ -446,7 +454,14 @@ internal fun UnifiedLibraryRoute(
     } else {
         visibleSeries.size + orphanedOfflineSeries.size
     }
-    val hasItems = movieCount + seriesCount > 0
+    val visibleItemCount = movieCount + seriesCount
+    val hasCatalogContent = vodCatalog.movies.isNotEmpty() || seriesCatalog.series.isNotEmpty()
+    val libraryState = mediaCatalogPresentationState(
+        hasCatalogContent = hasCatalogContent,
+        visibleItemCount = visibleItemCount,
+        loading = refreshing && !offlineOnly,
+        failed = refreshWarning && !offlineOnly,
+    )
     val visibleFocusKeys = remember(
         filter,
         sourceId,
@@ -589,24 +604,10 @@ internal fun UnifiedLibraryRoute(
             shape = RoundedCornerShape(12.dp),
         )
 
-        if (refreshWarning && !offlineOnly) {
-            Surface(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(10.dp),
-                color = MaterialTheme.colorScheme.errorContainer,
-            ) {
-                Row(
-                    modifier = Modifier.padding(10.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(7.dp),
-                ) {
-                    Icon(Icons.Filled.ErrorOutline, contentDescription = null)
-                    Text(
-                        text = "Some Library sections could not refresh. Showing the saved catalog.",
-                        style = MaterialTheme.typography.bodySmall,
-                    )
-                }
-            }
+        if (refreshWarning && !offlineOnly && hasCatalogContent) {
+            MediaCatalogRefreshWarning(
+                message = "Some Library sections could not refresh. Showing the saved catalog.",
+            )
         }
 
         playbackError?.let { message ->
@@ -617,63 +618,77 @@ internal fun UnifiedLibraryRoute(
             )
         }
 
-        if (!hasItems) {
-            LibraryEmptyState(
-                offlineOnly = offlineOnly,
-                sourceKind = sourceKind,
+        when (libraryState) {
+            MediaCatalogPresentationState.LOADING -> MediaCatalogStatePanel(
+                title = "Loading Library",
+                body = "Fetching Movies and Series from the active playlist.",
+                loading = true,
                 modifier = Modifier.weight(1f),
             )
-            return
+            MediaCatalogPresentationState.ERROR -> MediaCatalogStatePanel(
+                title = "Library could not be refreshed",
+                body = "No saved Movies or Series are available for this playlist.",
+                error = true,
+                actionLabel = "Retry",
+                onAction = { scope.launch { refreshLibraryCatalog() } },
+                focusActionOnEntry = true,
+                modifier = Modifier.weight(1f),
+            )
+            MediaCatalogPresentationState.EMPTY -> LibraryEmptyState(
+                offlineOnly = offlineOnly,
+                sourceKind = sourceKind,
+                hasCatalogContent = hasCatalogContent,
+                modifier = Modifier.weight(1f),
+            )
+            MediaCatalogPresentationState.CONTENT -> LibraryCatalogView(
+                viewMode = libraryViewMode,
+                filter = filter,
+                sourceId = sourceId,
+                offlineOnly = offlineOnly,
+                visibleMovies = visibleMovies,
+                orphanedOfflineMovies = orphanedOfflineMovies,
+                visibleSeries = visibleSeries,
+                orphanedOfflineSeries = orphanedOfflineSeries,
+                movieDownloadsByKey = movieDownloadsByKey,
+                seriesGroupByIdentity = seriesGroupByIdentity,
+                focusKeys = visibleFocusKeys,
+                focusItemKey = focusItemKey,
+                focusRequestGeneration = focusRequestGeneration,
+                itemFocusRequester = libraryItemFocusRequester,
+                listState = libraryListState,
+                gridState = libraryGridState,
+                onItemFocused = { itemKey -> rememberedFocusItemKey = itemKey },
+                onOpenMovie = { movieSourceId, movieId ->
+                    onOpenMovieDetails(movieSourceId, movieId)
+                },
+                onOpenCatalogSeries = { seriesSourceId, seriesId, _ ->
+                    onOpenSeriesDetails(seriesSourceId, seriesId)
+                },
+                onOpenOfflineSeries = { group ->
+                    playbackError = null
+                    selectedSeriesKey = group.key
+                },
+                onPlayOfflineMovie = { download ->
+                    seriesReturnEpisodeId = null
+                    val catalogKey = libraryCatalogMovieFocusKey(
+                        sourceId = download.sourceId,
+                        movieId = download.contentId,
+                    )
+                    val offlineKey = libraryOfflineMovieFocusKey(download.downloadId)
+                    pendingMovieReturnFocusKey = when {
+                        catalogKey in visibleFocusKeys -> catalogKey
+                        offlineKey in visibleFocusKeys -> offlineKey
+                        else -> rememberedFocusItemKey
+                    }
+                    playDownload(download)
+                },
+                onPauseMovie = { download -> scope.launch { downloadRuntime.pause(download.downloadId) } },
+                onResumeMovie = { download -> scope.launch { downloadRuntime.resume(download.downloadId) } },
+                onRetryMovie = { download -> scope.launch { downloadRuntime.retry(download.downloadId) } },
+                onRemoveMovie = { download -> scope.launch { downloadRuntime.remove(download.downloadId) } },
+                modifier = Modifier.weight(1f),
+            )
         }
-
-        LibraryCatalogView(
-            viewMode = libraryViewMode,
-            filter = filter,
-            sourceId = sourceId,
-            offlineOnly = offlineOnly,
-            visibleMovies = visibleMovies,
-            orphanedOfflineMovies = orphanedOfflineMovies,
-            visibleSeries = visibleSeries,
-            orphanedOfflineSeries = orphanedOfflineSeries,
-            movieDownloadsByKey = movieDownloadsByKey,
-            seriesGroupByIdentity = seriesGroupByIdentity,
-            focusKeys = visibleFocusKeys,
-            focusItemKey = focusItemKey,
-            focusRequestGeneration = focusRequestGeneration,
-            itemFocusRequester = libraryItemFocusRequester,
-            listState = libraryListState,
-            gridState = libraryGridState,
-            onItemFocused = { itemKey -> rememberedFocusItemKey = itemKey },
-            onOpenMovie = { movieSourceId, movieId ->
-                onOpenMovieDetails(movieSourceId, movieId)
-            },
-            onOpenCatalogSeries = { seriesSourceId, seriesId, _ ->
-                onOpenSeriesDetails(seriesSourceId, seriesId)
-            },
-            onOpenOfflineSeries = { group ->
-                playbackError = null
-                selectedSeriesKey = group.key
-            },
-            onPlayOfflineMovie = { download ->
-                seriesReturnEpisodeId = null
-                val catalogKey = libraryCatalogMovieFocusKey(
-                    sourceId = download.sourceId,
-                    movieId = download.contentId,
-                )
-                val offlineKey = libraryOfflineMovieFocusKey(download.downloadId)
-                pendingMovieReturnFocusKey = when {
-                    catalogKey in visibleFocusKeys -> catalogKey
-                    offlineKey in visibleFocusKeys -> offlineKey
-                    else -> rememberedFocusItemKey
-                }
-                playDownload(download)
-            },
-            onPauseMovie = { download -> scope.launch { downloadRuntime.pause(download.downloadId) } },
-            onResumeMovie = { download -> scope.launch { downloadRuntime.resume(download.downloadId) } },
-            onRetryMovie = { download -> scope.launch { downloadRuntime.retry(download.downloadId) } },
-            onRemoveMovie = { download -> scope.launch { downloadRuntime.remove(download.downloadId) } },
-            modifier = Modifier.weight(1f),
-        )
     }
 }
 
@@ -723,37 +738,24 @@ private fun LibraryCategoryStrip(
 private fun LibraryEmptyState(
     offlineOnly: Boolean,
     sourceKind: String?,
+    hasCatalogContent: Boolean,
     modifier: Modifier = Modifier,
 ) {
-    Box(modifier = modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(6.dp),
-        ) {
-            Icon(
-                Icons.Filled.DownloadDone,
-                contentDescription = null,
-                modifier = Modifier.size(34.dp),
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            Text(
-                text = if (offlineOnly) "Nothing available offline" else "No matching media",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold,
-            )
-            Text(
-                text = if (offlineOnly) {
-                    "Only completed downloads whose local files are still present appear here."
-                } else if (sourceKind != SourceKinds.XTREAM) {
-                    "Movies and Series require an Xtream-compatible source."
-                } else {
-                    "Try another category, Library filter or search term."
-                },
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-    }
+    MediaCatalogStatePanel(
+        title = when {
+            offlineOnly -> "Nothing available offline"
+            sourceKind != SourceKinds.XTREAM -> "Movies and Series unavailable"
+            hasCatalogContent -> "No matching media"
+            else -> "No media available"
+        },
+        body = when {
+            offlineOnly -> "Only completed downloads whose local files are still present appear here."
+            sourceKind != SourceKinds.XTREAM -> "Movies and Series require an Xtream-compatible source."
+            hasCatalogContent -> "Try another category, Library filter or search term."
+            else -> "This playlist did not return any Movies or Series."
+        },
+        modifier = modifier,
+    )
 }
 
 @Composable
@@ -1123,7 +1125,7 @@ private fun UnifiedSeriesCard(
             }
             SeriesStatusText(
                 offlineEpisodes = offlineEpisodes,
-                offlineMode = offlineMode,
+                offlineMode = offlineOnly,
             )
             group?.let { managedGroup ->
                 Button(
@@ -1554,7 +1556,7 @@ private fun SeriesListRow(
             }
             SeriesStatusText(
                 offlineEpisodes = offlineEpisodes,
-                offlineMode = offlineMode,
+                offlineMode = offlineOnly,
             )
         }
         group?.let { managedGroup ->
