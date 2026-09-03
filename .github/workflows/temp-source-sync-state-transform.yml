@@ -33,215 +33,233 @@ jobs:
               text = text.replace(old, new, 1)
 
           replace_once(
-          '''    private fun rememberSourceState(state: SourceSyncState) {
-              val sourceId = state.sourceId ?: return
-              _sourceSyncStates.update { current -> current + (sourceId to state) }
-          }
-          ''',
-          '''    private fun rememberSourceState(state: SourceSyncState) {
-              val sourceId = state.sourceId ?: return
-              _sourceSyncStates.update { current -> current + (sourceId to state) }
-          }
-
-          private fun publishSourceState(state: SourceSyncState) {
-              _sourceSyncState.value = state
-              rememberSourceState(state)
-          }
-          ''',
-          'add publisher',
+              "    private fun rememberSourceState(state: SourceSyncState) {\n"
+              "        val sourceId = state.sourceId ?: return\n"
+              "        _sourceSyncStates.update { current -> current + (sourceId to state) }\n"
+              "    }\n",
+              "    private fun rememberSourceState(state: SourceSyncState) {\n"
+              "        val sourceId = state.sourceId ?: return\n"
+              "        _sourceSyncStates.update { current -> current + (sourceId to state) }\n"
+              "    }\n\n"
+              "    private fun publishSourceState(state: SourceSyncState) {\n"
+              "        _sourceSyncState.value = state\n"
+              "        rememberSourceState(state)\n"
+              "    }\n",
+              'add publisher',
           )
 
           replace_once(
-          '''        runtimeScope.launch {
-              _sourceSyncState.collect(::rememberSourceState)
-          }
-          ''',
-          '',
-          'remove conflating collector',
+              "        runtimeScope.launch {\n"
+              "            _sourceSyncState.collect(::rememberSourceState)\n"
+              "        }\n",
+              "",
+              'remove conflating collector',
           )
 
           replace_once(
-          '''                _sourceSyncState.value = state
-              rememberSourceState(state)
-          ''',
-          '''                publishSourceState(state)
-          ''',
-          'staged source state',
+              "                _sourceSyncState.value = state\n"
+              "                rememberSourceState(state)\n",
+              "                publishSourceState(state)\n",
+              'staged source state',
           )
           replace_once(
-          '''                _sourceSyncState.value = loadingState
-              rememberSourceState(loadingState)
-          ''',
-          '''                publishSourceState(loadingState)
-          ''',
-          'pending loading state',
+              "                _sourceSyncState.value = loadingState\n"
+              "                rememberSourceState(loadingState)\n",
+              "                publishSourceState(loadingState)\n",
+              'pending loading state',
           )
           replace_once(
-          '''                _sourceSyncState.value = epgState
-              rememberSourceState(epgState)
-          ''',
-          '''                publishSourceState(epgState)
-          ''',
-          'pending epg state',
+              "                _sourceSyncState.value = epgState\n"
+              "                rememberSourceState(epgState)\n",
+              "                publishSourceState(epgState)\n",
+              'pending epg state',
           )
           replace_once(
-          '''        _sourceSyncState.value = failedState
-          rememberSourceState(failedState)
-          ''',
-          '''        publishSourceState(failedState)
-          ''',
-          'pending failure state',
+              "        _sourceSyncState.value = failedState\n"
+              "        rememberSourceState(failedState)\n",
+              "        publishSourceState(failedState)\n",
+              'pending failure state',
           )
 
           replace_once(
-          '''            val state = _sourceSyncState.value
-              if (
-                  state.sourceId == sourceId &&
-                  state.stage == SourceSyncStage.ChannelsFailed
-              ) {
-                  markRefreshFailed(sourceId, state.failure.toString())
-              } else {
-                  markRefreshSucceeded(sourceId)
-              }
-          ''',
-          '''            val state = _sourceSyncStates.value[sourceId]
-              if (state?.stage == SourceSyncStage.ChannelsFailed) {
-                  markRefreshFailed(sourceId, state.failure.toString())
-              } else {
-                  markRefreshSucceeded(sourceId)
-              }
-          ''',
-          'source-scoped refresh outcome',
+              "            val state = _sourceSyncState.value\n"
+              "            if (\n"
+              "                state.sourceId == sourceId &&\n"
+              "                state.stage == SourceSyncStage.ChannelsFailed\n"
+              "            ) {\n"
+              "                markRefreshFailed(sourceId, state.failure.toString())\n"
+              "            } else {\n"
+              "                markRefreshSucceeded(sourceId)\n"
+              "            }\n",
+              "            val state = _sourceSyncStates.value[sourceId]\n"
+              "            if (state?.stage == SourceSyncStage.ChannelsFailed) {\n"
+              "                markRefreshFailed(sourceId, state.failure.toString())\n"
+              "            } else {\n"
+              "                markRefreshSucceeded(sourceId)\n"
+              "            }\n",
+              'source-scoped refresh outcome',
           )
 
           replace_once(
-          '''        _sourceSyncState.value = SourceSyncState(
-              sourceId = sourceId,
-              sourceName = source.name,
-              stage = SourceSyncStage.LoadingChannels,
-              channelCount = existingCount,
-          )
-          ''',
-          '''        publishSourceState(
-              SourceSyncState(
-                  sourceId = sourceId,
-                  sourceName = source.name,
-                  stage = SourceSyncStage.LoadingChannels,
-                  channelCount = existingCount,
-              ),
-          )
-          ''',
-          'ready refresh loading state',
+              "        _sourceSyncState.value = SourceSyncState(\n"
+              "            sourceId = sourceId,\n"
+              "            sourceName = source.name,\n"
+              "            stage = SourceSyncStage.LoadingChannels,\n"
+              "            channelCount = existingCount,\n"
+              "        )\n",
+              "        publishSourceState(\n"
+              "            SourceSyncState(\n"
+              "                sourceId = sourceId,\n"
+              "                sourceName = source.name,\n"
+              "                stage = SourceSyncStage.LoadingChannels,\n"
+              "                channelCount = existingCount,\n"
+              "            ),\n"
+              "        )\n",
+              'ready refresh loading state',
           )
 
           replace_once(
-          '''            _sourceSyncState.value = SourceSyncState(
-                  sourceId = sourceId,
-                  sourceName = source.name,
-                  stage = SourceSyncStage.ChannelsFailed,
-                  channelCount = existingCount,
-                  failure = channelResult.reason.toSourceSyncFailure(),
-              )
-          ''',
-          '''            publishSourceState(
-                  SourceSyncState(
-                      sourceId = sourceId,
-                      sourceName = source.name,
-                      stage = SourceSyncStage.ChannelsFailed,
-                      channelCount = existingCount,
-                      failure = channelResult.reason.toSourceSyncFailure(),
-                  ),
-              )
-          ''',
-          'ready refresh failure state',
+              "            _sourceSyncState.value = SourceSyncState(\n"
+              "                sourceId = sourceId,\n"
+              "                sourceName = source.name,\n"
+              "                stage = SourceSyncStage.ChannelsFailed,\n"
+              "                channelCount = existingCount,\n"
+              "                failure = channelResult.reason.toSourceSyncFailure(),\n"
+              "            )\n",
+              "            publishSourceState(\n"
+              "                SourceSyncState(\n"
+              "                    sourceId = sourceId,\n"
+              "                    sourceName = source.name,\n"
+              "                    stage = SourceSyncStage.ChannelsFailed,\n"
+              "                    channelCount = existingCount,\n"
+              "                    failure = channelResult.reason.toSourceSyncFailure(),\n"
+              "                ),\n"
+              "            )\n",
+              'ready refresh failure state',
           )
 
           replace_once(
-          '''        _sourceSyncState.value = SourceSyncState(
-              sourceId = sourceId,
-              sourceName = sourceName,
-              stage = SourceSyncStage.ChannelsFailed,
-              channelCount = channelCount,
-              failure = SourceSyncFailure.Unexpected,
-          )
-          ''',
-          '''        publishSourceState(
-              SourceSyncState(
-                  sourceId = sourceId,
-                  sourceName = sourceName,
-                  stage = SourceSyncStage.ChannelsFailed,
-                  channelCount = channelCount,
-                  failure = SourceSyncFailure.Unexpected,
-              ),
-          )
-          ''',
-          'unexpected refresh failure state',
+              "        val current = _sourceSyncState.value\n"
+              "        val sourceName = if (current.sourceId == sourceId) {\n"
+              "            current.sourceName\n"
+              "        } else {\n"
+              "            try {\n"
+              "                database.playlistSourceDao().getById(sourceId)?.name\n"
+              "            } catch (cancelled: CancellationException) {\n"
+              "                throw cancelled\n"
+              "            } catch (_: Exception) {\n"
+              "                null\n"
+              "            }\n"
+              "        }\n"
+              "        val channelCount = if (current.sourceId == sourceId) {\n"
+              "            current.channelCount\n"
+              "        } else {\n"
+              "            try {\n"
+              "                database.providerCatalogDao().channelsForSource(sourceId)\n"
+              "                    .count { channel -> channel.availability != ChannelAvailability.REMOVED }\n"
+              "            } catch (cancelled: CancellationException) {\n"
+              "                throw cancelled\n"
+              "            } catch (_: Exception) {\n"
+              "                0\n"
+              "            }\n"
+              "        }\n"
+              "        _sourceSyncState.value = SourceSyncState(\n"
+              "            sourceId = sourceId,\n"
+              "            sourceName = sourceName,\n"
+              "            stage = SourceSyncStage.ChannelsFailed,\n"
+              "            channelCount = channelCount,\n"
+              "            failure = SourceSyncFailure.Unexpected,\n"
+              "        )\n",
+              "        val current = _sourceSyncStates.value[sourceId]\n"
+              "        val sourceName = current?.sourceName ?: try {\n"
+              "            database.playlistSourceDao().getById(sourceId)?.name\n"
+              "        } catch (cancelled: CancellationException) {\n"
+              "            throw cancelled\n"
+              "        } catch (_: Exception) {\n"
+              "            null\n"
+              "        }\n"
+              "        val channelCount = current?.channelCount ?: try {\n"
+              "            database.providerCatalogDao().channelsForSource(sourceId)\n"
+              "                .count { channel -> channel.availability != ChannelAvailability.REMOVED }\n"
+              "        } catch (cancelled: CancellationException) {\n"
+              "            throw cancelled\n"
+              "        } catch (_: Exception) {\n"
+              "            0\n"
+              "        }\n"
+              "        publishSourceState(\n"
+              "            SourceSyncState(\n"
+              "                sourceId = sourceId,\n"
+              "                sourceName = sourceName,\n"
+              "                stage = SourceSyncStage.ChannelsFailed,\n"
+              "                channelCount = channelCount,\n"
+              "                failure = SourceSyncFailure.Unexpected,\n"
+              "            ),\n"
+              "        )\n",
+              'unexpected refresh failure state',
           )
 
           replace_once(
-          '''        _sourceSyncState.value = SourceSyncState(
-              sourceId = sourceId,
-              sourceName = sourceName,
-              stage = SourceSyncStage.LoadingEpg,
-              channelCount = channelCount,
-          )
-          ''',
-          '''        publishSourceState(
-              SourceSyncState(
-                  sourceId = sourceId,
-                  sourceName = sourceName,
-                  stage = SourceSyncStage.LoadingEpg,
-                  channelCount = channelCount,
-              ),
-          )
-          ''',
-          'epg loading state',
+              "        _sourceSyncState.value = SourceSyncState(\n"
+              "            sourceId = sourceId,\n"
+              "            sourceName = sourceName,\n"
+              "            stage = SourceSyncStage.LoadingEpg,\n"
+              "            channelCount = channelCount,\n"
+              "        )\n",
+              "        publishSourceState(\n"
+              "            SourceSyncState(\n"
+              "                sourceId = sourceId,\n"
+              "                sourceName = sourceName,\n"
+              "                stage = SourceSyncStage.LoadingEpg,\n"
+              "                channelCount = channelCount,\n"
+              "            ),\n"
+              "        )\n",
+              'epg loading state',
           )
 
           replace_once(
-          '''        _sourceSyncState.value = if (epg == null) {
-              SourceSyncState(
-                  sourceId = sourceId,
-                  sourceName = sourceName,
-                  stage = SourceSyncStage.EpgFailed,
-                  channelCount = channelCount,
-              )
-          } else {
-              SourceSyncState(
-                  sourceId = sourceId,
-                  sourceName = sourceName,
-                  stage = SourceSyncStage.Ready,
-                  channelCount = channelCount,
-                  epgChannelCount = epg.matchedChannelCount,
-              )
-          }
-          ''',
-          '''        publishSourceState(
-              if (epg == null) {
-                  SourceSyncState(
-                      sourceId = sourceId,
-                      sourceName = sourceName,
-                      stage = SourceSyncStage.EpgFailed,
-                      channelCount = channelCount,
-                  )
-              } else {
-                  SourceSyncState(
-                      sourceId = sourceId,
-                      sourceName = sourceName,
-                      stage = SourceSyncStage.Ready,
-                      channelCount = channelCount,
-                      epgChannelCount = epg.matchedChannelCount,
-                  )
-              },
-          )
-          ''',
-          'epg final state',
+              "        _sourceSyncState.value = if (epg == null) {\n"
+              "            SourceSyncState(\n"
+              "                sourceId = sourceId,\n"
+              "                sourceName = sourceName,\n"
+              "                stage = SourceSyncStage.EpgFailed,\n"
+              "                channelCount = channelCount,\n"
+              "            )\n"
+              "        } else {\n"
+              "            SourceSyncState(\n"
+              "                sourceId = sourceId,\n"
+              "                sourceName = sourceName,\n"
+              "                stage = SourceSyncStage.Ready,\n"
+              "                channelCount = channelCount,\n"
+              "                epgChannelCount = epg.matchedChannelCount,\n"
+              "            )\n"
+              "        }\n",
+              "        publishSourceState(\n"
+              "            if (epg == null) {\n"
+              "                SourceSyncState(\n"
+              "                    sourceId = sourceId,\n"
+              "                    sourceName = sourceName,\n"
+              "                    stage = SourceSyncStage.EpgFailed,\n"
+              "                    channelCount = channelCount,\n"
+              "                )\n"
+              "            } else {\n"
+              "                SourceSyncState(\n"
+              "                    sourceId = sourceId,\n"
+              "                    sourceName = sourceName,\n"
+              "                    stage = SourceSyncStage.Ready,\n"
+              "                    channelCount = channelCount,\n"
+              "                    epgChannelCount = epg.matchedChannelCount,\n"
+              "                )\n"
+              "            },\n"
+              "        )\n",
+              'epg final state',
           )
 
           if '_sourceSyncState.collect(::rememberSourceState)' in text:
               raise SystemExit('conflating collector still present')
           if 'val state = _sourceSyncStates.value[sourceId]' not in text:
               raise SystemExit('refresh outcome is not source scoped')
+          if 'val current = _sourceSyncStates.value[sourceId]' not in text:
+              raise SystemExit('unexpected failure lookup is not source scoped')
           path.write_text(text)
 
           test_path = Path('app/src/test/java/app/ownplay/player/SourceSyncPublicationContractTest.kt')
@@ -270,6 +288,12 @@ jobs:
                       .substringBefore("private suspend fun refreshXtreamMediaCatalogs")
                   assertTrue(pipeline.contains("publishSourceState("))
                   assertFalse(pipeline.contains("_sourceSyncState.value = SourceSyncState("))
+
+                  val unexpectedFailure = source
+                      .substringAfter("private suspend fun publishUnexpectedRefreshFailure(sourceId: String)")
+                      .substringBefore("private suspend fun loadEpgAfterChannels(")
+                  assertTrue(unexpectedFailure.contains("val current = _sourceSyncStates.value[sourceId]"))
+                  assertFalse(unexpectedFailure.contains("val current = _sourceSyncState.value"))
 
                   val epg = source
                       .substringAfter("private suspend fun loadEpgAfterChannels(")
