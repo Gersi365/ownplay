@@ -79,23 +79,29 @@ object LiveBrowseProjector {
         records: List<LiveChannelRecord>,
         customGroupIdsByChannelId: Map<String, Set<String>> = emptyMap(),
         hiddenCategoryKeys: Set<String> = emptySet(),
-    ): List<PreparedLiveChannel> = records.map { record ->
-        val item = toItem(
-            record = record,
-            customGroupIds = customGroupIdsByChannelId[record.channelId].orEmpty(),
-            hiddenCategoryKeys = hiddenCategoryKeys,
-        )
-        val normalizedDisplayName = item.displayName.lowercase(Locale.ROOT)
-        PreparedLiveChannel(
-            item = item,
-            normalizedDisplayName = normalizedDisplayName,
-            normalizedProviderName = if (item.providerName == item.displayName) {
-                normalizedDisplayName
-            } else {
-                item.providerName.lowercase(Locale.ROOT)
-            },
-            normalizedCategoryName = item.categoryName.orEmpty().lowercase(Locale.ROOT),
-        )
+    ): List<PreparedLiveChannel> {
+        val normalizedCategoryNames = mutableMapOf<String, String>()
+        return records.map { record ->
+            val item = toItem(
+                record = record,
+                customGroupIds = customGroupIdsByChannelId[record.channelId].orEmpty(),
+                hiddenCategoryKeys = hiddenCategoryKeys,
+            )
+            val normalizedDisplayName = item.displayName.lowercase(Locale.ROOT)
+            val categoryName = item.categoryName.orEmpty()
+            PreparedLiveChannel(
+                item = item,
+                normalizedDisplayName = normalizedDisplayName,
+                normalizedProviderName = if (item.providerName == item.displayName) {
+                    normalizedDisplayName
+                } else {
+                    item.providerName.lowercase(Locale.ROOT)
+                },
+                normalizedCategoryName = normalizedCategoryNames.getOrPut(categoryName) {
+                    categoryName.lowercase(Locale.ROOT)
+                },
+            )
+        }
     }
 
     internal fun projectPrepared(
