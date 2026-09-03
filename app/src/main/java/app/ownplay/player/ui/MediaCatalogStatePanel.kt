@@ -30,6 +30,7 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import app.ownplay.player.source.SourceError
 
 internal enum class MediaCatalogPresentationState {
     CONTENT,
@@ -49,6 +50,17 @@ internal fun mediaCatalogPresentationState(
     loading -> MediaCatalogPresentationState.LOADING
     failed -> MediaCatalogPresentationState.ERROR
     else -> MediaCatalogPresentationState.EMPTY
+}
+
+internal fun mediaCatalogSourceErrorLabel(error: SourceError): String = when (error) {
+    SourceError.AuthenticationFailed -> "Provider authentication failed."
+    SourceError.CredentialUnavailable -> "Saved credentials are unavailable."
+    SourceError.NetworkUnavailable -> "Network unavailable."
+    SourceError.Timeout -> "Provider request timed out."
+    SourceError.CleartextTransportRequiresOptIn -> "This source requires cleartext opt-in in Settings."
+    SourceError.MalformedResponse -> "Provider returned malformed catalog data."
+    is SourceError.HttpFailure -> "Provider returned HTTP ${error.statusCode}."
+    else -> "The catalog could not be refreshed."
 }
 
 @Composable
