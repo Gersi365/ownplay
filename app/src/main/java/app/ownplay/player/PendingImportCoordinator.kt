@@ -3,10 +3,55 @@ package app.ownplay.player
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
+
+internal data class PendingImportExecutionState(
+    val queuedSourceIds: Set<String> = emptySet(),
+    val activeSourceIds: Set<String> = emptySet(),
+)
+
+/**
+ * Process-local execution snapshot used by Settings to distinguish a source that is waiting for an
+ * import slot from one that is actually performing network/catalog work.
+ */
+internal object PendingImportExecutionTracker {
+    private val _state = MutableStateFlow(PendingImportExecutionState())
+    val state: StateFlow<PendingImportExecutionState> = _state.asStateFlow()
+
+    fun markQueued(sourceId: String) {
+        _state.update { current ->
+            current.copy(
+                queuedSourceIds = current.queuedSourceIds + sourceId,
+                activeSourceIds = current.activeSourceIds - sourceId,
+            )
+        }
+    }
+
+    fun markActive(sourceId: String) {
+        _state.update { current ->
+            current.copy(
+                queuedSourceIds = current.queuedSourceIds - sourceId,
+                activeSourceIds = current.activeSourceIds + sourceId,
+            )
+        }
+    }
+
+    fun clear(sourceId: String) {
+        _state.update { current ->
+            current.copy(
+                queuedSourceIds = current.queuedSourceIds - sourceId,
+                activeSourceIds = current.activeSourceIds - sourceId,
+            )
+        }
+    }
+}
 
 /**
  * Schedules recoverable playlist imports without allowing one slow provider to block every source.
@@ -34,8 +79,12 @@ internal class PendingImportCoordinator(
             val job = scope.launch(start = CoroutineStart.LAZY) {
                 val thisJob = coroutineContext.job
                 try {
-                    gate.withPermit { importSource(normalizedId) }
+                    gate.withPermit {
+                        PendingImportExecutionTracker.markActive(normalizedId)
+                        importSource(normalizedId)
+                    }
                 } finally {
+                    PendingImportExecutionTracker.clear(normalizedId)
                     synchronized(lock) {
                         if (jobs[normalizedId] === thisJob) {
                             jobs.remove(normalizedId)
@@ -44,6 +93,7 @@ internal class PendingImportCoordinator(
                 }
             }
             jobs[normalizedId] = job
+            PendingImportExecutionTracker.markQueued(normalizedId)
             jobToStart = job
         }
         jobToStart?.start()
@@ -53,6 +103,7 @@ internal class PendingImportCoordinator(
         val normalizedId = sourceId.trim()
         if (normalizedId.isEmpty()) return
         val job = synchronized(lock) { jobs.remove(normalizedId) }
+        PendingImportExecutionTracker.clear(normalizedId)
         job?.cancel()
     }
 
