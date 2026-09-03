@@ -866,7 +866,7 @@ private fun LibraryCatalogView(
                         download = download,
                         onPlay = { onPlayOfflineMovie(download) },
                         onRetry = { onRetryMovie(download) },
-                        onRemove = { onRemoveMovie(download) },
+                        onRemove = onRemoveMovie,
                         modifier = itemModifier(libraryOfflineMovieFocusKey(download.downloadId)),
                     )
                 }
@@ -1125,7 +1125,7 @@ private fun UnifiedSeriesCard(
             }
             SeriesStatusText(
                 offlineEpisodes = offlineEpisodes,
-                offlineMode = offlineOnly,
+                offlineMode = offlineMode,
             )
             group?.let { managedGroup ->
                 Button(
@@ -1556,7 +1556,7 @@ private fun SeriesListRow(
             }
             SeriesStatusText(
                 offlineEpisodes = offlineEpisodes,
-                offlineMode = offlineOnly,
+                offlineMode = offlineMode,
             )
         }
         group?.let { managedGroup ->
