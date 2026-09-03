@@ -12,12 +12,22 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+
+internal fun settingsRailItemHighlighted(
+    selected: Boolean,
+    focused: Boolean,
+): Boolean = selected || focused
 
 @Composable
 internal fun LandscapeSettingsRail(
@@ -93,15 +103,19 @@ internal fun SettingsRailItem(
     focusRequester: FocusRequester,
     onClick: () -> Unit,
 ) {
+    var focused by remember { mutableStateOf(false) }
+    val highlighted = settingsRailItemHighlighted(selected = selected, focused = focused)
+
     Surface(
         modifier = Modifier
             .fillMaxWidth()
             .then(
                 if (selected) Modifier.focusRequester(focusRequester) else Modifier,
             )
+            .onFocusChanged { focused = it.isFocused }
             .clickable(onClick = onClick),
         shape = RoundedCornerShape(12.dp),
-        color = if (selected) {
+        color = if (highlighted) {
             MaterialTheme.colorScheme.primaryContainer
         } else {
             MaterialTheme.colorScheme.surface
@@ -114,8 +128,8 @@ internal fun SettingsRailItem(
             Text(
                 text = label,
                 style = MaterialTheme.typography.bodyMedium,
-                fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
-                color = if (selected) {
+                fontWeight = FontWeight.Medium,
+                color = if (highlighted) {
                     MaterialTheme.colorScheme.onPrimaryContainer
                 } else {
                     MaterialTheme.colorScheme.onSurface
@@ -124,7 +138,7 @@ internal fun SettingsRailItem(
             Text(
                 text = detail,
                 style = MaterialTheme.typography.labelSmall,
-                color = if (selected) {
+                color = if (highlighted) {
                     MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.72f)
                 } else {
                     MaterialTheme.colorScheme.onSurfaceVariant
