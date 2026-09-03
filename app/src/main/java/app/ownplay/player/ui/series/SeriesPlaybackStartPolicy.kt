@@ -1,6 +1,8 @@
 package app.ownplay.player.ui.series
 
+import app.ownplay.player.series.SeriesDetails
 import app.ownplay.player.series.SeriesEpisode
+import app.ownplay.player.series.SeriesEpisodeProgressSnapshot
 
 internal enum class SeriesPlaybackStartMode {
     RESUME,
@@ -50,3 +52,31 @@ internal fun seriesEpisodeProgressLabel(episode: SeriesEpisode): String? = when 
     episode.progressCompleted -> "Watched"
     else -> null
 }
+
+internal fun seriesEpisodeWithProgress(
+    episode: SeriesEpisode,
+    progress: SeriesEpisodeProgressSnapshot?,
+): SeriesEpisode = episode.copy(
+    positionMs = progress?.positionMs,
+    durationMs = progress?.durationMs,
+    progressCompleted = progress?.completed == true,
+    progressUpdatedAtEpochMillis = progress?.updatedAtEpochMillis,
+)
+
+internal fun seriesDetailsWithEpisodeProgress(
+    details: SeriesDetails?,
+    episodeId: String,
+    progress: SeriesEpisodeProgressSnapshot?,
+): SeriesDetails? = details?.copy(
+    seasons = details.seasons.map { season ->
+        season.copy(
+            episodes = season.episodes.map { episode ->
+                if (episode.episodeId == episodeId) {
+                    seriesEpisodeWithProgress(episode, progress)
+                } else {
+                    episode
+                }
+            },
+        )
+    },
+)
