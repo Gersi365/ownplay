@@ -25,6 +25,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
@@ -54,6 +55,7 @@ internal fun EpgGuideSheet(
     val isTelevision =
         configuration.uiMode and Configuration.UI_MODE_TYPE_MASK == Configuration.UI_MODE_TYPE_TELEVISION
     val doneFocusRequester = remember { FocusRequester() }
+    val programFocusRequester = remember { FocusRequester() }
     val nowEpochSeconds = System.currentTimeMillis() / 1_000L
     val timeline = remember(snapshot, nowEpochSeconds) {
         EpgTimelineProjector.project(
@@ -64,15 +66,33 @@ internal fun EpgGuideSheet(
     val currentIndex = timeline.current?.let(timeline.programs::indexOf)?.takeIf { it >= 0 }
     val listState = rememberLazyListState()
     var selectedProgram by remember { mutableStateOf<EpgProgram?>(null) }
+    var lastFocusedProgramIndex by remember(snapshot) { mutableStateOf<Int?>(null) }
+    val focusProgramIndex = epgGuideFocusIndex(
+        programCount = timeline.programs.size,
+        currentIndex = currentIndex,
+        lastFocusedIndex = lastFocusedProgramIndex,
+    )
 
-    LaunchedEffect(isTelevision) {
-        if (isTelevision) {
+    LaunchedEffect(
+        isTelevision,
+        focusProgramIndex,
+        loading,
+        failed,
+        selectedProgram,
+    ) {
+        if (!isTelevision || selectedProgram != null) return@LaunchedEffect
+        if (!loading && !failed && focusProgramIndex != null) {
+            listState.scrollToItem((focusProgramIndex - 1).coerceAtLeast(0))
+            withFrameNanos { }
+            programFocusRequester.requestFocus()
+        } else {
+            withFrameNanos { }
             doneFocusRequester.requestFocus()
         }
     }
 
     LaunchedEffect(currentIndex) {
-        if (currentIndex != null) {
+        if (!isTelevision && currentIndex != null) {
             listState.scrollToItem((currentIndex - 1).coerceAtLeast(0))
         }
     }
@@ -135,7 +155,13 @@ internal fun EpgGuideSheet(
                                 program = program,
                                 isCurrent = program == timeline.current,
                                 isPast = program in timeline.past,
-                                onClick = { selectedProgram = program },
+                                focusRequester = programFocusRequester.takeIf {
+                                    index == focusProgramIndex
+                                },
+                                onClick = {
+                                    lastFocusedProgramIndex = index
+                                    selectedProgram = program
+                                },
                             )
                         }
                     }
@@ -147,9 +173,22 @@ internal fun EpgGuideSheet(
     selectedProgram?.let { program ->
         ProgramDetailsDialog(
             program = program,
+            isTelevision = isTelevision,
             onDismiss = { selectedProgram = null },
         )
     }
+}
+
+internal fun epgGuideFocusIndex(
+    programCount: Int,
+    currentIndex: Int?,
+    lastFocusedIndex: Int?,
+): Int? {
+    if (programCount <= 0) return null
+    return lastFocusedIndex
+        ?.takeIf { it in 0 until programCount }
+        ?: currentIndex?.takeIf { it in 0 until programCount }
+        ?: 0
 }
 
 @Composable
@@ -185,12 +224,21 @@ private fun ProgramGuideRow(
     program: EpgProgram,
     isCurrent: Boolean,
     isPast: Boolean,
+    focusRequester: FocusRequester? = null,
     onClick: () -> Unit,
 ) {
     Surface(
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 12.dp)
+            .then(
+                if (focusRequester != null) {
+                    Modifier.focusRequester(focusRequester)
+                } else {
+                    Modifier
+                },
+            )
+            .mediaCardVisualTint()
             .clickable(onClick = onClick),
         shape = RoundedCornerShape(12.dp),
         color = if (isCurrent) {
@@ -264,8 +312,17 @@ private fun ProgramGuideRow(
 @Composable
 private fun ProgramDetailsDialog(
     program: EpgProgram,
+    isTelevision: Boolean,
     onDismiss: () -> Unit,
 ) {
+    val closeFocusRequester = remember(program) { FocusRequester() }
+
+    LaunchedEffect(isTelevision, program) {
+        if (!isTelevision) return@LaunchedEffect
+        withFrameNanos { }
+        closeFocusRequester.requestFocus()
+    }
+
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(program.title) },
@@ -282,7 +339,14 @@ private fun ProgramDetailsDialog(
             }
         },
         confirmButton = {
-            TextButton(onClick = onDismiss) { Text("Close") }
+            TextButton(
+                onClick = onDismiss,
+                modifier = if (isTelevision) {
+                    Modifier.focusRequester(closeFocusRequester)
+                } else {
+                    Modifier
+                },
+            ) { Text("Close") }
         },
     )
 }
