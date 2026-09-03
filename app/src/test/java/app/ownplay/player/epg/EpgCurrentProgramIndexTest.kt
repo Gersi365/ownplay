@@ -2,6 +2,7 @@ package app.ownplay.player.epg
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertSame
 import org.junit.Test
 
@@ -77,6 +78,83 @@ class EpgCurrentProgramIndexTest {
                 nowEpochSeconds = 200,
             ),
         )
+    }
+
+    @Test
+    fun preparedLookupMatchesGenericSelectionAcrossOverlapAndBoundaries() {
+        val programs = EpgTimelineProjector.normalize(
+            listOf(
+                program("Long running", 100, 500),
+                program("Short overlap", 200, 250),
+                program("Later", 500, 600),
+                program("Incomplete end", 300, null),
+                program("Incomplete start", null, 900),
+            ),
+        )
+        val prepared = EpgCurrentProgramIndex.prepareNormalized(programs)
+
+        listOf(99L, 100L, 225L, 250L, 300L, 499L, 500L, 600L).forEach { now ->
+            assertSame(
+                EpgCurrentProgramIndex.currentProgram(programs, now),
+                prepared.currentProgram(now),
+            )
+        }
+    }
+
+    @Test
+    fun preparedLookupFindsOlderLongRunningProgramAfterLaterOverlapEnded() {
+        val longRunning = program("Long running", 100, 1_000)
+        val endedOverlap = program("Ended overlap", 900, 920)
+        val programs = EpgTimelineProjector.normalize(listOf(longRunning, endedOverlap))
+        val prepared = EpgCurrentProgramIndex.prepareNormalized(programs)
+
+        assertSame(longRunning, prepared.currentProgram(950))
+    }
+
+    @Test
+    fun preparedLookupPreservesLatestStartEndAndTitleTieBreakers() {
+        val shorter = program("Z shorter", 100, 200)
+        val alpha = program("Alpha", 100, 300)
+        val omega = program("Omega", 100, 300)
+        val programs = EpgTimelineProjector.normalize(listOf(omega, shorter, alpha))
+        val prepared = EpgCurrentProgramIndex.prepareNormalized(programs)
+
+        assertSame(omega, prepared.currentProgram(150))
+    }
+
+    @Test
+    fun preparedChannelLookupMapsSharedEpgIdsWithoutRescanningProgramLists() {
+        val current = program("Current", 10_000, 20_000)
+        val programs = EpgTimelineProjector.normalize(
+            (0 until 5_000).map { index ->
+                val start = index.toLong() * 10L
+                program("Program $index", start, start + 10L)
+            } + current,
+        )
+        val prepared = EpgCurrentProgramIndex.prepareNormalized(programs)
+
+        val result = EpgCurrentProgramIndex.currentByChannelPrepared(
+            channelIdsByEpgChannelId = mapOf("epg" to listOf("one", "two", "three")),
+            preparedByEpgChannelId = mapOf("epg" to prepared),
+            nowEpochSeconds = 15_000,
+        )
+
+        assertSame(current, result["one"])
+        assertSame(current, result["two"])
+        assertSame(current, result["three"])
+    }
+
+    @Test
+    fun preparedLookupReturnsNullWhenNoStartedProgramCanStillBeActive() {
+        val programs = EpgTimelineProjector.normalize(
+            listOf(
+                program("Old", 100, 200),
+                program("Older", 10, 50),
+                program("Future", 400, 500),
+            ),
+        )
+
+        assertNull(EpgCurrentProgramIndex.prepareNormalized(programs).currentProgram(300))
     }
 
     private fun program(
