@@ -101,6 +101,11 @@ import app.ownplay.player.playback.PlaybackRequest
 import app.ownplay.player.playback.PlaybackState
 import app.ownplay.player.source.SourceError
 import app.ownplay.player.source.SourceResult
+import app.ownplay.player.ui.MediaCatalogPresentationState
+import app.ownplay.player.ui.MediaCatalogRefreshWarning
+import app.ownplay.player.ui.MediaCatalogStatePanel
+import app.ownplay.player.ui.mediaCatalogPresentationState
+import app.ownplay.player.ui.mediaCatalogSourceErrorLabel
 import app.ownplay.player.vod.VodCatalog
 import app.ownplay.player.vod.VodFeatureRuntime
 import app.ownplay.player.vod.VodMovie
@@ -188,7 +193,7 @@ internal fun VodRoute(
     if (sourceKind != SourceKinds.XTREAM) {
         VodUnavailableState(
             title = "Movies are not available for this source yet",
-            body = "Phase 011 currently loads VOD from Xtream sources. Your Live source remains unchanged.",
+            body = "Movies currently use Xtream-compatible sources. Your Live source remains unchanged.",
             onOpenSettings = onOpenSettings,
         )
         return
@@ -569,6 +574,13 @@ private fun MoviesCatalogContent(
     onCategorySelected: (String?) -> Unit,
     modifier: Modifier,
 ) {
+    val catalogState = mediaCatalogPresentationState(
+        hasCatalogContent = catalog.movies.isNotEmpty(),
+        visibleItemCount = movies.size,
+        loading = loading,
+        failed = refreshError != null,
+    )
+
     Column(modifier = modifier.fillMaxSize()) {
         Row(
             modifier = Modifier
@@ -676,11 +688,9 @@ private fun MoviesCatalogContent(
         }
 
         if (refreshError != null && catalog.movies.isNotEmpty()) {
-            Text(
-                text = "Refresh failed. Showing saved Movies.",
-                modifier = Modifier.padding(horizontal = 14.dp, vertical = 2.dp),
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.error,
+            MediaCatalogRefreshWarning(
+                message = "Movies refresh failed. Showing saved Movies.",
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
             )
         }
 
@@ -703,26 +713,30 @@ private fun MoviesCatalogContent(
 
         HorizontalDivider()
 
-        when {
-            loading && catalog.movies.isEmpty() -> Box(
-                modifier = Modifier.fillMaxSize(),
-                contentAlignment = Alignment.Center,
-            ) {
-                CircularProgressIndicator()
-            }
-            refreshError != null && catalog.movies.isEmpty() -> VodEmptyCatalog(
+        when (catalogState) {
+            MediaCatalogPresentationState.LOADING -> MediaCatalogStatePanel(
+                title = "Loading Movies",
+                body = "Fetching Movies from the active playlist.",
+                loading = true,
+            )
+            MediaCatalogPresentationState.ERROR -> MediaCatalogStatePanel(
                 title = "Movies could not be loaded",
-                body = sourceErrorLabel(refreshError),
+                body = refreshError?.let(::mediaCatalogSourceErrorLabel)
+                    ?: "The Movies catalog could not be refreshed.",
+                error = true,
                 actionLabel = "Retry",
                 onAction = onRefresh,
+                focusActionOnEntry = true,
             )
-            movies.isEmpty() -> VodEmptyCatalog(
-                title = "No matching Movies",
-                body = "Try another category, search term or filter.",
-                actionLabel = null,
-                onAction = {},
+            MediaCatalogPresentationState.EMPTY -> MediaCatalogStatePanel(
+                title = if (catalog.movies.isEmpty()) "No Movies available" else "No matching Movies",
+                body = if (catalog.movies.isEmpty()) {
+                    "This playlist did not return any Movies."
+                } else {
+                    "Try another category, search term or Favorites filter."
+                },
             )
-            else -> LazyVerticalGrid(
+            MediaCatalogPresentationState.CONTENT -> LazyVerticalGrid(
                 columns = GridCells.Adaptive(minSize = 128.dp),
                 modifier = Modifier.fillMaxSize(),
                 contentPadding = PaddingValues(10.dp),
