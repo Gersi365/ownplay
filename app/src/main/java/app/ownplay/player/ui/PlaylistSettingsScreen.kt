@@ -13,6 +13,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
@@ -132,7 +133,7 @@ internal fun PlaylistSettingsScreen(
                 ) {
                     Text("No playlists yet", fontWeight = FontWeight.SemiBold)
                     Text(
-                        text = "Add Xtream or M3U here. Live remains available while the catalog loads.",
+                        text = "Add an Xtream or M3U playlist to populate Live and Library.",
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                     Button(onClick = { addMode = AddPlaylistMode.XTREAM }) {
@@ -152,7 +153,7 @@ internal fun PlaylistSettingsScreen(
                     scope.launch {
                         val loaded = runtime.loadSourceEditSnapshot(summary.sourceId)
                         if (loaded == null) {
-                            actionError = "Could not load playlist settings."
+                            actionError = "Playlist settings couldn't be loaded. Try again."
                         } else {
                             actionError = null
                             editSnapshot = loaded
@@ -217,10 +218,14 @@ internal fun PlaylistSettingsScreen(
             onDismissRequest = { deleteTarget = null },
             title = { Text("Delete playlist?") },
             text = {
-                Text("${target.name} and its imported catalog will be removed from OwnPlay.")
+                Text("This removes ${target.name} and its imported catalog from OwnPlay.")
             },
             confirmButton = {
                 Button(
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.error,
+                        contentColor = MaterialTheme.colorScheme.onError,
+                    ),
                     onClick = {
                         scope.launch {
                             when (val result = runtime.deleteSource(target.sourceId)) {
@@ -235,7 +240,7 @@ internal fun PlaylistSettingsScreen(
                             }
                         }
                     },
-                ) { Text("Delete") }
+                ) { Text("Delete playlist") }
             },
             dismissButton = {
                 TextButton(onClick = { deleteTarget = null }) { Text("Cancel") }
@@ -300,10 +305,17 @@ private fun PlaylistCard(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(4.dp),
             ) {
-                TextButton(onClick = onOpen) { Text("Live") }
+                TextButton(onClick = onOpen) { Text("Open Live") }
                 TextButton(onClick = onRefresh, enabled = !syncing) { Text("Refresh") }
                 TextButton(onClick = onEdit, enabled = !syncing) { Text("Edit") }
-                TextButton(onClick = onDelete, enabled = !syncing) { Text("Delete") }
+                TextButton(
+                    onClick = onDelete,
+                    enabled = !syncing,
+                    colors = ButtonDefaults.textButtonColors(
+                        contentColor = MaterialTheme.colorScheme.error,
+                        disabledContentColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f),
+                    ),
+                ) { Text("Delete") }
             }
         }
     }
@@ -424,7 +436,7 @@ private fun AddPlaylistDialog(
                     }
                 }
                 Text(
-                    text = "After you tap Add, this form closes immediately. Channel and EPG import continue in the background.",
+                    text = "OwnPlay adds the playlist first, then imports channels and EPG. Import status appears here.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
