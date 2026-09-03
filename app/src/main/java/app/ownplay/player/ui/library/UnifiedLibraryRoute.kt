@@ -1,7 +1,6 @@
 package app.ownplay.player.ui.library
 
 import android.content.res.Configuration
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -56,10 +55,9 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.focus.onFocusChanged
-import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -82,6 +80,7 @@ import app.ownplay.player.ui.MediaCatalogPresentationState
 import app.ownplay.player.ui.MediaCatalogRefreshWarning
 import app.ownplay.player.ui.MediaCatalogStatePanel
 import app.ownplay.player.ui.OfflineMediaTvFocusPolicy
+import app.ownplay.player.ui.mediaCardVisualTint
 import app.ownplay.player.ui.mediaCatalogPresentationState
 import app.ownplay.player.ui.view.ContentViewMode
 import app.ownplay.player.ui.view.ContentViewModeMenu
@@ -787,8 +786,6 @@ private fun LibraryCatalogView(
     onRemoveMovie: (OfflineDownload) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    var currentlyFocusedItemKey by remember { mutableStateOf<String?>(null) }
-    val focusRingColor = MaterialTheme.colorScheme.primary
     val focusIndex = remember(focusKeys, focusItemKey) { focusKeys.indexOf(focusItemKey) }
 
     LaunchedEffect(
@@ -814,25 +811,9 @@ private fun LibraryCatalogView(
         } else {
             Modifier
         }
-        val ringModifier = if (currentlyFocusedItemKey == itemKey) {
-            Modifier.border(
-                width = 2.dp,
-                color = focusRingColor,
-                shape = RoundedCornerShape(12.dp),
-            )
-        } else {
-            Modifier
+        return requesterModifier.mediaCardVisualTint { focused ->
+            if (focused) onItemFocused(itemKey)
         }
-        return requesterModifier
-            .then(ringModifier)
-            .onFocusChanged { focusState ->
-                if (focusState.hasFocus) {
-                    currentlyFocusedItemKey = itemKey
-                    onItemFocused(itemKey)
-                } else if (currentlyFocusedItemKey == itemKey) {
-                    currentlyFocusedItemKey = null
-                }
-            }
     }
 
     when (viewMode) {
@@ -1774,7 +1755,6 @@ private fun movieOfflineLabel(download: OfflineDownload?): String = when {
     else -> "Movie"
 }
 
-
 private fun libraryCatalogMovieFocusKey(sourceId: String, movieId: String): String =
     "movie:$sourceId:$movieId"
 
@@ -1813,6 +1793,7 @@ private fun libraryVisibleFocusKeys(
         }
     }
 }
+
 private suspend fun enqueueSeriesEpisode(
     downloadRuntime: OfflineDownloadFeatureRuntime,
     sourceId: String,
