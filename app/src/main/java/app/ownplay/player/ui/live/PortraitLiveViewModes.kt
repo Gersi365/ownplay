@@ -72,12 +72,12 @@ import app.ownplay.player.live.LiveCategory
 import app.ownplay.player.live.LiveChannelItem
 import app.ownplay.player.live.LiveChannelLogoResolver
 import app.ownplay.player.source.network.SourceHttpClient
+import app.ownplay.player.ui.CachedRemoteImage
+import app.ownplay.player.ui.RemoteImageMemoryCache
 import app.ownplay.player.ui.view.ContentViewMode
 import app.ownplay.player.ui.view.ContentViewModeMenu
 import java.io.ByteArrayOutputStream
 import java.util.concurrent.CancellationException
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
 import okhttp3.Request
 
 private const val LIVE_VIEW_MOTION_MILLIS = 140
@@ -687,24 +687,27 @@ private fun RemoteChannelLogo(
     }
 }
 
-private suspend fun loadChannelLogo(url: String): ImageBitmap? = withContext(Dispatchers.IO) {
-    try {
-        SourceHttpClient.shared.newCall(
-            Request.Builder().url(url).get().build(),
-        ).execute().use { response ->
-            if (!response.isSuccessful) return@use null
-            val body = response.body
-            val contentLength = body.contentLength()
-            if (contentLength > MAX_CHANNEL_LOGO_BYTES.toLong()) return@use null
-            val bytes = readChannelLogoBytes(body.byteStream()) ?: return@use null
-            decodeChannelLogo(bytes)
+private suspend fun loadChannelLogo(url: String): ImageBitmap? =
+    RemoteImageMemoryCache.getOrLoad(
+        cacheKey = "channel-logo|$url",
+    ) {
+        try {
+            SourceHttpClient.shared.newCall(
+                Request.Builder().url(url).get().build(),
+            ).execute().use { response ->
+                if (!response.isSuccessful) return@use null
+                val body = response.body
+                val contentLength = body.contentLength()
+                if (contentLength > MAX_CHANNEL_LOGO_BYTES.toLong()) return@use null
+                val bytes = readChannelLogoBytes(body.byteStream()) ?: return@use null
+                decodeChannelLogo(bytes)
+            }
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            null
         }
-    } catch (cancelled: CancellationException) {
-        throw cancelled
-    } catch (_: Exception) {
-        null
-    }
-}
+    }?.image
 
 private fun readChannelLogoBytes(input: java.io.InputStream): ByteArray? {
     val output = ByteArrayOutputStream(64 * 1024)
@@ -721,7 +724,7 @@ private fun readChannelLogoBytes(input: java.io.InputStream): ByteArray? {
     return output.toByteArray()
 }
 
-private fun decodeChannelLogo(bytes: ByteArray): ImageBitmap? {
+private fun decodeChannelLogo(bytes: ByteArray): CachedRemoteImage? {
     val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
     BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
     if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null
@@ -734,7 +737,11 @@ private fun decodeChannelLogo(bytes: ByteArray): ImageBitmap? {
         sampleSize *= 2
     }
     val options = BitmapFactory.Options().apply { inSampleSize = sampleSize }
-    return BitmapFactory.decodeByteArray(bytes, 0, bytes.size, options)?.asImageBitmap()
+    val bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size, options) ?: return null
+    return CachedRemoteImage(
+        image = bitmap.asImageBitmap(),
+        byteCount = bitmap.allocationByteCount.coerceAtLeast(1),
+    )
 }
 
 @Composable
