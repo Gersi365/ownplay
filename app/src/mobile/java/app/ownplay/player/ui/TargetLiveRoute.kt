@@ -88,6 +88,7 @@ import app.ownplay.player.source.SourceSyncStage
 import app.ownplay.player.source.SourceSyncState
 import app.ownplay.player.source.network.SourceHttpClient
 import java.io.ByteArrayOutputStream
+import java.util.LinkedHashMap
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -99,9 +100,27 @@ import kotlin.math.max
 
 private const val MOBILE_LOGO_MAX_BYTES = 2 * 1024 * 1024
 private const val MOBILE_LOGO_MAX_EDGE_PX = 256
+private const val MOBILE_LOGO_CACHE_ENTRIES = 32
 private const val MOBILE_EPG_PREFETCH_STEP = 6
 private const val MOBILE_EPG_PREFETCH_WINDOW = 14
 private const val MOBILE_CATEGORY_SWIPE_TRIGGER_FRACTION = 0.12f
+
+private val mobileChannelLogoCacheLock = Any()
+private val mobileChannelLogoMemoryCache = object : LinkedHashMap<String, ImageBitmap>(
+    MOBILE_LOGO_CACHE_ENTRIES,
+    0.75f,
+    true,
+) {
+    override fun removeEldestEntry(
+        eldest: MutableMap.MutableEntry<String, ImageBitmap>?,
+    ): Boolean = size > MOBILE_LOGO_CACHE_ENTRIES
+}
+
+private sealed interface MobileChannelLogoState {
+    data object Loading : MobileChannelLogoState
+    data class Loaded(val image: ImageBitmap) : MobileChannelLogoState
+    data object Unavailable : MobileChannelLogoState
+}
 
 /**
  * Mobile-only Live surface.
@@ -691,10 +710,38 @@ private fun MobileChannelLogo(
 ) {
     val context = LocalContext.current
     val resolver = remember(context) { LiveChannelLogoResolver(context.applicationContext) }
-    val image by produceState<ImageBitmap?>(initialValue = null, key1 = logoRef) {
-        value = resolver.resolve(logoRef)
+    val initialState = remember(logoRef) {
+        if (logoRef.isNullOrBlank()) {
+            MobileChannelLogoState.Unavailable
+        } else {
+            MobileChannelLogoState.Loading
+        }
+    }
+    val state by produceState<MobileChannelLogoState>(
+        initialValue = initialState,
+        key1 = logoRef,
+    ) {
+        val resolvedUrl = resolver.resolve(logoRef)
+            ?.trim()
             ?.takeIf(String::isNotBlank)
-            ?.let { resolvedUrl -> loadMobileChannelLogo(resolvedUrl) }
+        if (resolvedUrl == null) {
+            value = MobileChannelLogoState.Unavailable
+            return@produceState
+        }
+
+        cachedMobileChannelLogo(resolvedUrl)?.let { cached ->
+            value = MobileChannelLogoState.Loaded(cached)
+            return@produceState
+        }
+
+        value = MobileChannelLogoState.Loading
+        val loaded = loadMobileChannelLogo(resolvedUrl)
+        value = if (loaded != null) {
+            cacheMobileChannelLogo(resolvedUrl, loaded)
+            MobileChannelLogoState.Loaded(loaded)
+        } else {
+            MobileChannelLogoState.Unavailable
+        }
     }
     Box(
         modifier = modifier
@@ -703,23 +750,38 @@ private fun MobileChannelLogo(
             .clearAndSetSemantics { },
         contentAlignment = Alignment.Center,
     ) {
-        image?.let { bitmap ->
-            Image(
-                bitmap = bitmap,
+        when (val currentState = state) {
+            is MobileChannelLogoState.Loaded -> Image(
+                bitmap = currentState.image,
                 contentDescription = null,
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(4.dp),
                 contentScale = ContentScale.Fit,
             )
-        } ?: Text(
-            text = title.trim().firstOrNull()?.uppercase() ?: "•",
-            style = MaterialTheme.typography.labelLarge,
-            fontWeight = FontWeight.Bold,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
+            MobileChannelLogoState.Loading -> Unit
+            MobileChannelLogoState.Unavailable -> Text(
+                text = mobileChannelLogoFallbackLabel(title),
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
     }
 }
+
+private fun cachedMobileChannelLogo(url: String): ImageBitmap? = synchronized(mobileChannelLogoCacheLock) {
+    mobileChannelLogoMemoryCache[url]
+}
+
+private fun cacheMobileChannelLogo(url: String, image: ImageBitmap) {
+    synchronized(mobileChannelLogoCacheLock) {
+        mobileChannelLogoMemoryCache[url] = image
+    }
+}
+
+internal fun mobileChannelLogoFallbackLabel(title: String): String =
+    title.trim().firstOrNull()?.uppercase() ?: "•"
 
 private suspend fun loadMobileChannelLogo(url: String): ImageBitmap? = withContext(Dispatchers.IO) {
     try {
@@ -758,19 +820,35 @@ private fun decodeMobileLogo(bytes: ByteArray): ImageBitmap? {
     val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
     BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
     if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null
-    var sampleSize = 1
-    while (
-        bounds.outWidth / sampleSize > MOBILE_LOGO_MAX_EDGE_PX ||
-        bounds.outHeight / sampleSize > MOBILE_LOGO_MAX_EDGE_PX
-    ) {
-        sampleSize *= 2
-    }
+    val sampleSize = calculateMobileLogoInSampleSize(
+        width = bounds.outWidth,
+        height = bounds.outHeight,
+    )
     return BitmapFactory.decodeByteArray(
         bytes,
         0,
         bytes.size,
         BitmapFactory.Options().apply { inSampleSize = sampleSize },
     )?.asImageBitmap()
+}
+
+internal fun calculateMobileLogoInSampleSize(
+    width: Int,
+    height: Int,
+    maxEdgePx: Int = MOBILE_LOGO_MAX_EDGE_PX,
+): Int {
+    require(maxEdgePx > 0) { "maxEdgePx must be positive" }
+    if (width <= 0 || height <= 0) return 1
+
+    var sampleSize = 1
+    while (
+        width / sampleSize > maxEdgePx ||
+        height / sampleSize > maxEdgePx
+    ) {
+        if (sampleSize > Int.MAX_VALUE / 2) break
+        sampleSize *= 2
+    }
+    return sampleSize
 }
 
 @Composable
