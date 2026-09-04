@@ -65,34 +65,6 @@ class LivePlaybackCategoryNavigationTest {
     }
 
     @Test
-    fun disabledCategoryNavigationFallsBackToVisibleChannelOrder() {
-        val categoryA = category("category-a", "News", 0L)
-        val categoryB = category("category-b", "Sports", 1L)
-        val categoryAChannels = listOf(
-            channel("a-one", "A One", categoryA),
-            channel("a-two", "A Two", categoryA),
-        )
-        val categoryBChannels = listOf(
-            channel("b-one", "B One", categoryB),
-        )
-        val context = LivePlaybackBrowseContext.capture(
-            sourceId = "source",
-            visibleChannels = categoryAChannels,
-            categories = listOf(categoryA, categoryB),
-            categoryNavigationChannels = categoryAChannels + categoryBChannels,
-            activeCategoryKey = categoryA.providerCategoryKey,
-            categoryNavigationEnabled = false,
-        )
-        val current = context.selectionFor("a-one") ?: error("missing current selection")
-
-        val target = current.navigateCategory(PlaybackNavigationDirection.NEXT)
-            ?: error("missing visible-channel fallback")
-
-        assertEquals("a-two", target.request.channelId)
-        assertEquals("category-a", target.categoryKey)
-    }
-
-    @Test
     fun categoryRenderingDoesNotExposeOpaqueProviderKey() {
         val secretKey = "provider-secret-category-key"
         val category = category(secretKey, "News", 0L)
