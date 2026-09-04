@@ -12,8 +12,8 @@ android {
     defaultConfig {
         minSdk = 26
         targetSdk = 36
-        versionCode = 10
-        versionName = "1.0.8-live-controls-update"
+        versionCode = 11
+        versionName = "1.0.9-mobile-fullscreen-gestures"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }

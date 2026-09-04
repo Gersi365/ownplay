@@ -5,6 +5,8 @@ import android.content.Context
 import android.content.ContextWrapper
 import android.content.res.Configuration
 import android.graphics.Color as AndroidColor
+import android.media.AudioManager
+import android.provider.Settings
 import android.view.KeyEvent
 import androidx.annotation.OptIn
 import androidx.activity.compose.BackHandler
@@ -13,6 +15,7 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusable
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -49,6 +52,7 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -74,9 +78,24 @@ import app.ownplay.player.playback.PlaybackVideoOutput
 import app.ownplay.player.ui.live.LiveFullscreenEpgDirection
 import app.ownplay.player.ui.live.LiveFullscreenEpgPolicy
 import kotlinx.coroutines.delay
+import kotlin.math.abs
+import kotlin.math.max
+import kotlin.math.roundToInt
 
 private const val LIVE_EPG_AUTO_HIDE_MILLIS = 4_500L
 private const val LIVE_EPG_PROGRAM_LIMIT = 6
+private const val MOBILE_CHANNEL_SWIPE_TRIGGER_FRACTION = 0.12f
+private const val MOBILE_GESTURE_FEEDBACK_HIDE_MILLIS = 700L
+
+private enum class MobileFullscreenGestureAxis {
+    HORIZONTAL,
+    VERTICAL,
+}
+
+private data class MobileFullscreenGestureFeedback(
+    val label: String,
+    val percent: Int,
+)
 
 /**
  * Live fullscreen presentation.
@@ -85,8 +104,9 @@ private const val LIVE_EPG_PROGRAM_LIMIT = 6
  * interaction layer. TV remote behavior is CH+ / CH- -> next / previous channel, OK -> reveal EPG,
  * Down -> enter EPG, Left/Right -> move through available programmes, Up -> leave the EPG timeline.
  * D-pad Up/Down are reserved for focus/EPG navigation and never perform direct channel zapping.
- * The final timeline card opens the full guide by returning to Preview first. Mobile uses a tap on
- * the video to reveal the same EPG.
+ * The final timeline card opens the full guide by returning to Preview first. Mobile uses tap to
+ * show/hide EPG, horizontal swipe to change channel, left-side vertical swipe for brightness, and
+ * right-side vertical swipe for media volume.
  */
 @Suppress("UNUSED_PARAMETER")
 @OptIn(UnstableApi::class)
@@ -106,8 +126,13 @@ internal fun PlaybackScreen(
     onFullscreenStateChanged: (Boolean) -> Unit,
 ) {
     val configuration = LocalConfiguration.current
+    val context = LocalContext.current
     val isTelevision =
         configuration.uiMode and Configuration.UI_MODE_TYPE_MASK == Configuration.UI_MODE_TYPE_TELEVISION
+    val hostActivity = remember(context) { context.findActivity() }
+    val audioManager = remember(context) {
+        context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+    }
     val rootFocusRequester = remember { FocusRequester() }
     val touchInteractionSource = remember { MutableInteractionSource() }
     val epgSnapshot by LiveEpgPresentationBridge.snapshot.collectAsState()
@@ -138,10 +163,28 @@ internal fun PlaybackScreen(
         mutableIntStateOf(currentProgramIndex)
     }
     var interactionGeneration by remember(selection.request.channelId) { mutableIntStateOf(0) }
+    var mobileGestureFeedback by remember {
+        mutableStateOf<MobileFullscreenGestureFeedback?>(null)
+    }
+    var mobileGestureFeedbackGeneration by remember { mutableIntStateOf(0) }
 
     fun revealEpg() {
         epgVisible = true
         interactionGeneration += 1
+    }
+
+    fun toggleEpg() {
+        epgVisible = !epgVisible
+        if (!epgVisible) epgFocused = false
+        interactionGeneration += 1
+    }
+
+    fun publishMobileGestureFeedback(label: String, percent: Int) {
+        mobileGestureFeedback = MobileFullscreenGestureFeedback(
+            label = label,
+            percent = percent.coerceIn(0, 100),
+        )
+        mobileGestureFeedbackGeneration += 1
     }
 
     fun openFullGuide() {
@@ -192,6 +235,13 @@ internal fun PlaybackScreen(
         if (epgVisible && !epgFocused && !epgLoading && state is PlaybackState.Playing) {
             delay(LIVE_EPG_AUTO_HIDE_MILLIS)
             epgVisible = false
+        }
+    }
+
+    LaunchedEffect(mobileGestureFeedbackGeneration) {
+        if (mobileGestureFeedbackGeneration > 0) {
+            delay(MOBILE_GESTURE_FEEDBACK_HIDE_MILLIS)
+            mobileGestureFeedback = null
         }
     }
 
@@ -313,11 +363,105 @@ internal fun PlaybackScreen(
             Box(
                 modifier = Modifier
                     .fillMaxSize()
+                    .pointerInput(
+                        isTelevision,
+                        selection.request.channelId,
+                        hostActivity,
+                        audioManager,
+                    ) {
+                        if (isTelevision) return@pointerInput
+
+                        var startX = 0f
+                        var totalX = 0f
+                        var totalY = 0f
+                        var gestureAxis: MobileFullscreenGestureAxis? = null
+                        var initialBrightness = currentWindowBrightness(hostActivity, context)
+                        var initialVolume = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC)
+                        val maximumVolume =
+                            audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC).coerceAtLeast(1)
+
+                        detectDragGestures(
+                            onDragStart = { offset ->
+                                startX = offset.x
+                                totalX = 0f
+                                totalY = 0f
+                                gestureAxis = null
+                                initialBrightness = currentWindowBrightness(hostActivity, context)
+                                initialVolume = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC)
+                            },
+                            onDrag = { change, dragAmount ->
+                                totalX += dragAmount.x
+                                totalY += dragAmount.y
+
+                                if (gestureAxis == null) {
+                                    gestureAxis = if (abs(totalX) >= abs(totalY)) {
+                                        MobileFullscreenGestureAxis.HORIZONTAL
+                                    } else {
+                                        MobileFullscreenGestureAxis.VERTICAL
+                                    }
+                                }
+
+                                when (gestureAxis) {
+                                    MobileFullscreenGestureAxis.HORIZONTAL -> {
+                                        change.consume()
+                                    }
+
+                                    MobileFullscreenGestureAxis.VERTICAL -> {
+                                        change.consume()
+                                        val height = size.height.toFloat().coerceAtLeast(1f)
+                                        val normalizedDelta = (-totalY / height).coerceIn(-1f, 1f)
+                                        if (startX < size.width / 2f) {
+                                            val brightness =
+                                                (initialBrightness + normalizedDelta).coerceIn(0.01f, 1f)
+                                            setWindowBrightness(hostActivity, brightness)
+                                            publishMobileGestureFeedback(
+                                                label = "Brightness",
+                                                percent = (brightness * 100f).roundToInt(),
+                                            )
+                                        } else {
+                                            val volume = (
+                                                initialVolume +
+                                                    normalizedDelta * maximumVolume
+                                                ).roundToInt().coerceIn(0, maximumVolume)
+                                            audioManager.setStreamVolume(
+                                                AudioManager.STREAM_MUSIC,
+                                                volume,
+                                                0,
+                                            )
+                                            publishMobileGestureFeedback(
+                                                label = "Volume",
+                                                percent = (volume * 100f / maximumVolume).roundToInt(),
+                                            )
+                                        }
+                                    }
+
+                                    null -> Unit
+                                }
+                            },
+                            onDragEnd = {
+                                if (gestureAxis == MobileFullscreenGestureAxis.HORIZONTAL) {
+                                    val triggerDistance = max(
+                                        viewConfiguration.touchSlop * 4f,
+                                        size.width * MOBILE_CHANNEL_SWIPE_TRIGGER_FRACTION,
+                                    )
+                                    if (abs(totalX) >= triggerDistance) {
+                                        onNavigate(
+                                            if (totalX < 0f) {
+                                                PlaybackNavigationDirection.NEXT
+                                            } else {
+                                                PlaybackNavigationDirection.PREVIOUS
+                                            },
+                                        )
+                                    }
+                                }
+                            },
+                        )
+                    }
                     .clickable(
                         enabled = !isTelevision,
                         interactionSource = touchInteractionSource,
                         indication = null,
-                        onClick = ::revealEpg,
+                        onClick = ::toggleEpg,
                     ),
             )
 
@@ -345,6 +489,24 @@ internal fun PlaybackScreen(
                         modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurface,
+                    )
+                }
+            }
+
+            mobileGestureFeedback?.let { feedback ->
+                Surface(
+                    modifier = Modifier
+                        .align(Alignment.Center)
+                        .padding(24.dp),
+                    shape = RoundedCornerShape(12.dp),
+                    color = Color.Black.copy(alpha = 0.76f),
+                    tonalElevation = 0.dp,
+                ) {
+                    Text(
+                        text = "${feedback.label} · ${feedback.percent}%",
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
+                        style = MaterialTheme.typography.labelLarge,
+                        color = Color.White,
                     )
                 }
             }
@@ -613,6 +775,23 @@ internal fun tvLiveChannelNavigationForKeyCode(keyCode: Int): PlaybackNavigation
         KeyEvent.KEYCODE_CHANNEL_DOWN -> PlaybackNavigationDirection.PREVIOUS
         else -> null
     }
+
+private fun currentWindowBrightness(activity: Activity?, context: Context): Float {
+    val windowBrightness = activity?.window?.attributes?.screenBrightness ?: -1f
+    if (windowBrightness >= 0f) return windowBrightness.coerceIn(0.01f, 1f)
+
+    val systemBrightness = runCatching {
+        Settings.System.getInt(context.contentResolver, Settings.System.SCREEN_BRIGHTNESS)
+    }.getOrDefault(128)
+    return (systemBrightness / 255f).coerceIn(0.01f, 1f)
+}
+
+private fun setWindowBrightness(activity: Activity?, brightness: Float) {
+    val host = activity ?: return
+    val attributes = host.window.attributes
+    attributes.screenBrightness = brightness.coerceIn(0.01f, 1f)
+    host.window.attributes = attributes
+}
 
 @Composable
 private fun FullscreenSystemBarsEffect(enabled: Boolean) {
