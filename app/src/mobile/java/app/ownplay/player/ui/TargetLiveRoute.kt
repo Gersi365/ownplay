@@ -16,7 +16,6 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
@@ -26,7 +25,6 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.LazyRow
@@ -64,6 +62,11 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -506,29 +509,27 @@ private fun MobileLiveBrowsePane(
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
 
             when {
-                loadingChannels && state.catalogChannelCount == 0 -> Box(
-                    modifier = Modifier.fillMaxSize(),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    CircularProgressIndicator()
-                }
+                loadingChannels && state.catalogChannelCount == 0 -> MobileLiveStatusState(
+                    title = "Loading channels",
+                    detail = "Preparing your Live catalog…",
+                    loading = true,
+                    modifier = Modifier.weight(1f),
+                )
                 state.catalogChannelCount == 0 -> MobileLiveEmptyState(
                     failed = channelRefreshFailed,
                     onRetry = onRetry,
                     onOpenSettings = onOpenSettings,
                     modifier = Modifier.weight(1f),
                 )
-                state.channels.isEmpty() -> Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(24.dp),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Text(
-                        text = "No matching channels",
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
+                state.channels.isEmpty() -> MobileLiveStatusState(
+                    title = "No matching channels",
+                    detail = if (state.query.searchTerm.isNotBlank()) {
+                        "Try another search term or category."
+                    } else {
+                        "This category does not contain any channels."
+                    },
+                    modifier = Modifier.weight(1f),
+                )
                 else -> LazyColumn(
                     state = channelListState,
                     modifier = Modifier
@@ -609,9 +610,19 @@ private fun MobileChannelRow(
                     MaterialTheme.colorScheme.background
                 },
             )
+            .semantics(mergeDescendants = true) {
+                selected = active
+                stateDescription = when {
+                    active -> "Currently previewing"
+                    channel.isFavorite -> "Favorite channel"
+                    else -> "Channel"
+                }
+            }
             .clickable(
                 interactionSource = interactionSource,
                 indication = null,
+                role = Role.Button,
+                onClickLabel = if (active) "Open full view" else "Open preview",
                 onClick = onClick,
             )
             .padding(horizontal = 14.dp, vertical = 10.dp),
@@ -659,6 +670,7 @@ private fun MobileChannelRow(
         if (channel.isFavorite) {
             Text(
                 text = "★",
+                modifier = Modifier.clearAndSetSemantics { },
                 color = MaterialTheme.colorScheme.primary,
                 style = MaterialTheme.typography.labelLarge,
             )
@@ -686,13 +698,14 @@ private fun MobileChannelLogo(
     Box(
         modifier = modifier
             .clip(RoundedCornerShape(9.dp))
-            .background(MaterialTheme.colorScheme.surfaceVariant),
+            .background(MaterialTheme.colorScheme.surfaceVariant)
+            .clearAndSetSemantics { },
         contentAlignment = Alignment.Center,
     ) {
         image?.let { bitmap ->
             Image(
                 bitmap = bitmap,
-                contentDescription = title,
+                contentDescription = null,
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(4.dp),
@@ -760,6 +773,39 @@ private fun decodeMobileLogo(bytes: ByteArray): ImageBitmap? {
 }
 
 @Composable
+private fun MobileLiveStatusState(
+    title: String,
+    detail: String,
+    loading: Boolean = false,
+    modifier: Modifier = Modifier,
+) {
+    Column(
+        modifier = modifier
+            .fillMaxSize()
+            .padding(24.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterVertically),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        if (loading) {
+            CircularProgressIndicator(
+                modifier = Modifier.size(28.dp),
+                strokeWidth = 2.dp,
+            )
+        }
+        Text(
+            text = title,
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.SemiBold,
+        )
+        Text(
+            text = detail,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
+@Composable
 private fun MobileLiveEmptyState(
     failed: Boolean,
     onRetry: () -> Unit,
@@ -770,15 +816,14 @@ private fun MobileLiveEmptyState(
         modifier = modifier
             .fillMaxWidth()
             .padding(24.dp),
-        verticalArrangement = Arrangement.Center,
-        horizontalAlignment = Alignment.Start,
+        verticalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterVertically),
+        horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Text(
             text = if (failed) "Channels could not be refreshed" else "No Live channels",
             style = MaterialTheme.typography.titleLarge,
             fontWeight = FontWeight.SemiBold,
         )
-        Spacer(modifier = Modifier.width(1.dp))
         Text(
             text = "Check the playlist or refresh it from Settings.",
             style = MaterialTheme.typography.bodyMedium,

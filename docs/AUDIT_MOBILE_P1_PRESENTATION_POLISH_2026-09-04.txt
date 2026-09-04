@@ -1,0 +1,36 @@
+OWNPLAY MOBILE P1 PRESENTATION POLISH AUDIT
+Date: 2026-09-04
+
+SOURCE AUTHORITY AT MUTATION START
+- Draft source PR: #114
+- Branch: agent/stale-refresh-coalesce-no-apk
+- Parent head: 7de08d43159757feb588f6456b8493034a74d734
+- Parent tree: 292fbc0960e6d9ef7e7f7241cd60cd8ee7c22eae
+- PR state verified open / draft / unmerged / mergeable before mutation.
+
+AUTHORIZED SCOPE
+Mobile presentation polish only. No APK authorized.
+
+IMPLEMENTATION SCOPE
+1. Mobile Live initial channel loading now uses a deliberate title/detail/loading surface instead of a lone spinner.
+2. Mobile Live filtered/category empty state now distinguishes no matching results from an empty catalog and provides contextual copy.
+3. Mobile Live genuine empty/failure state spacing is normalized; the ineffective width-only Spacer is removed.
+4. Mobile no-playlist / preparing-Live shell state is presented as a deliberate centered state surface with contextual copy and a Settings action only when configuration is actually absent.
+5. Mobile Library distinguishes initial catalog refresh from genuine empty content. Existing cached content remains visible while refresh runs; TV and Offline presentation policy is unchanged.
+6. Mobile channel rows expose selected/current state and explicit Preview/Full View accessibility action semantics; decorative channel logos/favorite glyphs no longer duplicate row announcements.
+7. Mobile Preview transparent tap target exposes an explicit accessibility role, label and Full View action.
+8. A focused unit test covers the Mobile Library initial-loading presentation policy.
+
+BOUNDARIES PRESERVED
+- No TV interaction contract changes.
+- No Live category swipe threshold changes.
+- No Full View gesture changes.
+- No Full EPG changes.
+- No playback engine/session ownership changes.
+- No Room/schema changes.
+- No source/auth/network architecture changes.
+- No version bump.
+- No APK build, release, deploy, merge, signing change, force push, reset or history rewrite.
+
+VALIDATION BOUNDARY
+This audit file is part of the source commit for this pass. Exact-head Android Validation No APK is required after the commit. Physical-device PASS cannot be claimed from source/CI validation.
