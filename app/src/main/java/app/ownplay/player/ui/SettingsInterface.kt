@@ -44,12 +44,12 @@ internal fun PortraitSettingsMenu(
                 .fillMaxWidth()
                 .widthIn(max = 760.dp)
                 .verticalScroll(rememberScrollState())
-                .padding(horizontal = 16.dp, vertical = 12.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
+                .padding(horizontal = 18.dp, vertical = 16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             Column(
-                modifier = Modifier.padding(horizontal = 2.dp, vertical = 4.dp),
-                verticalArrangement = Arrangement.spacedBy(3.dp),
+                modifier = Modifier.padding(horizontal = 4.dp, vertical = 4.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
             ) {
                 Text(
                     text = "Settings",
@@ -57,15 +57,15 @@ internal fun PortraitSettingsMenu(
                     fontWeight = FontWeight.Bold,
                 )
                 Text(
-                    text = "Device, content, downloads and app information.",
-                    style = MaterialTheme.typography.bodySmall,
+                    text = "Control the interface, organize content and manage offline media.",
+                    style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
 
             CompactSettingsSection(
                 title = "Interface",
-                subtitle = "App target and orientation",
+                subtitle = "Orientation and device behavior",
             ) {
                 InterfaceSettingsContent(
                     deviceProfile = deviceProfile,
@@ -76,7 +76,7 @@ internal fun PortraitSettingsMenu(
 
             CompactSettingsSection(
                 title = "Content",
-                subtitle = "Live organization, playlists and backup",
+                subtitle = "Live organization, playlists and personalization",
             ) {
                 ContentSettingsContent(
                     summaries = summaries,
@@ -87,11 +87,11 @@ internal fun PortraitSettingsMenu(
 
             CompactSettingsSection(
                 title = "Downloads",
-                subtitle = "Offline movies and series episodes",
+                subtitle = "Movies and series episodes saved offline",
             ) {
                 SettingsActionRow(
                     title = "Downloaded media",
-                    detail = "Progress · retry · remove",
+                    detail = "View progress, retry downloads or remove saved media",
                     actionLabel = "Open",
                     onClick = onOpenDownloads,
                 )
@@ -99,7 +99,7 @@ internal fun PortraitSettingsMenu(
 
             CompactSettingsSection(
                 title = "About",
-                subtitle = "OwnPlay information",
+                subtitle = "OwnPlay and build information",
             ) {
                 AboutSettingsContent()
             }
@@ -114,7 +114,7 @@ internal fun InterfaceSettingsContent(
     onSetOrientation: (AppOrientationMode) -> Unit,
 ) {
     SettingValueRow(
-        label = "App target",
+        label = "Device target",
         value = when (deviceProfile) {
             AppDeviceProfile.SMARTPHONE -> "Mobile"
             AppDeviceProfile.ANDROID_TV -> "TV"
@@ -124,18 +124,18 @@ internal fun InterfaceSettingsContent(
     Text(
         text = when (deviceProfile) {
             AppDeviceProfile.SMARTPHONE ->
-                "This APK is touch-first. Device target switching is disabled."
+                "This build uses touch-first Mobile controls."
             AppDeviceProfile.ANDROID_TV ->
-                "This APK is D-pad/remote-first. Device target switching is disabled."
-            null -> "Loading app target…"
+                "This build uses remote-first TV controls."
+            null -> "Loading device target…"
         },
-        style = MaterialTheme.typography.labelSmall,
+        style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
 
     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
     SettingValueRow(
-        label = "App orientation",
+        label = "Orientation",
         value = when (deviceProfile) {
             AppDeviceProfile.SMARTPHONE -> if (orientationMode == AppOrientationMode.LANDSCAPE) {
                 "Landscape"
@@ -170,10 +170,10 @@ internal fun InterfaceSettingsContent(
             AppDeviceProfile.SMARTPHONE ->
                 "With an active Live preview, rotating to landscape can open the full player."
             AppDeviceProfile.ANDROID_TV ->
-                "TV target stays landscape and uses the D-pad/remote layout."
+                "TV stays landscape and uses the D-pad/remote layout."
             null -> "Loading orientation…"
         },
-        style = MaterialTheme.typography.labelSmall,
+        style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
 }
