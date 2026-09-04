@@ -10,6 +10,7 @@ data class LiveBrowseState(
     val categories: List<LiveCategory> = emptyList(),
     val customGroups: List<LiveCustomGroup> = emptyList(),
     val channels: List<LiveChannelItem> = emptyList(),
+    val categoryNavigationChannels: List<LiveChannelItem> = emptyList(),
     val channelCategoryKeyById: Map<String, String?> = emptyMap(),
     val catalogChannelCount: Int = 0,
     val query: LiveBrowseQuery = LiveBrowseQuery(),
@@ -24,20 +25,30 @@ class LiveBrowseSession(
         catalog,
         query,
     ) { snapshot, currentQuery ->
+        val visibleCategories = snapshot.categories
+            .asSequence()
+            .filter { category -> currentQuery.includeHidden || !category.isHidden }
+            .sortedWith(
+                compareBy<LiveCategory> { it.manualOrder == null }
+                    .thenBy { it.manualOrder ?: Long.MAX_VALUE }
+                    .thenBy(LiveCategory::providerOrder),
+            )
+            .toList()
         LiveBrowseState(
-            categories = snapshot.categories
-                .asSequence()
-                .filter { category -> currentQuery.includeHidden || !category.isHidden }
-                .sortedWith(
-                    compareBy<LiveCategory> { it.manualOrder == null }
-                        .thenBy { it.manualOrder ?: Long.MAX_VALUE }
-                        .thenBy(LiveCategory::providerOrder),
-                )
-                .toList(),
+            categories = visibleCategories,
             customGroups = snapshot.customGroups.sortedBy(LiveCustomGroup::groupOrder),
             channels = LiveBrowseProjector.project(
                 records = snapshot.channels,
                 query = currentQuery,
+                customGroupIdsByChannelId = snapshot.customGroupIdsByChannelId,
+                hiddenCategoryKeys = snapshot.hiddenCategoryKeys,
+            ),
+            categoryNavigationChannels = LiveBrowseProjector.project(
+                records = snapshot.channels,
+                query = currentQuery.copy(
+                    searchTerm = "",
+                    categoryKey = null,
+                ),
                 customGroupIdsByChannelId = snapshot.customGroupIdsByChannelId,
                 hiddenCategoryKeys = snapshot.hiddenCategoryKeys,
             ),

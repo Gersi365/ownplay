@@ -104,9 +104,10 @@ private data class MobileFullscreenGestureFeedback(
  * interaction layer. TV remote behavior is CH+ / CH- -> next / previous channel, OK -> reveal EPG,
  * Down -> enter EPG, Left/Right -> move through available programmes, Up -> leave the EPG timeline.
  * D-pad Up/Down are reserved for focus/EPG navigation and never perform direct channel zapping.
- * The final timeline card opens the full guide by returning to Preview first. Mobile uses tap to
- * show/hide EPG, horizontal swipe to change channel, left-side vertical swipe for brightness, and
- * right-side vertical swipe for media volume.
+ * The final timeline card opens the full guide over Full View without tearing down playback. Mobile
+ * uses tap to show/hide EPG, horizontal swipe to change channel, left-side vertical swipe for
+ * brightness, and right-side vertical swipe for media volume. Category gestures belong only to the
+ * channel browser and never to Full View.
  */
 @Suppress("UNUSED_PARAMETER")
 @OptIn(UnstableApi::class)
@@ -159,6 +160,7 @@ internal fun PlaybackScreen(
     var epgVisible by remember(selection.request.channelId) { mutableStateOf(true) }
     var epgFocused by remember(selection.request.channelId) { mutableStateOf(false) }
     var epgLoading by remember(selection.request.channelId) { mutableStateOf(true) }
+    var showFullGuide by remember(selection.request.channelId) { mutableStateOf(false) }
     var selectedProgramIndex by remember(selection.request.channelId) {
         mutableIntStateOf(currentProgramIndex)
     }
@@ -189,8 +191,8 @@ internal fun PlaybackScreen(
 
     fun openFullGuide() {
         if (!LiveFullscreenEpgPolicy.canEnterTimeline(overlayPrograms.size)) return
-        LiveEpgPresentationBridge.requestFullGuide()
-        onReturnToChannels()
+        epgFocused = false
+        showFullGuide = true
     }
 
     FullscreenSystemBarsEffect(enabled = true)
@@ -219,6 +221,7 @@ internal fun PlaybackScreen(
     LaunchedEffect(selection.request.channelId, isTelevision) {
         epgVisible = true
         epgFocused = false
+        showFullGuide = false
         selectedProgramIndex = currentProgramIndex
         interactionGeneration += 1
         if (isTelevision) {
@@ -231,8 +234,14 @@ internal fun PlaybackScreen(
         if (!epgFocused) selectedProgramIndex = currentProgramIndex
     }
 
-    LaunchedEffect(epgVisible, epgFocused, interactionGeneration, state, epgLoading) {
-        if (epgVisible && !epgFocused && !epgLoading && state is PlaybackState.Playing) {
+    LaunchedEffect(epgVisible, epgFocused, interactionGeneration, state, epgLoading, showFullGuide) {
+        if (
+            epgVisible &&
+            !epgFocused &&
+            !showFullGuide &&
+            !epgLoading &&
+            state is PlaybackState.Playing
+        ) {
             delay(LIVE_EPG_AUTO_HIDE_MILLIS)
             epgVisible = false
         }
@@ -245,7 +254,13 @@ internal fun PlaybackScreen(
         }
     }
 
-    BackHandler(onBack = onReturnToChannels)
+    BackHandler {
+        if (showFullGuide) {
+            showFullGuide = false
+        } else {
+            onReturnToChannels()
+        }
+    }
 
     Surface(
         modifier = Modifier.fillMaxSize(),
@@ -259,6 +274,7 @@ internal fun PlaybackScreen(
                         Modifier
                             .focusRequester(rootFocusRequester)
                             .onPreviewKeyEvent { event ->
+                                if (showFullGuide) return@onPreviewKeyEvent false
                                 val native = event.nativeKeyEvent
                                 if (native.action != KeyEvent.ACTION_DOWN) {
                                     return@onPreviewKeyEvent false
@@ -368,8 +384,9 @@ internal fun PlaybackScreen(
                         selection.request.channelId,
                         hostActivity,
                         audioManager,
+                        showFullGuide,
                     ) {
-                        if (isTelevision) return@pointerInput
+                        if (isTelevision || showFullGuide) return@pointerInput
 
                         var startX = 0f
                         var totalX = 0f
@@ -458,7 +475,7 @@ internal fun PlaybackScreen(
                         )
                     }
                     .clickable(
-                        enabled = !isTelevision,
+                        enabled = !isTelevision && !showFullGuide,
                         interactionSource = touchInteractionSource,
                         indication = null,
                         onClick = ::toggleEpg,
@@ -512,7 +529,7 @@ internal fun PlaybackScreen(
             }
 
             AnimatedVisibility(
-                visible = epgVisible,
+                visible = epgVisible && !showFullGuide,
                 modifier = Modifier.align(Alignment.BottomCenter),
                 enter = fadeIn(),
                 exit = fadeOut(),
@@ -535,6 +552,16 @@ internal fun PlaybackScreen(
                 )
             }
         }
+    }
+
+    if (showFullGuide) {
+        EpgGuideSheet(
+            channelName = selection.displayName,
+            snapshot = epgSnapshot,
+            loading = epgLoading,
+            failed = false,
+            onDismiss = { showFullGuide = false },
+        )
     }
 }
 
@@ -754,7 +781,7 @@ private fun LiveFullscreenFullGuideCard(
                 },
             )
             Text(
-                text = "Returns to Preview",
+                text = "Stays in Full View",
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
