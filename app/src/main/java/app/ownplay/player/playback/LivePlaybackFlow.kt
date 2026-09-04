@@ -1,5 +1,6 @@
 package app.ownplay.player.playback
 
+import app.ownplay.player.live.LiveCategory
 import app.ownplay.player.live.LiveChannelItem
 
 data class LivePlaybackBrowseEntry(
@@ -14,14 +15,36 @@ data class LivePlaybackBrowseEntry(
         "LivePlaybackBrowseEntry(channelId=<opaque>, displayName=$displayName)"
 }
 
+data class LivePlaybackCategoryEntry(
+    val categoryKey: String,
+    val displayName: String,
+    val entries: List<LivePlaybackBrowseEntry>,
+) {
+    init {
+        require(categoryKey.isNotBlank()) { "Category key must not be blank" }
+        require(entries.isNotEmpty()) { "Category navigation entries must not be empty" }
+        require(entries.map(LivePlaybackBrowseEntry::channelId).distinct().size == entries.size) {
+            "Category navigation channel IDs must be unique"
+        }
+    }
+
+    override fun toString(): String =
+        "LivePlaybackCategoryEntry(categoryKey=<opaque>, displayName=$displayName, entryCount=${entries.size})"
+}
+
 data class LivePlaybackBrowseContext(
     val sourceId: String,
     val entries: List<LivePlaybackBrowseEntry>,
+    val activeCategoryKey: String? = null,
+    val categories: List<LivePlaybackCategoryEntry> = emptyList(),
 ) {
     init {
         require(sourceId.isNotBlank()) { "Source ID must not be blank" }
         require(entries.map(LivePlaybackBrowseEntry::channelId).distinct().size == entries.size) {
             "Browse context channel IDs must be unique"
+        }
+        require(categories.map(LivePlaybackCategoryEntry::categoryKey).distinct().size == categories.size) {
+            "Browse context category keys must be unique"
         }
     }
 
@@ -43,26 +66,77 @@ data class LivePlaybackBrowseContext(
         )
     }
 
+    fun categorySelection(direction: PlaybackNavigationDirection): LivePlaybackSelection? {
+        val currentIndex = categories.indexOfFirst { category ->
+            category.categoryKey == activeCategoryKey
+        }
+        if (currentIndex < 0) return null
+        val targetIndex = when (direction) {
+            PlaybackNavigationDirection.PREVIOUS -> currentIndex - 1
+            PlaybackNavigationDirection.NEXT -> currentIndex + 1
+        }
+        val targetCategory = categories.getOrNull(targetIndex) ?: return null
+        val targetEntry = targetCategory.entries.firstOrNull() ?: return null
+        val targetContext = copy(
+            entries = targetCategory.entries,
+            activeCategoryKey = targetCategory.categoryKey,
+        )
+        return targetContext.selectionFor(targetEntry.channelId)
+    }
+
     override fun toString(): String =
-        "LivePlaybackBrowseContext(sourceId=<opaque>, entryCount=${entries.size})"
+        "LivePlaybackBrowseContext(sourceId=<opaque>, entryCount=${entries.size}, categoryCount=${categories.size})"
 
     companion object {
         fun capture(
             sourceId: String,
             visibleChannels: List<LiveChannelItem>,
-        ): LivePlaybackBrowseContext = LivePlaybackBrowseContext(
-            sourceId = sourceId,
-            entries = visibleChannels.asSequence()
-                .filter { channel -> channel.sourceId == sourceId }
-                .distinctBy(LiveChannelItem::channelId)
-                .map { channel ->
-                    LivePlaybackBrowseEntry(
-                        channelId = channel.channelId,
-                        displayName = normalizedDisplayName(channel.displayName),
+            categories: List<LiveCategory> = emptyList(),
+            categoryNavigationChannels: List<LiveChannelItem> = visibleChannels,
+            activeCategoryKey: String? = null,
+        ): LivePlaybackBrowseContext {
+            val currentEntries = browseEntries(
+                sourceId = sourceId,
+                channels = visibleChannels,
+            )
+            val categoryEntries = categories.mapNotNull { category ->
+                val entries = browseEntries(
+                    sourceId = sourceId,
+                    channels = categoryNavigationChannels.filter { channel ->
+                        channel.categoryKey == category.providerCategoryKey
+                    },
+                )
+                entries.takeIf(List<LivePlaybackBrowseEntry>::isNotEmpty)?.let {
+                    LivePlaybackCategoryEntry(
+                        categoryKey = category.providerCategoryKey,
+                        displayName = category.name,
+                        entries = it,
                     )
                 }
-                .toList(),
-        )
+            }
+            return LivePlaybackBrowseContext(
+                sourceId = sourceId,
+                entries = currentEntries,
+                activeCategoryKey = activeCategoryKey?.takeIf { key ->
+                    categoryEntries.any { category -> category.categoryKey == key }
+                },
+                categories = categoryEntries,
+            )
+        }
+
+        private fun browseEntries(
+            sourceId: String,
+            channels: List<LiveChannelItem>,
+        ): List<LivePlaybackBrowseEntry> = channels.asSequence()
+            .filter { channel -> channel.sourceId == sourceId }
+            .distinctBy(LiveChannelItem::channelId)
+            .map { channel ->
+                LivePlaybackBrowseEntry(
+                    channelId = channel.channelId,
+                    displayName = normalizedDisplayName(channel.displayName),
+                )
+            }
+            .toList()
     }
 }
 
@@ -77,10 +151,16 @@ data class LivePlaybackSelection(
         }
     }
 
+    val categoryKey: String?
+        get() = browseContext?.activeCategoryKey
+
     fun navigate(direction: PlaybackNavigationDirection): LivePlaybackSelection? {
         val targetChannelId = request.navigationTarget(direction) ?: return null
         return browseContext?.selectionFor(targetChannelId)
     }
+
+    fun navigateCategory(direction: PlaybackNavigationDirection): LivePlaybackSelection? =
+        browseContext?.categorySelection(direction)
 
     override fun toString(): String =
         "LivePlaybackSelection(request=$request, displayName=$displayName)"
