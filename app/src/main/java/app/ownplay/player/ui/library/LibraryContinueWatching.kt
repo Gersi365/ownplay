@@ -3,10 +3,13 @@ package app.ownplay.player.ui.library
 import android.content.res.Configuration
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
@@ -30,6 +33,7 @@ import androidx.compose.ui.unit.dp
 import app.ownplay.player.series.SeriesEpisode
 import app.ownplay.player.ui.vod.RemotePoster
 import app.ownplay.player.vod.VodMovie
+import kotlin.math.roundToInt
 
 @Composable
 internal fun LibraryMovieContinueWatchingStrip(
@@ -44,7 +48,7 @@ internal fun LibraryMovieContinueWatchingStrip(
         key = { it.movieId },
         posterUrl = { it.posterUrl },
         title = { it.name },
-        subtitle = { "Continue movie" },
+        subtitle = { null },
         positionMs = { it.positionMs },
         durationMs = { it.durationMs },
         onOpen = onOpenMovie,
@@ -79,7 +83,7 @@ private fun <T> LibraryContinueWatchingStrip(
     key: (T) -> String,
     posterUrl: (T) -> String?,
     title: (T) -> String,
-    subtitle: (T) -> String,
+    subtitle: (T) -> String?,
     positionMs: (T) -> Long?,
     durationMs: (T) -> Long?,
     onOpen: (T) -> Unit,
@@ -110,6 +114,7 @@ private fun <T> LibraryContinueWatchingStrip(
         ) {
             items(items = items, key = key) { item ->
                 var focused by remember(key(item)) { mutableStateOf(false) }
+                val progress = progressFraction(positionMs(item), durationMs(item))
                 Surface(
                     modifier = Modifier
                         .width(cardWidth)
@@ -134,6 +139,18 @@ private fun <T> LibraryContinueWatchingStrip(
                                 .fillMaxWidth()
                                 .aspectRatio(2f / 3f),
                         )
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(3.dp),
+                        ) {
+                            progress?.let { watched ->
+                                LinearProgressIndicator(
+                                    progress = { watched },
+                                    modifier = Modifier.fillMaxSize(),
+                                )
+                            }
+                        }
                         Text(
                             text = title(item),
                             style = MaterialTheme.typography.labelLarge,
@@ -141,19 +158,24 @@ private fun <T> LibraryContinueWatchingStrip(
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                         )
-                        Text(
-                            text = subtitle(item),
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                        progressFraction(positionMs(item), durationMs(item))?.let { progress ->
-                            LinearProgressIndicator(
-                                progress = { progress },
-                                modifier = Modifier.fillMaxWidth(),
+                        subtitle(item)?.takeIf(String::isNotBlank)?.let { context ->
+                            Text(
+                                text = context,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
                             )
                         }
+                        Text(
+                            text = continueWatchingResumeLabel(
+                                positionMs = positionMs(item),
+                                durationMs = durationMs(item),
+                            ),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.primary,
+                            maxLines = 1,
+                        )
                     }
                 }
             }
@@ -165,4 +187,9 @@ internal fun progressFraction(positionMs: Long?, durationMs: Long?): Float? {
     val duration = durationMs?.takeIf { it > 0L } ?: return null
     val position = positionMs?.coerceAtLeast(0L) ?: return null
     return (position.toDouble() / duration.toDouble()).toFloat().coerceIn(0f, 1f)
+}
+
+internal fun continueWatchingResumeLabel(positionMs: Long?, durationMs: Long?): String {
+    val progress = progressFraction(positionMs, durationMs) ?: return "Resume"
+    return "Resume · ${(progress * 100f).roundToInt()}%"
 }

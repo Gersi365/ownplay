@@ -11,6 +11,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.produceState
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -22,12 +23,32 @@ import androidx.compose.ui.unit.dp
 import app.ownplay.player.source.network.SourceHttpClient
 import java.io.ByteArrayOutputStream
 import java.io.InputStream
+import java.util.LinkedHashMap
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.Request
 
 private const val MAX_POSTER_BYTES = 8 * 1024 * 1024
 private const val MAX_POSTER_LONG_EDGE_PX = 768
+private const val MAX_POSTER_CACHE_ENTRIES = 16
+
+private val posterCacheLock = Any()
+private val posterMemoryCache = object : LinkedHashMap<String, ImageBitmap>(
+    MAX_POSTER_CACHE_ENTRIES,
+    0.75f,
+    true,
+) {
+    override fun removeEldestEntry(
+        eldest: MutableMap.MutableEntry<String, ImageBitmap>?,
+    ): Boolean = size > MAX_POSTER_CACHE_ENTRIES
+}
+
+private sealed interface RemotePosterState {
+    data object Loading : RemotePosterState
+    data class Loaded(val image: ImageBitmap) : RemotePosterState
+    data object Unavailable : RemotePosterState
+}
 
 @Composable
 internal fun RemotePoster(
@@ -35,28 +56,40 @@ internal fun RemotePoster(
     title: String,
     modifier: Modifier = Modifier,
 ) {
-    val image by produceState<ImageBitmap?>(initialValue = null, key1 = url) {
-        value = url
-            ?.takeIf(String::isNotBlank)
-            ?.let { posterUrl ->
-                withContext(Dispatchers.IO) {
-                    runCatching {
-                        SourceHttpClient.shared.newCall(
-                            Request.Builder().url(posterUrl).get().build(),
-                        ).execute().use { response ->
-                            if (!response.isSuccessful) return@use null
-                            val body = response.body
-                            val contentLength = body.contentLength()
-                            if (contentLength > MAX_POSTER_BYTES.toLong()) return@use null
-                            val bytes = readPosterBytes(
-                                input = body.byteStream(),
-                                maxBytes = MAX_POSTER_BYTES,
-                            ) ?: return@use null
-                            decodePoster(bytes)
-                        }
-                    }.getOrNull()
-                }
-            }
+    val normalizedUrl = remember(url) {
+        url?.trim()?.takeIf(String::isNotBlank)
+    }
+    val initialState = remember(normalizedUrl) {
+        when {
+            normalizedUrl == null -> RemotePosterState.Unavailable
+            else -> cachedPoster(normalizedUrl)
+                ?.let(RemotePosterState::Loaded)
+                ?: RemotePosterState.Loading
+        }
+    }
+    val state by produceState<RemotePosterState>(
+        initialValue = initialState,
+        key1 = normalizedUrl,
+    ) {
+        val posterUrl = normalizedUrl
+        if (posterUrl == null) {
+            value = RemotePosterState.Unavailable
+            return@produceState
+        }
+
+        cachedPoster(posterUrl)?.let { cached ->
+            value = RemotePosterState.Loaded(cached)
+            return@produceState
+        }
+
+        value = RemotePosterState.Loading
+        val loadedPoster = loadRemotePoster(posterUrl)
+        value = if (loadedPoster != null) {
+            cachePoster(posterUrl, loadedPoster)
+            RemotePosterState.Loaded(loadedPoster)
+        } else {
+            RemotePosterState.Unavailable
+        }
     }
 
     Box(
@@ -65,19 +98,53 @@ internal fun RemotePoster(
             .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.42f)),
         contentAlignment = Alignment.Center,
     ) {
-        image?.let { poster ->
-            Image(
-                bitmap = poster,
-                contentDescription = title,
+        when (val currentState = state) {
+            is RemotePosterState.Loaded -> Image(
+                bitmap = currentState.image,
+                contentDescription = null,
                 modifier = Modifier.fillMaxSize(),
                 contentScale = ContentScale.Crop,
             )
-        } ?: Text(
-            text = title.trim().firstOrNull()?.uppercase() ?: "•",
-            style = MaterialTheme.typography.titleLarge,
-            fontWeight = FontWeight.Medium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.82f),
-        )
+            RemotePosterState.Loading -> Unit
+            RemotePosterState.Unavailable -> Text(
+                text = title.trim().firstOrNull()?.uppercase() ?: "•",
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Medium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.82f),
+            )
+        }
+    }
+}
+
+private fun cachedPoster(url: String): ImageBitmap? = synchronized(posterCacheLock) {
+    posterMemoryCache[url]
+}
+
+private fun cachePoster(url: String, image: ImageBitmap) {
+    synchronized(posterCacheLock) {
+        posterMemoryCache[url] = image
+    }
+}
+
+private suspend fun loadRemotePoster(url: String): ImageBitmap? = withContext(Dispatchers.IO) {
+    try {
+        SourceHttpClient.shared.newCall(
+            Request.Builder().url(url).get().build(),
+        ).execute().use { response ->
+            if (!response.isSuccessful) return@use null
+            val body = response.body
+            val contentLength = body.contentLength()
+            if (contentLength > MAX_POSTER_BYTES.toLong()) return@use null
+            val bytes = readPosterBytes(
+                input = body.byteStream(),
+                maxBytes = MAX_POSTER_BYTES,
+            ) ?: return@use null
+            decodePoster(bytes)
+        }
+    } catch (cancelled: CancellationException) {
+        throw cancelled
+    } catch (_: Exception) {
+        null
     }
 }
 
