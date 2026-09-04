@@ -277,7 +277,6 @@ internal fun TargetLiveRoute(
             categories = state.categories,
             categoryNavigationChannels = state.categoryNavigationChannels,
             activeCategoryKey = state.query.categoryKey,
-            categoryNavigationEnabled = false,
         )
         when (
             val action = LiveChannelSelectionRouter.route(
