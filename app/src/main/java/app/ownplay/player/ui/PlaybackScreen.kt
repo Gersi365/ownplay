@@ -85,7 +85,6 @@ import kotlin.math.roundToInt
 private const val LIVE_EPG_AUTO_HIDE_MILLIS = 4_500L
 private const val LIVE_EPG_PROGRAM_LIMIT = 6
 private const val MOBILE_CHANNEL_SWIPE_TRIGGER_FRACTION = 0.12f
-private const val MOBILE_CATEGORY_SWIPE_ZONE_FRACTION = 0.28f
 private const val MOBILE_GESTURE_FEEDBACK_HIDE_MILLIS = 700L
 
 private enum class MobileFullscreenGestureAxis {
@@ -106,9 +105,9 @@ private data class MobileFullscreenGestureFeedback(
  * Down -> enter EPG, Left/Right -> move through available programmes, Up -> leave the EPG timeline.
  * D-pad Up/Down are reserved for focus/EPG navigation and never perform direct channel zapping.
  * The final timeline card opens the full guide over Full View without tearing down playback. Mobile
- * uses tap to show/hide EPG, horizontal swipe in the upper video zone to change category, horizontal
- * swipe elsewhere to change channel, left-side vertical swipe for brightness, and right-side
- * vertical swipe for media volume.
+ * uses tap to show/hide EPG, horizontal swipe to change channel, left-side vertical swipe for
+ * brightness, and right-side vertical swipe for media volume. Category gestures belong only to the
+ * channel browser and never to Full View.
  */
 @Suppress("UNUSED_PARAMETER")
 @OptIn(UnstableApi::class)
@@ -126,7 +125,6 @@ internal fun PlaybackScreen(
     onNavigate: (PlaybackNavigationDirection) -> Unit,
     onReturnToChannels: () -> Unit,
     onFullscreenStateChanged: (Boolean) -> Unit,
-    onNavigateCategory: (PlaybackNavigationDirection) -> Unit = {},
 ) {
     val configuration = LocalConfiguration.current
     val context = LocalContext.current
@@ -391,7 +389,6 @@ internal fun PlaybackScreen(
                         if (isTelevision || showFullGuide) return@pointerInput
 
                         var startX = 0f
-                        var startY = 0f
                         var totalX = 0f
                         var totalY = 0f
                         var gestureAxis: MobileFullscreenGestureAxis? = null
@@ -403,7 +400,6 @@ internal fun PlaybackScreen(
                         detectDragGestures(
                             onDragStart = { offset ->
                                 startX = offset.x
-                                startY = offset.y
                                 totalX = 0f
                                 totalY = 0f
                                 gestureAxis = null
@@ -466,19 +462,13 @@ internal fun PlaybackScreen(
                                         size.width * MOBILE_CHANNEL_SWIPE_TRIGGER_FRACTION,
                                     )
                                     if (abs(totalX) >= triggerDistance) {
-                                        val direction = if (totalX < 0f) {
-                                            PlaybackNavigationDirection.NEXT
-                                        } else {
-                                            PlaybackNavigationDirection.PREVIOUS
-                                        }
-                                        if (
-                                            startY <=
-                                            size.height * MOBILE_CATEGORY_SWIPE_ZONE_FRACTION
-                                        ) {
-                                            onNavigateCategory(direction)
-                                        } else {
-                                            onNavigate(direction)
-                                        }
+                                        onNavigate(
+                                            if (totalX < 0f) {
+                                                PlaybackNavigationDirection.NEXT
+                                            } else {
+                                                PlaybackNavigationDirection.PREVIOUS
+                                            },
+                                        )
                                     }
                                 }
                             },
