@@ -209,7 +209,7 @@ internal fun TargetLiveRoute(
                     sourceId = sourceId,
                     channelId = channel.channelId,
                 )?.current ?: continue
-                currentEpgByChannelId = runtime.currentEpgPrograms(sourceId)
+                currentEpgByChannelId = currentEpgByChannelId + (channel.channelId to currentProgram)
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (_: Exception) {
