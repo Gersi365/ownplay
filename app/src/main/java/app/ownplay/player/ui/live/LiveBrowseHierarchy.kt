@@ -140,19 +140,19 @@ private fun LiveCategoryHierarchyPicker(
         Surface(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 14.dp, vertical = 6.dp),
-            shape = RoundedCornerShape(12.dp),
-            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.28f),
+                .padding(horizontal = 12.dp, vertical = 8.dp),
+            shape = RoundedCornerShape(16.dp),
+            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.34f),
             tonalElevation = 0.dp,
         ) {
             Column(
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
-                verticalArrangement = Arrangement.spacedBy(3.dp),
+                modifier = Modifier.padding(horizontal = 18.dp, vertical = 14.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
             ) {
                 Text(
                     text = "Live categories",
-                    style = MaterialTheme.typography.headlineSmall,
-                    fontWeight = FontWeight.Bold,
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.SemiBold,
                 )
                 Text(
                     text = "Choose a category, then browse its channels.",
@@ -164,8 +164,8 @@ private fun LiveCategoryHierarchyPicker(
 
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
+            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {
             items(
                 items = state.categories,
@@ -204,22 +204,22 @@ private fun LiveCategoryHierarchyRow(
         modifier = modifier
             .fillMaxWidth()
             .onFocusChanged { focused = it.isFocused },
-        shape = RoundedCornerShape(10.dp),
+        shape = RoundedCornerShape(14.dp),
         color = when {
-            focused -> MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.78f)
-            selected -> MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.42f)
-            else -> MaterialTheme.colorScheme.surface
+            focused -> MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.58f)
+            selected -> MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.32f)
+            else -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.20f)
         },
         tonalElevation = 0.dp,
     ) {
         Row(
-            modifier = Modifier.padding(horizontal = 14.dp, vertical = 11.dp),
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             Column(
                 modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(2.dp),
+                verticalArrangement = Arrangement.spacedBy(3.dp),
             ) {
                 Text(
                     text = title,

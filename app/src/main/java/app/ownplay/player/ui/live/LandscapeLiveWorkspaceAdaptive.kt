@@ -11,7 +11,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
@@ -170,7 +169,7 @@ internal fun LandscapeLiveWorkspaceAdaptive(
             onPreviewKeyEvent = { false },
             modifier = modifier
                 .fillMaxSize()
-                .padding(horizontal = 12.dp, vertical = 8.dp),
+                .padding(horizontal = 14.dp, vertical = 10.dp),
         )
         return
     }
@@ -178,8 +177,8 @@ internal fun LandscapeLiveWorkspaceAdaptive(
     Row(
         modifier = modifier
             .fillMaxSize()
-            .padding(horizontal = 12.dp, vertical = 8.dp),
-        horizontalArrangement = Arrangement.spacedBy(10.dp),
+            .padding(horizontal = 14.dp, vertical = 10.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         LandscapeBrowseSurface(
             state = state,
@@ -225,15 +224,15 @@ internal fun LandscapeLiveWorkspaceAdaptive(
             modifier = Modifier
                 .weight(0.38f)
                 .fillMaxHeight(),
-            shape = RoundedCornerShape(12.dp),
-            color = MaterialTheme.colorScheme.surface,
+            shape = RoundedCornerShape(16.dp),
+            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.22f),
             tonalElevation = 0.dp,
         ) {
             Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(10.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp),
+                    .padding(12.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
                 Box(
                     modifier = Modifier
@@ -267,8 +266,6 @@ internal fun LandscapeLiveWorkspaceAdaptive(
                         modifier = Modifier.fillMaxWidth(),
                     )
                 }
-
-                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
 
                 Box(
                     modifier = Modifier
@@ -324,8 +321,8 @@ private fun LandscapeBrowseSurface(
 ) {
     Surface(
         modifier = modifier.onPreviewKeyEvent(onPreviewKeyEvent),
-        shape = RoundedCornerShape(12.dp),
-        color = MaterialTheme.colorScheme.background,
+        shape = RoundedCornerShape(16.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.16f),
         tonalElevation = 0.dp,
     ) {
         HierarchicalLiveBrowse(

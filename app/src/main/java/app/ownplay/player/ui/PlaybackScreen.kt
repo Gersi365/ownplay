@@ -82,9 +82,11 @@ private const val LIVE_EPG_PROGRAM_LIMIT = 6
  * Live fullscreen presentation.
  *
  * Live intentionally has no playback menu. The video owns the screen and EPG is the only transient
- * interaction layer. TV remote behavior is OK -> reveal EPG, Down -> enter EPG, Left/Right -> move
- * through available programmes, Up -> leave the EPG timeline. The final timeline card opens the
- * full guide by returning to Preview first. Mobile uses a tap on the video to reveal the same EPG.
+ * interaction layer. TV remote behavior is CH+ / CH- -> next / previous channel, OK -> reveal EPG,
+ * Down -> enter EPG, Left/Right -> move through available programmes, Up -> leave the EPG timeline.
+ * D-pad Up/Down are reserved for focus/EPG navigation and never perform direct channel zapping.
+ * The final timeline card opens the full guide by returning to Preview first. Mobile uses a tap on
+ * the video to reveal the same EPG.
  */
 @Suppress("UNUSED_PARAMETER")
 @OptIn(UnstableApi::class)
@@ -210,6 +212,10 @@ internal fun PlaybackScreen(
                                 val native = event.nativeKeyEvent
                                 if (native.action != KeyEvent.ACTION_DOWN) {
                                     return@onPreviewKeyEvent false
+                                }
+                                tvLiveChannelNavigationForKeyCode(native.keyCode)?.let { direction ->
+                                    onNavigate(direction)
+                                    return@onPreviewKeyEvent true
                                 }
                                 when (native.keyCode) {
                                     KeyEvent.KEYCODE_DPAD_CENTER,
@@ -600,6 +606,13 @@ private fun timeRange(program: EpgProgram): String = when {
     program.startLabel != null -> program.startLabel
     else -> "—"
 }
+
+internal fun tvLiveChannelNavigationForKeyCode(keyCode: Int): PlaybackNavigationDirection? =
+    when (keyCode) {
+        KeyEvent.KEYCODE_CHANNEL_UP -> PlaybackNavigationDirection.NEXT
+        KeyEvent.KEYCODE_CHANNEL_DOWN -> PlaybackNavigationDirection.PREVIOUS
+        else -> null
+    }
 
 @Composable
 private fun FullscreenSystemBarsEffect(enabled: Boolean) {

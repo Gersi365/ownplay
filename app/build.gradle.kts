@@ -12,8 +12,8 @@ android {
     defaultConfig {
         minSdk = 26
         targetSdk = 36
-        versionCode = 9
-        versionName = "1.0.7-live-rotation-fix"
+        versionCode = 10
+        versionName = "1.0.8-live-controls-update"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }

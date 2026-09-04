@@ -8,7 +8,6 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -35,6 +34,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
@@ -463,16 +463,14 @@ private fun TVPrimaryNavigationBar(
     onOpenSettings: () -> Unit,
 ) {
     Surface(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 12.dp, vertical = 6.dp),
-        shape = RoundedCornerShape(12.dp),
-        color = MaterialTheme.colorScheme.surface,
-        tonalElevation = 1.dp,
+        modifier = Modifier.padding(horizontal = 24.dp, vertical = 10.dp),
+        shape = RoundedCornerShape(16.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.68f),
+        tonalElevation = 0.dp,
     ) {
         Row(
-            modifier = Modifier.padding(6.dp),
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            modifier = Modifier.padding(4.dp),
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             TVPrimaryNavigationItem(
@@ -505,18 +503,17 @@ private fun TVPrimaryNavigationItem(
     onClick: () -> Unit,
 ) {
     var focused by remember(label) { mutableStateOf(false) }
-    val emphasized = selected || focused
 
     Surface(
         modifier = Modifier
-            .widthIn(min = 132.dp)
+            .widthIn(min = 128.dp)
             .onFocusChanged { focused = it.isFocused }
             .clickable(onClick = onClick),
-        shape = RoundedCornerShape(10.dp),
+        shape = RoundedCornerShape(12.dp),
         color = if (focused) {
-            MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.72f)
+            MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.58f)
         } else {
-            MaterialTheme.colorScheme.surface
+            Color.Transparent
         },
         tonalElevation = 0.dp,
     ) {
@@ -528,10 +525,10 @@ private fun TVPrimaryNavigationItem(
             Icon(
                 imageVector = icon,
                 contentDescription = label,
-                tint = if (emphasized) {
-                    MaterialTheme.colorScheme.primary
-                } else {
-                    MaterialTheme.colorScheme.onSurfaceVariant
+                tint = when {
+                    focused -> MaterialTheme.colorScheme.onPrimaryContainer
+                    selected -> MaterialTheme.colorScheme.primary
+                    else -> MaterialTheme.colorScheme.onSurfaceVariant
                 },
             )
             Text(

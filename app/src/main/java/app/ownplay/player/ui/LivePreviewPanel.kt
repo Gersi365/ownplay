@@ -68,7 +68,7 @@ internal fun LivePreviewPanel(
 
     Surface(
         modifier = modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(10.dp),
+        shape = RoundedCornerShape(14.dp),
         color = Color.Black,
         tonalElevation = 0.dp,
     ) {
@@ -111,14 +111,14 @@ internal fun LivePreviewPanel(
                 Surface(
                     modifier = Modifier
                         .align(Alignment.TopStart)
-                        .padding(9.dp),
-                    shape = RoundedCornerShape(6.dp),
-                    color = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.86f),
+                        .padding(10.dp),
+                    shape = RoundedCornerShape(8.dp),
+                    color = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.82f),
                     tonalElevation = 0.dp,
                 ) {
                     Text(
                         text = "LIVE",
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+                        modifier = Modifier.padding(horizontal = 9.dp, vertical = 4.dp),
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onErrorContainer,
                         fontWeight = FontWeight.Bold,
@@ -139,12 +139,12 @@ internal fun LivePreviewPanel(
                 Surface(
                     modifier = Modifier
                         .align(Alignment.BottomStart)
-                        .padding(10.dp),
-                    shape = RoundedCornerShape(8.dp),
+                        .padding(12.dp),
+                    shape = RoundedCornerShape(10.dp),
                     color = MaterialTheme.colorScheme.surface.copy(alpha = 0.90f),
                     tonalElevation = 0.dp,
                 ) {
-                    Column(modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp)) {
+                    Column(modifier = Modifier.padding(horizontal = 11.dp, vertical = 8.dp)) {
                         Text(
                             text = playbackStatusLabel(state),
                             style = MaterialTheme.typography.bodySmall,

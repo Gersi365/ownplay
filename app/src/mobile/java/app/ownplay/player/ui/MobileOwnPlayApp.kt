@@ -535,13 +535,13 @@ private fun MobilePrimaryNavigationBar(
     Surface(
         modifier = Modifier
             .navigationBarsPadding()
-            .padding(horizontal = 8.dp, vertical = 2.dp),
-        shape = RoundedCornerShape(10.dp),
-        color = MaterialTheme.colorScheme.surface,
-        tonalElevation = 1.dp,
+            .padding(horizontal = 12.dp, vertical = 6.dp),
+        shape = RoundedCornerShape(18.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.72f),
+        tonalElevation = 0.dp,
     ) {
         NavigationBar(
-            modifier = Modifier.height(56.dp),
+            modifier = Modifier.height(60.dp),
             containerColor = Color.Transparent,
             tonalElevation = 0.dp,
             windowInsets = WindowInsets(0, 0, 0, 0),
@@ -553,10 +553,10 @@ private fun MobilePrimaryNavigationBar(
                     Icon(
                         Icons.Filled.LiveTv,
                         contentDescription = "Live",
-                        modifier = Modifier.size(20.dp),
+                        modifier = Modifier.size(22.dp),
                     )
                 },
-                label = { Text("Live", style = MaterialTheme.typography.labelSmall) },
+                label = { Text("Live", style = MaterialTheme.typography.labelMedium) },
                 colors = colors,
             )
             NavigationBarItem(
@@ -566,10 +566,10 @@ private fun MobilePrimaryNavigationBar(
                     Icon(
                         Icons.Filled.VideoLibrary,
                         contentDescription = "Library",
-                        modifier = Modifier.size(20.dp),
+                        modifier = Modifier.size(22.dp),
                     )
                 },
-                label = { Text("Library", style = MaterialTheme.typography.labelSmall) },
+                label = { Text("Library", style = MaterialTheme.typography.labelMedium) },
                 colors = colors,
             )
             NavigationBarItem(
@@ -579,10 +579,10 @@ private fun MobilePrimaryNavigationBar(
                     Icon(
                         Icons.Filled.Settings,
                         contentDescription = "Settings",
-                        modifier = Modifier.size(20.dp),
+                        modifier = Modifier.size(22.dp),
                     )
                 },
-                label = { Text("Settings", style = MaterialTheme.typography.labelSmall) },
+                label = { Text("Settings", style = MaterialTheme.typography.labelMedium) },
                 colors = colors,
             )
         }
