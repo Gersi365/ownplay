@@ -9,6 +9,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -59,6 +60,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
@@ -89,11 +91,14 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import okhttp3.Request
+import kotlin.math.abs
+import kotlin.math.max
 
 private const val MOBILE_LOGO_MAX_BYTES = 2 * 1024 * 1024
 private const val MOBILE_LOGO_MAX_EDGE_PX = 256
 private const val MOBILE_EPG_PREFETCH_STEP = 6
 private const val MOBILE_EPG_PREFETCH_WINDOW = 14
+private const val MOBILE_CATEGORY_SWIPE_TRIGGER_FRACTION = 0.12f
 
 /**
  * Mobile-only Live surface.
@@ -166,14 +171,11 @@ internal fun TargetLiveRoute(
         val categories = state.categories
         if (categories.isEmpty()) return@LaunchedEffect
         val selected = state.query.categoryKey
-        val preferred = preview?.categoryKey?.takeIf { categoryKey ->
+        val target = selected?.takeIf { categoryKey ->
             categories.any { category -> category.providerCategoryKey == categoryKey }
-        }
-        val target = preferred
-            ?: selected?.takeIf { categoryKey ->
-                categories.any { category -> category.providerCategoryKey == categoryKey }
-            }
-            ?: categories.first().providerCategoryKey
+        } ?: preview?.categoryKey?.takeIf { categoryKey ->
+            categories.any { category -> category.providerCategoryKey == categoryKey }
+        } ?: categories.first().providerCategoryKey
         if (selected != target) {
             browseSession.selectCategory(target)
         }
@@ -275,6 +277,7 @@ internal fun TargetLiveRoute(
             categories = state.categories,
             categoryNavigationChannels = state.categoryNavigationChannels,
             activeCategoryKey = state.query.categoryKey,
+            categoryNavigationEnabled = false,
         )
         when (
             val action = LiveChannelSelectionRouter.route(
@@ -404,6 +407,21 @@ private fun MobileLiveBrowsePane(
     onOpenSettings: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    fun selectAdjacentCategory(totalHorizontalDrag: Float) {
+        if (state.categories.size < 2) return
+        val currentIndex = state.categories.indexOfFirst { category ->
+            category.providerCategoryKey == state.query.categoryKey
+        }.takeIf { it >= 0 } ?: 0
+        val targetIndex = if (totalHorizontalDrag < 0f) {
+            currentIndex + 1
+        } else {
+            currentIndex - 1
+        }
+        state.categories.getOrNull(targetIndex)?.let { category ->
+            onCategorySelected(category.providerCategoryKey)
+        }
+    }
+
     Surface(
         modifier = modifier.fillMaxSize(),
         shape = RoundedCornerShape(12.dp),
@@ -502,7 +520,27 @@ private fun MobileLiveBrowsePane(
                 }
                 else -> LazyColumn(
                     state = channelListState,
-                    modifier = Modifier.weight(1f),
+                    modifier = Modifier
+                        .weight(1f)
+                        .pointerInput(state.categories, state.query.categoryKey) {
+                            var totalHorizontalDrag = 0f
+                            detectHorizontalDragGestures(
+                                onDragStart = { totalHorizontalDrag = 0f },
+                                onHorizontalDrag = { change, dragAmount ->
+                                    totalHorizontalDrag += dragAmount
+                                    change.consume()
+                                },
+                                onDragEnd = {
+                                    val triggerDistance = max(
+                                        viewConfiguration.touchSlop * 4f,
+                                        size.width * MOBILE_CATEGORY_SWIPE_TRIGGER_FRACTION,
+                                    )
+                                    if (abs(totalHorizontalDrag) >= triggerDistance) {
+                                        selectAdjacentCategory(totalHorizontalDrag)
+                                    }
+                                },
+                            )
+                        },
                     contentPadding = PaddingValues(vertical = 4.dp),
                 ) {
                     items(
