@@ -37,6 +37,7 @@ data class LivePlaybackBrowseContext(
     val entries: List<LivePlaybackBrowseEntry>,
     val activeCategoryKey: String? = null,
     val categories: List<LivePlaybackCategoryEntry> = emptyList(),
+    val categoryNavigationEnabled: Boolean = true,
 ) {
     init {
         require(sourceId.isNotBlank()) { "Source ID must not be blank" }
@@ -67,6 +68,7 @@ data class LivePlaybackBrowseContext(
     }
 
     fun categorySelection(direction: PlaybackNavigationDirection): LivePlaybackSelection? {
+        if (!categoryNavigationEnabled) return null
         val currentIndex = categories.indexOfFirst { category ->
             category.categoryKey == activeCategoryKey
         }
@@ -94,6 +96,7 @@ data class LivePlaybackBrowseContext(
             categories: List<LiveCategory> = emptyList(),
             categoryNavigationChannels: List<LiveChannelItem> = visibleChannels,
             activeCategoryKey: String? = null,
+            categoryNavigationEnabled: Boolean = true,
         ): LivePlaybackBrowseContext {
             val currentEntries = browseEntries(
                 sourceId = sourceId,
@@ -121,6 +124,7 @@ data class LivePlaybackBrowseContext(
                     categoryEntries.any { category -> category.categoryKey == key }
                 },
                 categories = categoryEntries,
+                categoryNavigationEnabled = categoryNavigationEnabled,
             )
         }
 
