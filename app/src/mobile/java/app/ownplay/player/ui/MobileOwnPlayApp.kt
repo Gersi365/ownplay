@@ -16,6 +16,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.LiveTv
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.VideoLibrary
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
@@ -595,17 +596,46 @@ private fun MobileNoSourceScreen(
     onAddPlaylist: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Column(
-        modifier = modifier,
-        verticalArrangement = Arrangement.Center,
-        horizontalAlignment = Alignment.CenterHorizontally,
+    val loading = syncState.sourceId != null
+    Box(
+        modifier = modifier.padding(24.dp),
+        contentAlignment = Alignment.Center,
     ) {
-        Text(
-            text = if (syncState.sourceId != null) "Loading Live TV…" else "No playlist configured",
-            style = MaterialTheme.typography.titleLarge,
-        )
-        TextButton(onClick = onAddPlaylist) {
-            Text("Open Settings")
+        Surface(
+            shape = RoundedCornerShape(16.dp),
+            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.34f),
+            tonalElevation = 0.dp,
+        ) {
+            Column(
+                modifier = Modifier.padding(horizontal = 24.dp, vertical = 22.dp),
+                verticalArrangement = Arrangement.spacedBy(9.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                if (loading) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(28.dp),
+                        strokeWidth = 2.dp,
+                    )
+                }
+                Text(
+                    text = if (loading) "Preparing Live TV" else "No playlist configured",
+                    style = MaterialTheme.typography.titleLarge,
+                )
+                Text(
+                    text = if (loading) {
+                        "Loading channels from your active playlist…"
+                    } else {
+                        "Add an Xtream or M3U playlist in Settings to start watching."
+                    },
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                if (!loading) {
+                    TextButton(onClick = onAddPlaylist) {
+                        Text("Open Settings")
+                    }
+                }
+            }
         }
     }
 }
