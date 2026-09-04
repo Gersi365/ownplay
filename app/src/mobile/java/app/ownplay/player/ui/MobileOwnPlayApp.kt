@@ -329,15 +329,6 @@ private fun MobileOwnPlayAppContent(
                         runtime.playbackController.start(target.request)
                     }
             },
-            onNavigateCategory = { direction ->
-                (fullscreenSelection ?: openedFullscreen)
-                    .navigateCategory(direction)
-                    ?.let { target ->
-                        activeSelection = target
-                        fullscreenSelection = target
-                        runtime.playbackController.start(target.request)
-                    }
-            },
             onReturnToChannels = {
                 returnLiveToPreview(
                     fullscreenSelection ?: activeSelection ?: openedFullscreen,
