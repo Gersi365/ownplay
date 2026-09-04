@@ -160,7 +160,7 @@ data class LivePlaybackSelection(
     }
 
     fun navigateCategory(direction: PlaybackNavigationDirection): LivePlaybackSelection? =
-        browseContext?.categorySelection(direction)
+        browseContext?.categorySelection(direction) ?: navigate(direction)
 
     override fun toString(): String =
         "LivePlaybackSelection(request=$request, displayName=$displayName)"
