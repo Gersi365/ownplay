@@ -106,7 +106,7 @@ data class LivePlaybackBrowseContext(
                         channel.categoryKey == category.providerCategoryKey
                     },
                 )
-                entries.takeIf(List<LivePlaybackBrowseEntry>::isNotEmpty)?.let {
+                entries.takeIf { it.isNotEmpty() }?.let {
                     LivePlaybackCategoryEntry(
                         categoryKey = category.providerCategoryKey,
                         displayName = category.name,
