@@ -613,6 +613,7 @@ private fun MobileChannelRow(
             .semantics(mergeDescendants = true) {
                 selected = active
                 stateDescription = when {
+                    active && channel.isFavorite -> "Currently previewing, favorite channel"
                     active -> "Currently previewing"
                     channel.isFavorite -> "Favorite channel"
                     else -> "Channel"

@@ -103,7 +103,7 @@ internal fun LivePreviewPanel(
                     modifier = Modifier
                         .fillMaxSize()
                         .semantics {
-                            contentDescription = "Live preview"
+                            contentDescription = "Live preview, ${selection.displayName}"
                         }
                         .clickable(
                             interactionSource = interactionSource,
