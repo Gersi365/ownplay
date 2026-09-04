@@ -7,10 +7,12 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.LiveTv
@@ -41,6 +43,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import app.ownplay.player.OwnPlayAppRuntime
 import app.ownplay.player.playback.LiveFullscreenEntryReason
@@ -536,13 +539,14 @@ private fun MobilePrimaryNavigationBar(
     Surface(
         modifier = Modifier
             .navigationBarsPadding()
-            .padding(horizontal = 12.dp, vertical = 6.dp),
-        shape = RoundedCornerShape(18.dp),
-        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.72f),
-        tonalElevation = 0.dp,
+            .padding(horizontal = 14.dp, vertical = 8.dp),
+        shape = RoundedCornerShape(22.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.88f),
+        tonalElevation = 2.dp,
+        shadowElevation = 6.dp,
     ) {
         NavigationBar(
-            modifier = Modifier.height(60.dp),
+            modifier = Modifier.height(64.dp),
             containerColor = Color.Transparent,
             tonalElevation = 0.dp,
             windowInsets = WindowInsets(0, 0, 0, 0),
@@ -554,10 +558,11 @@ private fun MobilePrimaryNavigationBar(
                     Icon(
                         Icons.Filled.LiveTv,
                         contentDescription = "Live",
-                        modifier = Modifier.size(22.dp),
+                        modifier = Modifier.size(23.dp),
                     )
                 },
                 label = { Text("Live", style = MaterialTheme.typography.labelMedium) },
+                alwaysShowLabel = true,
                 colors = colors,
             )
             NavigationBarItem(
@@ -567,10 +572,11 @@ private fun MobilePrimaryNavigationBar(
                     Icon(
                         Icons.Filled.VideoLibrary,
                         contentDescription = "Library",
-                        modifier = Modifier.size(22.dp),
+                        modifier = Modifier.size(23.dp),
                     )
                 },
                 label = { Text("Library", style = MaterialTheme.typography.labelMedium) },
+                alwaysShowLabel = true,
                 colors = colors,
             )
             NavigationBarItem(
@@ -580,10 +586,11 @@ private fun MobilePrimaryNavigationBar(
                     Icon(
                         Icons.Filled.Settings,
                         contentDescription = "Settings",
-                        modifier = Modifier.size(22.dp),
+                        modifier = Modifier.size(23.dp),
                     )
                 },
                 label = { Text("Settings", style = MaterialTheme.typography.labelMedium) },
+                alwaysShowLabel = true,
                 colors = colors,
             )
         }
@@ -598,28 +605,33 @@ private fun MobileNoSourceScreen(
 ) {
     val loading = syncState.sourceId != null
     Box(
-        modifier = modifier.padding(24.dp),
+        modifier = modifier.padding(horizontal = 24.dp, vertical = 28.dp),
         contentAlignment = Alignment.Center,
     ) {
         Surface(
-            shape = RoundedCornerShape(16.dp),
-            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.34f),
-            tonalElevation = 0.dp,
+            modifier = Modifier
+                .fillMaxWidth()
+                .widthIn(max = 440.dp),
+            shape = RoundedCornerShape(24.dp),
+            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.42f),
+            tonalElevation = 1.dp,
+            shadowElevation = 2.dp,
         ) {
             Column(
-                modifier = Modifier.padding(horizontal = 24.dp, vertical = 22.dp),
-                verticalArrangement = Arrangement.spacedBy(9.dp),
+                modifier = Modifier.padding(horizontal = 28.dp, vertical = 26.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
                 if (loading) {
                     CircularProgressIndicator(
-                        modifier = Modifier.size(28.dp),
+                        modifier = Modifier.size(30.dp),
                         strokeWidth = 2.dp,
                     )
                 }
                 Text(
                     text = if (loading) "Preparing Live TV" else "No playlist configured",
                     style = MaterialTheme.typography.titleLarge,
+                    textAlign = TextAlign.Center,
                 )
                 Text(
                     text = if (loading) {
@@ -629,9 +641,13 @@ private fun MobileNoSourceScreen(
                     },
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    textAlign = TextAlign.Center,
                 )
                 if (!loading) {
-                    TextButton(onClick = onAddPlaylist) {
+                    TextButton(
+                        onClick = onAddPlaylist,
+                        modifier = Modifier.padding(top = 2.dp),
+                    ) {
                         Text("Open Settings")
                     }
                 }
