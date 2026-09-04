@@ -44,13 +44,13 @@ internal fun EpgPanel(
                 enabled = guideAvailable && !loading,
                 onClick = onOpenGuide,
             ),
-        shape = RoundedCornerShape(10.dp),
-        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.46f),
+        shape = RoundedCornerShape(14.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.56f),
         tonalElevation = 0.dp,
     ) {
         Column(
-            modifier = Modifier.padding(horizontal = 14.dp, vertical = 11.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -60,7 +60,7 @@ internal fun EpgPanel(
                     text = "EPG",
                     modifier = Modifier.weight(1f),
                     style = MaterialTheme.typography.labelLarge,
-                    fontWeight = FontWeight.Medium,
+                    fontWeight = FontWeight.SemiBold,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 if (guideAvailable && !loading) {
@@ -123,7 +123,7 @@ private fun ProgramLine(
 ) {
     Row(
         modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
         verticalAlignment = Alignment.Top,
     ) {
         Text(
@@ -133,7 +133,7 @@ private fun ProgramLine(
         )
         Column(
             modifier = Modifier.weight(1f),
-            verticalArrangement = Arrangement.spacedBy(2.dp),
+            verticalArrangement = Arrangement.spacedBy(3.dp),
         ) {
             Text(
                 text = "$prefix · ${program.title}",
