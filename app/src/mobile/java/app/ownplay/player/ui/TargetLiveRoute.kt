@@ -162,12 +162,20 @@ internal fun TargetLiveRoute(
         onPreviewClosed()
     }
 
-    LaunchedEffect(state.categories, state.query.categoryKey) {
+    LaunchedEffect(state.categories, state.query.categoryKey, preview?.categoryKey) {
         val categories = state.categories
         if (categories.isEmpty()) return@LaunchedEffect
         val selected = state.query.categoryKey
-        if (selected == null || categories.none { it.providerCategoryKey == selected }) {
-            browseSession.selectCategory(categories.first().providerCategoryKey)
+        val preferred = preview?.categoryKey?.takeIf { categoryKey ->
+            categories.any { category -> category.providerCategoryKey == categoryKey }
+        }
+        val target = preferred
+            ?: selected?.takeIf { categoryKey ->
+                categories.any { category -> category.providerCategoryKey == categoryKey }
+            }
+            ?: categories.first().providerCategoryKey
+        if (selected != target) {
+            browseSession.selectCategory(target)
         }
     }
 
@@ -201,7 +209,7 @@ internal fun TargetLiveRoute(
                     sourceId = sourceId,
                     channelId = channel.channelId,
                 )?.current ?: continue
-                currentEpgByChannelId = currentEpgByChannelId + (channel.channelId to currentProgram)
+                currentEpgByChannelId = runtime.currentEpgPrograms(sourceId)
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (_: Exception) {
@@ -264,6 +272,9 @@ internal fun TargetLiveRoute(
         val browseContext = LivePlaybackBrowseContext.capture(
             sourceId = sourceId,
             visibleChannels = state.channels,
+            categories = state.categories,
+            categoryNavigationChannels = state.categoryNavigationChannels,
+            activeCategoryKey = state.query.categoryKey,
         )
         when (
             val action = LiveChannelSelectionRouter.route(
