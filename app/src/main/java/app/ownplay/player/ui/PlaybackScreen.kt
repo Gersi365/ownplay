@@ -230,6 +230,13 @@ internal fun PlaybackScreen(
         }
     }
 
+    LaunchedEffect(showFullGuide, isTelevision) {
+        if (isTelevision && !showFullGuide) {
+            withFrameNanos { }
+            rootFocusRequester.requestFocus()
+        }
+    }
+
     LaunchedEffect(overlayPrograms, currentProgramIndex) {
         if (!epgFocused) selectedProgramIndex = currentProgramIndex
     }
