@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.KeyboardArrowRight
@@ -125,10 +126,24 @@ private fun LiveCategoryHierarchyPicker(
     val preferredCategoryKey = state.query.categoryKey?.takeIf { selected ->
         state.categories.any { category -> category.providerCategoryKey == selected }
     } ?: state.categories.firstOrNull()?.providerCategoryKey
+    val preferredCategoryIndex = remember(preferredCategoryKey, state.categories) {
+        state.categories.indexOfFirst { category ->
+            category.providerCategoryKey == preferredCategoryKey
+        }
+    }
+    val categoryListState = rememberLazyListState()
     val initialFocusRequester = remember(preferredCategoryKey, state.categories) { FocusRequester() }
 
-    LaunchedEffect(isTelevision, preferredCategoryKey, state.categories) {
-        if (!isTelevision || preferredCategoryKey == null) return@LaunchedEffect
+    LaunchedEffect(
+        isTelevision,
+        preferredCategoryKey,
+        preferredCategoryIndex,
+        state.categories,
+    ) {
+        if (!isTelevision || preferredCategoryKey == null || preferredCategoryIndex < 0) {
+            return@LaunchedEffect
+        }
+        categoryListState.scrollToItem(preferredCategoryIndex)
         withFrameNanos { }
         initialFocusRequester.requestFocus()
     }
@@ -163,6 +178,7 @@ private fun LiveCategoryHierarchyPicker(
         }
 
         LazyColumn(
+            state = categoryListState,
             modifier = Modifier.fillMaxSize(),
             contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
             verticalArrangement = Arrangement.spacedBy(6.dp),
