@@ -406,6 +406,17 @@ private fun MobileLiveBrowsePane(
     onOpenSettings: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val categoryListState = rememberLazyListState()
+
+    LaunchedEffect(state.categories, state.query.categoryKey) {
+        val activeCategoryIndex = state.categories.indexOfFirst { category ->
+            category.providerCategoryKey == state.query.categoryKey
+        }
+        if (activeCategoryIndex >= 0) {
+            categoryListState.animateScrollToItem(activeCategoryIndex + 1)
+        }
+    }
+
     fun selectAdjacentCategory(totalHorizontalDrag: Float) {
         if (state.categories.size < 2) return
         val currentIndex = state.categories.indexOfFirst { category ->
@@ -447,6 +458,7 @@ private fun MobileLiveBrowsePane(
 
             if (state.categories.isNotEmpty()) {
                 LazyRow(
+                    state = categoryListState,
                     modifier = Modifier.fillMaxWidth(),
                     contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
