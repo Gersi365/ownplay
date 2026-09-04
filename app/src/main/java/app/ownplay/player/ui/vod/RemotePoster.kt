@@ -1,5 +1,6 @@
 package app.ownplay.player.ui.vod
 
+import android.content.res.Configuration
 import android.graphics.BitmapFactory
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -18,6 +19,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import app.ownplay.player.source.network.SourceHttpClient
@@ -56,6 +58,9 @@ internal fun RemotePoster(
     title: String,
     modifier: Modifier = Modifier,
 ) {
+    val configuration = LocalConfiguration.current
+    val isTelevision =
+        configuration.uiMode and Configuration.UI_MODE_TYPE_MASK == Configuration.UI_MODE_TYPE_TELEVISION
     val normalizedUrl = remember(url) {
         url?.trim()?.takeIf(String::isNotBlank)
     }
@@ -101,19 +106,26 @@ internal fun RemotePoster(
         when (val currentState = state) {
             is RemotePosterState.Loaded -> Image(
                 bitmap = currentState.image,
-                contentDescription = null,
+                contentDescription = if (isTelevision) title else null,
                 modifier = Modifier.fillMaxSize(),
                 contentScale = ContentScale.Crop,
             )
-            RemotePosterState.Loading -> Unit
-            RemotePosterState.Unavailable -> Text(
-                text = title.trim().firstOrNull()?.uppercase() ?: "•",
-                style = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.Medium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.82f),
-            )
+            RemotePosterState.Loading -> if (isTelevision) {
+                PosterFallbackLabel(title = title)
+            }
+            RemotePosterState.Unavailable -> PosterFallbackLabel(title = title)
         }
     }
+}
+
+@Composable
+private fun PosterFallbackLabel(title: String) {
+    Text(
+        text = title.trim().firstOrNull()?.uppercase() ?: "•",
+        style = MaterialTheme.typography.titleLarge,
+        fontWeight = FontWeight.Medium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.82f),
+    )
 }
 
 private fun cachedPoster(url: String): ImageBitmap? = synchronized(posterCacheLock) {

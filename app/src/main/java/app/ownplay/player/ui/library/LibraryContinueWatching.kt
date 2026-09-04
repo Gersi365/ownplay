@@ -48,7 +48,8 @@ internal fun LibraryMovieContinueWatchingStrip(
         key = { it.movieId },
         posterUrl = { it.posterUrl },
         title = { it.name },
-        subtitle = { null },
+        subtitle = { "Continue movie" },
+        hideSubtitleOnMobile = true,
         positionMs = { it.positionMs },
         durationMs = { it.durationMs },
         onOpen = onOpenMovie,
@@ -71,6 +72,7 @@ internal fun LibrarySeriesContinueWatchingStrip(
         subtitle = { episode ->
             "S${episode.seasonNumber} · E${episode.episodeNumber} · ${episode.title}"
         },
+        hideSubtitleOnMobile = false,
         positionMs = { it.positionMs },
         durationMs = { it.durationMs },
         onOpen = onOpenSeries,
@@ -83,7 +85,8 @@ private fun <T> LibraryContinueWatchingStrip(
     key: (T) -> String,
     posterUrl: (T) -> String?,
     title: (T) -> String,
-    subtitle: (T) -> String?,
+    subtitle: (T) -> String,
+    hideSubtitleOnMobile: Boolean,
     positionMs: (T) -> Long?,
     durationMs: (T) -> Long?,
     onOpen: (T) -> Unit,
@@ -139,17 +142,8 @@ private fun <T> LibraryContinueWatchingStrip(
                                 .fillMaxWidth()
                                 .aspectRatio(2f / 3f),
                         )
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(3.dp),
-                        ) {
-                            progress?.let { watched ->
-                                LinearProgressIndicator(
-                                    progress = { watched },
-                                    modifier = Modifier.fillMaxSize(),
-                                )
-                            }
+                        if (!isTelevision) {
+                            ContinueWatchingProgressSlot(progress = progress)
                         }
                         Text(
                             text = title(item),
@@ -158,27 +152,52 @@ private fun <T> LibraryContinueWatchingStrip(
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                         )
-                        subtitle(item)?.takeIf(String::isNotBlank)?.let { context ->
+                        if (isTelevision || !hideSubtitleOnMobile) {
                             Text(
-                                text = context,
+                                text = subtitle(item),
                                 style = MaterialTheme.typography.labelSmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
                             )
                         }
-                        Text(
-                            text = continueWatchingResumeLabel(
-                                positionMs = positionMs(item),
-                                durationMs = durationMs(item),
-                            ),
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.primary,
-                            maxLines = 1,
-                        )
+                        if (isTelevision) {
+                            progress?.let { watched ->
+                                LinearProgressIndicator(
+                                    progress = { watched },
+                                    modifier = Modifier.fillMaxWidth(),
+                                )
+                            }
+                        } else {
+                            Text(
+                                text = continueWatchingResumeLabel(
+                                    positionMs = positionMs(item),
+                                    durationMs = durationMs(item),
+                                ),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.primary,
+                                maxLines = 1,
+                            )
+                        }
                     }
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun ContinueWatchingProgressSlot(progress: Float?) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(3.dp),
+    ) {
+        progress?.let { watched ->
+            LinearProgressIndicator(
+                progress = { watched },
+                modifier = Modifier.fillMaxSize(),
+            )
         }
     }
 }
