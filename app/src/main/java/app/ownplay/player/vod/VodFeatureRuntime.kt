@@ -4,6 +4,7 @@ import android.content.Context
 import app.ownplay.player.persistence.OwnPlayDatabase
 import app.ownplay.player.persistence.secure.AndroidKeystoreSensitiveValueStore
 import app.ownplay.player.source.OnDemandCatalogKind
+import app.ownplay.player.source.OnDemandCatalogRefreshCoordinator
 import app.ownplay.player.source.OnDemandCatalogRefreshInvocationGate
 import app.ownplay.player.source.OnDemandCatalogRefreshMode
 import app.ownplay.player.source.OnDemandCatalogRefreshStore
@@ -47,15 +48,20 @@ class VodFeatureRuntime(
             }
         }
 
-        val result = repository.refresh(sourceId)
-        if (result is SourceResult.Success<*>) {
-            refreshStore.markSuccess(
-                sourceId = sourceId,
-                kind = OnDemandCatalogKind.VOD,
-                successAtEpochMillis = System.currentTimeMillis(),
-            )
+        return OnDemandCatalogRefreshCoordinator.processShared.coalesce(
+            sourceId = sourceId,
+            kind = OnDemandCatalogKind.VOD,
+        ) {
+            val result = repository.refresh(sourceId)
+            if (result is SourceResult.Success<*>) {
+                refreshStore.markSuccess(
+                    sourceId = sourceId,
+                    kind = OnDemandCatalogKind.VOD,
+                    successAtEpochMillis = System.currentTimeMillis(),
+                )
+            }
+            result
         }
-        return result
     }
 
     suspend fun details(sourceId: String, movieId: String): SourceResult<VodMovieDetails> =
