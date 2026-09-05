@@ -6,11 +6,12 @@ internal enum class OnDemandCatalogRefreshMode {
 }
 
 internal class OnDemandCatalogRefreshInvocationGate {
-    private val automaticallyHandledSourceIds = mutableSetOf<String>()
+    private var activeSourceId: String? = null
 
     @Synchronized
     fun nextMode(sourceId: String): OnDemandCatalogRefreshMode =
-        if (automaticallyHandledSourceIds.add(sourceId)) {
+        if (activeSourceId != sourceId) {
+            activeSourceId = sourceId
             OnDemandCatalogRefreshMode.AUTOMATIC
         } else {
             OnDemandCatalogRefreshMode.MANUAL

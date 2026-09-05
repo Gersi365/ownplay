@@ -68,12 +68,14 @@ class OnDemandCatalogRefreshPolicyTest {
     }
 
     @Test
-    fun invocationGateTreatsFirstCallPerSourceAsAutomaticAndFollowingCallAsManual() {
+    fun invocationGateKeepsCurrentSourceManualButSourceTransitionsAutomatic() {
         val gate = OnDemandCatalogRefreshInvocationGate()
 
         assertEquals(OnDemandCatalogRefreshMode.AUTOMATIC, gate.nextMode("source-a"))
         assertEquals(OnDemandCatalogRefreshMode.MANUAL, gate.nextMode("source-a"))
         assertEquals(OnDemandCatalogRefreshMode.AUTOMATIC, gate.nextMode("source-b"))
         assertEquals(OnDemandCatalogRefreshMode.MANUAL, gate.nextMode("source-b"))
+        assertEquals(OnDemandCatalogRefreshMode.AUTOMATIC, gate.nextMode("source-a"))
+        assertEquals(OnDemandCatalogRefreshMode.MANUAL, gate.nextMode("source-a"))
     }
 }
