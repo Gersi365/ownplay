@@ -9,7 +9,7 @@ import org.junit.Test
 
 class SourceSyncStatusTest {
     @Test
-    fun newSourceFailureDoesNotClaimExistingChannelsWereKept() {
+    fun newSourceFailureDoesNotClaimExistingChannelsAreAvailable() {
         assertEquals(
             "Could not load channels. Authentication failed. Check your username and password.",
             sourceSyncStatus(
@@ -22,9 +22,10 @@ class SourceSyncStatusTest {
     }
 
     @Test
-    fun refreshFailurePreservesExistingCatalogMessageAndCause() {
+    fun refreshFailurePreservesExistingCatalogAndOffersRecoveryContext() {
         assertEquals(
-            "Channel refresh failed. Network unavailable. Existing channels were kept.",
+            "Refresh failed. No network connection. Check your connection and try again. " +
+                "Your existing channels are still available.",
             sourceSyncStatus(
                 SourceSyncState(
                     stage = SourceSyncStage.ChannelsFailed,
@@ -38,7 +39,7 @@ class SourceSyncStatusTest {
     @Test
     fun operationalFailureHasUsefulExplanation() {
         assertEquals(
-            "Could not load channels. Secure storage failed.",
+            "Could not load channels. Secure storage is unavailable. Try again.",
             sourceSyncStatus(
                 SourceSyncState(
                     stage = SourceSyncStage.ChannelsFailed,
@@ -55,13 +56,21 @@ class SourceSyncStatusTest {
             sourceSyncStatus(SourceSyncState(stage = SourceSyncStage.ChannelsFailed)),
         )
         assertEquals(
-            "Channel refresh failed. Existing channels were kept.",
+            "Refresh failed. Your existing channels are still available.",
             sourceSyncStatus(
                 SourceSyncState(
                     stage = SourceSyncStage.ChannelsFailed,
                     channelCount = 7,
                 ),
             ),
+        )
+    }
+
+    @Test
+    fun epgFailureKeepsChannelsAvailable() {
+        assertEquals(
+            "Channels are ready. EPG could not be refreshed.",
+            sourceSyncStatus(SourceSyncState(stage = SourceSyncStage.EpgFailed)),
         )
     }
 }

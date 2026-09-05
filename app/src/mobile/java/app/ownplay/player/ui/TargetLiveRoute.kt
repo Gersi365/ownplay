@@ -115,6 +115,8 @@ private val mobileChannelLogoMemoryCache = object : LinkedHashMap<String, ImageB
         eldest: MutableMap.MutableEntry<String, ImageBitmap>?,
     ): Boolean = size > MOBILE_LOGO_CACHE_ENTRIES
 }
+private val mobileChannelLogoRequestCoordinator =
+    MobileChannelLogoRequestCoordinator<ImageBitmap?>()
 
 private sealed interface MobileChannelLogoState {
     data object Loading : MobileChannelLogoState
@@ -735,7 +737,9 @@ private fun MobileChannelLogo(
         }
 
         value = MobileChannelLogoState.Loading
-        val loaded = loadMobileChannelLogo(resolvedUrl)
+        val loaded = mobileChannelLogoRequestCoordinator.coalesce(resolvedUrl) {
+            loadMobileChannelLogo(resolvedUrl)
+        }
         value = if (loaded != null) {
             cacheMobileChannelLogo(resolvedUrl, loaded)
             MobileChannelLogoState.Loaded(loaded)

@@ -1,6 +1,8 @@
 package app.ownplay.player
 
-import java.io.File
+import app.ownplay.player.testing.normalizedSource
+import app.ownplay.player.testing.sourceBlockAfter
+import app.ownplay.player.testing.sourceText
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -12,9 +14,7 @@ class ShellLifecycleRegressionTest {
         val source = sourceText("src/main/java/app/ownplay/player/MainActivity.kt")
         assertTrue(source.contains("runtime = (application as OwnPlayApplication).runtime"))
 
-        val onDestroy = source
-            .substringAfter("override fun onDestroy() {")
-            .substringBefore("private fun currentPlaybackMediaKind")
+        val onDestroy = sourceBlockAfter(source, "override fun onDestroy()")
         assertFalse(onDestroy.contains("runtime.close()"))
     }
 
@@ -22,9 +22,10 @@ class ShellLifecycleRegressionTest {
     fun mobileAndTvActiveSourceHelpersPersistAndDoNotRecurse() {
         activeShellPaths.forEach { path ->
             val source = sourceText(path)
-            val helper = source
-                .substringAfter("fun rememberActiveSource(sourceId: String?) {")
-                .substringBefore("\n    }")
+            val helper = sourceBlockAfter(
+                source,
+                "fun rememberActiveSource(sourceId: String?)",
+            )
 
             assertTrue("$path must update local active source", helper.contains("activeSourceId = sourceId"))
             assertTrue(
@@ -49,7 +50,7 @@ class ShellLifecycleRegressionTest {
     @Test
     fun mobileAndTvWaitForPersistedSelectionBeforeResolvingFallback() {
         activeShellPaths.forEach { path ->
-            val normalized = sourceText(path).replace(Regex("\\s+"), " ")
+            val normalized = normalizedSource(sourceText(path))
             assertTrue(
                 "$path must not resolve the first playlist while DataStore selection is Loading",
                 normalized.contains(
@@ -71,7 +72,7 @@ class ShellLifecycleRegressionTest {
             "src/mobile/java/app/ownplay/player/ui/TargetLiveRoute.kt",
             "src/tv/java/app/ownplay/player/ui/LiveRoute.kt",
         ).forEach { path ->
-            val normalized = sourceText(path).replace(Regex("\\s+"), " ")
+            val normalized = normalizedSource(sourceText(path))
             assertTrue(
                 "$path must ignore sync status emitted by another playlist",
                 normalized.contains("syncState.sourceId == sourceId"),
@@ -79,14 +80,33 @@ class ShellLifecycleRegressionTest {
         }
     }
 
-    private fun sourceText(relativePath: String): String {
-        val candidates = listOf(
-            File(relativePath),
-            File("app/$relativePath"),
-        )
-        val source = candidates.firstOrNull(File::isFile)
-            ?: error("Could not locate source file: $relativePath")
-        return source.readText()
+    @Test
+    fun mobileAndTvBackHierarchyFallsThroughToExitOnlyAtLiveRoot() {
+        listOf(
+            "src/mobile/java/app/ownplay/player/ui/MobileOwnPlayApp.kt" to "MobileSection",
+            "src/tv/java/app/ownplay/player/ui/TVOwnPlayApp.kt" to "TVSection",
+        ).forEach { (path, sectionType) ->
+            val source = sourceText(path)
+            assertTrue("$path must install a Compose back handler", source.contains("import androidx.activity.compose.BackHandler"))
+
+            val block = normalizedSource(
+                sourceBlockAfter(
+                    source,
+                    "BackHandler(enabled = section != $sectionType.LIVE)",
+                ),
+            )
+
+            assertTrue("$path must give detail/playback back actions priority", block.contains("PlaybackInteractionBridge.handleBack()"))
+            assertTrue(
+                "$path must return Movies/Series catalog roots to Library",
+                block.contains("$sectionType.MOVIES, $sectionType.SERIES, -> openSection($sectionType.LIBRARY)"),
+            )
+            assertTrue(
+                "$path must return Library/Settings roots to Live",
+                block.contains("$sectionType.LIBRARY, $sectionType.SETTINGS, -> openSection($sectionType.LIVE)"),
+            )
+            assertFalse("$path shell fallback must never show exit itself", block.contains("showExitConfirmation"))
+        }
     }
 
     private companion object {

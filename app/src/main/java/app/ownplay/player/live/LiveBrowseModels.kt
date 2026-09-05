@@ -63,25 +63,28 @@ object LiveBrowseProjector {
         val normalizedSearch = query.searchTerm.trim().lowercase(Locale.ROOT)
 
         val filtered = records.asSequence()
+            .filter { record ->
+                val hidden = isEffectivelyHidden(record, hiddenCategoryKeys)
+                if (query.hiddenOnly) hidden else query.includeHidden || !hidden
+            }
+            .filter { record ->
+                query.includeRemoved || record.availability != ChannelAvailability.REMOVED
+            }
+            .filter { record ->
+                query.categoryKey == null || record.providerCategoryKey == query.categoryKey
+            }
+            .filter { record ->
+                query.customGroupId == null ||
+                    query.customGroupId in customGroupIdsByChannelId[record.channelId].orEmpty()
+            }
+            .filter { record -> !query.favoritesOnly || record.favoriteOrder != null }
+            .filter { record -> matchesSearch(record, normalizedSearch) }
             .map { record ->
                 toItem(
                     record = record,
                     customGroupIds = customGroupIdsByChannelId[record.channelId].orEmpty(),
                     hiddenCategoryKeys = hiddenCategoryKeys,
                 )
-            }
-            .filter { item ->
-                if (query.hiddenOnly) item.isHidden else query.includeHidden || !item.isHidden
-            }
-            .filter { item -> query.includeRemoved || item.availability != ChannelAvailability.REMOVED }
-            .filter { item -> query.categoryKey == null || item.categoryKey == query.categoryKey }
-            .filter { item -> query.customGroupId == null || query.customGroupId in item.customGroupIds }
-            .filter { item -> !query.favoritesOnly || item.isFavorite }
-            .filter { item ->
-                normalizedSearch.isEmpty() ||
-                    item.displayName.lowercase(Locale.ROOT).contains(normalizedSearch) ||
-                    item.providerName.lowercase(Locale.ROOT).contains(normalizedSearch) ||
-                    item.categoryName.orEmpty().lowercase(Locale.ROOT).contains(normalizedSearch)
             }
             .toList()
 
@@ -117,6 +120,51 @@ object LiveBrowseProjector {
         }
     }
 
+    internal fun filterTransient(
+        navigationChannels: List<LiveChannelItem>,
+        query: LiveBrowseQuery,
+    ): List<LiveChannelItem> {
+        val normalizedSearch = query.searchTerm.trim().lowercase(Locale.ROOT)
+        if (query.categoryKey == null && normalizedSearch.isEmpty()) {
+            return navigationChannels
+        }
+        return navigationChannels.asSequence()
+            .filter { item -> query.categoryKey == null || item.categoryKey == query.categoryKey }
+            .filter { item -> matchesSearch(item, normalizedSearch) }
+            .toList()
+    }
+
+    private fun matchesSearch(
+        record: LiveChannelRecord,
+        normalizedSearch: String,
+    ): Boolean {
+        if (normalizedSearch.isEmpty()) return true
+        return displayName(record).lowercase(Locale.ROOT).contains(normalizedSearch) ||
+            record.providerName.lowercase(Locale.ROOT).contains(normalizedSearch) ||
+            record.categoryName.orEmpty().lowercase(Locale.ROOT).contains(normalizedSearch)
+    }
+
+    private fun matchesSearch(
+        item: LiveChannelItem,
+        normalizedSearch: String,
+    ): Boolean {
+        if (normalizedSearch.isEmpty()) return true
+        return item.displayName.lowercase(Locale.ROOT).contains(normalizedSearch) ||
+            item.providerName.lowercase(Locale.ROOT).contains(normalizedSearch) ||
+            item.categoryName.orEmpty().lowercase(Locale.ROOT).contains(normalizedSearch)
+    }
+
+    private fun isEffectivelyHidden(
+        record: LiveChannelRecord,
+        hiddenCategoryKeys: Set<String>,
+    ): Boolean = record.hiddenAtEpochMillis != null ||
+        record.providerCategoryKey in hiddenCategoryKeys
+
+    private fun displayName(record: LiveChannelRecord): String =
+        record.localDisplayName?.takeIf(String::isNotBlank)
+            ?: record.tvgName?.takeIf(String::isNotBlank)
+            ?: record.providerName
+
     private fun toItem(
         record: LiveChannelRecord,
         customGroupIds: Set<String>,
@@ -128,17 +176,14 @@ object LiveBrowseProjector {
         categoryName = record.categoryName,
         providerName = record.providerName,
         localDisplayName = record.localDisplayName,
-        displayName = record.localDisplayName?.takeIf(String::isNotBlank)
-            ?: record.tvgName?.takeIf(String::isNotBlank)
-            ?: record.providerName,
+        displayName = displayName(record),
         logoRef = record.logoOverrideRef ?: record.logoRef,
         hasLogoOverride = record.logoOverrideRef != null,
         providerOrder = record.providerOrder,
         manualOrder = record.manualOrder,
         favoriteOrder = record.favoriteOrder,
         isFavorite = record.favoriteOrder != null,
-        isHidden = record.hiddenAtEpochMillis != null ||
-            record.providerCategoryKey in hiddenCategoryKeys,
+        isHidden = isEffectivelyHidden(record, hiddenCategoryKeys),
         availability = record.availability,
         recentAtEpochMillis = record.recentAtEpochMillis,
         customGroupIds = customGroupIds,

@@ -51,4 +51,53 @@ class OfflineDownloadStorageTest {
             Locale.setDefault(originalLocale)
         }
     }
+
+    @Test
+    fun pendingDownloadMarkerIsDeterministicForDownloadId() {
+        assertEquals(
+            "ownplay://offline-download/123e4567-e89b-12d3-a456-426614174000",
+            OfflineDownloadStorage.pendingDownloadMarker(
+                "123e4567-e89b-12d3-a456-426614174000",
+            ),
+        )
+    }
+
+    @Test
+    fun pendingDestinationRequiresExactOwnPackageAndDownloadMarker() {
+        val downloadId = "123e4567-e89b-12d3-a456-426614174000"
+        val marker = OfflineDownloadStorage.pendingDownloadMarker(downloadId)
+
+        assertTrue(
+            OfflineDownloadStorage.isOwnedPendingDownloadCandidate(
+                ownerPackageName = "app.ownplay.mobile",
+                expectedPackageName = "app.ownplay.mobile",
+                downloadUri = marker,
+                expectedDownloadId = downloadId,
+            ),
+        )
+        assertFalse(
+            OfflineDownloadStorage.isOwnedPendingDownloadCandidate(
+                ownerPackageName = null,
+                expectedPackageName = "app.ownplay.mobile",
+                downloadUri = marker,
+                expectedDownloadId = downloadId,
+            ),
+        )
+        assertFalse(
+            OfflineDownloadStorage.isOwnedPendingDownloadCandidate(
+                ownerPackageName = "com.example.other",
+                expectedPackageName = "app.ownplay.mobile",
+                downloadUri = marker,
+                expectedDownloadId = downloadId,
+            ),
+        )
+        assertFalse(
+            OfflineDownloadStorage.isOwnedPendingDownloadCandidate(
+                ownerPackageName = "app.ownplay.mobile",
+                expectedPackageName = "app.ownplay.mobile",
+                downloadUri = "ownplay://offline-download/other",
+                expectedDownloadId = downloadId,
+            ),
+        )
+    }
 }
