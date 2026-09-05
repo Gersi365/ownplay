@@ -36,6 +36,7 @@ private const val MAX_POSTER_LONG_EDGE_PX = 768
 private const val MAX_POSTER_CACHE_ENTRIES = 16
 
 private val posterCacheLock = Any()
+private val posterRequestCoordinator = PosterRequestCoordinator<ImageBitmap?>()
 private val posterMemoryCache = object : LinkedHashMap<String, ImageBitmap>(
     MAX_POSTER_CACHE_ENTRIES,
     0.75f,
@@ -88,7 +89,9 @@ internal fun RemotePoster(
         }
 
         value = RemotePosterState.Loading
-        val loadedPoster = loadRemotePoster(posterUrl)
+        val loadedPoster = posterRequestCoordinator.coalesce(posterUrl) {
+            loadRemotePoster(posterUrl)
+        }
         value = if (loadedPoster != null) {
             cachePoster(posterUrl, loadedPoster)
             RemotePosterState.Loaded(loadedPoster)
