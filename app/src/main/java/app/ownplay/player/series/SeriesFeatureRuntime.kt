@@ -3,8 +3,13 @@ package app.ownplay.player.series
 import android.content.Context
 import app.ownplay.player.persistence.OwnPlayDatabase
 import app.ownplay.player.persistence.secure.AndroidKeystoreSensitiveValueStore
+import app.ownplay.player.source.OnDemandCatalogKind
+import app.ownplay.player.source.OnDemandCatalogRefreshInvocationGate
+import app.ownplay.player.source.OnDemandCatalogRefreshMode
+import app.ownplay.player.source.OnDemandCatalogRefreshStore
 import app.ownplay.player.source.SourceResult
 import app.ownplay.player.source.credential.AndroidKeystoreCredentialStore
+import app.ownplay.player.source.shouldRefreshOnDemandCatalog
 import app.ownplay.player.source.xtream.XtreamSeriesClient
 import kotlinx.coroutines.flow.Flow
 
@@ -19,10 +24,39 @@ class SeriesFeatureRuntime(
         credentialStore = AndroidKeystoreCredentialStore(applicationContext),
         xtreamSeriesClient = XtreamSeriesClient(),
     )
+    private val refreshStore = OnDemandCatalogRefreshStore(applicationContext)
+    private val refreshInvocationGate = OnDemandCatalogRefreshInvocationGate()
 
     fun observeCatalog(sourceId: String): Flow<SeriesCatalog> = repository.observeCatalog(sourceId)
 
-    suspend fun refresh(sourceId: String): SourceResult<Int> = repository.refresh(sourceId)
+    suspend fun refresh(sourceId: String): SourceResult<Int> {
+        val mode = refreshInvocationGate.nextMode(sourceId)
+        if (mode == OnDemandCatalogRefreshMode.AUTOMATIC) {
+            val lastSuccessAtEpochMillis = refreshStore.lastSuccessAtEpochMillis(
+                sourceId = sourceId,
+                kind = OnDemandCatalogKind.SERIES,
+            )
+            if (
+                !shouldRefreshOnDemandCatalog(
+                    mode = mode,
+                    lastSuccessAtEpochMillis = lastSuccessAtEpochMillis,
+                    nowEpochMillis = System.currentTimeMillis(),
+                )
+            ) {
+                return SourceResult.Success(0)
+            }
+        }
+
+        val result = repository.refresh(sourceId)
+        if (result is SourceResult.Success<*>) {
+            refreshStore.markSuccess(
+                sourceId = sourceId,
+                kind = OnDemandCatalogKind.SERIES,
+                successAtEpochMillis = System.currentTimeMillis(),
+            )
+        }
+        return result
+    }
 
     suspend fun details(sourceId: String, seriesId: String): SourceResult<SeriesDetails> =
         repository.details(sourceId, seriesId)
