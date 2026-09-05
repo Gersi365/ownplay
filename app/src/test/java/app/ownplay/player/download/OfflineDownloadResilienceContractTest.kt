@@ -1,6 +1,7 @@
 package app.ownplay.player.download
 
 import app.ownplay.player.testing.sourceBlockAfter
+import app.ownplay.player.testing.sourceExpressionAfter
 import app.ownplay.player.testing.sourceText
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -50,9 +51,12 @@ class OfflineDownloadResilienceContractTest {
         assertTrue(worker.contains("if (completed == 0 && dao.getById(downloadId) == null)"))
         assertFalse(worker.contains("val cancellationState = if (row.state == DownloadStates.PAUSED)"))
 
-        val retryHelper = sourceBlockAfter(worker, "private suspend fun markQueuedForRetry(")
-        assertTrue(retryHelper.contains("dao.updateActiveTransfer("))
-        assertFalse(retryHelper.contains("dao.updateTransfer("))
+        val retryExpression = sourceExpressionAfter(
+            worker,
+            "private suspend fun markQueuedForRetry(",
+        )
+        assertTrue(retryExpression.contains("dao.updateActiveTransfer("))
+        assertFalse(retryExpression.contains("dao.updateTransfer("))
     }
 
     @Test
