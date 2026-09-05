@@ -64,8 +64,17 @@ class SeriesFeatureRuntime(
         }
     }
 
+    suspend fun cachedDetails(sourceId: String, seriesId: String): SeriesDetails? =
+        SeriesDetailsCache.processShared.peek(sourceId, seriesId)
+            ?: repository.cachedDetails(sourceId, seriesId)
+
     suspend fun details(sourceId: String, seriesId: String): SourceResult<SeriesDetails> =
-        repository.details(sourceId, seriesId)
+        SeriesDetailsCache.processShared.refreshIfStale(
+            sourceId = sourceId,
+            seriesId = seriesId,
+        ) {
+            repository.details(sourceId, seriesId)
+        }
 
     suspend fun setFavorite(sourceId: String, seriesId: String, favorite: Boolean): Boolean =
         repository.setFavorite(sourceId, seriesId, favorite)
