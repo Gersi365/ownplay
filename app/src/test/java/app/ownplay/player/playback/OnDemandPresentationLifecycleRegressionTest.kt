@@ -59,6 +59,8 @@ class OnDemandPresentationLifecycleRegressionTest {
         assertTrue(series.contains("runtime.onDemandPresentationSession.showSeriesPlayback("))
         assertTrue(series.contains("runtime.onDemandPresentationSession.returnFromSeriesPlayback()"))
         assertTrue(series.contains("runtime.onDemandPresentationSession.updateSeriesSelection("))
+        assertTrue(series.contains("val loadedDetails = details ?: return@LaunchedEffect"))
+        assertTrue(series.contains("loadedDetails.seasons.firstOrNull"))
 
         val exitBlock = series
             .substringAfter("fun exitPlayback()")
