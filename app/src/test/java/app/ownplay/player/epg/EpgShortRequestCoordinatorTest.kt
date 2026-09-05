@@ -7,6 +7,7 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.supervisorScope
 import org.junit.Assert.assertEquals
 import org.junit.Assert.fail
 import org.junit.Test
@@ -123,26 +124,28 @@ class EpgShortRequestCoordinatorTest {
 
     @Test
     fun failedLoadReleasesSlotForRetry() = runBlocking {
-        val coordinator = EpgShortRequestCoordinator(this)
-        val calls = AtomicInteger()
+        supervisorScope {
+            val coordinator = EpgShortRequestCoordinator(this)
+            val calls = AtomicInteger()
 
-        try {
-            coordinator.coalesce("source-a", "channel-1", generation = 3L) {
-                calls.incrementAndGet()
-                error("boom")
+            try {
+                coordinator.coalesce("source-a", "channel-1", generation = 3L) {
+                    calls.incrementAndGet()
+                    error("boom")
+                }
+                fail("Expected the first load to fail")
+            } catch (_: IllegalStateException) {
+                Unit
             }
-            fail("Expected the first load to fail")
-        } catch (_: IllegalStateException) {
-            Unit
-        }
 
-        val retry = coordinator.coalesce("source-a", "channel-1", generation = 3L) {
-            calls.incrementAndGet()
-            listOf(program("retry"))
-        }
+            val retry = coordinator.coalesce("source-a", "channel-1", generation = 3L) {
+                calls.incrementAndGet()
+                listOf(program("retry"))
+            }
 
-        assertEquals(listOf(program("retry")), retry)
-        assertEquals(2, calls.get())
+            assertEquals(listOf(program("retry")), retry)
+            assertEquals(2, calls.get())
+        }
     }
 
     @Test
