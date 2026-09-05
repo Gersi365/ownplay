@@ -11,6 +11,11 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -44,28 +49,35 @@ internal fun PortraitSettingsMenu(
                 .fillMaxWidth()
                 .widthIn(max = 760.dp)
                 .verticalScroll(rememberScrollState())
-                .padding(horizontal = 18.dp, vertical = 16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
+                .padding(horizontal = 20.dp, vertical = 20.dp),
+            verticalArrangement = Arrangement.spacedBy(20.dp),
         ) {
             Column(
-                modifier = Modifier.padding(horizontal = 4.dp, vertical = 4.dp),
-                verticalArrangement = Arrangement.spacedBy(4.dp),
+                modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp),
+                verticalArrangement = Arrangement.spacedBy(5.dp),
             ) {
                 Text(
+                    text = "OWNPLAY",
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.primary,
+                )
+                Text(
                     text = "Settings",
-                    style = MaterialTheme.typography.headlineSmall,
+                    style = MaterialTheme.typography.headlineMedium,
                     fontWeight = FontWeight.Bold,
                 )
                 Text(
-                    text = "Control the interface, organize content and manage offline media.",
+                    text = "Personalize the player, organize your sources and manage offline media.",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
 
             CompactSettingsSection(
+                icon = Icons.Filled.Tune,
                 title = "Interface",
-                subtitle = "Orientation and device behavior",
+                subtitle = "Device behavior and orientation",
             ) {
                 InterfaceSettingsContent(
                     deviceProfile = deviceProfile,
@@ -75,6 +87,7 @@ internal fun PortraitSettingsMenu(
             }
 
             CompactSettingsSection(
+                icon = Icons.Filled.Folder,
                 title = "Content",
                 subtitle = "Live organization, playlists and personalization",
             ) {
@@ -86,18 +99,20 @@ internal fun PortraitSettingsMenu(
             }
 
             CompactSettingsSection(
+                icon = Icons.Filled.Download,
                 title = "Downloads",
-                subtitle = "Movies and series episodes saved offline",
+                subtitle = "Movies and episodes available offline",
             ) {
                 SettingsActionRow(
                     title = "Downloaded media",
                     detail = "View progress, retry downloads or remove saved media",
-                    actionLabel = "Open",
+                    actionLabel = "Open downloads",
                     onClick = onOpenDownloads,
                 )
             }
 
             CompactSettingsSection(
+                icon = Icons.Filled.Info,
                 title = "About",
                 subtitle = "OwnPlay and build information",
             ) {
