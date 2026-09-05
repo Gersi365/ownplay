@@ -66,7 +66,7 @@ class OnDemandPresentationSessionTest {
     }
 
     @Test
-    fun seriesContinueWatchingPlaybackReturnsToCatalog() {
+    fun seriesContinueWatchingPlaybackReturnsToCatalogSession() {
         val session = OnDemandPresentationSession()
         val episode = episode("episode-9", "series-5", season = 1)
 
@@ -81,9 +81,10 @@ class OnDemandPresentationSessionTest {
 
         session.returnFromSeriesPlayback()
 
-        assertNull(session.current.kind)
-        assertNull(session.current.sourceId)
+        assertEquals(OnDemandContentKind.SERIES, session.current.kind)
+        assertEquals("source-1", session.current.sourceId)
         assertNull(session.current.itemId)
+        assertFalse(session.current.isSeriesPlayback)
     }
 
     private fun movie(movieId: String) = VodMovie(

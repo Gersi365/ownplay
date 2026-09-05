@@ -175,7 +175,7 @@ class OnDemandPresentationSession {
         val current = _state.value
         if (!current.isSeriesPlayback) return
         if (current.seriesPlaybackReturnsToCatalog) {
-            clear()
+            showSeriesCatalog(requireNotNull(current.sourceId))
         } else {
             _state.value = current.copy(
                 seriesPlayback = null,
