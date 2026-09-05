@@ -1,5 +1,6 @@
 package app.ownplay.player.epg
 
+import kotlinx.coroutines.CancellationException
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -69,6 +70,26 @@ class EpgRefreshGenerationTest {
         assertTrue(accepted)
         assertTrue(published)
         assertFalse(generation.isCurrent("source-a", refreshSnapshot))
+    }
+
+    @Test
+    fun supersededFullRefreshCancelsInsteadOfReturningFailure() {
+        val generation = EpgRefreshGeneration()
+        val oldRefresh = generation.beginRefresh("source-a")
+        var published = false
+        generation.beginRefresh("source-a")
+
+        var cancelled = false
+        try {
+            generation.runIfCurrentAndAdvance("source-a", oldRefresh) {
+                published = true
+            }
+        } catch (_: CancellationException) {
+            cancelled = true
+        }
+
+        assertTrue(cancelled)
+        assertFalse(published)
     }
 
     @Test
