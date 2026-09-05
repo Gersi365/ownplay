@@ -274,9 +274,14 @@ class OfflineDownloadWorker(
                 if (bodyLength != null) {
                     val usableSpace = OfflineDownloadStorage.usableSpaceBytes(
                         context = applicationContext,
-                        publicDownloads = usePublicDownloads,
+                        destinationLocation = destinationLocation,
                     )
-                    if (!hasEnoughOfflineDownloadSpace(usableSpace, bodyLength)) {
+                    if (
+                        shouldFailOfflineDownloadPreflight(
+                            usableSpaceBytes = usableSpace,
+                            requiredBytes = bodyLength,
+                        )
+                    ) {
                         markFailed(
                             dao = dao,
                             row = initialRow,
