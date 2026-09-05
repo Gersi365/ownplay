@@ -65,7 +65,12 @@ class VodFeatureRuntime(
     }
 
     suspend fun details(sourceId: String, movieId: String): SourceResult<VodMovieDetails> =
-        repository.details(sourceId, movieId)
+        VodMovieDetailsCache.processShared.refreshIfStale(
+            sourceId = sourceId,
+            movieId = movieId,
+        ) {
+            repository.details(sourceId, movieId)
+        }
 
     suspend fun setFavorite(sourceId: String, movieId: String, favorite: Boolean): Boolean =
         repository.setFavorite(sourceId, movieId, favorite)
