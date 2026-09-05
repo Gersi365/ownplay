@@ -140,6 +140,29 @@ interface MediaDownloadDao {
         updatedAtEpochMillis: Long,
     )
 
+    @Query(
+        """
+        UPDATE media_downloads
+        SET state = :state,
+            bytesDownloaded = :bytesDownloaded,
+            totalBytes = :totalBytes,
+            localRelativePath = :localRelativePath,
+            failureReason = :failureReason,
+            updatedAtEpochMillis = :updatedAtEpochMillis
+        WHERE downloadId = :downloadId
+          AND state IN ('QUEUED', 'DOWNLOADING')
+        """,
+    )
+    suspend fun updateActiveTransfer(
+        downloadId: String,
+        state: String,
+        bytesDownloaded: Long,
+        totalBytes: Long?,
+        localRelativePath: String?,
+        failureReason: String?,
+        updatedAtEpochMillis: Long,
+    ): Int
+
     @Query("DELETE FROM media_downloads WHERE downloadId = :downloadId")
     suspend fun delete(downloadId: String)
 }
