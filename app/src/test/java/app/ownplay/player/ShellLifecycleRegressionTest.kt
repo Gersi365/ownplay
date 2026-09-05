@@ -79,6 +79,33 @@ class ShellLifecycleRegressionTest {
         }
     }
 
+    @Test
+    fun mobileAndTvBackHierarchyFallsThroughToExitOnlyAtLiveRoot() {
+        listOf(
+            "src/mobile/java/app/ownplay/player/ui/MobileOwnPlayApp.kt" to "MobileSection",
+            "src/tv/java/app/ownplay/player/ui/TVOwnPlayApp.kt" to "TVSection",
+        ).forEach { (path, sectionType) ->
+            val source = sourceText(path)
+            assertTrue("$path must install a Compose back handler", source.contains("import androidx.activity.compose.BackHandler"))
+
+            val block = source
+                .substringAfter("BackHandler(enabled = section != $sectionType.LIVE) {")
+                .substringBefore("\n    LaunchedEffect")
+                .replace(Regex("\\s+"), " ")
+
+            assertTrue("$path must give detail/playback back actions priority", block.contains("PlaybackInteractionBridge.handleBack()"))
+            assertTrue(
+                "$path must return Movies/Series catalog roots to Library",
+                block.contains("$sectionType.MOVIES, $sectionType.SERIES, -> openSection($sectionType.LIBRARY)"),
+            )
+            assertTrue(
+                "$path must return Library/Settings roots to Live",
+                block.contains("$sectionType.LIBRARY, $sectionType.SETTINGS, -> openSection($sectionType.LIVE)"),
+            )
+            assertFalse("$path shell fallback must never show exit itself", block.contains("showExitConfirmation"))
+        }
+    }
+
     private fun sourceText(relativePath: String): String {
         val candidates = listOf(
             File(relativePath),

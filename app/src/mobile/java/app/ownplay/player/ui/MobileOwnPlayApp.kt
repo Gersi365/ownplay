@@ -1,6 +1,7 @@
 package app.ownplay.player.ui
 
 import android.content.res.Configuration
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -253,6 +254,29 @@ private fun MobileOwnPlayAppContent(
             seriesDetailReturnToLibrary = false
         }
         section = target
+    }
+
+    BackHandler(enabled = section != MobileSection.LIVE) {
+        val interactionHandled = when (section) {
+            MobileSection.LIBRARY,
+            MobileSection.MOVIES,
+            MobileSection.SERIES,
+            -> PlaybackInteractionBridge.handleBack()
+            MobileSection.LIVE,
+            MobileSection.SETTINGS,
+            -> false
+        }
+        if (interactionHandled) return@BackHandler
+
+        when (section) {
+            MobileSection.MOVIES,
+            MobileSection.SERIES,
+            -> openSection(MobileSection.LIBRARY)
+            MobileSection.LIBRARY,
+            MobileSection.SETTINGS,
+            -> openSection(MobileSection.LIVE)
+            MobileSection.LIVE -> Unit
+        }
     }
 
     LaunchedEffect(summaries, activePlaylistSelection) {

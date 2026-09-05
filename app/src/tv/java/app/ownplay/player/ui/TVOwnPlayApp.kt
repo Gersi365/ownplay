@@ -1,6 +1,7 @@
 package app.ownplay.player.ui
 
 import android.content.res.Configuration
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -234,6 +235,29 @@ private fun TVOwnPlayAppContent(
             seriesDetailReturnToLibrary = false
         }
         section = target
+    }
+
+    BackHandler(enabled = section != TVSection.LIVE) {
+        val interactionHandled = when (section) {
+            TVSection.LIBRARY,
+            TVSection.MOVIES,
+            TVSection.SERIES,
+            -> PlaybackInteractionBridge.handleBack()
+            TVSection.LIVE,
+            TVSection.SETTINGS,
+            -> false
+        }
+        if (interactionHandled) return@BackHandler
+
+        when (section) {
+            TVSection.MOVIES,
+            TVSection.SERIES,
+            -> openSection(TVSection.LIBRARY)
+            TVSection.LIBRARY,
+            TVSection.SETTINGS,
+            -> openSection(TVSection.LIVE)
+            TVSection.LIVE -> Unit
+        }
     }
 
     LaunchedEffect(summaries, activePlaylistSelection) {
