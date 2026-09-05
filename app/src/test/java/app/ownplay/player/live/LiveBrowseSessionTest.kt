@@ -45,10 +45,19 @@ class LiveBrowseSessionTest {
             LiveBrowseQuery(searchTerm = "news", categoryKey = "news"),
         )
 
+        assertSame(initial.categoryNavigationChannels, initial.channels)
         assertSame(initial.categoryNavigationChannels, searched.categoryNavigationChannels)
         assertSame(searched.categoryNavigationChannels, categorized.categoryNavigationChannels)
         assertSame(initial.categories, searched.categories)
         assertSame(initial.channelCategoryKeyById, searched.channelCategoryKeyById)
+        assertSame(
+            searched.categoryNavigationChannels.first { it.channelId == "news-one" },
+            searched.channels.first { it.channelId == "news-one" },
+        )
+        assertSame(
+            categorized.categoryNavigationChannels.first { it.channelId == "news-two" },
+            categorized.channels.first { it.channelId == "news-two" },
+        )
         assertEquals(listOf("news-one", "news-two"), searched.channels.map { it.channelId })
         assertEquals(listOf("news-one", "news-two"), categorized.channels.map { it.channelId })
     }
