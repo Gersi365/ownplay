@@ -4,6 +4,7 @@ import app.ownplay.player.persistence.ChannelAvailability
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.update
 
 data class LiveBrowseState(
@@ -16,50 +17,94 @@ data class LiveBrowseState(
     val query: LiveBrowseQuery = LiveBrowseQuery(),
 )
 
-class LiveBrowseSession(
-    initialQuery: LiveBrowseQuery = LiveBrowseQuery(),
-) {
-    private val query = MutableStateFlow(initialQuery)
+internal class LiveBrowseStateProjector {
+    private var cachedSnapshot: LiveCatalogSnapshot? = null
+    private var cachedIncludeHidden: Boolean? = null
+    private var cachedNavigationQuery: LiveBrowseQuery? = null
 
-    fun observe(catalog: Flow<LiveCatalogSnapshot>): Flow<LiveBrowseState> = combine(
-        catalog,
-        query,
-    ) { snapshot, currentQuery ->
-        val visibleCategories = snapshot.categories
-            .asSequence()
-            .filter { category -> currentQuery.includeHidden || !category.isHidden }
-            .sortedWith(
-                compareBy<LiveCategory> { it.manualOrder == null }
-                    .thenBy { it.manualOrder ?: Long.MAX_VALUE }
-                    .thenBy(LiveCategory::providerOrder),
+    private var cachedCategories: List<LiveCategory> = emptyList()
+    private var cachedCustomGroups: List<LiveCustomGroup> = emptyList()
+    private var cachedNavigationChannels: List<LiveChannelItem> = emptyList()
+    private var cachedChannelCategoryKeyById: Map<String, String?> = emptyMap()
+    private var cachedCatalogChannelCount: Int = 0
+
+    fun project(
+        snapshot: LiveCatalogSnapshot,
+        currentQuery: LiveBrowseQuery,
+    ): LiveBrowseState {
+        val snapshotChanged = snapshot !== cachedSnapshot
+
+        if (snapshotChanged) {
+            cachedCustomGroups = snapshot.customGroups.sortedBy(LiveCustomGroup::groupOrder)
+            cachedChannelCategoryKeyById = snapshot.channels.associate { channel ->
+                channel.channelId to channel.providerCategoryKey
+            }
+            cachedCatalogChannelCount = snapshot.channels.count { channel ->
+                channel.availability != ChannelAvailability.REMOVED
+            }
+        }
+
+        if (snapshotChanged || cachedIncludeHidden != currentQuery.includeHidden) {
+            cachedCategories = snapshot.categories
+                .asSequence()
+                .filter { category -> currentQuery.includeHidden || !category.isHidden }
+                .sortedWith(
+                    compareBy<LiveCategory> { it.manualOrder == null }
+                        .thenBy { it.manualOrder ?: Long.MAX_VALUE }
+                        .thenBy(LiveCategory::providerOrder),
+                )
+                .toList()
+            cachedIncludeHidden = currentQuery.includeHidden
+        }
+
+        val navigationQuery = currentQuery.copy(
+            searchTerm = "",
+            categoryKey = null,
+        )
+        if (snapshotChanged || navigationQuery != cachedNavigationQuery) {
+            cachedNavigationChannels = LiveBrowseProjector.project(
+                records = snapshot.channels,
+                query = navigationQuery,
+                customGroupIdsByChannelId = snapshot.customGroupIdsByChannelId,
+                hiddenCategoryKeys = snapshot.hiddenCategoryKeys,
             )
-            .toList()
-        LiveBrowseState(
-            categories = visibleCategories,
-            customGroups = snapshot.customGroups.sortedBy(LiveCustomGroup::groupOrder),
+            cachedNavigationQuery = navigationQuery
+        }
+
+        cachedSnapshot = snapshot
+
+        return LiveBrowseState(
+            categories = cachedCategories,
+            customGroups = cachedCustomGroups,
             channels = LiveBrowseProjector.project(
                 records = snapshot.channels,
                 query = currentQuery,
                 customGroupIdsByChannelId = snapshot.customGroupIdsByChannelId,
                 hiddenCategoryKeys = snapshot.hiddenCategoryKeys,
             ),
-            categoryNavigationChannels = LiveBrowseProjector.project(
-                records = snapshot.channels,
-                query = currentQuery.copy(
-                    searchTerm = "",
-                    categoryKey = null,
-                ),
-                customGroupIdsByChannelId = snapshot.customGroupIdsByChannelId,
-                hiddenCategoryKeys = snapshot.hiddenCategoryKeys,
-            ),
-            channelCategoryKeyById = snapshot.channels.associate { channel ->
-                channel.channelId to channel.providerCategoryKey
-            },
-            catalogChannelCount = snapshot.channels.count { channel ->
-                channel.availability != ChannelAvailability.REMOVED
-            },
+            categoryNavigationChannels = cachedNavigationChannels,
+            channelCategoryKeyById = cachedChannelCategoryKeyById,
+            catalogChannelCount = cachedCatalogChannelCount,
             query = currentQuery,
         )
+    }
+}
+
+class LiveBrowseSession(
+    initialQuery: LiveBrowseQuery = LiveBrowseQuery(),
+) {
+    private val query = MutableStateFlow(initialQuery)
+
+    fun observe(catalog: Flow<LiveCatalogSnapshot>): Flow<LiveBrowseState> = flow {
+        val projector = LiveBrowseStateProjector()
+        combine(
+            catalog,
+            query,
+        ) { snapshot, currentQuery ->
+            projector.project(snapshot, currentQuery)
+        }.collect { state ->
+            emit(state)
+        }
     }
 
     fun updateSearch(searchTerm: String) {
