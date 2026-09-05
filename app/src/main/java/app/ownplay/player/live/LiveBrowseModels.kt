@@ -120,6 +120,20 @@ object LiveBrowseProjector {
         }
     }
 
+    internal fun filterTransient(
+        navigationChannels: List<LiveChannelItem>,
+        query: LiveBrowseQuery,
+    ): List<LiveChannelItem> {
+        val normalizedSearch = query.searchTerm.trim().lowercase(Locale.ROOT)
+        if (query.categoryKey == null && normalizedSearch.isEmpty()) {
+            return navigationChannels
+        }
+        return navigationChannels.asSequence()
+            .filter { item -> query.categoryKey == null || item.categoryKey == query.categoryKey }
+            .filter { item -> matchesSearch(item, normalizedSearch) }
+            .toList()
+    }
+
     private fun matchesSearch(
         record: LiveChannelRecord,
         normalizedSearch: String,
@@ -128,6 +142,16 @@ object LiveBrowseProjector {
         return displayName(record).lowercase(Locale.ROOT).contains(normalizedSearch) ||
             record.providerName.lowercase(Locale.ROOT).contains(normalizedSearch) ||
             record.categoryName.orEmpty().lowercase(Locale.ROOT).contains(normalizedSearch)
+    }
+
+    private fun matchesSearch(
+        item: LiveChannelItem,
+        normalizedSearch: String,
+    ): Boolean {
+        if (normalizedSearch.isEmpty()) return true
+        return item.displayName.lowercase(Locale.ROOT).contains(normalizedSearch) ||
+            item.providerName.lowercase(Locale.ROOT).contains(normalizedSearch) ||
+            item.categoryName.orEmpty().lowercase(Locale.ROOT).contains(normalizedSearch)
     }
 
     private fun isEffectivelyHidden(
