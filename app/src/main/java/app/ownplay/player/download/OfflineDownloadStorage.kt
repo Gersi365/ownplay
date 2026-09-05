@@ -8,6 +8,7 @@ import android.os.Build
 import android.os.Environment
 import android.os.ParcelFileDescriptor
 import android.provider.MediaStore
+import android.system.Os
 import android.webkit.MimeTypeMap
 import app.ownplay.player.persistence.download.MediaDownloadEntity
 import java.io.BufferedOutputStream
@@ -26,9 +27,12 @@ internal object OfflineDownloadStorage {
 
     fun usableSpaceBytes(
         context: Context,
-        publicDownloads: Boolean,
-    ): Long = if (publicDownloads) {
-        context.getExternalFilesDir(null)?.usableSpace?.coerceAtLeast(0L) ?: 0L
+        destinationLocation: String?,
+    ): Long? = if (isPublicDownloadsLocation(destinationLocation)) {
+        publicDestinationUsableSpaceBytes(
+            context = context,
+            location = requireNotNull(destinationLocation),
+        )
     } else {
         privateDirectory(context).usableSpace.coerceAtLeast(0L)
     }
@@ -191,6 +195,22 @@ internal object OfflineDownloadStorage {
 
     private fun privateDirectory(context: Context): File =
         File(context.filesDir, PRIVATE_DIRECTORY).apply { mkdirs() }
+
+    private fun publicDestinationUsableSpaceBytes(
+        context: Context,
+        location: String,
+    ): Long? = try {
+        context.contentResolver.openFileDescriptor(Uri.parse(location), "rw")?.use { descriptor ->
+            val stats = Os.fstatvfs(descriptor.fileDescriptor)
+            val fragmentSize = stats.f_frsize.takeIf { it > 0L } ?: stats.f_bsize
+            measuredUsableSpaceBytes(
+                availableBlocks = stats.f_bavail,
+                fragmentSizeBytes = fragmentSize,
+            )
+        }
+    } catch (_: Exception) {
+        null
+    }
 
     private fun publicDisplayName(row: MediaDownloadEntity, extension: String): String {
         val stem = if (
