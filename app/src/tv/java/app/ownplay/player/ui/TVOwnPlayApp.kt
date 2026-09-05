@@ -41,10 +41,12 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import app.ownplay.player.OwnPlayAppRuntime
 import app.ownplay.player.livePlaybackPresentationSession
+import app.ownplay.player.onDemandPresentationSession
 import app.ownplay.player.playback.LivePlaybackSelection
 import app.ownplay.player.playback.LivePlaybackSurfaceTeardown
 import app.ownplay.player.playback.LivePlaybackTransitionGate
 import app.ownplay.player.playback.LivePlaybackTransitionTarget
+import app.ownplay.player.playback.OnDemandContentKind
 import app.ownplay.player.playback.PlaybackInteractionBridge
 import app.ownplay.player.source.SourceSyncState
 import app.ownplay.player.source.selection.ActivePlaylistSelection
@@ -107,16 +109,47 @@ private fun TVOwnPlayAppContent(
     val playbackState by runtime.playbackController.state.collectAsState()
     val playbackTrackState by runtime.playbackTrackController.state.collectAsState()
     val livePresentation by runtime.livePlaybackPresentationSession.state.collectAsState()
+    val onDemandPresentation by runtime.onDemandPresentationSession.state.collectAsState()
 
-    var section by remember { mutableStateOf(TVSection.LIVE) }
-    var activeSourceId by remember { mutableStateOf<String?>(null) }
-    var requestedVodMovieId by remember { mutableStateOf<String?>(null) }
-    var requestedSeriesId by remember { mutableStateOf<String?>(null) }
-    var movieDetailReturnToLibrary by remember { mutableStateOf(false) }
-    var seriesDetailReturnToLibrary by remember { mutableStateOf(false) }
-    var vodFullscreen by remember { mutableStateOf(false) }
-    var seriesFullscreen by remember { mutableStateOf(false) }
+    var section by remember {
+        mutableStateOf(
+            when (onDemandPresentation.kind) {
+                OnDemandContentKind.MOVIE -> TVSection.MOVIES
+                OnDemandContentKind.SERIES -> TVSection.SERIES
+                null -> TVSection.LIVE
+            },
+        )
+    }
+    var activeSourceId by remember { mutableStateOf(onDemandPresentation.sourceId) }
+    var requestedVodMovieId by remember {
+        mutableStateOf(
+            onDemandPresentation.itemId.takeIf {
+                onDemandPresentation.kind == OnDemandContentKind.MOVIE
+            },
+        )
+    }
+    var requestedSeriesId by remember {
+        mutableStateOf(
+            onDemandPresentation.itemId.takeIf {
+                onDemandPresentation.kind == OnDemandContentKind.SERIES
+            },
+        )
+    }
+    var movieDetailReturnToLibrary by remember {
+        mutableStateOf(
+            onDemandPresentation.kind == OnDemandContentKind.MOVIE &&
+                onDemandPresentation.returnToLibraryOnDetailBack,
+        )
+    }
+    var seriesDetailReturnToLibrary by remember {
+        mutableStateOf(
+            onDemandPresentation.kind == OnDemandContentKind.SERIES &&
+                onDemandPresentation.returnToLibraryOnDetailBack,
+        )
+    }
     var libraryFullscreen by remember { mutableStateOf(false) }
+    val vodFullscreen = onDemandPresentation.isMoviePlayback
+    val seriesFullscreen = onDemandPresentation.isSeriesPlayback
     val activeSelection = livePresentation.selection
     val fullscreenSelection = livePresentation.fullscreenSelection
     val liveTransitionGate = remember { LivePlaybackTransitionGate() }
@@ -174,6 +207,24 @@ private fun TVOwnPlayAppContent(
                 runtime.livePlaybackPresentationSession.clear()
             }
         }
+
+        val onDemandCurrent = runtime.onDemandPresentationSession.current
+        when (target) {
+            TVSection.MOVIES -> {
+                if (onDemandCurrent.kind != OnDemandContentKind.MOVIE) {
+                    activeSourceId?.let(runtime.onDemandPresentationSession::showMovieCatalog)
+                }
+            }
+            TVSection.SERIES -> {
+                if (onDemandCurrent.kind != OnDemandContentKind.SERIES) {
+                    activeSourceId?.let(runtime.onDemandPresentationSession::showSeriesCatalog)
+                }
+            }
+            else -> if (onDemandCurrent.kind != null) {
+                runtime.onDemandPresentationSession.clear()
+            }
+        }
+
         if (target != TVSection.MOVIES) {
             requestedVodMovieId = null
             movieDetailReturnToLibrary = false
@@ -213,6 +264,15 @@ private fun TVOwnPlayAppContent(
             stopLivePresentation {
                 runtime.livePlaybackPresentationSession.clear()
             }
+        }
+        val onDemandSourceId = runtime.onDemandPresentationSession.current.sourceId
+        if (
+            enabledSourceIds.isNotEmpty() &&
+            resolvedSourceId != null &&
+            onDemandSourceId != null &&
+            onDemandSourceId != resolvedSourceId
+        ) {
+            runtime.onDemandPresentationSession.clear()
         }
         if (resolvedSourceId == null) {
             requestedVodMovieId = null
@@ -366,12 +426,22 @@ private fun TVOwnPlayAppContent(
                     sourceKind = activeSummary?.sourceKind,
                     onOpenMovieDetails = { sourceId, movieId ->
                         rememberActiveSource(sourceId)
+                        runtime.onDemandPresentationSession.showMovieDetail(
+                            sourceId = sourceId,
+                            movieId = movieId,
+                            returnToLibraryOnDetailBack = true,
+                        )
                         requestedVodMovieId = movieId
                         movieDetailReturnToLibrary = true
                         openSection(TVSection.MOVIES)
                     },
                     onOpenSeriesDetails = { sourceId, seriesId ->
                         rememberActiveSource(sourceId)
+                        runtime.onDemandPresentationSession.showSeriesDetail(
+                            sourceId = sourceId,
+                            seriesId = seriesId,
+                            returnToLibraryOnDetailBack = true,
+                        )
                         requestedSeriesId = seriesId
                         seriesDetailReturnToLibrary = true
                         openSection(TVSection.SERIES)
@@ -393,10 +463,7 @@ private fun TVOwnPlayAppContent(
                     onOpenLive = { openSection(TVSection.LIVE) },
                     onOpenSeries = { openSection(TVSection.SERIES) },
                     onOpenSettings = { openSection(TVSection.SETTINGS) },
-                    onFullscreenStateChanged = { fullscreen ->
-                        vodFullscreen = fullscreen
-                        onPlaybackFullscreenChanged(fullscreen)
-                    },
+                    onFullscreenStateChanged = onPlaybackFullscreenChanged,
                 )
 
                 TVSection.SERIES -> SeriesRoute(
@@ -408,10 +475,7 @@ private fun TVOwnPlayAppContent(
                     returnToLibraryOnDetailBack = seriesDetailReturnToLibrary,
                     onReturnToLibrary = { openSection(TVSection.LIBRARY) },
                     onOpenSettings = { openSection(TVSection.SETTINGS) },
-                    onFullscreenStateChanged = { fullscreen ->
-                        seriesFullscreen = fullscreen
-                        onPlaybackFullscreenChanged(fullscreen)
-                    },
+                    onFullscreenStateChanged = onPlaybackFullscreenChanged,
                 )
 
                 TVSection.SETTINGS -> SettingsScreen(
@@ -432,6 +496,7 @@ private fun TVOwnPlayAppContent(
                             }
                         }
                         rememberActiveSource(sourceId)
+                        runtime.onDemandPresentationSession.clear()
                         section = TVSection.LIVE
                     },
                     onStopPlayback = {
@@ -441,6 +506,7 @@ private fun TVOwnPlayAppContent(
                             }
                         } else {
                             runtime.playbackController.stop()
+                            runtime.onDemandPresentationSession.clear()
                         }
                     },
                 )

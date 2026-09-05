@@ -47,12 +47,14 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import app.ownplay.player.OwnPlayAppRuntime
 import app.ownplay.player.livePlaybackPresentationSession
+import app.ownplay.player.onDemandPresentationSession
 import app.ownplay.player.playback.LiveFullscreenEntryReason
 import app.ownplay.player.playback.LivePlaybackPresentationPolicy
 import app.ownplay.player.playback.LivePlaybackSelection
 import app.ownplay.player.playback.LivePlaybackSurfaceTeardown
 import app.ownplay.player.playback.LivePlaybackTransitionGate
 import app.ownplay.player.playback.LivePlaybackTransitionTarget
+import app.ownplay.player.playback.OnDemandContentKind
 import app.ownplay.player.playback.PlaybackInteractionBridge
 import app.ownplay.player.source.SourceSyncState
 import app.ownplay.player.source.selection.ActivePlaylistSelection
@@ -119,16 +121,47 @@ private fun MobileOwnPlayAppContent(
     val playbackOrigin by runtime.playbackController.resolvedOrigin.collectAsState()
     val playbackTrackState by runtime.playbackTrackController.state.collectAsState()
     val livePresentation by runtime.livePlaybackPresentationSession.state.collectAsState()
+    val onDemandPresentation by runtime.onDemandPresentationSession.state.collectAsState()
 
-    var section by remember { mutableStateOf(MobileSection.LIVE) }
-    var activeSourceId by remember { mutableStateOf<String?>(null) }
-    var requestedVodMovieId by remember { mutableStateOf<String?>(null) }
-    var requestedSeriesId by remember { mutableStateOf<String?>(null) }
-    var movieDetailReturnToLibrary by remember { mutableStateOf(false) }
-    var seriesDetailReturnToLibrary by remember { mutableStateOf(false) }
-    var vodFullscreen by remember { mutableStateOf(false) }
-    var seriesFullscreen by remember { mutableStateOf(false) }
+    var section by remember {
+        mutableStateOf(
+            when (onDemandPresentation.kind) {
+                OnDemandContentKind.MOVIE -> MobileSection.MOVIES
+                OnDemandContentKind.SERIES -> MobileSection.SERIES
+                null -> MobileSection.LIVE
+            },
+        )
+    }
+    var activeSourceId by remember { mutableStateOf(onDemandPresentation.sourceId) }
+    var requestedVodMovieId by remember {
+        mutableStateOf(
+            onDemandPresentation.itemId.takeIf {
+                onDemandPresentation.kind == OnDemandContentKind.MOVIE
+            },
+        )
+    }
+    var requestedSeriesId by remember {
+        mutableStateOf(
+            onDemandPresentation.itemId.takeIf {
+                onDemandPresentation.kind == OnDemandContentKind.SERIES
+            },
+        )
+    }
+    var movieDetailReturnToLibrary by remember {
+        mutableStateOf(
+            onDemandPresentation.kind == OnDemandContentKind.MOVIE &&
+                onDemandPresentation.returnToLibraryOnDetailBack,
+        )
+    }
+    var seriesDetailReturnToLibrary by remember {
+        mutableStateOf(
+            onDemandPresentation.kind == OnDemandContentKind.SERIES &&
+                onDemandPresentation.returnToLibraryOnDetailBack,
+        )
+    }
     var libraryFullscreen by remember { mutableStateOf(false) }
+    val vodFullscreen = onDemandPresentation.isMoviePlayback
+    val seriesFullscreen = onDemandPresentation.isSeriesPlayback
     val activeSelection = livePresentation.selection
     val fullscreenSelection = livePresentation.fullscreenSelection
     val fullscreenEntryReason = livePresentation.fullscreenEntryReason
@@ -193,6 +226,24 @@ private fun MobileOwnPlayAppContent(
                 runtime.livePlaybackPresentationSession.clear()
             }
         }
+
+        val onDemandCurrent = runtime.onDemandPresentationSession.current
+        when (target) {
+            MobileSection.MOVIES -> {
+                if (onDemandCurrent.kind != OnDemandContentKind.MOVIE) {
+                    activeSourceId?.let(runtime.onDemandPresentationSession::showMovieCatalog)
+                }
+            }
+            MobileSection.SERIES -> {
+                if (onDemandCurrent.kind != OnDemandContentKind.SERIES) {
+                    activeSourceId?.let(runtime.onDemandPresentationSession::showSeriesCatalog)
+                }
+            }
+            else -> if (onDemandCurrent.kind != null) {
+                runtime.onDemandPresentationSession.clear()
+            }
+        }
+
         if (target != MobileSection.MOVIES) {
             requestedVodMovieId = null
             movieDetailReturnToLibrary = false
@@ -232,6 +283,15 @@ private fun MobileOwnPlayAppContent(
             stopLivePresentation {
                 runtime.livePlaybackPresentationSession.clear()
             }
+        }
+        val onDemandSourceId = runtime.onDemandPresentationSession.current.sourceId
+        if (
+            enabledSourceIds.isNotEmpty() &&
+            resolvedSourceId != null &&
+            onDemandSourceId != null &&
+            onDemandSourceId != resolvedSourceId
+        ) {
+            runtime.onDemandPresentationSession.clear()
         }
         if (resolvedSourceId == null) {
             requestedVodMovieId = null
@@ -423,12 +483,22 @@ private fun MobileOwnPlayAppContent(
                     sourceKind = activeSummary?.sourceKind,
                     onOpenMovieDetails = { sourceId, movieId ->
                         rememberActiveSource(sourceId)
+                        runtime.onDemandPresentationSession.showMovieDetail(
+                            sourceId = sourceId,
+                            movieId = movieId,
+                            returnToLibraryOnDetailBack = true,
+                        )
                         requestedVodMovieId = movieId
                         movieDetailReturnToLibrary = true
                         openSection(MobileSection.MOVIES)
                     },
                     onOpenSeriesDetails = { sourceId, seriesId ->
                         rememberActiveSource(sourceId)
+                        runtime.onDemandPresentationSession.showSeriesDetail(
+                            sourceId = sourceId,
+                            seriesId = seriesId,
+                            returnToLibraryOnDetailBack = true,
+                        )
                         requestedSeriesId = seriesId
                         seriesDetailReturnToLibrary = true
                         openSection(MobileSection.SERIES)
@@ -450,10 +520,7 @@ private fun MobileOwnPlayAppContent(
                     onOpenLive = { openSection(MobileSection.LIVE) },
                     onOpenSeries = { openSection(MobileSection.SERIES) },
                     onOpenSettings = { openSection(MobileSection.SETTINGS) },
-                    onFullscreenStateChanged = { fullscreen ->
-                        vodFullscreen = fullscreen
-                        onPlaybackFullscreenChanged(fullscreen)
-                    },
+                    onFullscreenStateChanged = onPlaybackFullscreenChanged,
                 )
 
                 MobileSection.SERIES -> SeriesRoute(
@@ -465,10 +532,7 @@ private fun MobileOwnPlayAppContent(
                     returnToLibraryOnDetailBack = seriesDetailReturnToLibrary,
                     onReturnToLibrary = { openSection(MobileSection.LIBRARY) },
                     onOpenSettings = { openSection(MobileSection.SETTINGS) },
-                    onFullscreenStateChanged = { fullscreen ->
-                        seriesFullscreen = fullscreen
-                        onPlaybackFullscreenChanged(fullscreen)
-                    },
+                    onFullscreenStateChanged = onPlaybackFullscreenChanged,
                 )
 
                 MobileSection.SETTINGS -> SettingsScreen(
@@ -489,6 +553,7 @@ private fun MobileOwnPlayAppContent(
                             }
                         }
                         rememberActiveSource(sourceId)
+                        runtime.onDemandPresentationSession.clear()
                         section = MobileSection.LIVE
                     },
                     onStopPlayback = {
@@ -498,6 +563,7 @@ private fun MobileOwnPlayAppContent(
                             }
                         } else {
                             runtime.playbackController.stop()
+                            runtime.onDemandPresentationSession.clear()
                         }
                     },
                 )
