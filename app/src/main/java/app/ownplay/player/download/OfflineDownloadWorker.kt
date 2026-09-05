@@ -112,7 +112,7 @@ class OfflineDownloadWorker(
                 partFile.takeIf(File::isFile)?.length() ?: 0L
             }
 
-            dao.updateTransfer(
+            val markedDownloading = dao.updateActiveTransfer(
                 downloadId = downloadId,
                 state = DownloadStates.DOWNLOADING,
                 bytesDownloaded = existingBytes,
@@ -121,6 +121,16 @@ class OfflineDownloadWorker(
                 failureReason = null,
                 updatedAtEpochMillis = System.currentTimeMillis(),
             )
+            if (markedDownloading == 0) {
+                val currentRow = dao.getById(downloadId)
+                if (
+                    activePublicDestination != null &&
+                    currentRow?.localRelativePath != activePublicDestination
+                ) {
+                    OfflineDownloadStorage.deleteLocation(applicationContext, activePublicDestination)
+                }
+                return Result.success()
+            }
 
             val requestBuilder = Request.Builder().url(locator.value)
             if (existingBytes > 0L) {
@@ -137,14 +147,19 @@ class OfflineDownloadWorker(
                         )
                     ) {
                         OfflineDownloadFailureDisposition.RETRY -> {
-                            markQueuedForRetry(
-                                dao = dao,
-                                row = initialRow,
-                                reason = reason,
-                                bytesDownloaded = existingBytes,
-                                localLocation = destinationLocation,
-                            )
-                            Result.retry()
+                            if (
+                                markQueuedForRetry(
+                                    dao = dao,
+                                    row = initialRow,
+                                    reason = reason,
+                                    bytesDownloaded = existingBytes,
+                                    localLocation = destinationLocation,
+                                )
+                            ) {
+                                Result.retry()
+                            } else {
+                                Result.success()
+                            }
                         }
                         OfflineDownloadFailureDisposition.RESTART -> {
                             if (usePublicDownloads) {
@@ -164,15 +179,20 @@ class OfflineDownloadWorker(
                                 )
                                 return Result.failure()
                             }
-                            markQueuedForRetry(
-                                dao = dao,
-                                row = initialRow,
-                                reason = "Provider rejected resume. Restarting from the beginning.",
-                                bytesDownloaded = 0L,
-                                totalBytes = null,
-                                localLocation = destinationLocation,
-                            )
-                            Result.retry()
+                            if (
+                                markQueuedForRetry(
+                                    dao = dao,
+                                    row = initialRow,
+                                    reason = "Provider rejected resume. Restarting from the beginning.",
+                                    bytesDownloaded = 0L,
+                                    totalBytes = null,
+                                    localLocation = destinationLocation,
+                                )
+                            ) {
+                                Result.retry()
+                            } else {
+                                Result.success()
+                            }
                         }
                         OfflineDownloadFailureDisposition.FAIL -> {
                             markFailed(
@@ -214,15 +234,20 @@ class OfflineDownloadWorker(
                             )
                             return Result.failure()
                         }
-                        markQueuedForRetry(
-                            dao = dao,
-                            row = initialRow,
-                            reason = "Provider returned an incompatible resume range. Restarting from the beginning.",
-                            bytesDownloaded = 0L,
-                            totalBytes = null,
-                            localLocation = destinationLocation,
-                        )
-                        return Result.retry()
+                        return if (
+                            markQueuedForRetry(
+                                dao = dao,
+                                row = initialRow,
+                                reason = "Provider returned an incompatible resume range. Restarting from the beginning.",
+                                bytesDownloaded = 0L,
+                                totalBytes = null,
+                                localLocation = destinationLocation,
+                            )
+                        ) {
+                            Result.retry()
+                        } else {
+                            Result.success()
+                        }
                     }
                     OfflineDownloadWriteDisposition.FAIL -> {
                         markFailed(
@@ -293,12 +318,7 @@ class OfflineDownloadWorker(
                                 now - lastReportedAt >= PROGRESS_REPORT_MILLIS
                             ) {
                                 openedOutput.flush()
-                                val currentRow = dao.getById(downloadId)
-                                    ?: throw IOException("Download record was removed")
-                                if (currentRow.state == DownloadStates.PAUSED) {
-                                    throw CancellationException("Download paused")
-                                }
-                                dao.updateTransfer(
+                                val progressUpdated = dao.updateActiveTransfer(
                                     downloadId = downloadId,
                                     state = DownloadStates.DOWNLOADING,
                                     bytesDownloaded = downloaded,
@@ -307,6 +327,9 @@ class OfflineDownloadWorker(
                                     failureReason = null,
                                     updatedAtEpochMillis = now,
                                 )
+                                if (progressUpdated == 0) {
+                                    throw CancellationException("Download state changed during progress update")
+                                }
                                 setForeground(createForegroundInfo(initialRow, downloaded, totalBytes))
                                 lastReportedBytes = downloaded
                                 lastReportedAt = now
@@ -350,12 +373,7 @@ class OfflineDownloadWorker(
                     finalBytes = finalFile.length()
                 }
 
-                if (dao.getById(downloadId) == null) {
-                    OfflineDownloadStorage.deleteLocation(applicationContext, finalLocation)
-                    partFile.delete()
-                    return Result.success()
-                }
-                dao.updateTransfer(
+                val completed = dao.updateActiveTransfer(
                     downloadId = downloadId,
                     state = DownloadStates.COMPLETED,
                     bytesDownloaded = finalBytes,
@@ -364,26 +382,34 @@ class OfflineDownloadWorker(
                     failureReason = null,
                     updatedAtEpochMillis = System.currentTimeMillis(),
                 )
+                if (completed == 0 && dao.getById(downloadId) == null) {
+                    OfflineDownloadStorage.deleteLocation(applicationContext, finalLocation)
+                    partFile.delete()
+                }
                 return Result.success()
             }
         } catch (cancelled: CancellationException) {
             val row = dao.getById(downloadId)
             if (row != null) {
-                val localLocation = row.localRelativePath ?: activePublicDestination
-                val cancellationState = if (row.state == DownloadStates.PAUSED) {
-                    DownloadStates.PAUSED
+                if (row.state == DownloadStates.PAUSED) {
+                    if (
+                        activePublicDestination != null &&
+                        row.localRelativePath != activePublicDestination
+                    ) {
+                        OfflineDownloadStorage.deleteLocation(applicationContext, activePublicDestination)
+                    }
                 } else {
-                    DownloadStates.QUEUED
+                    val localLocation = row.localRelativePath ?: activePublicDestination
+                    dao.updateActiveTransfer(
+                        downloadId = downloadId,
+                        state = DownloadStates.QUEUED,
+                        bytesDownloaded = currentTransferBytes(row, localLocation),
+                        totalBytes = row.totalBytes,
+                        localRelativePath = localLocation,
+                        failureReason = null,
+                        updatedAtEpochMillis = System.currentTimeMillis(),
+                    )
                 }
-                dao.updateTransfer(
-                    downloadId = downloadId,
-                    state = cancellationState,
-                    bytesDownloaded = currentTransferBytes(row, localLocation),
-                    totalBytes = row.totalBytes,
-                    localRelativePath = localLocation,
-                    failureReason = null,
-                    updatedAtEpochMillis = System.currentTimeMillis(),
-                )
             } else {
                 OfflineDownloadStorage.deleteLocation(applicationContext, activePublicDestination)
                 OfflineDownloadStorage.partialFile(applicationContext, downloadId).delete()
@@ -393,14 +419,19 @@ class OfflineDownloadWorker(
             val row = dao.getById(downloadId)
             if (row != null) {
                 val localLocation = row.localRelativePath ?: activePublicDestination
-                markQueuedForRetry(
-                    dao = dao,
-                    row = row,
-                    reason = "Download interrupted",
-                    bytesDownloaded = currentTransferBytes(row, localLocation),
-                    localLocation = localLocation,
-                )
-                return Result.retry()
+                return if (
+                    markQueuedForRetry(
+                        dao = dao,
+                        row = row,
+                        reason = "Download interrupted",
+                        bytesDownloaded = currentTransferBytes(row, localLocation),
+                        localLocation = localLocation,
+                    )
+                ) {
+                    Result.retry()
+                } else {
+                    Result.success()
+                }
             }
             OfflineDownloadStorage.deleteLocation(applicationContext, activePublicDestination)
             OfflineDownloadStorage.partialFile(applicationContext, downloadId).delete()
@@ -441,7 +472,7 @@ class OfflineDownloadWorker(
             expectedTotalBytes = row.totalBytes,
         ) ?: return false
 
-        dao.updateTransfer(
+        val completed = dao.updateActiveTransfer(
             downloadId = row.downloadId,
             state = DownloadStates.COMPLETED,
             bytesDownloaded = finalBytes,
@@ -450,7 +481,10 @@ class OfflineDownloadWorker(
             failureReason = null,
             updatedAtEpochMillis = System.currentTimeMillis(),
         )
-        if (!OfflineDownloadStorage.isPublicDownloadsLocation(finalLocation)) {
+        if (
+            completed > 0 &&
+            !OfflineDownloadStorage.isPublicDownloadsLocation(finalLocation)
+        ) {
             OfflineDownloadStorage.partialFile(applicationContext, row.downloadId).delete()
         }
         return true
@@ -477,8 +511,8 @@ class OfflineDownloadWorker(
         bytesDownloaded: Long = row.bytesDownloaded,
         totalBytes: Long? = row.totalBytes,
         localLocation: String? = row.localRelativePath,
-    ) {
-        dao.updateTransfer(
+    ): Boolean =
+        dao.updateActiveTransfer(
             downloadId = row.downloadId,
             state = DownloadStates.QUEUED,
             bytesDownloaded = bytesDownloaded,
@@ -486,8 +520,7 @@ class OfflineDownloadWorker(
             localRelativePath = localLocation,
             failureReason = reason,
             updatedAtEpochMillis = System.currentTimeMillis(),
-        )
-    }
+        ) > 0
 
     private suspend fun markFailed(
         dao: MediaDownloadDao,
@@ -497,7 +530,19 @@ class OfflineDownloadWorker(
         totalBytes: Long? = row.totalBytes,
         localLocation: String? = row.localRelativePath,
     ) {
-        dao.updateTransfer(
+        if (row.state == DownloadStates.COMPLETED) {
+            dao.updateTransfer(
+                downloadId = row.downloadId,
+                state = DownloadStates.FAILED,
+                bytesDownloaded = bytesDownloaded,
+                totalBytes = totalBytes,
+                localRelativePath = localLocation,
+                failureReason = reason,
+                updatedAtEpochMillis = System.currentTimeMillis(),
+            )
+            return
+        }
+        dao.updateActiveTransfer(
             downloadId = row.downloadId,
             state = DownloadStates.FAILED,
             bytesDownloaded = bytesDownloaded,
