@@ -46,6 +46,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import app.ownplay.player.OwnPlayAppRuntime
+import app.ownplay.player.livePlaybackPresentationSession
 import app.ownplay.player.playback.LiveFullscreenEntryReason
 import app.ownplay.player.playback.LivePlaybackPresentationPolicy
 import app.ownplay.player.playback.LivePlaybackSelection
@@ -117,12 +118,10 @@ private fun MobileOwnPlayAppContent(
     val playbackState by runtime.playbackController.state.collectAsState()
     val playbackOrigin by runtime.playbackController.resolvedOrigin.collectAsState()
     val playbackTrackState by runtime.playbackTrackController.state.collectAsState()
+    val livePresentation by runtime.livePlaybackPresentationSession.state.collectAsState()
 
     var section by remember { mutableStateOf(MobileSection.LIVE) }
     var activeSourceId by remember { mutableStateOf<String?>(null) }
-    var activeSelection by remember { mutableStateOf<LivePlaybackSelection?>(null) }
-    var fullscreenSelection by remember { mutableStateOf<LivePlaybackSelection?>(null) }
-    var fullscreenEntryReason by remember { mutableStateOf<LiveFullscreenEntryReason?>(null) }
     var requestedVodMovieId by remember { mutableStateOf<String?>(null) }
     var requestedSeriesId by remember { mutableStateOf<String?>(null) }
     var movieDetailReturnToLibrary by remember { mutableStateOf(false) }
@@ -130,6 +129,9 @@ private fun MobileOwnPlayAppContent(
     var vodFullscreen by remember { mutableStateOf(false) }
     var seriesFullscreen by remember { mutableStateOf(false) }
     var libraryFullscreen by remember { mutableStateOf(false) }
+    val activeSelection = livePresentation.selection
+    val fullscreenSelection = livePresentation.fullscreenSelection
+    val fullscreenEntryReason = livePresentation.fullscreenEntryReason
     val liveTransitionGate = remember { LivePlaybackTransitionGate() }
 
     fun rememberActiveSource(sourceId: String?) {
@@ -160,9 +162,10 @@ private fun MobileOwnPlayAppContent(
             },
             stopPlayback = runtime.playbackController::stop,
             switchPresentation = {
-                activeSelection = selection
-                fullscreenEntryReason = reason
-                fullscreenSelection = selection
+                runtime.livePlaybackPresentationSession.showFullscreen(
+                    selection = selection,
+                    entryReason = reason,
+                )
             },
             startPlayback = { runtime.playbackController.start(selection.request) },
         )
@@ -178,9 +181,7 @@ private fun MobileOwnPlayAppContent(
             switchPresentation = {
                 rememberActiveSource(selection.request.sourceId)
                 section = MobileSection.LIVE
-                activeSelection = selection
-                fullscreenSelection = null
-                fullscreenEntryReason = null
+                runtime.livePlaybackPresentationSession.showPreview(selection)
             },
             startPlayback = { runtime.playbackController.start(selection.request) },
         )
@@ -189,9 +190,7 @@ private fun MobileOwnPlayAppContent(
     fun openSection(target: MobileSection) {
         if (target != MobileSection.LIVE && activeSelection != null) {
             stopLivePresentation {
-                activeSelection = null
-                fullscreenSelection = null
-                fullscreenEntryReason = null
+                runtime.livePlaybackPresentationSession.clear()
             }
         }
         if (target != MobileSection.MOVIES) {
@@ -231,9 +230,7 @@ private fun MobileOwnPlayAppContent(
         val selectionSourceId = activeSelection?.request?.sourceId
         if (selectionSourceId != null && selectionSourceId != resolvedSourceId) {
             stopLivePresentation {
-                activeSelection = null
-                fullscreenSelection = null
-                fullscreenEntryReason = null
+                runtime.livePlaybackPresentationSession.clear()
             }
         }
         if (resolvedSourceId == null) {
@@ -328,8 +325,7 @@ private fun MobileOwnPlayAppContent(
                 (fullscreenSelection ?: openedFullscreen)
                     .navigate(direction)
                     ?.let { target ->
-                        activeSelection = target
-                        fullscreenSelection = target
+                        runtime.livePlaybackPresentationSession.replaceSelection(target)
                         runtime.playbackController.start(target.request)
                     }
             },
@@ -395,11 +391,13 @@ private fun MobileOwnPlayAppContent(
                             onOpenSeries = { openSection(MobileSection.SERIES) },
                             onOpenSettings = { openSection(MobileSection.SETTINGS) },
                             onPreviewRequested = { selection ->
-                                activeSelection = selection
+                                runtime.livePlaybackPresentationSession.showPreview(selection)
                                 runtime.playbackController.start(selection.request)
                             },
                             onPreviewClosed = {
-                                stopLivePresentation { activeSelection = null }
+                                stopLivePresentation {
+                                    runtime.livePlaybackPresentationSession.clear()
+                                }
                             },
                             onOpenFullscreen = { selection ->
                                 openLiveFullscreen(
@@ -411,7 +409,7 @@ private fun MobileOwnPlayAppContent(
                                 activeSelection
                                     ?.navigate(direction)
                                     ?.let { target ->
-                                        activeSelection = target
+                                        runtime.livePlaybackPresentationSession.replaceSelection(target)
                                         runtime.playbackController.start(target.request)
                                     }
                             },
@@ -487,9 +485,7 @@ private fun MobileOwnPlayAppContent(
                     onOpenSourceInLive = { sourceId ->
                         if (sourceId != activeSourceId && activeSelection != null) {
                             stopLivePresentation {
-                                activeSelection = null
-                                fullscreenSelection = null
-                                fullscreenEntryReason = null
+                                runtime.livePlaybackPresentationSession.clear()
                             }
                         }
                         rememberActiveSource(sourceId)
@@ -498,9 +494,7 @@ private fun MobileOwnPlayAppContent(
                     onStopPlayback = {
                         if (activeSelection != null || fullscreenSelection != null) {
                             stopLivePresentation {
-                                activeSelection = null
-                                fullscreenSelection = null
-                                fullscreenEntryReason = null
+                                runtime.livePlaybackPresentationSession.clear()
                             }
                         } else {
                             runtime.playbackController.stop()
