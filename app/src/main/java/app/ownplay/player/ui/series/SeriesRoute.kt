@@ -375,13 +375,21 @@ internal fun SeriesRoute(
             selectedSeasonNumber = null
             selectedEpisodeId = null
         }
+        details = null
         detailsLoading = true
         detailsError = null
-        details = when (val result = featureRuntime.details(sourceId, selected.seriesId)) {
-            is SourceResult.Success -> result.value
+        val cachedDetails = featureRuntime.cachedDetails(sourceId, selected.seriesId)
+        if (cachedDetails != null) {
+            details = cachedDetails
+            detailsLoading = false
+        }
+        when (val result = featureRuntime.details(sourceId, selected.seriesId)) {
+            is SourceResult.Success -> details = result.value
             is SourceResult.Failure -> {
-                detailsError = result.error
-                null
+                if (cachedDetails == null) {
+                    detailsError = result.error
+                    details = null
+                }
             }
         }
         detailsLoading = false
