@@ -91,8 +91,8 @@ jobs:
           EXPECTED_CERT="1bb783d452c85f3aa5c6252c811499e24a830da2f477eb92d9e237ff7817d53a"
           MOBILE_INPUT="app/build/outputs/apk/mobile/debug/app-mobile-debug.apk"
           TV_INPUT="app/build/outputs/apk/tv/debug/app-tv-debug.apk"
-          MOBILE_OUTPUT="app/build/outputs/apk/mobile/debug/OwnPlay-Mobile-Settings-Update-1.0.11.apk"
-          TV_OUTPUT="app/build/outputs/apk/tv/debug/OwnPlay-TV-QA-1.0.11.apk"
+          MOBILE_OUTPUT="app/build/outputs/apk/mobile/debug/OwnPlay-Mobile-Settings-Modernization-1.0.12.apk"
+          TV_OUTPUT="app/build/outputs/apk/tv/debug/OwnPlay-TV-QA-1.0.12.apk"
 
           verify_one() {
             local input="$1"
@@ -106,8 +106,8 @@ jobs:
             BADGING="$("$BUILD_TOOLS/aapt" dump badging "$output" | head -n 1)"
             printf '%s\n' "$BADGING"
             printf '%s\n' "$BADGING" | grep -F "name='$expected_package'"
-            printf '%s\n' "$BADGING" | grep -F "versionCode='13'"
-            printf '%s\n' "$BADGING" | grep -F "versionName='1.0.11-settings-polish-update'"
+            printf '%s\n' "$BADGING" | grep -F "versionCode='14'"
+            printf '%s\n' "$BADGING" | grep -F "versionName='1.0.12-settings-modernization-update'"
             sha256sum "$output" | tee "$output.sha256"
           }
 
@@ -118,10 +118,10 @@ jobs:
         if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: ownplay-mobile-settings-update-1.0.11
+          name: ownplay-mobile-settings-modernization-1.0.12
           path: |
-            app/build/outputs/apk/mobile/debug/OwnPlay-Mobile-Settings-Update-1.0.11.apk
-            app/build/outputs/apk/mobile/debug/OwnPlay-Mobile-Settings-Update-1.0.11.apk.sha256
+            app/build/outputs/apk/mobile/debug/OwnPlay-Mobile-Settings-Modernization-1.0.12.apk
+            app/build/outputs/apk/mobile/debug/OwnPlay-Mobile-Settings-Modernization-1.0.12.apk.sha256
           if-no-files-found: error
           retention-days: 7
           compression-level: 0
@@ -130,10 +130,10 @@ jobs:
         if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: ownplay-tv-qa-1.0.11
+          name: ownplay-tv-qa-1.0.12
           path: |
-            app/build/outputs/apk/tv/debug/OwnPlay-TV-QA-1.0.11.apk
-            app/build/outputs/apk/tv/debug/OwnPlay-TV-QA-1.0.11.apk.sha256
+            app/build/outputs/apk/tv/debug/OwnPlay-TV-QA-1.0.12.apk
+            app/build/outputs/apk/tv/debug/OwnPlay-TV-QA-1.0.12.apk.sha256
           if-no-files-found: error
           retention-days: 7
           compression-level: 0
