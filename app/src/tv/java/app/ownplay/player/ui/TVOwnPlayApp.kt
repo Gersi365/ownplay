@@ -40,7 +40,7 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import app.ownplay.player.OwnPlayAppRuntime
-import app.ownplay.player.playback.LiveFullscreenEntryReason
+import app.ownplay.player.livePlaybackPresentationSession
 import app.ownplay.player.playback.LivePlaybackSelection
 import app.ownplay.player.playback.LivePlaybackSurfaceTeardown
 import app.ownplay.player.playback.LivePlaybackTransitionGate
@@ -106,11 +106,10 @@ private fun TVOwnPlayAppContent(
     val syncState by runtime.sourceSyncState.collectAsState()
     val playbackState by runtime.playbackController.state.collectAsState()
     val playbackTrackState by runtime.playbackTrackController.state.collectAsState()
+    val livePresentation by runtime.livePlaybackPresentationSession.state.collectAsState()
 
     var section by remember { mutableStateOf(TVSection.LIVE) }
     var activeSourceId by remember { mutableStateOf<String?>(null) }
-    var activeSelection by remember { mutableStateOf<LivePlaybackSelection?>(null) }
-    var fullscreenSelection by remember { mutableStateOf<LivePlaybackSelection?>(null) }
     var requestedVodMovieId by remember { mutableStateOf<String?>(null) }
     var requestedSeriesId by remember { mutableStateOf<String?>(null) }
     var movieDetailReturnToLibrary by remember { mutableStateOf(false) }
@@ -118,6 +117,8 @@ private fun TVOwnPlayAppContent(
     var vodFullscreen by remember { mutableStateOf(false) }
     var seriesFullscreen by remember { mutableStateOf(false) }
     var libraryFullscreen by remember { mutableStateOf(false) }
+    val activeSelection = livePresentation.selection
+    val fullscreenSelection = livePresentation.fullscreenSelection
     val liveTransitionGate = remember { LivePlaybackTransitionGate() }
 
     fun rememberActiveSource(sourceId: String?) {
@@ -145,8 +146,7 @@ private fun TVOwnPlayAppContent(
             },
             stopPlayback = runtime.playbackController::stop,
             switchPresentation = {
-                activeSelection = selection
-                fullscreenSelection = selection
+                runtime.livePlaybackPresentationSession.showFullscreen(selection)
             },
             startPlayback = { runtime.playbackController.start(selection.request) },
         )
@@ -162,8 +162,7 @@ private fun TVOwnPlayAppContent(
             switchPresentation = {
                 rememberActiveSource(selection.request.sourceId)
                 section = TVSection.LIVE
-                activeSelection = selection
-                fullscreenSelection = null
+                runtime.livePlaybackPresentationSession.showPreview(selection)
             },
             startPlayback = { runtime.playbackController.start(selection.request) },
         )
@@ -172,8 +171,7 @@ private fun TVOwnPlayAppContent(
     fun openSection(target: TVSection) {
         if (target != TVSection.LIVE && activeSelection != null) {
             stopLivePresentation {
-                activeSelection = null
-                fullscreenSelection = null
+                runtime.livePlaybackPresentationSession.clear()
             }
         }
         if (target != TVSection.MOVIES) {
@@ -213,8 +211,7 @@ private fun TVOwnPlayAppContent(
         val selectionSourceId = activeSelection?.request?.sourceId
         if (selectionSourceId != null && selectionSourceId != resolvedSourceId) {
             stopLivePresentation {
-                activeSelection = null
-                fullscreenSelection = null
+                runtime.livePlaybackPresentationSession.clear()
             }
         }
         if (resolvedSourceId == null) {
@@ -274,8 +271,7 @@ private fun TVOwnPlayAppContent(
                 (fullscreenSelection ?: openedFullscreen)
                     .navigate(direction)
                     ?.let { target ->
-                        activeSelection = target
-                        fullscreenSelection = target
+                        runtime.livePlaybackPresentationSession.replaceSelection(target)
                         runtime.playbackController.start(target.request)
                     }
             },
@@ -341,11 +337,13 @@ private fun TVOwnPlayAppContent(
                             onOpenSeries = { openSection(TVSection.SERIES) },
                             onOpenSettings = { openSection(TVSection.SETTINGS) },
                             onPreviewRequested = { selection ->
-                                activeSelection = selection
+                                runtime.livePlaybackPresentationSession.showPreview(selection)
                                 runtime.playbackController.start(selection.request)
                             },
                             onPreviewClosed = {
-                                stopLivePresentation { activeSelection = null }
+                                stopLivePresentation {
+                                    runtime.livePlaybackPresentationSession.clear()
+                                }
                             },
                             onOpenFullscreen = { selection ->
                                 openLiveFullscreen(activeSelection ?: selection)
@@ -354,7 +352,7 @@ private fun TVOwnPlayAppContent(
                                 activeSelection
                                     ?.navigate(direction)
                                     ?.let { target ->
-                                        activeSelection = target
+                                        runtime.livePlaybackPresentationSession.replaceSelection(target)
                                         runtime.playbackController.start(target.request)
                                     }
                             },
@@ -430,8 +428,7 @@ private fun TVOwnPlayAppContent(
                     onOpenSourceInLive = { sourceId ->
                         if (sourceId != activeSourceId && activeSelection != null) {
                             stopLivePresentation {
-                                activeSelection = null
-                                fullscreenSelection = null
+                                runtime.livePlaybackPresentationSession.clear()
                             }
                         }
                         rememberActiveSource(sourceId)
@@ -440,8 +437,7 @@ private fun TVOwnPlayAppContent(
                     onStopPlayback = {
                         if (activeSelection != null || fullscreenSelection != null) {
                             stopLivePresentation {
-                                activeSelection = null
-                                fullscreenSelection = null
+                                runtime.livePlaybackPresentationSession.clear()
                             }
                         } else {
                             runtime.playbackController.stop()
