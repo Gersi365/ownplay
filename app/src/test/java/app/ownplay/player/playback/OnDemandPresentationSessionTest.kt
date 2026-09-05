@@ -34,6 +34,52 @@ class OnDemandPresentationSessionTest {
     }
 
     @Test
+    fun restoringSameMovieDetailDoesNotReplaceActivePlayback() {
+        val session = OnDemandPresentationSession()
+        val movie = movie("movie-restore")
+
+        session.showMoviePlayback(
+            sourceId = "source-1",
+            movie = movie,
+            returnToLibraryOnDetailBack = true,
+        )
+        val playingState = session.current
+
+        session.showMovieDetail(
+            sourceId = "source-1",
+            movieId = movie.movieId,
+            returnToLibraryOnDetailBack = false,
+        )
+
+        assertEquals(playingState, session.current)
+        assertTrue(session.current.isMoviePlayback)
+        assertEquals(movie, session.current.moviePlayback)
+        assertTrue(session.current.returnToLibraryOnDetailBack)
+    }
+
+    @Test
+    fun differentMovieDetailCanReplaceActiveMoviePlayback() {
+        val session = OnDemandPresentationSession()
+        val movie = movie("movie-playing")
+
+        session.showMoviePlayback(
+            sourceId = "source-1",
+            movie = movie,
+            returnToLibraryOnDetailBack = true,
+        )
+        session.showMovieDetail(
+            sourceId = "source-1",
+            movieId = "movie-next",
+            returnToLibraryOnDetailBack = false,
+        )
+
+        assertFalse(session.current.isMoviePlayback)
+        assertEquals(OnDemandContentKind.MOVIE, session.current.kind)
+        assertEquals("movie-next", session.current.itemId)
+        assertFalse(session.current.returnToLibraryOnDetailBack)
+    }
+
+    @Test
     fun seriesDetailPlaybackPreservesDrilldownOnReturn() {
         val session = OnDemandPresentationSession()
         val episode = episode("episode-4", "series-2", season = 3)

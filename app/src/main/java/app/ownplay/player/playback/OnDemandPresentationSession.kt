@@ -87,6 +87,14 @@ class OnDemandPresentationSession {
         movieId: String,
         returnToLibraryOnDetailBack: Boolean,
     ) {
+        val current = _state.value
+        if (
+            current.isMoviePlayback &&
+            current.sourceId == sourceId &&
+            current.itemId == movieId
+        ) {
+            return
+        }
         _state.value = OnDemandPresentationState(
             kind = OnDemandContentKind.MOVIE,
             sourceId = sourceId,
