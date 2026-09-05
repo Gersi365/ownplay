@@ -92,6 +92,17 @@ class OfflineDownloadRepository(
         return pending.size
     }
 
+    suspend fun reconcileCompletedFiles(): Int {
+        var invalidCount = 0
+        dao.completed().forEach { row ->
+            if (OfflineDownloadFileIntegrity.verifiedBytes(applicationContext, row) == null) {
+                markCompletedFileFailed(row)
+                invalidCount += 1
+            }
+        }
+        return invalidCount
+    }
+
     suspend fun enqueue(spec: OfflineDownloadSpec): String {
         require(spec.sourceId.isNotBlank()) { "sourceId is required" }
         require(spec.contentId.isNotBlank()) { "contentId is required" }
@@ -108,7 +119,7 @@ class OfflineDownloadRepository(
         if (existing != null) {
             if (
                 existing.state == DownloadStates.COMPLETED &&
-                OfflineDownloadStorage.locationExists(applicationContext, existing.localRelativePath)
+                OfflineDownloadFileIntegrity.verifiedBytes(applicationContext, existing) != null
             ) {
                 return existing.downloadId
             }
@@ -204,7 +215,7 @@ class OfflineDownloadRepository(
         val existing = dao.getById(downloadId) ?: return
         if (
             existing.state == DownloadStates.COMPLETED &&
-            OfflineDownloadStorage.locationExists(applicationContext, existing.localRelativePath)
+            OfflineDownloadFileIntegrity.verifiedBytes(applicationContext, existing) != null
         ) {
             return
         }
@@ -250,25 +261,42 @@ class OfflineDownloadRepository(
             contentId = request.channelId,
         ) ?: return null
         if (row.state != DownloadStates.COMPLETED) return null
+        if (OfflineDownloadFileIntegrity.verifiedBytes(applicationContext, row) == null) {
+            markCompletedFileFailed(row)
+            return null
+        }
         val playbackUri = OfflineDownloadStorage.playbackUri(
             applicationContext,
             row.localRelativePath,
         )
         if (playbackUri == null) {
-            dao.updateTransfer(
-                downloadId = row.downloadId,
-                state = DownloadStates.FAILED,
-                bytesDownloaded = 0L,
-                totalBytes = null,
-                localRelativePath = null,
-                failureReason = "Downloaded file is missing",
-                updatedAtEpochMillis = System.currentTimeMillis(),
-            )
+            markCompletedFileFailed(row)
             return null
         }
         return ResolvedPlaybackLocator(
             value = playbackUri,
             origin = ResolvedPlaybackOrigin.LOCAL_DOWNLOAD,
+        )
+    }
+
+    private suspend fun markCompletedFileFailed(row: MediaDownloadEntity) {
+        val locationExists = OfflineDownloadStorage.locationExists(
+            applicationContext,
+            row.localRelativePath,
+        )
+        val actualBytes = if (locationExists) {
+            OfflineDownloadStorage.locationSize(applicationContext, row.localRelativePath) ?: 0L
+        } else {
+            0L
+        }
+        dao.updateTransfer(
+            downloadId = row.downloadId,
+            state = DownloadStates.FAILED,
+            bytesDownloaded = actualBytes,
+            totalBytes = row.totalBytes,
+            localRelativePath = row.localRelativePath.takeIf { locationExists },
+            failureReason = OfflineDownloadFileIntegrity.failureReason(applicationContext, row),
+            updatedAtEpochMillis = System.currentTimeMillis(),
         )
     }
 
