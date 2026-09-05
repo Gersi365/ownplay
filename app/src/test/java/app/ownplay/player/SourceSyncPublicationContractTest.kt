@@ -70,7 +70,14 @@ class SourceSyncPublicationContractTest {
             .substringAfter("private suspend fun loadEpgAfterChannels(")
             .substringBefore("suspend fun epgSnapshot(")
         assertTrue(epg.contains("publishSourceState("))
+        assertTrue(epg.contains("epgRepository.refreshSource(sourceId)"))
         assertFalse(epg.contains("_sourceSyncState.value = if (epg == null)"))
+        val cancellationIndex = epg.indexOf("catch (cancelled: CancellationException)")
+        val genericFailureIndex = epg.indexOf("catch (_: Exception)")
+        assertTrue(cancellationIndex >= 0 && cancellationIndex < genericFailureIndex)
+        assertTrue(
+            epg.substring(cancellationIndex, genericFailureIndex).contains("throw cancelled"),
+        )
     }
 
     private fun sourceText(relativePath: String): String {
