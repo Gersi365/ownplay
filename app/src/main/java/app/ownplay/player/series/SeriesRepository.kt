@@ -186,6 +186,19 @@ class SeriesRepository(
         }
     }
 
+    suspend fun cachedDetails(sourceId: String, seriesId: String): SeriesDetails? = try {
+        val seriesEntity = dao.series(sourceId, seriesId) ?: return null
+        buildStoredSeriesDetails(
+            seriesEntity = seriesEntity,
+            seasons = dao.seasons(seriesId),
+            episodeRows = dao.episodeRows(sourceId, seriesId),
+        )
+    } catch (cancelled: CancellationException) {
+        throw cancelled
+    } catch (_: Exception) {
+        null
+    }
+
     suspend fun details(sourceId: String, seriesId: String): SourceResult<SeriesDetails> {
         val seriesEntity = try {
             dao.series(sourceId, seriesId)

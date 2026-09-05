@@ -9,13 +9,13 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
@@ -25,7 +25,6 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.LazyRow
@@ -59,9 +58,15 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -83,17 +88,41 @@ import app.ownplay.player.source.SourceSyncStage
 import app.ownplay.player.source.SourceSyncState
 import app.ownplay.player.source.network.SourceHttpClient
 import java.io.ByteArrayOutputStream
+import java.util.LinkedHashMap
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import okhttp3.Request
+import kotlin.math.abs
+import kotlin.math.max
 
 private const val MOBILE_LOGO_MAX_BYTES = 2 * 1024 * 1024
 private const val MOBILE_LOGO_MAX_EDGE_PX = 256
+private const val MOBILE_LOGO_CACHE_ENTRIES = 32
 private const val MOBILE_EPG_PREFETCH_STEP = 6
 private const val MOBILE_EPG_PREFETCH_WINDOW = 14
+private const val MOBILE_CATEGORY_SWIPE_TRIGGER_FRACTION = 0.12f
+
+private val mobileChannelLogoCacheLock = Any()
+private val mobileChannelLogoMemoryCache = object : LinkedHashMap<String, ImageBitmap>(
+    MOBILE_LOGO_CACHE_ENTRIES,
+    0.75f,
+    true,
+) {
+    override fun removeEldestEntry(
+        eldest: MutableMap.MutableEntry<String, ImageBitmap>?,
+    ): Boolean = size > MOBILE_LOGO_CACHE_ENTRIES
+}
+private val mobileChannelLogoRequestCoordinator =
+    MobileChannelLogoRequestCoordinator<ImageBitmap?>()
+
+private sealed interface MobileChannelLogoState {
+    data object Loading : MobileChannelLogoState
+    data class Loaded(val image: ImageBitmap) : MobileChannelLogoState
+    data object Unavailable : MobileChannelLogoState
+}
 
 /**
  * Mobile-only Live surface.
@@ -162,12 +191,17 @@ internal fun TargetLiveRoute(
         onPreviewClosed()
     }
 
-    LaunchedEffect(state.categories, state.query.categoryKey) {
+    LaunchedEffect(state.categories, state.query.categoryKey, preview?.categoryKey) {
         val categories = state.categories
         if (categories.isEmpty()) return@LaunchedEffect
         val selected = state.query.categoryKey
-        if (selected == null || categories.none { it.providerCategoryKey == selected }) {
-            browseSession.selectCategory(categories.first().providerCategoryKey)
+        val target = selected?.takeIf { categoryKey ->
+            categories.any { category -> category.providerCategoryKey == categoryKey }
+        } ?: preview?.categoryKey?.takeIf { categoryKey ->
+            categories.any { category -> category.providerCategoryKey == categoryKey }
+        } ?: categories.first().providerCategoryKey
+        if (selected != target) {
+            browseSession.selectCategory(target)
         }
     }
 
@@ -264,6 +298,9 @@ internal fun TargetLiveRoute(
         val browseContext = LivePlaybackBrowseContext.capture(
             sourceId = sourceId,
             visibleChannels = state.channels,
+            categories = state.categories,
+            categoryNavigationChannels = state.categoryNavigationChannels,
+            activeCategoryKey = state.query.categoryKey,
         )
         when (
             val action = LiveChannelSelectionRouter.route(
@@ -393,6 +430,32 @@ private fun MobileLiveBrowsePane(
     onOpenSettings: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val categoryListState = rememberLazyListState()
+
+    LaunchedEffect(state.categories, state.query.categoryKey) {
+        val activeCategoryIndex = state.categories.indexOfFirst { category ->
+            category.providerCategoryKey == state.query.categoryKey
+        }
+        if (activeCategoryIndex >= 0) {
+            categoryListState.animateScrollToItem(activeCategoryIndex + 1)
+        }
+    }
+
+    fun selectAdjacentCategory(totalHorizontalDrag: Float) {
+        if (state.categories.size < 2) return
+        val currentIndex = state.categories.indexOfFirst { category ->
+            category.providerCategoryKey == state.query.categoryKey
+        }.takeIf { it >= 0 } ?: 0
+        val targetIndex = if (totalHorizontalDrag < 0f) {
+            currentIndex + 1
+        } else {
+            currentIndex - 1
+        }
+        state.categories.getOrNull(targetIndex)?.let { category ->
+            onCategorySelected(category.providerCategoryKey)
+        }
+    }
+
     Surface(
         modifier = modifier.fillMaxSize(),
         shape = RoundedCornerShape(12.dp),
@@ -419,6 +482,7 @@ private fun MobileLiveBrowsePane(
 
             if (state.categories.isNotEmpty()) {
                 LazyRow(
+                    state = categoryListState,
                     modifier = Modifier.fillMaxWidth(),
                     contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -466,32 +530,50 @@ private fun MobileLiveBrowsePane(
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
 
             when {
-                loadingChannels && state.catalogChannelCount == 0 -> Box(
-                    modifier = Modifier.fillMaxSize(),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    CircularProgressIndicator()
-                }
+                loadingChannels && state.catalogChannelCount == 0 -> MobileLiveStatusState(
+                    title = "Loading channels",
+                    detail = "Preparing your Live catalog…",
+                    loading = true,
+                    modifier = Modifier.weight(1f),
+                )
                 state.catalogChannelCount == 0 -> MobileLiveEmptyState(
                     failed = channelRefreshFailed,
                     onRetry = onRetry,
                     onOpenSettings = onOpenSettings,
                     modifier = Modifier.weight(1f),
                 )
-                state.channels.isEmpty() -> Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(24.dp),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Text(
-                        text = "No matching channels",
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
+                state.channels.isEmpty() -> MobileLiveStatusState(
+                    title = "No matching channels",
+                    detail = if (state.query.searchTerm.isNotBlank()) {
+                        "Try another search term or category."
+                    } else {
+                        "This category does not contain any channels."
+                    },
+                    modifier = Modifier.weight(1f),
+                )
                 else -> LazyColumn(
                     state = channelListState,
-                    modifier = Modifier.weight(1f),
+                    modifier = Modifier
+                        .weight(1f)
+                        .pointerInput(state.categories, state.query.categoryKey) {
+                            var totalHorizontalDrag = 0f
+                            detectHorizontalDragGestures(
+                                onDragStart = { totalHorizontalDrag = 0f },
+                                onHorizontalDrag = { change, dragAmount ->
+                                    totalHorizontalDrag += dragAmount
+                                    change.consume()
+                                },
+                                onDragEnd = {
+                                    val triggerDistance = max(
+                                        viewConfiguration.touchSlop * 4f,
+                                        size.width * MOBILE_CATEGORY_SWIPE_TRIGGER_FRACTION,
+                                    )
+                                    if (abs(totalHorizontalDrag) >= triggerDistance) {
+                                        selectAdjacentCategory(totalHorizontalDrag)
+                                    }
+                                },
+                            )
+                        },
                     contentPadding = PaddingValues(vertical = 4.dp),
                 ) {
                     items(
@@ -549,9 +631,20 @@ private fun MobileChannelRow(
                     MaterialTheme.colorScheme.background
                 },
             )
+            .semantics(mergeDescendants = true) {
+                selected = active
+                stateDescription = when {
+                    active && channel.isFavorite -> "Currently previewing, favorite channel"
+                    active -> "Currently previewing"
+                    channel.isFavorite -> "Favorite channel"
+                    else -> "Channel"
+                }
+            }
             .clickable(
                 interactionSource = interactionSource,
                 indication = null,
+                role = Role.Button,
+                onClickLabel = if (active) "Open full view" else "Open preview",
                 onClick = onClick,
             )
             .padding(horizontal = 14.dp, vertical = 10.dp),
@@ -599,6 +692,7 @@ private fun MobileChannelRow(
         if (channel.isFavorite) {
             Text(
                 text = "★",
+                modifier = Modifier.clearAndSetSemantics { },
                 color = MaterialTheme.colorScheme.primary,
                 style = MaterialTheme.typography.labelLarge,
             )
@@ -618,34 +712,80 @@ private fun MobileChannelLogo(
 ) {
     val context = LocalContext.current
     val resolver = remember(context) { LiveChannelLogoResolver(context.applicationContext) }
-    val image by produceState<ImageBitmap?>(initialValue = null, key1 = logoRef) {
-        value = resolver.resolve(logoRef)
+    val initialState = remember(logoRef) {
+        if (logoRef.isNullOrBlank()) {
+            MobileChannelLogoState.Unavailable
+        } else {
+            MobileChannelLogoState.Loading
+        }
+    }
+    val state by produceState<MobileChannelLogoState>(
+        initialValue = initialState,
+        key1 = logoRef,
+    ) {
+        val resolvedUrl = resolver.resolve(logoRef)
+            ?.trim()
             ?.takeIf(String::isNotBlank)
-            ?.let { resolvedUrl -> loadMobileChannelLogo(resolvedUrl) }
+        if (resolvedUrl == null) {
+            value = MobileChannelLogoState.Unavailable
+            return@produceState
+        }
+
+        cachedMobileChannelLogo(resolvedUrl)?.let { cached ->
+            value = MobileChannelLogoState.Loaded(cached)
+            return@produceState
+        }
+
+        value = MobileChannelLogoState.Loading
+        val loaded = mobileChannelLogoRequestCoordinator.coalesce(resolvedUrl) {
+            loadMobileChannelLogo(resolvedUrl)
+        }
+        value = if (loaded != null) {
+            cacheMobileChannelLogo(resolvedUrl, loaded)
+            MobileChannelLogoState.Loaded(loaded)
+        } else {
+            MobileChannelLogoState.Unavailable
+        }
     }
     Box(
         modifier = modifier
             .clip(RoundedCornerShape(9.dp))
-            .background(MaterialTheme.colorScheme.surfaceVariant),
+            .background(MaterialTheme.colorScheme.surfaceVariant)
+            .clearAndSetSemantics { },
         contentAlignment = Alignment.Center,
     ) {
-        image?.let { bitmap ->
-            Image(
-                bitmap = bitmap,
-                contentDescription = title,
+        when (val currentState = state) {
+            is MobileChannelLogoState.Loaded -> Image(
+                bitmap = currentState.image,
+                contentDescription = null,
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(4.dp),
                 contentScale = ContentScale.Fit,
             )
-        } ?: Text(
-            text = title.trim().firstOrNull()?.uppercase() ?: "•",
-            style = MaterialTheme.typography.labelLarge,
-            fontWeight = FontWeight.Bold,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
+            MobileChannelLogoState.Loading -> Unit
+            MobileChannelLogoState.Unavailable -> Text(
+                text = mobileChannelLogoFallbackLabel(title),
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
     }
 }
+
+private fun cachedMobileChannelLogo(url: String): ImageBitmap? = synchronized(mobileChannelLogoCacheLock) {
+    mobileChannelLogoMemoryCache[url]
+}
+
+private fun cacheMobileChannelLogo(url: String, image: ImageBitmap) {
+    synchronized(mobileChannelLogoCacheLock) {
+        mobileChannelLogoMemoryCache[url] = image
+    }
+}
+
+internal fun mobileChannelLogoFallbackLabel(title: String): String =
+    title.trim().firstOrNull()?.uppercase() ?: "•"
 
 private suspend fun loadMobileChannelLogo(url: String): ImageBitmap? = withContext(Dispatchers.IO) {
     try {
@@ -684,19 +824,68 @@ private fun decodeMobileLogo(bytes: ByteArray): ImageBitmap? {
     val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
     BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
     if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null
-    var sampleSize = 1
-    while (
-        bounds.outWidth / sampleSize > MOBILE_LOGO_MAX_EDGE_PX ||
-        bounds.outHeight / sampleSize > MOBILE_LOGO_MAX_EDGE_PX
-    ) {
-        sampleSize *= 2
-    }
+    val sampleSize = calculateMobileLogoInSampleSize(
+        width = bounds.outWidth,
+        height = bounds.outHeight,
+    )
     return BitmapFactory.decodeByteArray(
         bytes,
         0,
         bytes.size,
         BitmapFactory.Options().apply { inSampleSize = sampleSize },
     )?.asImageBitmap()
+}
+
+internal fun calculateMobileLogoInSampleSize(
+    width: Int,
+    height: Int,
+    maxEdgePx: Int = MOBILE_LOGO_MAX_EDGE_PX,
+): Int {
+    require(maxEdgePx > 0) { "maxEdgePx must be positive" }
+    if (width <= 0 || height <= 0) return 1
+
+    var sampleSize = 1
+    while (
+        width / sampleSize > maxEdgePx ||
+        height / sampleSize > maxEdgePx
+    ) {
+        if (sampleSize > Int.MAX_VALUE / 2) break
+        sampleSize *= 2
+    }
+    return sampleSize
+}
+
+@Composable
+private fun MobileLiveStatusState(
+    title: String,
+    detail: String,
+    loading: Boolean = false,
+    modifier: Modifier = Modifier,
+) {
+    Column(
+        modifier = modifier
+            .fillMaxSize()
+            .padding(24.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterVertically),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        if (loading) {
+            CircularProgressIndicator(
+                modifier = Modifier.size(28.dp),
+                strokeWidth = 2.dp,
+            )
+        }
+        Text(
+            text = title,
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.SemiBold,
+        )
+        Text(
+            text = detail,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
 }
 
 @Composable
@@ -710,15 +899,14 @@ private fun MobileLiveEmptyState(
         modifier = modifier
             .fillMaxWidth()
             .padding(24.dp),
-        verticalArrangement = Arrangement.Center,
-        horizontalAlignment = Alignment.Start,
+        verticalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterVertically),
+        horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Text(
             text = if (failed) "Channels could not be refreshed" else "No Live channels",
             style = MaterialTheme.typography.titleLarge,
             fontWeight = FontWeight.SemiBold,
         )
-        Spacer(modifier = Modifier.width(1.dp))
         Text(
             text = "Check the playlist or refresh it from Settings.",
             style = MaterialTheme.typography.bodyMedium,

@@ -1,9 +1,7 @@
 package app.ownplay.player.ui.live
 
 import android.content.res.Configuration
-import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -11,7 +9,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
@@ -23,9 +20,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.input.key.Key
-import androidx.compose.ui.input.key.KeyEvent
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
@@ -47,14 +42,16 @@ import app.ownplay.player.ui.view.ContentViewMode
 /**
  * Landscape Live shell with one consistent browse model across touch and TV layouts.
  *
- * Live browsing now starts at category level. After a category is chosen the established
+ * Live browsing starts at category level. After a category is chosen the established
  * List / Compact / Cards channel browser is shown. Before a channel is selected, browsing owns
  * the full workspace. Once a channel is selected, the browse area remains available on the left
  * while the selected channel owns a dedicated playback/EPG panel on the right.
  *
- * TV keeps channel focus in the browser after the first OK. The preview has no TV controls, so a
- * second OK on the same channel is routed by LiveRoute to Fullscreen. Back/ESC precedence is also
- * owned by LiveRoute: close Preview first, then return Channels -> Categories, then propagate.
+ * TV keeps Preview presentation-only: it never becomes a remote focus destination. D-pad movement
+ * remains native inside the channel browser, including two-dimensional Left/Right/Up/Down movement
+ * in Cards view. When no channel card exists farther to the right, normal focus search may enter the
+ * focusable EPG panel. Left from EPG restores the last focused channel. A second OK on the same
+ * channel is routed by LiveRoute to Fullscreen. Back/ESC precedence remains owned by LiveRoute.
  */
 @Composable
 internal fun LandscapeLiveWorkspaceAdaptive(
@@ -88,8 +85,6 @@ internal fun LandscapeLiveWorkspaceAdaptive(
     val isTelevision =
         configuration.uiMode and Configuration.UI_MODE_TYPE_MASK == Configuration.UI_MODE_TYPE_TELEVISION
     val channelFocusRequester = remember { FocusRequester() }
-    val previewFocusRequester = remember { FocusRequester() }
-    val epgFocusRequester = remember { FocusRequester() }
     var focusChannelId by remember { mutableStateOf<String?>(null) }
     var channelFocusRequestGeneration by remember { mutableIntStateOf(0) }
     var initialBrowserFocusRequested by remember { mutableStateOf(false) }
@@ -103,25 +98,6 @@ internal fun LandscapeLiveWorkspaceAdaptive(
         val target = visibleTarget ?: state.channels.firstOrNull()?.channelId ?: return
         focusChannelId = target
         channelFocusRequestGeneration += 1
-    }
-
-    fun applyFocusAction(
-        zone: LandscapeLiveFocusZone,
-        action: LandscapeLiveFocusAction,
-    ): Boolean {
-        val destination = LandscapeLiveFocusPolicy.destination(
-            current = zone,
-            action = action,
-            hasPreview = preview != null,
-        ) ?: return false
-        when (destination) {
-            LandscapeLiveFocusZone.BROWSER -> {
-                requestChannelFocus(preview?.request?.channelId ?: lastPreviewChannelId)
-            }
-            LandscapeLiveFocusZone.PREVIEW -> previewFocusRequester.requestFocus()
-            LandscapeLiveFocusZone.EPG -> epgFocusRequester.requestFocus()
-        }
-        return true
     }
 
     LaunchedEffect(
@@ -167,10 +143,9 @@ internal fun LandscapeLiveWorkspaceAdaptive(
             focusChannelId = focusChannelId,
             focusRequestGeneration = channelFocusRequestGeneration,
             channelFocusRequester = channelFocusRequester,
-            onPreviewKeyEvent = { false },
             modifier = modifier
                 .fillMaxSize()
-                .padding(horizontal = 12.dp, vertical = 8.dp),
+                .padding(horizontal = 14.dp, vertical = 10.dp),
         )
         return
     }
@@ -178,8 +153,8 @@ internal fun LandscapeLiveWorkspaceAdaptive(
     Row(
         modifier = modifier
             .fillMaxSize()
-            .padding(horizontal = 12.dp, vertical = 8.dp),
-        horizontalArrangement = Arrangement.spacedBy(10.dp),
+            .padding(horizontal = 14.dp, vertical = 10.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         LandscapeBrowseSurface(
             state = state,
@@ -197,25 +172,6 @@ internal fun LandscapeLiveWorkspaceAdaptive(
             focusChannelId = focusChannelId,
             focusRequestGeneration = channelFocusRequestGeneration,
             channelFocusRequester = channelFocusRequester,
-            onPreviewKeyEvent = { event ->
-                if (event.isKeyDown(Key.DirectionRight)) {
-                    if (
-                        LandscapeLiveFocusPolicy.consumeBrowserRight(
-                            isTelevision = isTelevision,
-                            hasPreview = preview != null,
-                        )
-                    ) {
-                        true
-                    } else {
-                        applyFocusAction(
-                            zone = LandscapeLiveFocusZone.BROWSER,
-                            action = LandscapeLiveFocusAction.RIGHT,
-                        )
-                    }
-                } else {
-                    false
-                }
-            },
             modifier = Modifier
                 .weight(0.62f)
                 .fillMaxHeight(),
@@ -225,78 +181,52 @@ internal fun LandscapeLiveWorkspaceAdaptive(
             modifier = Modifier
                 .weight(0.38f)
                 .fillMaxHeight(),
-            shape = RoundedCornerShape(12.dp),
-            color = MaterialTheme.colorScheme.surface,
+            shape = RoundedCornerShape(16.dp),
+            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.22f),
             tonalElevation = 0.dp,
         ) {
             Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(10.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp),
+                    .padding(12.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
-                Box(
+                LivePreviewPanel(
+                    selection = preview,
+                    state = playbackState,
+                    videoOutput = videoOutput,
+                    onPlay = onPlay,
+                    onPause = onPause,
+                    onRetry = onRetry,
+                    onNavigate = onNavigatePreview,
+                    onOpenFullscreen = { onOpenFullscreen(preview) },
+                    onClose = onPreviewClosed,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+
+                EpgPanel(
+                    snapshot = epgSnapshot,
+                    loading = epgLoading,
+                    failed = epgFailed,
+                    onOpenGuide = onOpenEpgGuide,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .focusRequester(previewFocusRequester)
                         .onPreviewKeyEvent { event ->
-                            when {
-                                event.isKeyDown(Key.DirectionLeft) -> applyFocusAction(
-                                    zone = LandscapeLiveFocusZone.PREVIEW,
+                            if (
+                                event.type == KeyEventType.KeyDown &&
+                                event.key == Key.DirectionLeft &&
+                                LandscapeLiveFocusPolicy.destination(
+                                    current = LandscapeLiveFocusZone.EPG,
                                     action = LandscapeLiveFocusAction.LEFT,
-                                )
-                                event.isKeyDown(Key.DirectionDown) -> applyFocusAction(
-                                    zone = LandscapeLiveFocusZone.PREVIEW,
-                                    action = LandscapeLiveFocusAction.DOWN,
-                                )
-                                else -> false
+                                ) == LandscapeLiveFocusZone.BROWSER
+                            ) {
+                                channelFocusRequester.requestFocus()
+                                true
+                            } else {
+                                false
                             }
-                        }
-                        .focusGroup(),
-                ) {
-                    LivePreviewPanel(
-                        selection = preview,
-                        state = playbackState,
-                        videoOutput = videoOutput,
-                        onPlay = onPlay,
-                        onPause = onPause,
-                        onRetry = onRetry,
-                        onNavigate = onNavigatePreview,
-                        onOpenFullscreen = { onOpenFullscreen(preview) },
-                        onClose = onPreviewClosed,
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-                }
-
-                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .focusRequester(epgFocusRequester)
-                        .onPreviewKeyEvent { event ->
-                            when {
-                                event.isKeyDown(Key.DirectionLeft) -> applyFocusAction(
-                                    zone = LandscapeLiveFocusZone.EPG,
-                                    action = LandscapeLiveFocusAction.LEFT,
-                                )
-                                event.isKeyDown(Key.DirectionUp) -> applyFocusAction(
-                                    zone = LandscapeLiveFocusZone.EPG,
-                                    action = LandscapeLiveFocusAction.UP,
-                                )
-                                else -> false
-                            }
-                        }
-                        .focusGroup(),
-                ) {
-                    EpgPanel(
-                        snapshot = epgSnapshot,
-                        loading = epgLoading,
-                        failed = epgFailed,
-                        onOpenGuide = onOpenEpgGuide,
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-                }
+                        },
+                )
             }
         }
     }
@@ -319,13 +249,12 @@ private fun LandscapeBrowseSurface(
     focusChannelId: String?,
     focusRequestGeneration: Int,
     channelFocusRequester: FocusRequester,
-    onPreviewKeyEvent: (KeyEvent) -> Boolean,
     modifier: Modifier,
 ) {
     Surface(
-        modifier = modifier.onPreviewKeyEvent(onPreviewKeyEvent),
-        shape = RoundedCornerShape(12.dp),
-        color = MaterialTheme.colorScheme.background,
+        modifier = modifier,
+        shape = RoundedCornerShape(16.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.16f),
         tonalElevation = 0.dp,
     ) {
         HierarchicalLiveBrowse(
@@ -351,7 +280,6 @@ private fun LandscapeBrowseSurface(
 
 internal enum class LandscapeLiveFocusZone {
     BROWSER,
-    PREVIEW,
     EPG,
 }
 
@@ -364,38 +292,18 @@ internal enum class LandscapeLiveFocusAction {
 }
 
 internal object LandscapeLiveFocusPolicy {
-    fun consumeBrowserRight(
-        isTelevision: Boolean,
-        hasPreview: Boolean,
-    ): Boolean = isTelevision && hasPreview
-
+    /**
+     * Browser arrows are deliberately left to Compose focus search so Cards keeps native 2D D-pad
+     * navigation. Preview is presentation-only and therefore never a focus destination.
+     */
     fun destination(
         current: LandscapeLiveFocusZone,
         action: LandscapeLiveFocusAction,
-        hasPreview: Boolean,
     ): LandscapeLiveFocusZone? = when (current) {
-        LandscapeLiveFocusZone.BROWSER -> when (action) {
-            LandscapeLiveFocusAction.RIGHT -> if (hasPreview) LandscapeLiveFocusZone.PREVIEW else null
-            else -> null
-        }
-        LandscapeLiveFocusZone.PREVIEW -> when (action) {
-            LandscapeLiveFocusAction.LEFT,
-            LandscapeLiveFocusAction.BACK,
-            -> LandscapeLiveFocusZone.BROWSER
-
-            LandscapeLiveFocusAction.DOWN -> LandscapeLiveFocusZone.EPG
-            else -> null
-        }
+        LandscapeLiveFocusZone.BROWSER -> null
         LandscapeLiveFocusZone.EPG -> when (action) {
-            LandscapeLiveFocusAction.LEFT,
-            LandscapeLiveFocusAction.BACK,
-            -> LandscapeLiveFocusZone.BROWSER
-
-            LandscapeLiveFocusAction.UP -> LandscapeLiveFocusZone.PREVIEW
+            LandscapeLiveFocusAction.LEFT -> LandscapeLiveFocusZone.BROWSER
             else -> null
         }
     }
 }
-
-private fun KeyEvent.isKeyDown(expected: Key): Boolean =
-    type == KeyEventType.KeyDown && key == expected

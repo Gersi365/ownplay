@@ -1,6 +1,7 @@
 package app.ownplay.player.download
 
 import android.annotation.TargetApi
+import android.content.ContentUris
 import android.content.ContentValues
 import android.content.Context
 import android.net.Uri
@@ -8,6 +9,7 @@ import android.os.Build
 import android.os.Environment
 import android.os.ParcelFileDescriptor
 import android.provider.MediaStore
+import android.system.Os
 import android.webkit.MimeTypeMap
 import app.ownplay.player.persistence.download.MediaDownloadEntity
 import java.io.BufferedOutputStream
@@ -18,6 +20,7 @@ import java.util.Locale
 internal object OfflineDownloadStorage {
     private const val PRIVATE_DIRECTORY = "offline"
     private const val MEDIASTORE_URI_PREFIX = "content://media/"
+    private const val PENDING_DOWNLOAD_MARKER_PREFIX = "ownplay://offline-download/"
 
     fun supportsPublicDownloads(): Boolean = Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q
 
@@ -26,9 +29,12 @@ internal object OfflineDownloadStorage {
 
     fun usableSpaceBytes(
         context: Context,
-        publicDownloads: Boolean,
-    ): Long = if (publicDownloads) {
-        context.getExternalFilesDir(null)?.usableSpace?.coerceAtLeast(0L) ?: 0L
+        destinationLocation: String?,
+    ): Long? = if (isPublicDownloadsLocation(destinationLocation)) {
+        publicDestinationUsableSpaceBytes(
+            context = context,
+            location = requireNotNull(destinationLocation),
+        )
     } else {
         privateDirectory(context).usableSpace.coerceAtLeast(0L)
     }
@@ -56,11 +62,14 @@ internal object OfflineDownloadStorage {
         row: MediaDownloadEntity,
     ): String {
         check(supportsPublicDownloads()) { "Public Downloads requires Android 10 or newer" }
+        findOwnedPendingPublicDownloadsDestination(context, row.downloadId)?.let { return it }
+
         val extension = normalizeExtension(row.containerExtension)
         val values = ContentValues().apply {
             put(MediaStore.Downloads.DISPLAY_NAME, publicDisplayName(row, extension))
             put(MediaStore.Downloads.MIME_TYPE, mimeType(extension))
             put(MediaStore.Downloads.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS)
+            put(MediaStore.Downloads.DOWNLOAD_URI, pendingDownloadMarker(row.downloadId))
             put(MediaStore.Downloads.IS_PENDING, 1)
         }
         val uri = context.contentResolver.insert(
@@ -189,8 +198,93 @@ internal object OfflineDownloadStorage {
         return cleaned.take(120).ifBlank { "OwnPlay" }
     }
 
+    internal fun pendingDownloadMarker(downloadId: String): String =
+        "$PENDING_DOWNLOAD_MARKER_PREFIX$downloadId"
+
+    internal fun isOwnedPendingDownloadCandidate(
+        ownerPackageName: String?,
+        expectedPackageName: String,
+        downloadUri: String?,
+        expectedDownloadId: String,
+    ): Boolean =
+        ownerPackageName == expectedPackageName &&
+            downloadUri == pendingDownloadMarker(expectedDownloadId)
+
     private fun privateDirectory(context: Context): File =
         File(context.filesDir, PRIVATE_DIRECTORY).apply { mkdirs() }
+
+    @TargetApi(Build.VERSION_CODES.Q)
+    @Suppress("DEPRECATION")
+    private fun findOwnedPendingPublicDownloadsDestination(
+        context: Context,
+        downloadId: String,
+    ): String? {
+        val marker = pendingDownloadMarker(downloadId)
+        val queryUri = MediaStore.setIncludePending(MediaStore.Downloads.EXTERNAL_CONTENT_URI)
+        val projection = arrayOf(
+            MediaStore.Downloads._ID,
+            MediaStore.Downloads.OWNER_PACKAGE_NAME,
+            MediaStore.Downloads.DOWNLOAD_URI,
+            MediaStore.Downloads.IS_PENDING,
+        )
+        val selection =
+            "${MediaStore.Downloads.IS_PENDING} = 1 AND ${MediaStore.Downloads.DOWNLOAD_URI} = ?"
+        return try {
+            context.contentResolver.query(
+                queryUri,
+                projection,
+                selection,
+                arrayOf(marker),
+                "${MediaStore.Downloads.DATE_ADDED} DESC",
+            )?.use { cursor ->
+                val idIndex = cursor.getColumnIndex(MediaStore.Downloads._ID)
+                val ownerIndex = cursor.getColumnIndex(MediaStore.Downloads.OWNER_PACKAGE_NAME)
+                val downloadUriIndex = cursor.getColumnIndex(MediaStore.Downloads.DOWNLOAD_URI)
+                val pendingIndex = cursor.getColumnIndex(MediaStore.Downloads.IS_PENDING)
+                if (idIndex < 0 || ownerIndex < 0 || downloadUriIndex < 0 || pendingIndex < 0) {
+                    return@use null
+                }
+                while (cursor.moveToNext()) {
+                    if (cursor.getInt(pendingIndex) != 1) continue
+                    val ownerPackageName = cursor.getString(ownerIndex)
+                    val downloadUri = cursor.getString(downloadUriIndex)
+                    if (
+                        isOwnedPendingDownloadCandidate(
+                            ownerPackageName = ownerPackageName,
+                            expectedPackageName = context.packageName,
+                            downloadUri = downloadUri,
+                            expectedDownloadId = downloadId,
+                        )
+                    ) {
+                        val mediaId = cursor.getLong(idIndex)
+                        return@use ContentUris.withAppendedId(
+                            MediaStore.Downloads.EXTERNAL_CONTENT_URI,
+                            mediaId,
+                        ).toString()
+                    }
+                }
+                null
+            }
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    private fun publicDestinationUsableSpaceBytes(
+        context: Context,
+        location: String,
+    ): Long? = try {
+        context.contentResolver.openFileDescriptor(Uri.parse(location), "rw")?.use { descriptor ->
+            val stats = Os.fstatvfs(descriptor.fileDescriptor)
+            val fragmentSize = stats.f_frsize.takeIf { it > 0L } ?: stats.f_bsize
+            measuredUsableSpaceBytes(
+                availableBlocks = stats.f_bavail,
+                fragmentSizeBytes = fragmentSize,
+            )
+        }
+    } catch (_: Exception) {
+        null
+    }
 
     private fun publicDisplayName(row: MediaDownloadEntity, extension: String): String {
         val stem = if (

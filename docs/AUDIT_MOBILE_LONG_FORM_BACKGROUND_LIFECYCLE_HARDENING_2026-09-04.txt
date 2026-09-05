@@ -1,0 +1,55 @@
+OWNPLAY MOBILE LONG-FORM BACKGROUND LIFECYCLE HARDENING SOURCE AUDIT
+Date: 2026-09-04
+
+Scope
+- Mobile source hardening only.
+- No APK build authorized or produced by this source stage.
+- No merge, release, deploy, signing change, force push, reset, or history rewrite.
+
+Authoritative predecessor
+- PR: #114 CURRENT SOURCE — OwnPlay Mobile + TV
+- Branch: agent/stale-refresh-coalesce-no-apk
+- Predecessor head: 45edaa2ef267c75b6f6192f54cb19e689df60438
+- Predecessor tree: b010f05209a95418eb46538c4a16291d183f793d
+
+Product source commit
+- Commit: 2a154ab07d1a3b75bc2214a02b9a3c819c8a22e5
+- Tree: ae70229d75aa4bdb65aaa4342d36023fd8a96cc9
+- Message: Harden Mobile long-form background lifecycle -no-apk
+
+Files changed by product source commit
+1. app/src/main/java/app/ownplay/player/playback/LiveActivityLifecyclePolicy.kt
+2. app/src/test/java/app/ownplay/player/playback/LiveActivityLifecyclePolicyTest.kt
+
+Implemented contract
+- Existing Live background behavior is preserved on Mobile and TV.
+- Outside Picture-in-Picture and outside configuration changes, Mobile Movie and Series Episode playback now returns SUSPEND_AND_RETAIN_SURFACE from the existing Activity lifecycle policy.
+- MainActivity therefore reuses its existing surface suspension path and PlaybackController.suspendForBackground().
+- PlaybackController already preserves position for non-Live media and resumeAfterBackground() restores the suspended request using that position.
+- A playback session that was paused before suspension remains paused after resume because PlaybackController retains playWhenReady state.
+- Picture-in-Picture continues to own playback and therefore returns NONE from the background policy.
+- Configuration changes continue to return NONE from the background policy.
+- Idle and Failed states do not suspend.
+- TV Movie/Series behavior remains outside this policy via BuildConfig.IS_TV_BUILD and continues to be delegated to TvPlaybackLifecyclePolicy.
+- Offline Movie/Series playback is covered because offline requests retain the same PlaybackMediaKind.MOVIE or PlaybackMediaKind.SERIES_EPISODE kinds.
+
+Explicitly unchanged
+- MainActivity implementation.
+- Media3PlaybackEngine and audio-focus behavior.
+- PlaybackController implementation.
+- PiP surface ownership/handoff.
+- TV non-Live lifecycle policy.
+- Live interaction contract.
+- Version code/name.
+- APK/build lane.
+
+Focused validation intent
+- Mobile: Loading/Playing/Paused Movie and Series Episode -> suspend outside PiP/configuration change.
+- TV: Movie and Series Episode remain NONE in this shared policy.
+- Live: suspend behavior retained on both targets.
+- PiP/configuration-change exemptions retained.
+- Idle/Failed remain NONE.
+
+Physical QA boundary
+- Source/tests/CI cannot establish physical-device PASS.
+- Physical Mobile QA remains deferred by the user.

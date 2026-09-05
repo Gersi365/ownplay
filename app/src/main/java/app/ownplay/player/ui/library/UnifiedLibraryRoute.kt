@@ -152,9 +152,27 @@ internal fun UnifiedLibraryRoute(
     var offlineOnly by remember(isTelevision) { mutableStateOf(false) }
     var query by remember { mutableStateOf("") }
     var searchExpanded by remember(isTelevision) { mutableStateOf(isTelevision) }
-    var refreshing by remember(sourceId) { mutableStateOf(false) }
-    var refreshWarning by remember(sourceId) { mutableStateOf(false) }
-    var playbackSession by remember { mutableStateOf<LibraryPlaybackSession?>(null) }
+    val refreshDemand = remember(sourceId, sourceKind) { LibraryCatalogRefreshDemand() }
+    var movieRefreshDemanded by remember(sourceId, sourceKind) { mutableStateOf(false) }
+    var seriesRefreshDemanded by remember(sourceId, sourceKind) { mutableStateOf(false) }
+    var vodRefreshing by remember(sourceId, sourceKind) { mutableStateOf(false) }
+    var seriesRefreshing by remember(sourceId, sourceKind) { mutableStateOf(false) }
+    var vodRefreshWarning by remember(sourceId, sourceKind) { mutableStateOf(false) }
+    var seriesRefreshWarning by remember(sourceId, sourceKind) { mutableStateOf(false) }
+    var initialCatalogRefreshPending by remember(sourceId, sourceKind) {
+        mutableStateOf(sourceId != null && sourceKind == SourceKinds.XTREAM)
+    }
+    val refreshing = when (filter) {
+        UnifiedLibraryFilter.MOVIES -> vodRefreshing
+        UnifiedLibraryFilter.SERIES -> seriesRefreshing
+        UnifiedLibraryFilter.ALL -> false
+    }
+    val refreshWarning = when (filter) {
+        UnifiedLibraryFilter.MOVIES -> vodRefreshWarning
+        UnifiedLibraryFilter.SERIES -> seriesRefreshWarning
+        UnifiedLibraryFilter.ALL -> false
+    }
+    val playbackSession by LibraryPlaybackPresentationSession.state.collectAsState()
     var playbackError by remember { mutableStateOf<String?>(null) }
     var selectedSeriesKey by remember { mutableStateOf<LibrarySeriesKey?>(null) }
     var focusItemKey by remember(sourceId) { mutableStateOf<String?>(null) }
@@ -193,14 +211,62 @@ internal fun UnifiedLibraryRoute(
         }
     }
 
-    LaunchedEffect(sourceId, sourceKind) {
-        if (sourceId == null || sourceKind != SourceKinds.XTREAM) return@LaunchedEffect
-        refreshing = true
-        refreshWarning = false
-        val vodResult = vodRuntime.refresh(sourceId)
-        val seriesResult = seriesRuntime.refresh(sourceId)
-        refreshWarning = vodResult is SourceResult.Failure || seriesResult is SourceResult.Failure
-        refreshing = false
+    LaunchedEffect(sourceId, sourceKind, filter, refreshDemand) {
+        if (sourceId == null || sourceKind != SourceKinds.XTREAM) {
+            initialCatalogRefreshPending = false
+            return@LaunchedEffect
+        }
+        when (filter) {
+            UnifiedLibraryFilter.MOVIES -> {
+                if (refreshDemand.claim(LibraryCatalogRefreshTarget.MOVIES)) {
+                    movieRefreshDemanded = true
+                }
+            }
+            UnifiedLibraryFilter.SERIES -> {
+                if (refreshDemand.claim(LibraryCatalogRefreshTarget.SERIES)) {
+                    seriesRefreshDemanded = true
+                }
+            }
+            UnifiedLibraryFilter.ALL -> initialCatalogRefreshPending = false
+        }
+    }
+
+    LaunchedEffect(sourceId, sourceKind, movieRefreshDemanded) {
+        val resolvedSourceId = sourceId
+        if (
+            !movieRefreshDemanded ||
+            resolvedSourceId == null ||
+            sourceKind != SourceKinds.XTREAM
+        ) {
+            return@LaunchedEffect
+        }
+        vodRefreshing = true
+        vodRefreshWarning = false
+        initialCatalogRefreshPending = false
+        try {
+            vodRefreshWarning = vodRuntime.refresh(resolvedSourceId) is SourceResult.Failure
+        } finally {
+            vodRefreshing = false
+        }
+    }
+
+    LaunchedEffect(sourceId, sourceKind, seriesRefreshDemanded) {
+        val resolvedSourceId = sourceId
+        if (
+            !seriesRefreshDemanded ||
+            resolvedSourceId == null ||
+            sourceKind != SourceKinds.XTREAM
+        ) {
+            return@LaunchedEffect
+        }
+        seriesRefreshing = true
+        seriesRefreshWarning = false
+        initialCatalogRefreshPending = false
+        try {
+            seriesRefreshWarning = seriesRuntime.refresh(resolvedSourceId) is SourceResult.Failure
+        } finally {
+            seriesRefreshing = false
+        }
     }
 
     val seriesGroups = remember(presentationDownloads) { groupLibrarySeries(presentationDownloads) }
@@ -234,13 +300,15 @@ internal fun UnifiedLibraryRoute(
             val progress = downloadRuntime.playbackProgress(download.downloadId)
             playbackError = null
             runtime.playbackController.start(request)
-            playbackSession = LibraryPlaybackSession(
-                download = download,
-                initialPositionMs = progress
-                    ?.takeIf { !it.completed }
-                    ?.positionMs
-                    ?.coerceAtLeast(0L)
-                    ?: 0L,
+            LibraryPlaybackPresentationSession.show(
+                LibraryPlaybackSession(
+                    download = download,
+                    initialPositionMs = progress
+                        ?.takeIf { !it.completed }
+                        ?.positionMs
+                        ?.coerceAtLeast(0L)
+                        ?: 0L,
+                ),
             )
         }
     }
@@ -251,7 +319,7 @@ internal fun UnifiedLibraryRoute(
             session = session,
             onExit = {
                 runtime.playbackController.stop()
-                playbackSession = null
+                LibraryPlaybackPresentationSession.clear()
                 val movieReturnKey = pendingMovieReturnFocusKey
                 pendingMovieReturnFocusKey = null
                 if (selectedSeriesKey != null && seriesReturnEpisodeId != null) {
@@ -458,6 +526,13 @@ internal fun UnifiedLibraryRoute(
             seriesCatalog.continueWatching.isNotEmpty()
     val hasItems =
         movieCount + seriesCount > 0 || showMovieContinueWatching || showSeriesContinueWatching
+    val showInitialMobileLoading = shouldShowMobileLibraryInitialLoading(
+        isTelevision = isTelevision,
+        offlineOnly = offlineOnly,
+        hasItems = hasItems,
+        refreshing = refreshing,
+        initialRefreshPending = initialCatalogRefreshPending,
+    )
     val visibleFocusKeys = remember(
         filter,
         sourceId,
@@ -621,7 +696,7 @@ internal fun UnifiedLibraryRoute(
                         },
                     )
                 }
-                if (refreshing) {
+                if (refreshing && !showInitialMobileLoading) {
                     item(key = "library-refreshing") {
                         CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
                     }
@@ -686,7 +761,7 @@ internal fun UnifiedLibraryRoute(
                 ) {
                     Icon(Icons.Filled.ErrorOutline, contentDescription = null)
                     Text(
-                        text = "Some Library sections could not refresh. Showing the saved catalog.",
+                        text = "This Library section could not refresh. Showing the saved catalog.",
                         style = MaterialTheme.typography.bodySmall,
                     )
                 }
@@ -713,6 +788,11 @@ internal fun UnifiedLibraryRoute(
                 episodes = seriesCatalog.continueWatching,
                 onOpenSeries = { episode -> onOpenSeriesDetails(sourceId, episode.seriesId) },
             )
+        }
+
+        if (showInitialMobileLoading) {
+            LibraryLoadingState(modifier = Modifier.weight(1f))
+            return
         }
 
         if (!hasItems) {
@@ -809,6 +889,36 @@ private fun LibraryCategoryStrip(
                     },
                 )
             }
+        }
+    }
+}
+
+@Composable
+private fun LibraryLoadingState(
+    modifier: Modifier = Modifier,
+) {
+    Box(
+        modifier = modifier.fillMaxSize(),
+        contentAlignment = Alignment.Center,
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            CircularProgressIndicator(
+                modifier = Modifier.size(28.dp),
+                strokeWidth = 2.dp,
+            )
+            Text(
+                text = "Loading Library",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
+            )
+            Text(
+                text = "Refreshing the selected catalog…",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
     }
 }
@@ -1893,6 +2003,18 @@ private fun libraryVisibleFocusKeys(
         }
     }
 }
+
+internal fun shouldShowMobileLibraryInitialLoading(
+    isTelevision: Boolean,
+    offlineOnly: Boolean,
+    hasItems: Boolean,
+    refreshing: Boolean,
+    initialRefreshPending: Boolean,
+): Boolean =
+    !isTelevision &&
+        !offlineOnly &&
+        !hasItems &&
+        (refreshing || initialRefreshPending)
 
 private suspend fun enqueueSeriesEpisode(
     downloadRuntime: OfflineDownloadFeatureRuntime,

@@ -7,6 +7,8 @@ import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotSame
+import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -26,6 +28,54 @@ class LiveBrowseSessionTest {
         assertEquals(listOf("news-two", "news-one"), state.channels.map { it.channelId })
         assertEquals(listOf("news", "sports"), state.categories.map { it.providerCategoryKey })
         assertEquals(4, state.catalogChannelCount)
+    }
+
+    @Test
+    fun transientSearchAndCategoryChangesReuseCatalogDerivedNavigationState() {
+        val projector = LiveBrowseStateProjector()
+        val snapshot = snapshot()
+
+        val initial = projector.project(snapshot, LiveBrowseQuery())
+        val searched = projector.project(
+            snapshot,
+            LiveBrowseQuery(searchTerm = "news"),
+        )
+        val categorized = projector.project(
+            snapshot,
+            LiveBrowseQuery(searchTerm = "news", categoryKey = "news"),
+        )
+
+        assertSame(initial.categoryNavigationChannels, initial.channels)
+        assertSame(initial.categoryNavigationChannels, searched.categoryNavigationChannels)
+        assertSame(searched.categoryNavigationChannels, categorized.categoryNavigationChannels)
+        assertSame(initial.categories, searched.categories)
+        assertSame(initial.channelCategoryKeyById, searched.channelCategoryKeyById)
+        assertSame(
+            searched.categoryNavigationChannels.first { it.channelId == "news-one" },
+            searched.channels.first { it.channelId == "news-one" },
+        )
+        assertSame(
+            categorized.categoryNavigationChannels.first { it.channelId == "news-two" },
+            categorized.channels.first { it.channelId == "news-two" },
+        )
+        assertEquals(listOf("news-one", "news-two"), searched.channels.map { it.channelId })
+        assertEquals(listOf("news-one", "news-two"), categorized.channels.map { it.channelId })
+    }
+
+    @Test
+    fun navigationAffectingQueryChangesRecomputeNavigationProjection() {
+        val projector = LiveBrowseStateProjector()
+        val snapshot = snapshot()
+
+        val initial = projector.project(snapshot, LiveBrowseQuery())
+        val favorites = projector.project(
+            snapshot,
+            LiveBrowseQuery(favoritesOnly = true),
+        )
+
+        assertNotSame(initial.categoryNavigationChannels, favorites.categoryNavigationChannels)
+        assertEquals(listOf("news-two"), favorites.categoryNavigationChannels.map { it.channelId })
+        assertEquals(listOf("news-two"), favorites.channels.map { it.channelId })
     }
 
     @Test
