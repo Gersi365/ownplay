@@ -388,9 +388,10 @@ internal fun SeriesRoute(
     }
 
     LaunchedEffect(details, selectedSeasonNumber, selectedEpisodeId) {
+        val loadedDetails = details ?: return@LaunchedEffect
         val seasonNumber = selectedSeasonNumber
         if (seasonNumber != null) {
-            val season = details?.seasons?.firstOrNull { it.seasonNumber == seasonNumber }
+            val season = loadedDetails.seasons.firstOrNull { it.seasonNumber == seasonNumber }
             if (season == null) {
                 selectedSeasonNumber = null
                 selectedEpisodeId = null
