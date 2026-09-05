@@ -40,11 +40,23 @@ class OfflineDownloadWorker(
             if (initialRow.state == DownloadStates.PAUSED) {
                 return Result.success()
             }
-            if (
-                initialRow.state == DownloadStates.COMPLETED &&
-                OfflineDownloadStorage.locationExists(applicationContext, initialRow.localRelativePath)
-            ) {
-                return Result.success()
+            if (initialRow.state == DownloadStates.COMPLETED) {
+                if (OfflineDownloadFileIntegrity.verifiedBytes(applicationContext, initialRow) != null) {
+                    return Result.success()
+                }
+                val retainedLocation = initialRow.localRelativePath
+                    ?.takeIf { OfflineDownloadStorage.locationExists(applicationContext, it) }
+                val actualBytes = retainedLocation
+                    ?.let { OfflineDownloadStorage.locationSize(applicationContext, it) }
+                    ?: 0L
+                markFailed(
+                    dao = dao,
+                    row = initialRow,
+                    reason = OfflineDownloadFileIntegrity.failureReason(applicationContext, initialRow),
+                    bytesDownloaded = actualBytes,
+                    localLocation = retainedLocation,
+                )
+                return Result.failure()
             }
             if (recoverFinalizedDownload(initialRow, dao)) {
                 return Result.success()
