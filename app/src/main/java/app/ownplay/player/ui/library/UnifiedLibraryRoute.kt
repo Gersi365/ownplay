@@ -152,10 +152,25 @@ internal fun UnifiedLibraryRoute(
     var offlineOnly by remember(isTelevision) { mutableStateOf(false) }
     var query by remember { mutableStateOf("") }
     var searchExpanded by remember(isTelevision) { mutableStateOf(isTelevision) }
-    var refreshing by remember(sourceId) { mutableStateOf(false) }
-    var refreshWarning by remember(sourceId) { mutableStateOf(false) }
+    val refreshDemand = remember(sourceId, sourceKind) { LibraryCatalogRefreshDemand() }
+    var movieRefreshDemanded by remember(sourceId, sourceKind) { mutableStateOf(false) }
+    var seriesRefreshDemanded by remember(sourceId, sourceKind) { mutableStateOf(false) }
+    var vodRefreshing by remember(sourceId, sourceKind) { mutableStateOf(false) }
+    var seriesRefreshing by remember(sourceId, sourceKind) { mutableStateOf(false) }
+    var vodRefreshWarning by remember(sourceId, sourceKind) { mutableStateOf(false) }
+    var seriesRefreshWarning by remember(sourceId, sourceKind) { mutableStateOf(false) }
     var initialCatalogRefreshPending by remember(sourceId, sourceKind) {
-        mutableStateOf(sourceId != null)
+        mutableStateOf(sourceId != null && sourceKind == SourceKinds.XTREAM)
+    }
+    val refreshing = when (filter) {
+        UnifiedLibraryFilter.MOVIES -> vodRefreshing
+        UnifiedLibraryFilter.SERIES -> seriesRefreshing
+        UnifiedLibraryFilter.ALL -> false
+    }
+    val refreshWarning = when (filter) {
+        UnifiedLibraryFilter.MOVIES -> vodRefreshWarning
+        UnifiedLibraryFilter.SERIES -> seriesRefreshWarning
+        UnifiedLibraryFilter.ALL -> false
     }
     val playbackSession by LibraryPlaybackPresentationSession.state.collectAsState()
     var playbackError by remember { mutableStateOf<String?>(null) }
@@ -196,20 +211,61 @@ internal fun UnifiedLibraryRoute(
         }
     }
 
-    LaunchedEffect(sourceId, sourceKind) {
+    LaunchedEffect(sourceId, sourceKind, filter, refreshDemand) {
         if (sourceId == null || sourceKind != SourceKinds.XTREAM) {
             initialCatalogRefreshPending = false
             return@LaunchedEffect
         }
-        refreshing = true
-        refreshWarning = false
+        when (filter) {
+            UnifiedLibraryFilter.MOVIES -> {
+                if (refreshDemand.claim(LibraryCatalogRefreshTarget.MOVIES)) {
+                    movieRefreshDemanded = true
+                }
+            }
+            UnifiedLibraryFilter.SERIES -> {
+                if (refreshDemand.claim(LibraryCatalogRefreshTarget.SERIES)) {
+                    seriesRefreshDemanded = true
+                }
+            }
+            UnifiedLibraryFilter.ALL -> initialCatalogRefreshPending = false
+        }
+    }
+
+    LaunchedEffect(sourceId, sourceKind, movieRefreshDemanded) {
+        val resolvedSourceId = sourceId
+        if (
+            !movieRefreshDemanded ||
+            resolvedSourceId == null ||
+            sourceKind != SourceKinds.XTREAM
+        ) {
+            return@LaunchedEffect
+        }
+        vodRefreshing = true
+        vodRefreshWarning = false
+        initialCatalogRefreshPending = false
         try {
-            val vodResult = vodRuntime.refresh(sourceId)
-            val seriesResult = seriesRuntime.refresh(sourceId)
-            refreshWarning = vodResult is SourceResult.Failure || seriesResult is SourceResult.Failure
+            vodRefreshWarning = vodRuntime.refresh(resolvedSourceId) is SourceResult.Failure
         } finally {
-            refreshing = false
-            initialCatalogRefreshPending = false
+            vodRefreshing = false
+        }
+    }
+
+    LaunchedEffect(sourceId, sourceKind, seriesRefreshDemanded) {
+        val resolvedSourceId = sourceId
+        if (
+            !seriesRefreshDemanded ||
+            resolvedSourceId == null ||
+            sourceKind != SourceKinds.XTREAM
+        ) {
+            return@LaunchedEffect
+        }
+        seriesRefreshing = true
+        seriesRefreshWarning = false
+        initialCatalogRefreshPending = false
+        try {
+            seriesRefreshWarning = seriesRuntime.refresh(resolvedSourceId) is SourceResult.Failure
+        } finally {
+            seriesRefreshing = false
         }
     }
 
@@ -705,7 +761,7 @@ internal fun UnifiedLibraryRoute(
                 ) {
                     Icon(Icons.Filled.ErrorOutline, contentDescription = null)
                     Text(
-                        text = "Some Library sections could not refresh. Showing the saved catalog.",
+                        text = "This Library section could not refresh. Showing the saved catalog.",
                         style = MaterialTheme.typography.bodySmall,
                     )
                 }
@@ -859,7 +915,7 @@ private fun LibraryLoadingState(
                 fontWeight = FontWeight.SemiBold,
             )
             Text(
-                text = "Refreshing Movies and Series…",
+                text = "Refreshing the selected catalog…",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
