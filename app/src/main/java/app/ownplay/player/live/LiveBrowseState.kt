@@ -76,11 +76,9 @@ internal class LiveBrowseStateProjector {
         return LiveBrowseState(
             categories = cachedCategories,
             customGroups = cachedCustomGroups,
-            channels = LiveBrowseProjector.project(
-                records = snapshot.channels,
+            channels = LiveBrowseProjector.filterTransient(
+                navigationChannels = cachedNavigationChannels,
                 query = currentQuery,
-                customGroupIdsByChannelId = snapshot.customGroupIdsByChannelId,
-                hiddenCategoryKeys = snapshot.hiddenCategoryKeys,
             ),
             categoryNavigationChannels = cachedNavigationChannels,
             channelCategoryKeyById = cachedChannelCategoryKeyById,
