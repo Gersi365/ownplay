@@ -1,6 +1,7 @@
 package app.ownplay.player
 
-import java.io.File
+import app.ownplay.player.testing.sourceBlockAfter
+import app.ownplay.player.testing.sourceText
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -12,16 +13,15 @@ class SourceSyncPublicationContractTest {
         assertTrue(source.contains("private fun publishSourceState(state: SourceSyncState)"))
         assertFalse(source.contains("_sourceSyncState.collect(::rememberSourceState)"))
 
-        val staleRefresh = source
-            .substringAfter("private suspend fun refreshSourceIfStale(sourceId: String)")
-            .substringBefore("private suspend fun completePendingSource(sourceId: String)")
+        val staleRefresh = sourceBlockAfter(
+            source,
+            "private suspend fun refreshSourceIfStale(sourceId: String)",
+        )
         assertTrue(staleRefresh.contains("runReadyRefresh("))
         assertTrue(staleRefresh.contains("onlyIfStale = true"))
         assertFalse(staleRefresh.contains("refreshSource(sourceId)"))
 
-        val lifecycle = source
-            .substringAfter("private suspend fun runReadyRefresh(")
-            .substringBefore("private suspend fun executeReadyRefreshLocked")
+        val lifecycle = sourceBlockAfter(source, "private suspend fun runReadyRefresh(")
         assertTrue(lifecycle.contains("refreshMutex.withLock"))
         assertTrue(lifecycle.contains("if (onlyIfStale)"))
         assertTrue(lifecycle.contains("database.refreshStateDao().get(sourceId)"))
@@ -31,9 +31,10 @@ class SourceSyncPublicationContractTest {
         val executionIndex = lifecycle.indexOf("executeReadyRefreshLocked(sourceId)")
         assertTrue(freshnessIndex >= 0 && freshnessIndex < executionIndex)
 
-        val execution = source
-            .substringAfter("private suspend fun executeReadyRefreshLocked(sourceId: String)")
-            .substringBefore("suspend fun refreshSource(sourceId: String)")
+        val execution = sourceBlockAfter(
+            source,
+            "private suspend fun executeReadyRefreshLocked(sourceId: String)",
+        )
         assertTrue(execution.contains("markRefreshRunning(sourceId)"))
         assertTrue(execution.contains("refreshSourcePipelineLocked(sourceId)"))
         assertTrue(execution.contains("markRefreshSucceeded(sourceId)"))
@@ -45,30 +46,25 @@ class SourceSyncPublicationContractTest {
         assertTrue(runningIndex >= 0 && runningIndex < pipelineIndex)
         assertTrue(pipelineIndex >= 0 && pipelineIndex < successIndex)
 
-        val manualRefresh = source
-            .substringAfter("suspend fun refreshSource(sourceId: String)")
-            .substringBefore("suspend fun refreshAllSources()")
+        val manualRefresh = sourceBlockAfter(source, "suspend fun refreshSource(sourceId: String)")
         assertTrue(manualRefresh.contains("runReadyRefresh("))
         assertTrue(manualRefresh.contains("onlyIfStale = false"))
 
-        val pipeline = source
-            .substringAfter("private suspend fun refreshSourcePipelineLocked(")
-            .substringBefore("private suspend fun refreshXtreamMediaCatalogs")
+        val pipeline = sourceBlockAfter(source, "private suspend fun refreshSourcePipelineLocked(")
         assertTrue(pipeline.contains("publishSourceState("))
         assertTrue(pipeline.contains("ReadyRefreshOutcome.ChannelsFailed(failure)"))
         assertTrue(pipeline.contains("ReadyRefreshOutcome.Succeeded"))
         assertFalse(pipeline.contains("refreshMutex.withLock"))
         assertFalse(pipeline.contains("_sourceSyncState.value = SourceSyncState("))
 
-        val unexpectedFailure = source
-            .substringAfter("private suspend fun publishUnexpectedRefreshFailure(sourceId: String)")
-            .substringBefore("private suspend fun loadEpgAfterChannels(")
+        val unexpectedFailure = sourceBlockAfter(
+            source,
+            "private suspend fun publishUnexpectedRefreshFailure(sourceId: String)",
+        )
         assertTrue(unexpectedFailure.contains("val current = _sourceSyncStates.value[sourceId]"))
         assertFalse(unexpectedFailure.contains("val current = _sourceSyncState.value"))
 
-        val epg = source
-            .substringAfter("private suspend fun loadEpgAfterChannels(")
-            .substringBefore("suspend fun epgSnapshot(")
+        val epg = sourceBlockAfter(source, "private suspend fun loadEpgAfterChannels(")
         assertTrue(epg.contains("publishSourceState("))
         assertTrue(epg.contains("epgRepository.refreshSource(sourceId)"))
         assertFalse(epg.contains("_sourceSyncState.value = if (epg == null)"))
@@ -78,11 +74,5 @@ class SourceSyncPublicationContractTest {
         assertTrue(
             epg.substring(cancellationIndex, genericFailureIndex).contains("throw cancelled"),
         )
-    }
-
-    private fun sourceText(relativePath: String): String {
-        val candidates = listOf(File(relativePath), File("app/$relativePath"))
-        return candidates.firstOrNull(File::isFile)?.readText()
-            ?: error("Could not locate source file: $relativePath")
     }
 }

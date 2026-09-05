@@ -1,6 +1,7 @@
 package app.ownplay.player.download
 
-import java.io.File
+import app.ownplay.player.testing.sourceBlockAfter
+import app.ownplay.player.testing.sourceText
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -19,9 +20,10 @@ class OfflineDownloadResilienceContractTest {
         assertTrue(featureRuntime.contains("repository.reconcileCompletedFiles()"))
         assertFalse(featureRuntime.contains("OfflineDownloadStorage.locationExists(applicationContext, row.localRelativePath)"))
 
-        val completedWorkerBranch = worker
-            .substringAfter("if (initialRow.state == DownloadStates.COMPLETED) {")
-            .substringBefore("if (recoverFinalizedDownload(initialRow, dao))")
+        val completedWorkerBranch = sourceBlockAfter(
+            worker,
+            "if (initialRow.state == DownloadStates.COMPLETED)",
+        )
         assertTrue(completedWorkerBranch.contains("OfflineDownloadFileIntegrity.verifiedBytes(applicationContext, initialRow)"))
         assertTrue(completedWorkerBranch.contains("OfflineDownloadFileIntegrity.failureReason(applicationContext, initialRow)"))
         assertTrue(completedWorkerBranch.contains("markFailed("))
@@ -37,9 +39,7 @@ class OfflineDownloadResilienceContractTest {
         assertTrue(persistence.contains("suspend fun updateActiveTransfer("))
         assertTrue(persistence.contains("AND state IN ('QUEUED', 'DOWNLOADING')"))
 
-        val pauseBlock = repository
-            .substringAfter("suspend fun pause(downloadId: String) {")
-            .substringBefore("suspend fun resume(downloadId: String) {")
+        val pauseBlock = sourceBlockAfter(repository, "suspend fun pause(downloadId: String)")
         assertTrue(pauseBlock.contains("dao.updateActiveTransfer("))
         assertTrue(pauseBlock.contains("if (paused > 0)"))
         assertFalse(pauseBlock.contains("dao.updateTransfer("))
@@ -50,9 +50,7 @@ class OfflineDownloadResilienceContractTest {
         assertTrue(worker.contains("if (completed == 0 && dao.getById(downloadId) == null)"))
         assertFalse(worker.contains("val cancellationState = if (row.state == DownloadStates.PAUSED)"))
 
-        val retryHelper = worker
-            .substringAfter("private suspend fun markQueuedForRetry(")
-            .substringBefore("private suspend fun markFailed(")
+        val retryHelper = sourceBlockAfter(worker, "private suspend fun markQueuedForRetry(")
         assertTrue(retryHelper.contains("dao.updateActiveTransfer("))
         assertFalse(retryHelper.contains("dao.updateTransfer("))
     }
@@ -68,19 +66,11 @@ class OfflineDownloadResilienceContractTest {
         assertTrue(route.contains("LibraryPlaybackPresentationSession.clear()"))
         assertFalse(route.contains("var playbackSession by remember"))
 
-        val disposal = screen
-            .substringAfter("onDispose {")
-            .substringBefore("PlaybackInteractionBridge.clearBackAction(backOwner)")
+        val disposal = sourceBlockAfter(screen, "onDispose")
         assertFalse(disposal.contains("stopIfCurrent"))
         assertTrue(route.contains("runtime.playbackController.stop()"))
 
         assertTrue(session.contains("MutableStateFlow<LibraryPlaybackSession?>(null)"))
         assertFalse(session.contains("DataStore"))
-    }
-
-    private fun sourceText(relativePath: String): String {
-        val candidates = listOf(File(relativePath), File("app/$relativePath"))
-        return candidates.firstOrNull(File::isFile)?.readText()
-            ?: error("Could not locate source file: $relativePath")
     }
 }

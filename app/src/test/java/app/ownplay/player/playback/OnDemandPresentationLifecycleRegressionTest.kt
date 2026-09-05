@@ -1,6 +1,7 @@
 package app.ownplay.player.playback
 
-import java.io.File
+import app.ownplay.player.testing.sourceBlockAfter
+import app.ownplay.player.testing.sourceText
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -32,16 +33,15 @@ class OnDemandPresentationLifecycleRegressionTest {
         assertTrue(vod.contains("runtime.onDemandPresentationSession.showMoviePlayback("))
         assertTrue(vod.contains("runtime.onDemandPresentationSession.returnFromMoviePlayback()"))
 
-        val exitBlock = vod
-            .substringAfter("fun exitPlayback()")
-            .substringBefore("DisposableEffect(movie.movieId, backOwner)")
+        val exitBlock = sourceBlockAfter(vod, "fun exitPlayback()")
         assertTrue(exitBlock.contains("runtime.playbackController.stopIfCurrent("))
         assertTrue(exitBlock.contains("onFullscreenStateChanged(false)"))
 
-        val disposeBlock = vod
-            .substringAfter("DisposableEffect(movie.movieId, backOwner)")
-            .substringAfter("onDispose {")
-            .substringBefore("}")
+        val disposableEffect = sourceBlockAfter(
+            vod,
+            "DisposableEffect(movie.movieId, backOwner)",
+        )
+        val disposeBlock = sourceBlockAfter(disposableEffect, "onDispose")
         assertFalse(disposeBlock.contains("stopIfCurrent"))
         assertFalse(disposeBlock.contains("onFullscreenStateChanged(false)"))
 
@@ -62,16 +62,12 @@ class OnDemandPresentationLifecycleRegressionTest {
         assertTrue(series.contains("val loadedDetails = details ?: return@LaunchedEffect"))
         assertTrue(series.contains("loadedDetails.seasons.firstOrNull"))
 
-        val exitBlock = series
-            .substringAfter("fun exitPlayback()")
-            .substringBefore("DisposableEffect(backOwner)")
+        val exitBlock = sourceBlockAfter(series, "fun exitPlayback()")
         assertTrue(exitBlock.contains("runtime.playbackController.stopIfCurrent("))
         assertTrue(exitBlock.contains("onFullscreenStateChanged(false)"))
 
-        val disposeBlock = series
-            .substringAfter("DisposableEffect(backOwner)")
-            .substringAfter("onDispose {")
-            .substringBefore("}")
+        val disposableEffect = sourceBlockAfter(series, "DisposableEffect(backOwner)")
+        val disposeBlock = sourceBlockAfter(disposableEffect, "onDispose")
         assertFalse(disposeBlock.contains("stopIfCurrent"))
         assertFalse(disposeBlock.contains("onFullscreenStateChanged(false)"))
     }
@@ -89,11 +85,5 @@ class OnDemandPresentationLifecycleRegressionTest {
         assertFalse(store.contains("DataStore"))
         assertFalse(store.contains("Room"))
         assertFalse(store.contains("SharedPreferences"))
-    }
-
-    private fun sourceText(relativePath: String): String {
-        val candidates = listOf(File(relativePath), File("app/$relativePath"))
-        return candidates.firstOrNull(File::isFile)?.readText()
-            ?: error("Could not locate source file: $relativePath")
     }
 }
