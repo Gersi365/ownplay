@@ -157,7 +157,7 @@ internal fun UnifiedLibraryRoute(
     var initialCatalogRefreshPending by remember(sourceId, sourceKind) {
         mutableStateOf(sourceId != null)
     }
-    var playbackSession by remember { mutableStateOf<LibraryPlaybackSession?>(null) }
+    val playbackSession by LibraryPlaybackPresentationSession.state.collectAsState()
     var playbackError by remember { mutableStateOf<String?>(null) }
     var selectedSeriesKey by remember { mutableStateOf<LibrarySeriesKey?>(null) }
     var focusItemKey by remember(sourceId) { mutableStateOf<String?>(null) }
@@ -244,13 +244,15 @@ internal fun UnifiedLibraryRoute(
             val progress = downloadRuntime.playbackProgress(download.downloadId)
             playbackError = null
             runtime.playbackController.start(request)
-            playbackSession = LibraryPlaybackSession(
-                download = download,
-                initialPositionMs = progress
-                    ?.takeIf { !it.completed }
-                    ?.positionMs
-                    ?.coerceAtLeast(0L)
-                    ?: 0L,
+            LibraryPlaybackPresentationSession.show(
+                LibraryPlaybackSession(
+                    download = download,
+                    initialPositionMs = progress
+                        ?.takeIf { !it.completed }
+                        ?.positionMs
+                        ?.coerceAtLeast(0L)
+                        ?: 0L,
+                ),
             )
         }
     }
@@ -261,7 +263,7 @@ internal fun UnifiedLibraryRoute(
             session = session,
             onExit = {
                 runtime.playbackController.stop()
-                playbackSession = null
+                LibraryPlaybackPresentationSession.clear()
                 val movieReturnKey = pendingMovieReturnFocusKey
                 pendingMovieReturnFocusKey = null
                 if (selectedSeriesKey != null && seriesReturnEpisodeId != null) {
