@@ -29,6 +29,35 @@ class OfflineDownloadResilienceContractTest {
     }
 
     @Test
+    fun pauseAndWorkerCompletionUseActiveTransferCompareAndSet() {
+        val persistence = sourceText("src/main/java/app/ownplay/player/persistence/download/DownloadPersistence.kt")
+        val repository = sourceText("src/main/java/app/ownplay/player/download/OfflineDownloadRepository.kt")
+        val worker = sourceText("src/main/java/app/ownplay/player/download/OfflineDownloadWorker.kt")
+
+        assertTrue(persistence.contains("suspend fun updateActiveTransfer("))
+        assertTrue(persistence.contains("AND state IN ('QUEUED', 'DOWNLOADING')"))
+
+        val pauseBlock = repository
+            .substringAfter("suspend fun pause(downloadId: String) {")
+            .substringBefore("suspend fun resume(downloadId: String) {")
+        assertTrue(pauseBlock.contains("dao.updateActiveTransfer("))
+        assertTrue(pauseBlock.contains("if (paused > 0)"))
+        assertFalse(pauseBlock.contains("dao.updateTransfer("))
+
+        assertTrue(worker.contains("val markedDownloading = dao.updateActiveTransfer("))
+        assertTrue(worker.contains("val progressUpdated = dao.updateActiveTransfer("))
+        assertTrue(worker.contains("state = DownloadStates.COMPLETED"))
+        assertTrue(worker.contains("if (completed == 0 && dao.getById(downloadId) == null)"))
+        assertFalse(worker.contains("val cancellationState = if (row.state == DownloadStates.PAUSED)"))
+
+        val retryHelper = worker
+            .substringAfter("private suspend fun markQueuedForRetry(")
+            .substringBefore("private suspend fun markFailed(")
+        assertTrue(retryHelper.contains("dao.updateActiveTransfer("))
+        assertFalse(retryHelper.contains("dao.updateTransfer("))
+    }
+
+    @Test
     fun offlinePlaybackPresentationIsProcessScopedAndDisposeDoesNotStopPlayback() {
         val route = sourceText("src/main/java/app/ownplay/player/ui/library/UnifiedLibraryRoute.kt")
         val screen = sourceText("src/main/java/app/ownplay/player/ui/library/LibraryPlaybackScreen.kt")
