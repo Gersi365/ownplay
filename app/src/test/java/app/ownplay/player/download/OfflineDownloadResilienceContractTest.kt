@@ -10,6 +10,7 @@ class OfflineDownloadResilienceContractTest {
     fun completedFilesUseSharedIntegrityVerification() {
         val repository = sourceText("src/main/java/app/ownplay/player/download/OfflineDownloadRepository.kt")
         val featureRuntime = sourceText("src/main/java/app/ownplay/player/download/OfflineDownloadFeatureRuntime.kt")
+        val worker = sourceText("src/main/java/app/ownplay/player/download/OfflineDownloadWorker.kt")
 
         assertTrue(repository.contains("suspend fun reconcileCompletedFiles(): Int"))
         assertTrue(repository.contains("OfflineDownloadFileIntegrity.verifiedBytes(applicationContext, row)"))
@@ -17,6 +18,14 @@ class OfflineDownloadResilienceContractTest {
         assertTrue(repository.contains("markCompletedFileFailed(row)"))
         assertTrue(featureRuntime.contains("repository.reconcileCompletedFiles()"))
         assertFalse(featureRuntime.contains("OfflineDownloadStorage.locationExists(applicationContext, row.localRelativePath)"))
+
+        val completedWorkerBranch = worker
+            .substringAfter("if (initialRow.state == DownloadStates.COMPLETED) {")
+            .substringBefore("if (recoverFinalizedDownload(initialRow, dao))")
+        assertTrue(completedWorkerBranch.contains("OfflineDownloadFileIntegrity.verifiedBytes(applicationContext, initialRow)"))
+        assertTrue(completedWorkerBranch.contains("OfflineDownloadFileIntegrity.failureReason(applicationContext, initialRow)"))
+        assertTrue(completedWorkerBranch.contains("markFailed("))
+        assertFalse(completedWorkerBranch.contains("initialRow.state == DownloadStates.COMPLETED &&"))
     }
 
     @Test
