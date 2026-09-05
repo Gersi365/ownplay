@@ -154,8 +154,8 @@ internal fun DownloadsSettingsScreen(
         modifier = Modifier
             .fillMaxSize()
             .navigationBarsPadding()
-            .padding(horizontal = 12.dp, vertical = 8.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
+            .padding(horizontal = 18.dp, vertical = 14.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         Row(
             modifier = Modifier
@@ -163,6 +163,7 @@ internal fun DownloadsSettingsScreen(
                 .widthIn(max = 840.dp)
                 .align(Alignment.CenterHorizontally),
             verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             if (onBack != null) {
                 TextButton(
@@ -170,7 +171,10 @@ internal fun DownloadsSettingsScreen(
                     modifier = Modifier.focusRequester(backFocusRequester),
                 ) { Text("‹ Settings") }
             }
-            Column(modifier = Modifier.weight(1f)) {
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(2.dp),
+            ) {
                 Text(
                     text = "Downloads",
                     style = MaterialTheme.typography.titleLarge,
@@ -192,25 +196,35 @@ internal fun DownloadsSettingsScreen(
                     .align(Alignment.CenterHorizontally),
                 contentAlignment = Alignment.Center,
             ) {
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                Surface(
+                    modifier = Modifier
+                        .widthIn(max = 520.dp)
+                        .fillMaxWidth(),
+                    shape = RoundedCornerShape(18.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.28f),
+                    tonalElevation = 0.dp,
                 ) {
-                    Icon(
-                        Icons.Filled.DownloadDone,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    Text(
-                        text = "No downloads yet",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.SemiBold,
-                    )
-                    Text(
-                        text = "Use Download from a movie or episode details screen.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
+                    Column(
+                        modifier = Modifier.padding(horizontal = 24.dp, vertical = 22.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        Icon(
+                            Icons.Filled.DownloadDone,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        Text(
+                            text = "No downloads yet",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                        Text(
+                            text = "Use Download from a movie or episode details screen.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
                 }
             }
             return
@@ -222,7 +236,7 @@ internal fun DownloadsSettingsScreen(
                 .fillMaxSize()
                 .widthIn(max = 840.dp)
                 .align(Alignment.CenterHorizontally),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             items(downloads, key = { it.downloadId }) { download ->
                 DownloadRow(
@@ -272,18 +286,19 @@ private fun DownloadRow(
                     Modifier.border(
                         width = 2.dp,
                         color = MaterialTheme.colorScheme.primary,
-                        shape = RoundedCornerShape(14.dp),
+                        shape = RoundedCornerShape(18.dp),
                     )
                 } else {
                     Modifier
                 },
             ),
-        shape = RoundedCornerShape(14.dp),
-        tonalElevation = 1.dp,
+        shape = RoundedCornerShape(18.dp),
+        tonalElevation = 0.dp,
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.28f),
     ) {
         Column(
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
-            verticalArrangement = Arrangement.spacedBy(7.dp),
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             Row(
                 modifier = Modifier.onFocusChanged { focusState ->
@@ -291,7 +306,7 @@ private fun DownloadRow(
                     if (focusState.hasFocus) onFocusWithin()
                 },
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(9.dp),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
             ) {
                 Icon(
                     imageVector = if (download.mediaKind == DownloadMediaKinds.SERIES_EPISODE) {
@@ -305,7 +320,7 @@ private fun DownloadRow(
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
                         text = download.title,
-                        style = MaterialTheme.typography.bodyMedium,
+                        style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.SemiBold,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
@@ -375,7 +390,7 @@ private fun DownloadRow(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 DownloadStates.COMPLETED -> Text(
-                    text = "OFFLINE · Local file · ${downloadStorageLabel(download)} · ${humanBytes(download.bytesDownloaded)}",
+                    text = "Available offline · Local file · ${downloadStorageLabel(download)} · ${humanBytes(download.bytesDownloaded)}",
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.primary,
                 )
