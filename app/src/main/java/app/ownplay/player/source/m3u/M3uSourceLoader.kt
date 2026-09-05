@@ -23,7 +23,10 @@ class RemoteM3uLoader(
     private val httpClient: OkHttpClient = SourceHttpClient.shared,
     private val allowCleartext: Boolean = false,
 ) {
-    suspend fun load(playlistUrl: String): SourceResult<M3uPlaylist> {
+    suspend fun load(
+        playlistUrl: String,
+        allowCleartext: Boolean = this.allowCleartext,
+    ): SourceResult<M3uPlaylist> {
         val validation = SourceValidator.validateRemotePlaylistUrl(playlistUrl)
         if (validation is UrlValidationResult.Invalid) {
             return SourceResult.Failure(validation.error)

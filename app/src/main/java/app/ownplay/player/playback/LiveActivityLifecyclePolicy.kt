@@ -1,13 +1,18 @@
 package app.ownplay.player.playback
 
+import app.ownplay.player.BuildConfig
+
 internal enum class LiveActivityBackgroundAction {
     NONE,
     SUSPEND_AND_RETAIN_SURFACE,
 }
 
 /**
- * Activity-level policy for Live only. PiP keeps ownership of playback, while configuration
- * recreation is allowed to tear down through Activity destruction instead of background suspend.
+ * Activity-level background policy used by the shared MainActivity.
+ *
+ * Live suspends outside PiP/configuration changes on both targets. Mobile additionally suspends
+ * long-form Movie/Series playback so the existing PlaybackController can retain resume position.
+ * TV non-Live playback remains delegated to TvPlaybackLifecyclePolicy.
  */
 internal object LiveActivityLifecyclePolicy {
     fun backgroundAction(
@@ -19,15 +24,22 @@ internal object LiveActivityLifecyclePolicy {
             return LiveActivityBackgroundAction.NONE
         }
 
-        val live = when (state) {
-            is PlaybackState.Loading -> state.request.mediaKind == PlaybackMediaKind.LIVE
-            is PlaybackState.Playing -> state.request.mediaKind == PlaybackMediaKind.LIVE
-            is PlaybackState.Paused -> state.request.mediaKind == PlaybackMediaKind.LIVE
+        val mediaKind = when (state) {
+            is PlaybackState.Loading -> state.request.mediaKind
+            is PlaybackState.Playing -> state.request.mediaKind
+            is PlaybackState.Paused -> state.request.mediaKind
             PlaybackState.Idle,
             is PlaybackState.Failed,
-            -> false
+            -> null
         }
-        return if (live) {
+        val shouldSuspend = when (mediaKind) {
+            PlaybackMediaKind.LIVE -> true
+            PlaybackMediaKind.MOVIE,
+            PlaybackMediaKind.SERIES_EPISODE,
+            -> !BuildConfig.IS_TV_BUILD
+            null -> false
+        }
+        return if (shouldSuspend) {
             LiveActivityBackgroundAction.SUSPEND_AND_RETAIN_SURFACE
         } else {
             LiveActivityBackgroundAction.NONE

@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
@@ -19,10 +20,12 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -31,11 +34,13 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import app.ownplay.player.OwnPlayAppRuntime
+import app.ownplay.player.PendingImportExecutionTracker
 import app.ownplay.player.persistence.PlaylistSourceSummary
 import app.ownplay.player.persistence.SourceKinds
 import app.ownplay.player.source.SourceError
@@ -46,6 +51,8 @@ import app.ownplay.player.source.UrlValidationResult
 import app.ownplay.player.source.management.SourceEditSnapshot
 import app.ownplay.player.source.management.SourceMutationFailure
 import app.ownplay.player.source.management.SourceMutationResult
+import app.ownplay.player.source.selection.ActivePlaylistSelection
+import app.ownplay.player.source.selection.ActivePlaylistStore
 import kotlinx.coroutines.launch
 
 private enum class AddPlaylistMode { XTREAM, REMOTE_M3U, LOCAL_M3U }
@@ -57,15 +64,37 @@ internal fun PlaylistSettingsScreen(
     syncState: SourceSyncState,
     onOpenInLive: (String) -> Unit,
 ) {
+    val context = LocalContext.current
+    val activePlaylistStore = remember(context) {
+        ActivePlaylistStore(context.applicationContext)
+    }
+    val activePlaylistSelection by activePlaylistStore.observe().collectAsState(
+        initial = ActivePlaylistSelection.Loading,
+    )
+    val activeSourceId =
+        (activePlaylistSelection as? ActivePlaylistSelection.Ready)?.sourceId
+    val sourceSyncStates by runtime.sourceSyncStates.collectAsState()
+    val pendingImportExecution by PendingImportExecutionTracker.state.collectAsState()
+    val bannerSyncState = if (
+        syncState.stage == SourceSyncStage.LoadingChannels &&
+        syncState.sourceId in pendingImportExecution.queuedSourceIds
+    ) {
+        syncState.copy(stage = SourceSyncStage.Idle)
+    } else {
+        syncState
+    }
+
     var addMode by remember { mutableStateOf<AddPlaylistMode?>(null) }
     var editSnapshot by remember { mutableStateOf<SourceEditSnapshot?>(null) }
     var deleteTarget by remember { mutableStateOf<PlaylistSourceSummary?>(null) }
     var actionError by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
 
+    val configuredCount = summaries.size
+
     Column(
         modifier = Modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(14.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -73,12 +102,12 @@ internal fun PlaylistSettingsScreen(
         ) {
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = "Playlists",
-                    style = MaterialTheme.typography.titleLarge,
+                    text = "Configured playlists",
+                    style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.SemiBold,
                 )
                 Text(
-                    text = "${summaries.size} configured",
+                    text = "$configuredCount configured",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -88,10 +117,10 @@ internal fun PlaylistSettingsScreen(
             }
         }
 
-        sourceSyncStatus(syncState)?.let { status ->
+        sourceSyncStatus(bannerSyncState)?.let { status ->
             Surface(
                 modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(16.dp),
+                shape = RoundedCornerShape(14.dp),
                 color = MaterialTheme.colorScheme.secondaryContainer,
             ) {
                 Row(
@@ -99,7 +128,7 @@ internal fun PlaylistSettingsScreen(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
-                    if (syncState.stage.isLoading()) {
+                    if (bannerSyncState.stage.isLoading()) {
                         CircularProgressIndicator(strokeWidth = 2.dp)
                     }
                     Text(
@@ -123,11 +152,12 @@ internal fun PlaylistSettingsScreen(
         if (summaries.isEmpty()) {
             Surface(
                 modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(20.dp),
-                color = MaterialTheme.colorScheme.surfaceVariant,
+                shape = RoundedCornerShape(18.dp),
+                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.34f),
+                tonalElevation = 0.dp,
             ) {
                 Column(
-                    modifier = Modifier.padding(18.dp),
+                    modifier = Modifier.padding(16.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     Text("No playlists yet", fontWeight = FontWeight.SemiBold)
@@ -145,9 +175,34 @@ internal fun PlaylistSettingsScreen(
         summaries.forEach { summary ->
             PlaylistCard(
                 summary = summary,
-                syncState = syncState,
+                syncState = sourceSyncStates[summary.sourceId] ?: SourceSyncState(
+                    sourceId = summary.sourceId,
+                    sourceName = summary.name,
+                ),
+                importQueued = summary.sourceId in pendingImportExecution.queuedSourceIds,
+                importActive = summary.sourceId in pendingImportExecution.activeSourceIds,
+                isActive = summary.enabled && summary.sourceId == activeSourceId,
+                onSetActive = {
+                    scope.launch {
+                        val saved = activePlaylistStore.set(summary.sourceId)
+                        if (saved) {
+                            runtime.onActiveSourceSelected(summary.sourceId)
+                            actionError = null
+                        } else {
+                            actionError = "Could not save the active playlist."
+                        }
+                    }
+                },
                 onOpen = { onOpenInLive(summary.sourceId) },
-                onRefresh = { scope.launch { runtime.refreshSource(summary.sourceId) } },
+                onRefresh = {
+                    scope.launch {
+                        if (summary.enabled) {
+                            runtime.refreshSource(summary.sourceId)
+                        } else {
+                            runtime.retryPendingSource(summary.sourceId)
+                        }
+                    }
+                },
                 onEdit = {
                     scope.launch {
                         val loaded = runtime.loadSourceEditSnapshot(summary.sourceId)
@@ -217,7 +272,13 @@ internal fun PlaylistSettingsScreen(
             onDismissRequest = { deleteTarget = null },
             title = { Text("Delete playlist?") },
             text = {
-                Text("${target.name} and its imported catalog will be removed from OwnPlay.")
+                Text(
+                    if (target.enabled) {
+                        "${target.name} and its imported catalog will be removed from OwnPlay."
+                    } else {
+                        "${target.name} will be removed and any pending import will be cancelled."
+                    },
+                )
             },
             confirmButton = {
                 Button(
@@ -248,17 +309,27 @@ internal fun PlaylistSettingsScreen(
 private fun PlaylistCard(
     summary: PlaylistSourceSummary,
     syncState: SourceSyncState,
+    importQueued: Boolean,
+    importActive: Boolean,
+    isActive: Boolean,
+    onSetActive: () -> Unit,
     onOpen: () -> Unit,
     onRefresh: () -> Unit,
     onEdit: () -> Unit,
     onDelete: () -> Unit,
 ) {
-    val syncing = syncState.sourceId == summary.sourceId && syncState.stage.isLoading()
+    val importing = !summary.enabled
+    val queued = importing && importQueued
+    val activelyImporting = importing && importActive
+    val syncing = if (importing) activelyImporting else syncState.stage.isLoading()
+    val busy = if (importing) queued || activelyImporting else syncing
+    val importFailed =
+        importing && !queued && !activelyImporting && syncState.stage == SourceSyncStage.ChannelsFailed
     Surface(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(20.dp),
-        tonalElevation = 2.dp,
-        color = MaterialTheme.colorScheme.surface,
+        shape = RoundedCornerShape(18.dp),
+        tonalElevation = 0.dp,
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.28f),
     ) {
         Column(
             modifier = Modifier.padding(16.dp),
@@ -289,21 +360,65 @@ private fun PlaylistCard(
                         overflow = TextOverflow.Ellipsis,
                     )
                     Text(
-                        text = "${sourceKindLabel(summary.sourceKind)} • ${summary.channelCount} channels",
+                        text = when {
+                            activelyImporting -> "${sourceKindLabel(summary.sourceKind)} • Importing…"
+                            queued -> "${sourceKindLabel(summary.sourceKind)} • Waiting to import…"
+                            importFailed -> "${sourceKindLabel(summary.sourceKind)} • Import failed"
+                            importing -> "${sourceKindLabel(summary.sourceKind)} • Waiting to import…"
+                            else -> "${sourceKindLabel(summary.sourceKind)} • ${summary.channelCount} channels"
+                        },
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
                 if (syncing) CircularProgressIndicator(strokeWidth = 2.dp)
             }
+
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .selectable(
+                        selected = isActive,
+                        enabled = summary.enabled,
+                        role = Role.RadioButton,
+                        onClick = onSetActive,
+                    ),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                RadioButton(
+                    selected = isActive,
+                    onClick = null,
+                    enabled = summary.enabled,
+                )
+                Text(
+                    text = when {
+                        activelyImporting -> "Import in progress"
+                        queued -> "Queued for import"
+                        importFailed -> "Retry import before activating"
+                        importing -> "Available after import"
+                        else -> "Use as active playlist"
+                    },
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.Medium,
+                    color = if (summary.enabled) {
+                        MaterialTheme.colorScheme.onSurface
+                    } else {
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    },
+                )
+            }
+
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(4.dp),
             ) {
-                TextButton(onClick = onOpen) { Text("Live") }
-                TextButton(onClick = onRefresh, enabled = !syncing) { Text("Refresh") }
-                TextButton(onClick = onEdit, enabled = !syncing) { Text("Edit") }
-                TextButton(onClick = onDelete, enabled = !syncing) { Text("Delete") }
+                TextButton(onClick = onOpen, enabled = summary.enabled) { Text("Live") }
+                TextButton(onClick = onRefresh, enabled = !busy) {
+                    Text(if (summary.enabled) "Refresh" else "Retry")
+                }
+                TextButton(onClick = onEdit, enabled = summary.enabled && !syncing) { Text("Edit") }
+                TextButton(onClick = onDelete) { Text("Delete") }
             }
         }
     }
@@ -413,6 +528,20 @@ private fun AddPlaylistDialog(
                             singleLine = true,
                             modifier = Modifier.fillMaxWidth(),
                         )
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Checkbox(
+                                checked = allowCleartext,
+                                onCheckedChange = { allowCleartext = it },
+                            )
+                            Text("Allow HTTP for this playlist and EPG")
+                        }
+                        if (allowCleartext) {
+                            Text(
+                                text = "HTTP does not encrypt playlist, EPG, or stream traffic.",
+                                color = MaterialTheme.colorScheme.error,
+                                style = MaterialTheme.typography.bodySmall,
+                            )
+                        }
                     }
                     AddPlaylistMode.LOCAL_M3U -> {
                         OutlinedButton(
@@ -420,6 +549,20 @@ private fun AddPlaylistDialog(
                             modifier = Modifier.fillMaxWidth(),
                         ) {
                             Text(if (localUri == null) "Choose file" else "File selected")
+                        }
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Checkbox(
+                                checked = allowCleartext,
+                                onCheckedChange = { allowCleartext = it },
+                            )
+                            Text("Allow HTTP EPG links from this file")
+                        }
+                        if (allowCleartext) {
+                            Text(
+                                text = "HTTP EPG traffic is not encrypted.",
+                                color = MaterialTheme.colorScheme.error,
+                                style = MaterialTheme.typography.bodySmall,
+                            )
                         }
                     }
                 }
@@ -461,11 +604,13 @@ private fun AddPlaylistDialog(
                             runtime = runtime,
                             name = name,
                             playlistUrl = endpoint,
+                            allowCleartext = allowCleartext,
                         )
                         AddPlaylistMode.LOCAL_M3U -> SourceSubmissionCoordinator.submitLocalM3u(
                             runtime = runtime,
                             name = name,
                             documentUri = checkNotNull(localUri),
+                            allowCleartext = allowCleartext,
                         )
                     }
                     onCompleted()
@@ -620,7 +765,11 @@ private fun validateAddPlaylistInput(
         AddPlaylistMode.REMOTE_M3U -> {
             when (val validation = SourceValidator.validateRemotePlaylistUrl(endpoint)) {
                 is UrlValidationResult.Invalid -> sourceErrorMessage(validation.error)
-                is UrlValidationResult.Valid -> null
+                is UrlValidationResult.Valid -> when {
+                    validation.usesCleartext && !allowCleartext ->
+                        sourceErrorMessage(SourceError.CleartextTransportRequiresOptIn)
+                    else -> null
+                }
             }
         }
         AddPlaylistMode.LOCAL_M3U -> {

@@ -53,7 +53,6 @@ import app.ownplay.player.OwnPlayAppRuntime
 import app.ownplay.player.download.OfflineDownload
 import app.ownplay.player.persistence.download.DownloadMediaKinds
 import app.ownplay.player.playback.PlaybackInteractionBridge
-import app.ownplay.player.playback.PlaybackMediaKind
 import app.ownplay.player.playback.PlaybackPresentationPolicy
 import app.ownplay.player.playback.PlaybackState
 import app.ownplay.player.ui.playbackStatusLabel
@@ -85,11 +84,6 @@ internal fun LibraryPlaybackScreen(
     } else {
         "OwnPlay private storage"
     }
-    val sessionMediaKind = when (session.download.mediaKind) {
-        DownloadMediaKinds.MOVIE -> PlaybackMediaKind.MOVIE
-        DownloadMediaKinds.SERIES_EPISODE -> PlaybackMediaKind.SERIES_EPISODE
-        else -> null
-    }
     val configuration = LocalConfiguration.current
     val isTelevision =
         configuration.uiMode and Configuration.UI_MODE_TYPE_MASK == Configuration.UI_MODE_TYPE_TELEVISION
@@ -111,13 +105,9 @@ internal fun LibraryPlaybackScreen(
             if (currentPosition > 0L) {
                 onProgress(currentPosition, duration.takeIf { it > 0L })
             }
-            sessionMediaKind?.let { mediaKind ->
-                runtime.playbackController.stopIfCurrent(
-                    sourceId = session.download.sourceId,
-                    channelId = session.download.contentId,
-                    mediaKind = mediaKind,
-                )
-            }
+            // Composition disposal also happens during Activity recreation. Explicit navigation
+            // owns playback teardown via onExit; disposal only detaches UI/back ownership so the
+            // process-scoped Offline presentation can reattach to the running session.
             PlaybackInteractionBridge.clearBackAction(backOwner)
             onFullscreenStateChanged(false)
         }

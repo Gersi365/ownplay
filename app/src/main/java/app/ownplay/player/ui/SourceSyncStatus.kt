@@ -14,23 +14,24 @@ internal fun sourceSyncStatus(state: SourceSyncState): String? = when (state.sta
         val cause = sourceSyncFailureMessage(state.failure)
         if (state.channelCount > 0) {
             listOfNotNull(
-                "Channel refresh failed.",
+                "Refresh failed.",
                 cause,
-                "Existing channels were kept.",
+                "Your existing channels are still available.",
             ).joinToString(" ")
         } else {
             listOfNotNull("Could not load channels.", cause).joinToString(" ")
         }
     }
-    SourceSyncStage.EpgFailed -> "Channels are ready. EPG refresh failed."
+    SourceSyncStage.EpgFailed -> "Channels are ready. EPG could not be refreshed."
 }
 
 private fun sourceSyncFailureMessage(failure: SourceSyncFailure?): String? = when (failure) {
     null -> null
     is SourceSyncFailure.Source -> sourceErrorMessage(failure.error)
     SourceSyncFailure.InvalidInput -> "Check the playlist details."
-    SourceSyncFailure.SecureStorage -> "Secure storage failed."
-    SourceSyncFailure.Persistence -> "Could not save or read playlist data."
-    SourceSyncFailure.CatalogImport -> "Playlist data could not be imported."
-    SourceSyncFailure.Unexpected -> "An unexpected refresh error occurred."
+    SourceSyncFailure.SecureStorage -> "Secure storage is unavailable. Try again."
+    SourceSyncFailure.Persistence -> "Could not save or read playlist data. Try again."
+    SourceSyncFailure.CatalogImport ->
+        "OwnPlay could not import this playlist. Check the source and try again."
+    SourceSyncFailure.Unexpected -> "Something went wrong while refreshing. Try again."
 }

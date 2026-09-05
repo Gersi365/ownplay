@@ -31,7 +31,6 @@ interface PlaylistSourceDao {
         LEFT JOIN provider_channels AS channel
             ON channel.sourceId = source.sourceId
             AND channel.availability != 'removed'
-        WHERE source.enabled = 1
         GROUP BY source.sourceId
         ORDER BY source.createdAtEpochMillis ASC
         """,
@@ -50,8 +49,25 @@ interface ProviderCatalogDao {
     @Upsert
     suspend fun upsertCategories(categories: List<ProviderCategoryEntity>)
 
+    @Query("DELETE FROM provider_categories WHERE sourceId = :sourceId")
+    suspend fun deleteCategoriesForSource(sourceId: String): Int
+
     @Upsert
     suspend fun upsertChannels(channels: List<ProviderChannelEntity>)
+
+    @Query(
+        """
+        UPDATE provider_channels
+        SET availability = 'removed'
+        WHERE sourceId = :sourceId
+            AND lastSeenGeneration != :generation
+            AND availability != 'removed'
+        """,
+    )
+    suspend fun markChannelsMissingFromGeneration(
+        sourceId: String,
+        generation: Long,
+    )
 
     @Query(
         "SELECT * FROM provider_channels " +

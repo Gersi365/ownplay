@@ -55,6 +55,7 @@ internal fun LandscapeSettingsShell(
         -> SettingsDestination.CONTENT
         else -> resolvedDestination
     }
+    val readySummaries = summaries.filter { summary -> summary.enabled }
 
     LaunchedEffect(isTelevision, resolvedDestination) {
         if (isTelevision) {
@@ -66,8 +67,8 @@ internal fun LandscapeSettingsShell(
         modifier = Modifier
             .fillMaxSize()
             .navigationBarsPadding()
-            .padding(horizontal = 12.dp, vertical = 8.dp),
-        horizontalArrangement = Arrangement.spacedBy(10.dp),
+            .padding(horizontal = 14.dp, vertical = 10.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         LandscapeSettingsRail(
             selectedRailDestination = selectedRailDestination,
@@ -79,14 +80,14 @@ internal fun LandscapeSettingsShell(
             modifier = Modifier
                 .weight(1f)
                 .fillMaxHeight(),
-            shape = RoundedCornerShape(12.dp),
-            color = MaterialTheme.colorScheme.surface,
+            shape = RoundedCornerShape(20.dp),
+            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.14f),
             tonalElevation = 0.dp,
         ) {
             when (resolvedDestination) {
                 SettingsDestination.INTERFACE -> LandscapeSectionPage(
                     title = "Interface",
-                    subtitle = "Device profile and orientation.",
+                    subtitle = "Device behavior and orientation",
                 ) {
                     InterfaceSettingsContent(
                         deviceProfile = deviceProfile,
@@ -97,7 +98,7 @@ internal fun LandscapeSettingsShell(
 
                 SettingsDestination.CONTENT -> LandscapeSectionPage(
                     title = "Content",
-                    subtitle = "Live organization, playlists and backup.",
+                    subtitle = "Live organization, playlists and backup",
                 ) {
                     ContentSettingsContent(
                         summaries = summaries,
@@ -114,14 +115,14 @@ internal fun LandscapeSettingsShell(
 
                 SettingsDestination.ABOUT -> LandscapeSectionPage(
                     title = "About",
-                    subtitle = "OwnPlay information.",
+                    subtitle = "OwnPlay and build information",
                 ) {
                     AboutSettingsContent()
                 }
 
                 SettingsDestination.LIVE_MANAGEMENT -> LiveManagementScreen(
                     runtime = runtime,
-                    summaries = summaries,
+                    summaries = readySummaries,
                     onBack = { onDestinationChange(SettingsDestination.CONTENT) },
                 )
 
@@ -147,18 +148,24 @@ internal fun LandscapeSectionPage(
         modifier = Modifier
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
-            .padding(horizontal = 20.dp, vertical = 16.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp),
+            .padding(horizontal = 24.dp, vertical = 20.dp),
+        verticalArrangement = Arrangement.spacedBy(18.dp),
     ) {
-        Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text(
+                text = "OWNPLAY",
+                style = MaterialTheme.typography.labelMedium,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.primary,
+            )
             Text(
                 text = title,
-                style = MaterialTheme.typography.headlineSmall,
+                style = MaterialTheme.typography.headlineMedium,
                 fontWeight = FontWeight.Bold,
             )
             Text(
                 text = subtitle,
-                style = MaterialTheme.typography.bodySmall,
+                style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
