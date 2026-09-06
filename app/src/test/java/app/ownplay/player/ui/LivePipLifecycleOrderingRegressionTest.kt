@@ -90,7 +90,10 @@ private class LiveLifecycleSurfaceHarness {
             ?.takeIf { it in attachedSurfaces }
 
         PictureInPictureSurfaceHandoffPolicy.handoff(
-            mode = PictureInPictureSurfaceHandoffPolicy.modeFor(PlaybackMediaKind.LIVE),
+            mode = PictureInPictureSurfaceHandoffPolicy.modeFor(
+                mediaKind = PlaybackMediaKind.LIVE,
+                liveWasFullscreen = false,
+            ),
             detachCurrentSurface = { detachCurrent() },
             bindDestinationSurface = { attachAndBind(LifecycleSurfaceId.PIP) },
         )
@@ -125,7 +128,10 @@ private class LiveLifecycleSurfaceHarness {
     fun returnFromPictureInPicture() {
         val target = pictureInPictureReturnTarget
             ?.takeIf { it in attachedSurfaces }
-        val mode = PictureInPictureSurfaceHandoffPolicy.modeFor(PlaybackMediaKind.LIVE)
+        val mode = PictureInPictureSurfaceHandoffPolicy.modeFor(
+            mediaKind = PlaybackMediaKind.LIVE,
+            liveWasFullscreen = false,
+        )
 
         if (target != null) {
             PictureInPictureSurfaceHandoffPolicy.handoff(
@@ -135,6 +141,8 @@ private class LiveLifecycleSurfaceHarness {
             )
         } else if (mode == PictureInPictureSurfaceBindingMode.DETACH_BEFORE_BIND) {
             detachCurrent()
+        } else {
+            boundSurfaces.remove(LifecycleSurfaceId.PIP)
         }
 
         attachedSurfaces.remove(LifecycleSurfaceId.PIP)
@@ -155,6 +163,7 @@ private class LiveLifecycleSurfaceHarness {
     }
 
     private fun bind(surface: LifecycleSurfaceId) {
+        boundSurfaces.clear()
         boundSurfaces += surface
         maximumBoundSurfaceCount = maxOf(maximumBoundSurfaceCount, boundSurfaces.size)
     }
