@@ -75,6 +75,7 @@ import app.ownplay.player.series.SeriesSeason
 import app.ownplay.player.series.SeriesSummary
 import app.ownplay.player.source.SourceError
 import app.ownplay.player.source.SourceResult
+import app.ownplay.player.ui.OnDemandPlaybackSurface
 import app.ownplay.player.ui.playbackStatusLabel
 import app.ownplay.player.ui.vod.RemotePoster
 import kotlinx.coroutines.currentCoroutineContext
@@ -770,15 +771,12 @@ private fun SeriesPlaybackScreen(
     onFullscreenStateChanged: (Boolean) -> Unit,
 ) {
     val playbackState by runtime.playbackController.state.collectAsState()
-    val playbackControls = PlaybackPresentationPolicy.controlsFor(playbackState)
-    val configuration = LocalConfiguration.current
-    val isTelevision =
-        configuration.uiMode and Configuration.UI_MODE_TYPE_MASK == Configuration.UI_MODE_TYPE_TELEVISION
     val scope = rememberCoroutineScope()
-    var playerView by remember { mutableStateOf<PlayerView?>(null) }
+    var playerView by remember(episode.episodeId) { mutableStateOf<PlayerView?>(null) }
+    var currentPosition by remember(episode.episodeId) { mutableStateOf(episode.positionMs ?: 0L) }
+    var duration by remember(episode.episodeId) { mutableStateOf(0L) }
     var exitRequested by remember(episode.episodeId) { mutableStateOf(false) }
     val backOwner = remember(episode.episodeId) { Any() }
-    val backFocusRequester = remember(episode.episodeId) { FocusRequester() }
 
     fun exitPlayback() {
         if (exitRequested) return
@@ -816,18 +814,6 @@ private fun SeriesPlaybackScreen(
         }
     }
 
-    LaunchedEffect(isTelevision, playbackState, playerView, episode.episodeId) {
-        if (!isTelevision) return@LaunchedEffect
-        if (playbackState is PlaybackState.Failed) {
-            backFocusRequester.requestFocus()
-            return@LaunchedEffect
-        }
-        val view = playerView ?: return@LaunchedEffect
-        view.isFocusable = true
-        view.showController()
-        view.requestFocus()
-    }
-
     LaunchedEffect(playerView, episode.episodeId) {
         val view = playerView ?: return@LaunchedEffect
         delay(300)
@@ -835,97 +821,37 @@ private fun SeriesPlaybackScreen(
         val resumePosition = episode.positionMs ?: 0L
         if (resumePosition > 0L && player != null && player.currentPosition < 1_000L) {
             player.seekTo(resumePosition)
+            currentPosition = resumePosition
         }
         while (currentCoroutineContext().isActive) {
             delay(2_000L)
             val activePlayer = view.player ?: continue
-            val duration = activePlayer.duration.takeIf { it != C.TIME_UNSET && it > 0L }
+            currentPosition = activePlayer.currentPosition.coerceAtLeast(0L)
+            duration = activePlayer.duration.takeIf { it != C.TIME_UNSET && it > 0L } ?: duration
             featureRuntime.saveEpisodeProgress(
                 sourceId = sourceId,
                 episodeId = episode.episodeId,
-                positionMs = activePlayer.currentPosition,
-                durationMs = duration,
+                positionMs = currentPosition,
+                durationMs = duration.takeIf { it > 0L },
             )
         }
     }
 
-    Column(modifier = Modifier.fillMaxSize()) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Column(modifier = Modifier.weight(1f)) {
-                Text(episode.seriesTitle, fontWeight = FontWeight.Bold)
-                Text(
-                    "S${episode.seasonNumber} · E${episode.episodeNumber} · ${episode.title}",
-                    style = MaterialTheme.typography.bodySmall,
-                )
-            }
-            TextButton(
-                modifier = Modifier.focusRequester(backFocusRequester),
-                enabled = !exitRequested,
-                onClick = ::exitPlayback,
-            ) { Text("Back") }
-        }
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .weight(1f),
-            contentAlignment = Alignment.Center,
-        ) {
-            AndroidView(
-                modifier = Modifier.fillMaxSize(),
-                factory = { context ->
-                    PlayerView(context).also { view ->
-                        view.resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
-                        PlaybackInteractionBridge.bind(
-                            output = runtime.playbackVideoOutput,
-                            view = view,
-                            showNativeController = true,
-                        )
-                        playerView = view
-                    }
-                },
-                update = { view ->
-                    PlaybackInteractionBridge.bind(
-                        output = runtime.playbackVideoOutput,
-                        view = view,
-                        showNativeController = true,
-                    )
-                    playerView = view
-                },
-                onRelease = { view ->
-                    PlaybackInteractionBridge.unbind(runtime.playbackVideoOutput, view)
-                    if (playerView === view) playerView = null
-                },
-            )
-            if (playbackState is PlaybackState.Loading) {
-                CircularProgressIndicator()
-            }
-            val failedState = playbackState as? PlaybackState.Failed
-            if (failedState != null) {
-                Surface(
-                    shape = RoundedCornerShape(12.dp),
-                    tonalElevation = 6.dp,
-                ) {
-                    Column(
-                        modifier = Modifier.padding(16.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.spacedBy(8.dp),
-                    ) {
-                        Text(playbackStatusLabel(failedState))
-                        if (playbackControls.canRetry) {
-                            TextButton(onClick = runtime.playbackController::retry) {
-                                Text("Retry")
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
+    OnDemandPlaybackSurface(
+        runtime = runtime,
+        contentKey = episode.episodeId,
+        title = "${episode.seriesTitle} · S${episode.seasonNumber} · E${episode.episodeNumber} · ${episode.title}",
+        playbackState = playbackState,
+        currentPositionMs = currentPosition,
+        durationMs = duration,
+        exitRequested = exitRequested,
+        onExit = ::exitPlayback,
+        onPlayerViewAvailable = { view -> playerView = view },
+        onPlayerViewReleased = { view ->
+            if (playerView === view) playerView = null
+        },
+        onSeekPositionChanged = { position -> currentPosition = position },
+    )
 }
 
 @Composable
