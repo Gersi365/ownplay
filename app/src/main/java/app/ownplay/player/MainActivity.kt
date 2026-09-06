@@ -353,6 +353,7 @@ class MainActivity : ComponentActivity() {
         offlineDownloadRuntime?.let { downloadRuntime ->
             activityScope.launch {
                 downloadRuntime.reconcileCompletedFiles()
+                downloadRuntime.reconcilePendingWork()
             }
         }
     }

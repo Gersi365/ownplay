@@ -123,6 +123,18 @@ class OfflineDownloadRepository(
             ) {
                 return existing.downloadId
             }
+            when (existing.state) {
+                DownloadStates.DOWNLOADING,
+                DownloadStates.QUEUED,
+                -> {
+                    enqueueWork(
+                        downloadId = existing.downloadId,
+                        existingWorkPolicy = ExistingWorkPolicy.KEEP,
+                    )
+                    return existing.downloadId
+                }
+                DownloadStates.PAUSED -> return existing.downloadId
+            }
             val existingLocation = existing.localRelativePath
                 ?.takeIf { OfflineDownloadStorage.locationExists(applicationContext, it) }
             val existingBytes = transferBytes(existing.downloadId, existingLocation)

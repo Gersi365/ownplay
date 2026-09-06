@@ -58,6 +58,8 @@ class OfflineDownloadFeatureRuntime(
 
     suspend fun remove(downloadId: String) = repository.remove(downloadId)
 
+    suspend fun reconcilePendingWork(): Int = repository.reconcilePendingWork()
+
     suspend fun reconcileCompletedFiles(): Int = repository.reconcileCompletedFiles()
 
     suspend fun playbackRequest(downloadId: String): PlaybackRequest? {
