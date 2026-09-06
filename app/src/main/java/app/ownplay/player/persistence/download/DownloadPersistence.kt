@@ -75,7 +75,8 @@ interface MediaDownloadDao {
                 WHEN 'FAILED' THEN 3
                 ELSE 4
             END,
-            updatedAtEpochMillis DESC
+            createdAtEpochMillis DESC,
+            downloadId ASC
         """,
     )
     fun observeAll(): Flow<List<MediaDownloadEntity>>
