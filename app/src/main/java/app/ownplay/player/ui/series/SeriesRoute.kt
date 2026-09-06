@@ -281,6 +281,14 @@ internal fun SeriesRoute(
         scope.launch { downloadRuntime.resume(download.downloadId) }
     }
 
+    fun retryDownload(download: OfflineDownload) {
+        scope.launch { downloadRuntime.retry(download.downloadId) }
+    }
+
+    fun removeDownload(download: OfflineDownload) {
+        scope.launch { downloadRuntime.remove(download.downloadId) }
+    }
+
     LaunchedEffect(sourceId) {
         loading = true
         refreshError = null
@@ -474,6 +482,8 @@ internal fun SeriesRoute(
             onDownload = ::downloadEpisode,
             onPauseDownload = ::pauseDownload,
             onResumeDownload = ::resumeDownload,
+            onRetryDownload = ::retryDownload,
+            onRemoveDownload = ::removeDownload,
             onClearProgress = { episode ->
                 scope.launch {
                     featureRuntime.clearEpisodeProgress(sourceId, episode.episodeId)
@@ -549,6 +559,8 @@ internal fun SeriesRoute(
                 onDownload = ::downloadEpisode,
                 onPauseDownload = ::pauseDownload,
                 onResumeDownload = ::resumeDownload,
+                onRetryDownload = ::retryDownload,
+                onRemoveDownload = ::removeDownload,
                 onClearProgress = { episode ->
                     scope.launch {
                         featureRuntime.clearEpisodeProgress(sourceId, episode.episodeId)

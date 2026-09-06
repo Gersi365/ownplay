@@ -255,6 +255,14 @@ internal fun VodRoute(
         scope.launch { downloadRuntime.resume(download.downloadId) }
     }
 
+    fun retryDownload(download: OfflineDownload) {
+        scope.launch { downloadRuntime.retry(download.downloadId) }
+    }
+
+    fun removeDownload(download: OfflineDownload) {
+        scope.launch { downloadRuntime.remove(download.downloadId) }
+    }
+
     fun setMovieFavorite(movie: VodMovie, favorite: Boolean) {
         scope.launch {
             if (!featureRuntime.setFavorite(sourceId, movie.movieId, favorite)) return@launch
@@ -459,6 +467,8 @@ internal fun VodRoute(
                 onDownload = ::enqueueMovieDownload,
                 onPauseDownload = ::pauseDownload,
                 onResumeDownload = ::resumeDownload,
+                onRetryDownload = ::retryDownload,
+                onRemoveDownload = ::removeDownload,
                 onClearProgress = { clearMovieProgress(movie) },
                 onPlay = { target ->
                     restoreDetailFocusAfterPlayback = false
@@ -538,6 +548,8 @@ internal fun VodRoute(
                     onDownload = ::enqueueMovieDownload,
                     onPauseDownload = ::pauseDownload,
                     onResumeDownload = ::resumeDownload,
+                    onRetryDownload = ::retryDownload,
+                    onRemoveDownload = ::removeDownload,
                     onClearProgress = { clearMovieProgress(movie) },
                     onPlay = { target ->
                         restoreDetailFocusAfterPlayback = false
