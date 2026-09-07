@@ -41,6 +41,7 @@ import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.font.FontWeight
@@ -311,6 +312,7 @@ fun LiveBrowseScreen(
                         dropPlacement = if (isDropAnchor) dragTarget?.placement else null,
                         showDragHandle = dragEnabled,
                         dragHandleModifier = Modifier,
+                        isTelevision = isTelevision,
                         onClick = { onChannelSelected(channel.channelId) },
                         onSelectionToggle = { onChannelSelectionToggle(channel.channelId) },
                     )
@@ -764,6 +766,7 @@ private fun LiveChannelRow(
     dropPlacement: ManualOrderPlacement?,
     showDragHandle: Boolean,
     dragHandleModifier: Modifier,
+    isTelevision: Boolean,
     onClick: () -> Unit,
     onSelectionToggle: () -> Unit,
 ) {
@@ -787,6 +790,11 @@ private fun LiveChannelRow(
             Checkbox(
                 checked = isSelected,
                 onCheckedChange = { onSelectionToggle() },
+                modifier = if (isTelevision) {
+                    Modifier.focusProperties { canFocus = false }
+                } else {
+                    Modifier
+                },
             )
         }
 
