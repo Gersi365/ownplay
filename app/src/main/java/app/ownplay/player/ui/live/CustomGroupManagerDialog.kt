@@ -37,7 +37,7 @@ private enum class GroupManagerAction {
 }
 
 private sealed interface GroupManagerFocusRequest {
-    data object NewGroup : GroupManagerFocusRequest
+    data object Done : GroupManagerFocusRequest
     data class Action(
         val groupId: String,
         val action: GroupManagerAction,
@@ -60,9 +60,9 @@ fun CustomGroupManagerDialog(
     var renameValue by remember { mutableStateOf("") }
     var deleteTarget by remember { mutableStateOf<LiveCustomGroup?>(null) }
     var parentFocusRequest by remember {
-        mutableStateOf<GroupManagerFocusRequest?>(GroupManagerFocusRequest.NewGroup)
+        mutableStateOf<GroupManagerFocusRequest?>(null)
     }
-    val newGroupFocusRequester = remember { FocusRequester() }
+    val doneFocusRequester = remember { FocusRequester() }
     val renameInputFocusRequester = remember { FocusRequester() }
     val deleteCancelFocusRequester = remember { FocusRequester() }
     val groupListState = rememberLazyListState()
@@ -104,11 +104,11 @@ fun CustomGroupManagerDialog(
         }
         withFrameNanos { }
         val requester = when (request) {
-            GroupManagerFocusRequest.NewGroup -> newGroupFocusRequester
+            GroupManagerFocusRequest.Done -> doneFocusRequester
             is GroupManagerFocusRequest.Action -> when (request.action) {
                 GroupManagerAction.RENAME -> renameFocusRequesters[request.groupId]
                 GroupManagerAction.DELETE -> deleteFocusRequesters[request.groupId]
-            } ?: newGroupFocusRequester
+            } ?: doneFocusRequester
         }
         requester.requestFocus()
         parentFocusRequest = null
@@ -184,7 +184,7 @@ fun CustomGroupManagerDialog(
                                     groupId = group.groupId,
                                     action = GroupManagerAction.DELETE,
                                 )
-                            } ?: GroupManagerFocusRequest.NewGroup
+                            } ?: GroupManagerFocusRequest.Done
                             onDeleteGroup(groupToDelete.groupId)
                             deleteTarget = null
                         },
@@ -215,9 +215,7 @@ fun CustomGroupManagerDialog(
                         OutlinedTextField(
                             value = newGroupName,
                             onValueChange = { newGroupName = it },
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .focusRequester(newGroupFocusRequester),
+                            modifier = Modifier.fillMaxWidth(),
                             label = { Text("New group") },
                             singleLine = true,
                         )
@@ -301,7 +299,10 @@ fun CustomGroupManagerDialog(
                     }
                 },
                 confirmButton = {
-                    TextButton(onClick = onDismiss) {
+                    TextButton(
+                        onClick = onDismiss,
+                        modifier = Modifier.focusRequester(doneFocusRequester),
+                    ) {
                         Text("Done")
                     }
                 },
