@@ -1,5 +1,6 @@
 package app.ownplay.player.ui.live
 
+import android.content.res.Configuration
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
@@ -41,6 +42,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -85,6 +87,9 @@ fun LiveBrowseScreen(
     onFavoriteMoveRelative: (String, String, ManualOrderPlacement) -> Unit = { _, _, _ -> },
     modifier: Modifier = Modifier,
 ) {
+    val configuration = LocalConfiguration.current
+    val isTelevision =
+        configuration.uiMode and Configuration.UI_MODE_TYPE_MASK == Configuration.UI_MODE_TYPE_TELEVISION
     val listState = rememberLazyListState()
     var draggedChannelId by remember { mutableStateOf<String?>(null) }
     var draggedPointerY by remember { mutableStateOf<Float?>(null) }
@@ -94,7 +99,7 @@ fun LiveBrowseScreen(
     val favoriteDragEnabled = editState.isEditing &&
         state.query.favoritesOnly &&
         state.query.order == LiveBrowseOrder.FAVORITE_ORDER
-    val dragEnabled = manualDragEnabled || favoriteDragEnabled
+    val dragEnabled = (manualDragEnabled || favoriteDragEnabled) && !isTelevision
     val draggableChannelIds = remember(state.channels) {
         state.channels.map { channel -> channel.channelId }.toSet()
     }
