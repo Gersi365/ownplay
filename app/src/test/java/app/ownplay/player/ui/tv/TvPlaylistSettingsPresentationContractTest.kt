@@ -74,4 +74,56 @@ class TvPlaylistSettingsPresentationContractTest {
             "addFocusRequester.requestFocus()" in source,
         )
     }
+
+    @Test
+    fun `back from source detail restores the originating source row`() {
+        val source = normalizedSource(
+            sourceText("src/main/java/app/ownplay/player/ui/tv/TvPlaylistSettingsScreen.kt"),
+        )
+
+        assertTrue(
+            "Back from source detail must remember the source that opened the page.",
+            "is TvPlaylistPage.Detail -> { listRestoreKey = current.sourceId page = TvPlaylistPage.List }" in source,
+        )
+        assertTrue(
+            "The source list must restore focus through source-id keyed requesters.",
+            "sourceFocusRequesters[target]?.requestFocus()" in source,
+        )
+    }
+
+    @Test
+    fun `edit return restores the edit action in source detail`() {
+        val source = normalizedSource(
+            sourceText("src/main/java/app/ownplay/player/ui/tv/TvPlaylistSettingsScreen.kt"),
+        )
+
+        assertTrue(
+            "Back from Edit must restore the Edit action in source detail.",
+            "is TvPlaylistPage.Edit -> { detailRestoreAction = TvPlaylistDetailAction.EDIT page = TvPlaylistPage.Detail(current.snapshot.sourceId) }" in source,
+        )
+        assertTrue(
+            "Successful Edit save must return to detail with Edit as the restore action.",
+            "onSaved = { detailRestoreAction = TvPlaylistDetailAction.EDIT page = TvPlaylistPage.Detail(current.snapshot.sourceId) }" in source,
+        )
+        assertTrue(
+            "Detail must request the restored enabled action explicitly.",
+            "actionFocusRequesters[target]?.requestFocus()" in source,
+        )
+    }
+
+    @Test
+    fun `nested add back navigation restores the originating source type`() {
+        val source = normalizedSource(
+            sourceText("src/main/java/app/ownplay/player/ui/tv/TvPlaylistSettingsScreen.kt"),
+        )
+
+        assertTrue(
+            "Back from an Add form must remember the source type that opened it.",
+            "is TvPlaylistPage.Add -> { addTypeRestoreMode = current.mode page = TvPlaylistPage.AddType }" in source,
+        )
+        assertTrue(
+            "The source-type page must request focus for the restored type.",
+            "focusRequesters.getValue(restoreMode).requestFocus()" in source,
+        )
+    }
 }
