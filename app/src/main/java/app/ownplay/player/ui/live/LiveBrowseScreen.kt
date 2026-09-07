@@ -41,7 +41,9 @@ import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusProperties
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.font.FontWeight
@@ -268,6 +270,7 @@ fun LiveBrowseScreen(
                         groups = state.customGroups,
                         dragEnabled = dragEnabled,
                         favoriteDragEnabled = favoriteDragEnabled,
+                        isTelevision = isTelevision,
                         onSelectVisible = onSelectVisible,
                         onClearSelection = onClearSelection,
                         onBulkAction = onBulkAction,
@@ -538,6 +541,11 @@ private fun CustomGroupStrip(
     }
 }
 
+private enum class BulkEditDialogOrigin {
+    CUSTOMIZE,
+    GROUPS,
+}
+
 @Composable
 private fun BulkEditBar(
     selectedCount: Int,
@@ -545,6 +553,7 @@ private fun BulkEditBar(
     groups: List<LiveCustomGroup>,
     dragEnabled: Boolean,
     favoriteDragEnabled: Boolean,
+    isTelevision: Boolean,
     onSelectVisible: () -> Unit,
     onClearSelection: () -> Unit,
     onBulkAction: (ChannelBulkAction) -> Unit,
@@ -559,6 +568,21 @@ private fun BulkEditBar(
     val hasSelection = selectedCount > 0
     var showGroupManager by remember { mutableStateOf(false) }
     var customizeTarget by remember { mutableStateOf<LiveChannelItem?>(null) }
+    var restoreDialogOrigin by remember { mutableStateOf<BulkEditDialogOrigin?>(null) }
+    val customizeFocusRequester = remember { FocusRequester() }
+    val groupsFocusRequester = remember { FocusRequester() }
+
+    LaunchedEffect(isTelevision, customizeTarget, showGroupManager, restoreDialogOrigin) {
+        val origin = restoreDialogOrigin ?: return@LaunchedEffect
+        if (!isTelevision || customizeTarget != null || showGroupManager) return@LaunchedEffect
+        withFrameNanos { }
+        when (origin) {
+            BulkEditDialogOrigin.CUSTOMIZE -> customizeFocusRequester.requestFocus()
+            BulkEditDialogOrigin.GROUPS -> groupsFocusRequester.requestFocus()
+        }
+        restoreDialogOrigin = null
+    }
+
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -668,12 +692,16 @@ private fun BulkEditBar(
                 TextButton(
                     onClick = { customizeTarget = selectedVisibleChannel },
                     enabled = selectedCount == 1 && selectedVisibleChannel != null,
+                    modifier = Modifier.focusRequester(customizeFocusRequester),
                 ) {
                     Text("Customize")
                 }
             }
             item(key = "manage-groups") {
-                TextButton(onClick = { showGroupManager = true }) {
+                TextButton(
+                    onClick = { showGroupManager = true },
+                    modifier = Modifier.focusRequester(groupsFocusRequester),
+                ) {
                     Text("Groups")
                 }
             }
@@ -709,7 +737,10 @@ private fun BulkEditBar(
             onClearLocalDisplayName = onClearLocalDisplayName,
             onSetLogoOverride = onSetLogoOverride,
             onClearLogoOverride = onClearLogoOverride,
-            onDismiss = { customizeTarget = null },
+            onDismiss = {
+                customizeTarget = null
+                if (isTelevision) restoreDialogOrigin = BulkEditDialogOrigin.CUSTOMIZE
+            },
         )
     }
 
@@ -719,7 +750,10 @@ private fun BulkEditBar(
             onCreateGroup = onCreateGroup,
             onRenameGroup = onRenameGroup,
             onDeleteGroup = onDeleteGroup,
-            onDismiss = { showGroupManager = false },
+            onDismiss = {
+                showGroupManager = false
+                if (isTelevision) restoreDialogOrigin = BulkEditDialogOrigin.GROUPS
+            },
         )
     }
 }
