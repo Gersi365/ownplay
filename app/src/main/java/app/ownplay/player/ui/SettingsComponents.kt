@@ -171,6 +171,7 @@ internal fun SettingsActionRow(
     detail: String,
     actionLabel: String,
     onClick: () -> Unit,
+    actionModifier: Modifier = Modifier,
 ) {
     Row(
         modifier = Modifier
@@ -198,7 +199,7 @@ internal fun SettingsActionRow(
         }
         IconButton(
             onClick = onClick,
-            modifier = Modifier.size(44.dp),
+            modifier = actionModifier.size(44.dp),
         ) {
             Icon(
                 imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
