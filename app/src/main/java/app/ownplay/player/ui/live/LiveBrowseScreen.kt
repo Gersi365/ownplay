@@ -75,6 +75,8 @@ fun LiveBrowseScreen(
     playingChannelId: String? = null,
     onEditModeChanged: (Boolean) -> Unit = {},
     onReorderCategoriesRequested: () -> Unit = {},
+    reorderCategoriesEnabled: Boolean = true,
+    reorderCategoriesFocusRequester: FocusRequester? = null,
     onChannelSelectionToggle: (String) -> Unit = {},
     onSelectVisible: () -> Unit = {},
     onClearSelection: () -> Unit = {},
@@ -226,6 +228,8 @@ fun LiveBrowseScreen(
                     onHiddenOnlyChanged = onHiddenOnlyChanged,
                     onOrderChanged = onOrderChanged,
                     onReorderCategoriesRequested = onReorderCategoriesRequested,
+                    reorderCategoriesEnabled = reorderCategoriesEnabled,
+                    reorderCategoriesFocusRequester = reorderCategoriesFocusRequester,
                     onEditModeChanged = { editing ->
                         val editOrder = if (state.query.favoritesOnly) {
                             LiveBrowseOrder.FAVORITE_ORDER
@@ -374,6 +378,8 @@ private fun LiveBrowseHeader(
     onHiddenOnlyChanged: (Boolean) -> Unit,
     onOrderChanged: (LiveBrowseOrder) -> Unit,
     onReorderCategoriesRequested: () -> Unit,
+    reorderCategoriesEnabled: Boolean,
+    reorderCategoriesFocusRequester: FocusRequester?,
     onEditModeChanged: (Boolean) -> Unit,
 ) {
     var searchExpanded by remember { mutableStateOf(false) }
@@ -401,7 +407,15 @@ private fun LiveBrowseHeader(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             if (editState.isEditing) {
-                TextButton(onClick = onReorderCategoriesRequested) {
+                TextButton(
+                    onClick = onReorderCategoriesRequested,
+                    enabled = reorderCategoriesEnabled,
+                    modifier = if (reorderCategoriesFocusRequester != null) {
+                        Modifier.focusRequester(reorderCategoriesFocusRequester)
+                    } else {
+                        Modifier
+                    },
+                ) {
                     Text("Categories")
                 }
             } else {
