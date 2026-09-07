@@ -13,8 +13,8 @@ class TvLiveManagementNestedDialogFocusContractTest {
         )
 
         assertTrue(
-            "TV group management must keep a dedicated parent focus request.",
-            "mutableStateOf<GroupManagerFocusRequest?>(GroupManagerFocusRequest.NewGroup)" in dialog,
+            "TV group management must keep an explicit pending parent focus request only for nested returns.",
+            "mutableStateOf<GroupManagerFocusRequest?>(null)" in dialog,
         )
         assertTrue(
             "Rename must remember the parent action that opened the nested dialog.",
@@ -27,28 +27,30 @@ class TvLiveManagementNestedDialogFocusContractTest {
                 "deleteTarget = group" in dialog,
         )
         assertTrue(
-            "Returning to the parent must request the remembered action rather than defaulting to the top.",
+            "Returning to the parent must request the remembered action and consume that request.",
             "requester.requestFocus() parentFocusRequest = null" in dialog,
         )
         assertTrue(
-            "A confirmed delete must restore a neighboring group when possible.",
-            "val fallbackGroup = groups.getOrNull(deletedIndex + 1) ?: groups.getOrNull(deletedIndex - 1)" in dialog,
+            "A confirmed delete must restore a neighboring group when possible and otherwise use Done.",
+            "val fallbackGroup = groups.getOrNull(deletedIndex + 1) ?: groups.getOrNull(deletedIndex - 1)" in dialog &&
+                "?: GroupManagerFocusRequest.Done" in dialog,
         )
     }
 
     @Test
-    fun `custom group manager gives TV dialogs deterministic first focus`() {
+    fun `custom group manager keeps nested TV focus deterministic without forcing parent text entry`() {
         val dialog = normalizedSource(
             sourceText("src/main/java/app/ownplay/player/ui/live/CustomGroupManagerDialog.kt"),
         )
 
         assertTrue(
-            "The parent TV dialog must focus the New group field on first entry.",
-            "GroupManagerFocusRequest.NewGroup -> newGroupFocusRequester" in dialog &&
-                ".focusRequester(newGroupFocusRequester)" in dialog,
+            "The parent dialog must retain a focusable Done fallback without forcing the New group text field.",
+            "GroupManagerFocusRequest.Done -> doneFocusRequester" in dialog &&
+                ".focusRequester(doneFocusRequester)" in dialog &&
+                ".focusRequester(newGroupFocusRequester)" !in dialog,
         )
         assertTrue(
-            "The nested rename dialog must focus its text field on TV.",
+            "The nested rename dialog must focus its text field on TV after the user explicitly chooses Rename.",
             "if (isTelevision && groupToRename != null)" in dialog &&
                 "renameInputFocusRequester.requestFocus()" in dialog &&
                 ".focusRequester(renameInputFocusRequester)" in dialog,
