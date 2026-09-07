@@ -52,19 +52,30 @@ internal fun LiveManagementScreen(
     summaries: List<PlaylistSourceSummary>,
     onBack: () -> Unit,
     focusBackOnEntry: Boolean = false,
+    focusFirstActionOnEntry: Boolean = false,
 ) {
     val configuration = LocalConfiguration.current
     val isTelevision =
         configuration.uiMode and Configuration.UI_MODE_TYPE_MASK == Configuration.UI_MODE_TYPE_TELEVISION
     val backFocusRequester = remember { FocusRequester() }
+    val firstActionFocusRequester = remember { FocusRequester() }
     var sourceId by remember(summaries) {
         mutableStateOf(summaries.firstOrNull()?.sourceId)
     }
     val selectedSourceId = sourceId
 
-    LaunchedEffect(isTelevision, focusBackOnEntry, selectedSourceId) {
-        if (isTelevision && focusBackOnEntry) {
-            backFocusRequester.requestFocus()
+    LaunchedEffect(
+        isTelevision,
+        focusBackOnEntry,
+        focusFirstActionOnEntry,
+        selectedSourceId,
+    ) {
+        if (!isTelevision) return@LaunchedEffect
+        when {
+            focusFirstActionOnEntry && selectedSourceId != null ->
+                firstActionFocusRequester.requestFocus()
+            focusFirstActionOnEntry || focusBackOnEntry ->
+                backFocusRequester.requestFocus()
         }
     }
 
@@ -311,6 +322,7 @@ internal fun LiveManagementScreen(
             ManagementSourceMenu(
                 summaries = summaries,
                 selectedSourceId = selectedSourceId,
+                focusRequester = firstActionFocusRequester,
                 onSelected = { nextSourceId ->
                     sourceId = nextSourceId
                 },
@@ -496,12 +508,20 @@ internal fun LiveManagementScreen(
 private fun ManagementSourceMenu(
     summaries: List<PlaylistSourceSummary>,
     selectedSourceId: String,
+    focusRequester: FocusRequester? = null,
     onSelected: (String) -> Unit,
 ) {
     var expanded by remember { mutableStateOf(false) }
     val selected = summaries.firstOrNull { it.sourceId == selectedSourceId }
     Box {
-        TextButton(onClick = { expanded = true }) {
+        TextButton(
+            onClick = { expanded = true },
+            modifier = if (focusRequester != null) {
+                Modifier.focusRequester(focusRequester)
+            } else {
+                Modifier
+            },
+        ) {
             Text(
                 text = selected?.name ?: "Source",
                 maxLines = 1,
