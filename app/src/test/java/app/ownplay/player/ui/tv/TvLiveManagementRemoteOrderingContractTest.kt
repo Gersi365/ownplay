@@ -51,4 +51,25 @@ class TvLiveManagementRemoteOrderingContractTest {
                 "ChannelBulkAction.MoveFavoritesToBottom" in source,
         )
     }
+
+    @Test
+    fun `tv category reorder disables unreachable edge moves`() {
+        val source = normalizedSource(
+            sourceText("src/main/java/app/ownplay/player/ui/CategoryReorderSheet.kt"),
+        )
+
+        assertTrue(
+            "The first category must not expose an enabled move-up action.",
+            "enabled = index > 0" in source,
+        )
+        assertTrue(
+            "The last category must not expose an enabled move-down action.",
+            "enabled = index < working.lastIndex" in source,
+        )
+        assertTrue(
+            "Valid category moves must continue using the remote ordering path.",
+            "moveWithRemote(index, -1)" in source &&
+                "moveWithRemote(index, 1)" in source,
+        )
+    }
 }
