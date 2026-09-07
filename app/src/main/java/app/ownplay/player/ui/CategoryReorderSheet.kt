@@ -307,10 +307,16 @@ internal fun CategoryReorderSheet(
                                     }
                                 }
                                 if (isTelevision) {
-                                    TextButton(onClick = { moveWithRemote(index, -1) }) {
+                                    TextButton(
+                                        onClick = { moveWithRemote(index, -1) },
+                                        enabled = index > 0,
+                                    ) {
                                         Text("Up")
                                     }
-                                    TextButton(onClick = { moveWithRemote(index, 1) }) {
+                                    TextButton(
+                                        onClick = { moveWithRemote(index, 1) },
+                                        enabled = index < working.lastIndex,
+                                    ) {
                                         Text("Down")
                                     }
                                 } else if (isDragging) {
