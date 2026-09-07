@@ -60,10 +60,17 @@ internal fun LiveManagementScreen(
         configuration.uiMode and Configuration.UI_MODE_TYPE_MASK == Configuration.UI_MODE_TYPE_TELEVISION
     val backFocusRequester = remember { FocusRequester() }
     val firstActionFocusRequester = remember { FocusRequester() }
-    var sourceId by remember(summaries) {
+    val sourceIds = summaries.map(PlaylistSourceSummary::sourceId)
+    var sourceId by remember {
         mutableStateOf(summaries.firstOrNull()?.sourceId)
     }
-    val selectedSourceId = sourceId
+    val selectedSourceId = sourceId?.takeIf { it in sourceIds } ?: sourceIds.firstOrNull()
+
+    LaunchedEffect(sourceIds, selectedSourceId) {
+        if (sourceId != selectedSourceId) {
+            sourceId = selectedSourceId
+        }
+    }
 
     LaunchedEffect(
         isTelevision,
