@@ -107,7 +107,7 @@ class TvPlaylistSettingsPresentationContractTest {
         )
         assertTrue(
             "Detail must request the restored enabled action explicitly.",
-            "actionFocusRequesters[target]?.requestFocus()" in source,
+            "actionFocusRequesters.getValue(target).requestFocus()" in source,
         )
     }
 
@@ -124,6 +124,32 @@ class TvPlaylistSettingsPresentationContractTest {
         assertTrue(
             "The source-type page must request focus for the restored type.",
             "focusRequesters.getValue(restoreMode).requestFocus()" in source,
+        )
+    }
+
+    @Test
+    fun `playlist detail working state does not retrigger automatic focus`() {
+        val source = normalizedSource(
+            sourceText("src/main/java/app/ownplay/player/ui/tv/TvPlaylistSettingsScreen.kt"),
+        )
+
+        assertTrue(
+            "Detail action requesters must remain stable while the action list changes.",
+            "actionFocusRequesters = remember(summary.sourceId) { TvPlaylistDetailAction.entries.associateWith { FocusRequester() } }" in source,
+        )
+        assertTrue(
+            "Automatic detail focus must run only for page-source or explicit restore changes.",
+            "LaunchedEffect(summary.sourceId, restoreAction)" in source,
+        )
+        assertFalse(
+            "Refresh working state must not retrigger automatic detail focus.",
+            "LaunchedEffect(summary.sourceId, restoreAction, refreshWorking" in source ||
+                "LaunchedEffect(actions, restoreAction, syncing, refreshWorking" in source,
+        )
+        assertFalse(
+            "Sync and action-working state must not be part of the automatic focus effect key set.",
+            "LaunchedEffect(actions, restoreAction, syncing" in source ||
+                "LaunchedEffect(summary.sourceId, restoreAction, syncing" in source,
         )
     }
 }
