@@ -62,6 +62,7 @@ internal fun LiveManagementScreen(
     val backFocusRequester = remember { FocusRequester() }
     val firstActionFocusRequester = remember { FocusRequester() }
     val categoryReorderFocusRequester = remember { FocusRequester() }
+    val categoryVisibilityFocusRequester = remember { FocusRequester() }
     val sourceIds = summaries.map(PlaylistSourceSummary::sourceId)
     var sourceId by remember {
         mutableStateOf(summaries.firstOrNull()?.sourceId)
@@ -120,6 +121,7 @@ internal fun LiveManagementScreen(
     }
     var showCategoryReorder by remember(selectedSourceId) { mutableStateOf(false) }
     var restoreCategoryReorderFocus by remember(selectedSourceId) { mutableStateOf(false) }
+    var restoreCategoryVisibilityFocus by remember(selectedSourceId) { mutableStateOf(false) }
     var categoryMutationInFlight by remember(selectedSourceId) { mutableStateOf(false) }
     var categoryError by remember(selectedSourceId) { mutableStateOf<String?>(null) }
     var orderError by remember(selectedSourceId) { mutableStateOf<String?>(null) }
@@ -153,6 +155,27 @@ internal fun LiveManagementScreen(
         withFrameNanos { }
         categoryReorderFocusRequester.requestFocus()
         restoreCategoryReorderFocus = false
+    }
+
+    LaunchedEffect(
+        isTelevision,
+        selectedCategory?.providerCategoryKey,
+        categoryMutationInFlight,
+        restoreCategoryVisibilityFocus,
+    ) {
+        if (!restoreCategoryVisibilityFocus) return@LaunchedEffect
+        if (!isTelevision) {
+            restoreCategoryVisibilityFocus = false
+            return@LaunchedEffect
+        }
+        if (categoryMutationInFlight) return@LaunchedEffect
+        if (selectedCategory == null) {
+            restoreCategoryVisibilityFocus = false
+            return@LaunchedEffect
+        }
+        withFrameNanos { }
+        categoryVisibilityFocusRequester.requestFocus()
+        restoreCategoryVisibilityFocus = false
     }
 
     fun executeBulkAction(action: ChannelBulkAction) {
@@ -297,6 +320,7 @@ internal fun LiveManagementScreen(
     fun toggleCategoryVisibility() {
         val category = selectedCategory ?: return
         if (categoryMutationInFlight) return
+        if (isTelevision) restoreCategoryVisibilityFocus = true
         categoryMutationInFlight = true
         categoryError = null
         scope.launch {
@@ -372,6 +396,7 @@ internal fun LiveManagementScreen(
                 TextButton(
                     onClick = ::toggleCategoryVisibility,
                     enabled = !categoryMutationInFlight,
+                    modifier = Modifier.focusRequester(categoryVisibilityFocusRequester),
                 ) {
                     Text(if (selectedCategory.isHidden) "Unhide category" else "Hide category")
                 }
