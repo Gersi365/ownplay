@@ -917,7 +917,8 @@ private fun TvPlaylistEditForm(
     TvPlaylistPageScaffold(
         title = "Edit ${snapshot.name}",
         description = "Edit supported source details. Saved provider credentials are never shown.",
-        onBack = { if (!working) onBack() },
+        onBack = onBack,
+        backEnabled = !working,
     ) {
         Column(
             modifier = Modifier
@@ -1050,6 +1051,7 @@ private fun TvPlaylistPageScaffold(
     title: String,
     description: String,
     onBack: () -> Unit,
+    backEnabled: Boolean = true,
     content: @Composable () -> Unit,
 ) {
     Column(
@@ -1064,7 +1066,10 @@ private fun TvPlaylistPageScaffold(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(14.dp),
         ) {
-            TextButton(onClick = onBack) {
+            TextButton(
+                onClick = onBack,
+                enabled = backEnabled,
+            ) {
                 Text("‹ Back")
             }
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
