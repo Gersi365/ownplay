@@ -126,7 +126,7 @@ internal fun LiveManagementScreen(
     }
     val selectedChannelId = editState.selectedChannelIds.singleOrNull()
     val selectedChannelIndex = selectedChannelId?.let { channelId ->
-        state.channels.indexOfFirst { channel -> channel.channelId == channelId }
+        state.channels.indexOfFirst { channel -> channel.channelId == selectedChannelId }
     } ?: -1
     val canMoveSelectedUp = selectedChannelIndex > 0
     val canMoveSelectedDown = selectedChannelIndex >= 0 && selectedChannelIndex < state.channels.lastIndex
@@ -335,10 +335,12 @@ internal fun LiveManagementScreen(
                     sourceId = nextSourceId
                 },
             )
-            TextButton(
-                onClick = onBack,
-                modifier = Modifier.focusRequester(backFocusRequester),
-            ) { Text("Done") }
+            if (!isTelevision || focusBackOnEntry) {
+                TextButton(
+                    onClick = onBack,
+                    modifier = Modifier.focusRequester(backFocusRequester),
+                ) { Text("Done") }
+            }
         }
 
         if (selectedCategory != null) {
