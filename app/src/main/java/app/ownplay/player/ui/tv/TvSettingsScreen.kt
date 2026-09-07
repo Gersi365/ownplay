@@ -121,7 +121,7 @@ internal fun TvSettingsScreen(
                 runtime = runtime,
                 summaries = summaries.filter { summary -> summary.enabled },
                 onBack = returnToRoot,
-                focusBackOnEntry = true,
+                focusFirstActionOnEntry = true,
             )
         }
         TvSettingsDestination.BACKUP_RESTORE -> {
