@@ -583,6 +583,8 @@ private fun BulkEditBar(
     var showGroupManager by remember { mutableStateOf(false) }
     var customizeTarget by remember { mutableStateOf<LiveChannelItem?>(null) }
     var restoreDialogOrigin by remember { mutableStateOf<BulkEditDialogOrigin?>(null) }
+    var restoreClearSelectionFocus by remember { mutableStateOf(false) }
+    val selectVisibleFocusRequester = remember { FocusRequester() }
     val customizeFocusRequester = remember { FocusRequester() }
     val groupsFocusRequester = remember { FocusRequester() }
 
@@ -595,6 +597,18 @@ private fun BulkEditBar(
             BulkEditDialogOrigin.GROUPS -> groupsFocusRequester.requestFocus()
         }
         restoreDialogOrigin = null
+    }
+
+    LaunchedEffect(isTelevision, selectedCount, restoreClearSelectionFocus) {
+        if (!restoreClearSelectionFocus) return@LaunchedEffect
+        if (!isTelevision) {
+            restoreClearSelectionFocus = false
+            return@LaunchedEffect
+        }
+        if (selectedCount != 0) return@LaunchedEffect
+        withFrameNanos { }
+        selectVisibleFocusRequester.requestFocus()
+        restoreClearSelectionFocus = false
     }
 
     Column(
@@ -613,11 +627,21 @@ private fun BulkEditBar(
                 style = MaterialTheme.typography.labelLarge,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            TextButton(onClick = onSelectVisible) {
+            TextButton(
+                onClick = onSelectVisible,
+                modifier = if (isTelevision) {
+                    Modifier.focusRequester(selectVisibleFocusRequester)
+                } else {
+                    Modifier
+                },
+            ) {
                 Text("Select visible")
             }
             TextButton(
-                onClick = onClearSelection,
+                onClick = {
+                    if (isTelevision) restoreClearSelectionFocus = true
+                    onClearSelection()
+                },
                 enabled = hasSelection,
             ) {
                 Text("Clear")
