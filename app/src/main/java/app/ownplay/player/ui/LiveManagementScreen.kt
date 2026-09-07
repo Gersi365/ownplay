@@ -126,7 +126,7 @@ internal fun LiveManagementScreen(
     }
     val selectedChannelId = editState.selectedChannelIds.singleOrNull()
     val selectedChannelIndex = selectedChannelId?.let { channelId ->
-        state.channels.indexOfFirst { channel -> channel.channelId == selectedChannelId }
+        state.channels.indexOfFirst { channel -> channel.channelId == channelId }
     } ?: -1
     val canMoveSelectedUp = selectedChannelIndex > 0
     val canMoveSelectedDown = selectedChannelIndex >= 0 && selectedChannelIndex < state.channels.lastIndex
