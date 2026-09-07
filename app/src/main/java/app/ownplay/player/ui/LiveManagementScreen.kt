@@ -21,6 +21,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
@@ -60,6 +61,7 @@ internal fun LiveManagementScreen(
         configuration.uiMode and Configuration.UI_MODE_TYPE_MASK == Configuration.UI_MODE_TYPE_TELEVISION
     val backFocusRequester = remember { FocusRequester() }
     val firstActionFocusRequester = remember { FocusRequester() }
+    val categoryReorderFocusRequester = remember { FocusRequester() }
     val sourceIds = summaries.map(PlaylistSourceSummary::sourceId)
     var sourceId by remember {
         mutableStateOf(summaries.firstOrNull()?.sourceId)
@@ -117,6 +119,7 @@ internal fun LiveManagementScreen(
         mutableStateOf(ChannelEditState(isEditing = true))
     }
     var showCategoryReorder by remember(selectedSourceId) { mutableStateOf(false) }
+    var restoreCategoryReorderFocus by remember(selectedSourceId) { mutableStateOf(false) }
     var categoryMutationInFlight by remember(selectedSourceId) { mutableStateOf(false) }
     var categoryError by remember(selectedSourceId) { mutableStateOf<String?>(null) }
     var orderError by remember(selectedSourceId) { mutableStateOf<String?>(null) }
@@ -141,6 +144,15 @@ internal fun LiveManagementScreen(
             state = editState,
             availableChannelIds = state.channels.map { channel -> channel.channelId },
         )
+    }
+
+    LaunchedEffect(isTelevision, showCategoryReorder, restoreCategoryReorderFocus) {
+        if (!isTelevision || showCategoryReorder || !restoreCategoryReorderFocus) {
+            return@LaunchedEffect
+        }
+        withFrameNanos { }
+        categoryReorderFocusRequester.requestFocus()
+        restoreCategoryReorderFocus = false
     }
 
     fun executeBulkAction(action: ChannelBulkAction) {
@@ -445,6 +457,12 @@ internal fun LiveManagementScreen(
                 orderError = null
                 showCategoryReorder = true
             },
+            reorderCategoriesEnabled = !isTelevision || state.categories.size > 1,
+            reorderCategoriesFocusRequester = if (isTelevision) {
+                categoryReorderFocusRequester
+            } else {
+                null
+            },
             onChannelSelectionToggle = { channelId ->
                 editState = ChannelEditReducer.toggleSelection(editState, channelId)
             },
@@ -530,7 +548,10 @@ internal fun LiveManagementScreen(
                     }
                 }
             },
-            onDismiss = { showCategoryReorder = false },
+            onDismiss = {
+                showCategoryReorder = false
+                if (isTelevision) restoreCategoryReorderFocus = true
+            },
         )
     }
 }
