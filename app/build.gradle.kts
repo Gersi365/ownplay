@@ -30,6 +30,7 @@ android {
         create("tv") {
             dimension = "device"
             applicationId = "app.ownplay.tv"
+            versionCode = 16
             manifestPlaceholders["appLabel"] = "OwnPlay"
             buildConfigField("boolean", "IS_TV_BUILD", "true")
             buildConfigField("String", "TARGET_DEVICE", "\"tv\"")
