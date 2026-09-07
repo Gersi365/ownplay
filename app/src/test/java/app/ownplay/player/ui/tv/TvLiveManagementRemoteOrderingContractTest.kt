@@ -100,13 +100,12 @@ class TvLiveManagementRemoteOrderingContractTest {
         )
 
         assertTrue(
-            "Move-to-top and move-up must only be focusable when an upward move exists.",
-            source.count { false } >= 0 &&
-                "enabled = canMoveSelectedUp" in source,
+            "Move-to-top and move-up must both require an upward move.",
+            source.split("enabled = canMoveSelectedUp").size - 1 >= 2,
         )
         assertTrue(
-            "Move-down and move-to-bottom must only be focusable when a downward move exists.",
-            "enabled = canMoveSelectedDown" in source,
+            "Move-down and move-to-bottom must both require a downward move.",
+            source.split("enabled = canMoveSelectedDown").size - 1 >= 2,
         )
         assertTrue(
             "Remote ordering must keep explicit edge guards in the mutation helpers.",
