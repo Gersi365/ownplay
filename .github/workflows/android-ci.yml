@@ -1,4 +1,4 @@
-name: Mobile Phase N QA Update APK
+name: Mobile Phase O QA Update APK
 
 on:
   pull_request:
@@ -7,7 +7,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: mobile-phase-n-qa-update-${{ github.ref }}
+  group: mobile-phase-o-qa-update-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -57,7 +57,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          SOURCE_SHA="d804fbd2253d6deacb83c7eddb117580488b991c"
+          SOURCE_SHA="7696fb3575194bbd10015fa97f99e41491bc15c6"
           git init mobile-source
           cd mobile-source
           git remote add origin https://github.com/Gersi365/OwnPlay-Mobile.git
@@ -72,7 +72,7 @@ jobs:
           set -euo pipefail
           BUILD_FILE="mobile-source/app/build.gradle.kts"
           grep -F 'applicationId = "app.ownplay.mobile"' "$BUILD_FILE"
-          grep -F 'versionCode = 16' "$BUILD_FILE"
+          grep -F 'versionCode = 17' "$BUILD_FILE"
           grep -F 'versionName = "1.0.13-product-polish-update"' "$BUILD_FILE"
 
       - name: Assemble Mobile QA APK
@@ -94,7 +94,7 @@ jobs:
           BUILD_TOOLS="${ANDROID_HOME}/build-tools/36.0.0"
           EXPECTED_CERT="1bb783d452c85f3aa5c6252c811499e24a830da2f477eb92d9e237ff7817d53a"
           INPUT="mobile-source/app/build/outputs/apk/mobile/debug/app-mobile-debug.apk"
-          OUTPUT="mobile-source/app/build/outputs/apk/mobile/debug/OwnPlay-Mobile-Phase-N-QA-code16.apk"
+          OUTPUT="mobile-source/app/build/outputs/apk/mobile/debug/OwnPlay-Mobile-Phase-O-QA-code17.apk"
 
           test -f "$INPUT"
           cp "$INPUT" "$OUTPUT"
@@ -103,11 +103,12 @@ jobs:
           printf '%s\n' "$SIGN_OUTPUT"
           printf '%s\n' "$SIGN_OUTPUT" | grep -F "Signer #1 certificate SHA-256 digest: $EXPECTED_CERT"
           printf '%s\n' "$SIGN_OUTPUT" | grep -F "Verified using v2 scheme (APK Signature Scheme v2): true"
+          printf '%s\n' "$SIGN_OUTPUT" | grep -Fx "Number of signers: 1"
 
           BADGING="$("$BUILD_TOOLS/aapt" dump badging "$OUTPUT" | head -n 1)"
           printf '%s\n' "$BADGING"
           printf '%s\n' "$BADGING" | grep -F "name='app.ownplay.mobile'"
-          printf '%s\n' "$BADGING" | grep -F "versionCode='16'"
+          printf '%s\n' "$BADGING" | grep -F "versionCode='17'"
           printf '%s\n' "$BADGING" | grep -F "versionName='1.0.13-product-polish-update'"
 
           sha256sum "$OUTPUT" | tee "$OUTPUT.sha256"
@@ -115,10 +116,10 @@ jobs:
       - name: Upload Mobile QA APK
         uses: actions/upload-artifact@v4
         with:
-          name: ownplay-mobile-phase-n-qa-code16-d804fbd
+          name: ownplay-mobile-phase-o-qa-code17-7696fb3
           path: |
-            mobile-source/app/build/outputs/apk/mobile/debug/OwnPlay-Mobile-Phase-N-QA-code16.apk
-            mobile-source/app/build/outputs/apk/mobile/debug/OwnPlay-Mobile-Phase-N-QA-code16.apk.sha256
+            mobile-source/app/build/outputs/apk/mobile/debug/OwnPlay-Mobile-Phase-O-QA-code17.apk
+            mobile-source/app/build/outputs/apk/mobile/debug/OwnPlay-Mobile-Phase-O-QA-code17.apk.sha256
           if-no-files-found: error
           retention-days: 7
           compression-level: 0
