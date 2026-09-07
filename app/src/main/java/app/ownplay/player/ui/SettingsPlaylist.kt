@@ -28,6 +28,7 @@ import androidx.compose.ui.unit.dp
 import app.ownplay.player.OwnPlayAppRuntime
 import app.ownplay.player.persistence.PlaylistSourceSummary
 import app.ownplay.player.source.SourceSyncState
+import app.ownplay.player.ui.tv.TvPlaylistSettingsScreen
 
 @Composable
 internal fun PlaylistManagementSubscreen(
@@ -41,6 +42,18 @@ internal fun PlaylistManagementSubscreen(
     val configuration = LocalConfiguration.current
     val isTelevision =
         configuration.uiMode and Configuration.UI_MODE_TYPE_MASK == Configuration.UI_MODE_TYPE_TELEVISION
+
+    if (isTelevision) {
+        TvPlaylistSettingsScreen(
+            runtime = runtime,
+            summaries = summaries,
+            syncState = syncState,
+            onBack = onBack,
+            onOpenInLive = onOpenInLive,
+        )
+        return
+    }
+
     val backFocusRequester = remember { FocusRequester() }
 
     LaunchedEffect(isTelevision, focusBackOnEntry) {
