@@ -1,6 +1,7 @@
 package app.ownplay.player.ui
 
 import android.content.Context
+import android.content.res.Configuration
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -11,12 +12,17 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import app.ownplay.player.backup.BackupExportResult
@@ -34,11 +40,24 @@ private const val MAX_BACKUP_CHARS = 5_000_000
 @Composable
 internal fun BackupRestoreSettingsContent() {
     val context = LocalContext.current
+    val configuration = LocalConfiguration.current
+    val isTelevision =
+        configuration.uiMode and Configuration.UI_MODE_TYPE_MASK == Configuration.UI_MODE_TYPE_TELEVISION
+    val primaryActionFocusRequester = remember { FocusRequester() }
     val scope = rememberCoroutineScope()
     val service = remember(context.applicationContext) {
         PersonalizationBackupService(context.applicationContext)
     }
     var status by remember { mutableStateOf<String?>(null) }
+
+    LaunchedEffect(isTelevision) {
+        if (isTelevision) {
+            // The TV subpage header may establish focus first. Request the primary action on
+            // the following frame so Backup & Restore deterministically enters on Export.
+            withFrameNanos { }
+            primaryActionFocusRequester.requestFocus()
+        }
+    }
 
     val exportLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.CreateDocument("application/json"),
@@ -97,6 +116,7 @@ internal fun BackupRestoreSettingsContent() {
             detail = "Personalization only · credentials excluded",
             actionLabel = "Export",
             onClick = { exportLauncher.launch("ownplay-personalization-v1.json") },
+            actionModifier = Modifier.focusRequester(primaryActionFocusRequester),
         )
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
         SettingsActionRow(
