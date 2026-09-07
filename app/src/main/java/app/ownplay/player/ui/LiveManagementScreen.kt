@@ -387,10 +387,22 @@ internal fun LiveManagementScreen(
                     style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-                TextButton(onClick = ::moveSelectedToTop) { Text("Top") }
-                TextButton(onClick = ::moveSelectedUp) { Text("Move up") }
-                TextButton(onClick = ::moveSelectedDown) { Text("Move down") }
-                TextButton(onClick = ::moveSelectedToBottom) { Text("Bottom") }
+                TextButton(
+                    onClick = ::moveSelectedToTop,
+                    enabled = canMoveSelectedUp,
+                ) { Text("Top") }
+                TextButton(
+                    onClick = ::moveSelectedUp,
+                    enabled = canMoveSelectedUp,
+                ) { Text("Move up") }
+                TextButton(
+                    onClick = ::moveSelectedDown,
+                    enabled = canMoveSelectedDown,
+                ) { Text("Move down") }
+                TextButton(
+                    onClick = ::moveSelectedToBottom,
+                    enabled = canMoveSelectedDown,
+                ) { Text("Bottom") }
             }
         }
 
