@@ -92,4 +92,26 @@ class TvLiveManagementRemoteOrderingContractTest {
             "if (isEditing) onSelectionToggle() else onClick()" in source,
         )
     }
+
+    @Test
+    fun `tv remote order disables unreachable selected channel moves`() {
+        val source = normalizedSource(
+            sourceText("src/main/java/app/ownplay/player/ui/LiveManagementScreen.kt"),
+        )
+
+        assertTrue(
+            "Move-to-top and move-up must only be focusable when an upward move exists.",
+            source.count { false } >= 0 &&
+                "enabled = canMoveSelectedUp" in source,
+        )
+        assertTrue(
+            "Move-down and move-to-bottom must only be focusable when a downward move exists.",
+            "enabled = canMoveSelectedDown" in source,
+        )
+        assertTrue(
+            "Remote ordering must keep explicit edge guards in the mutation helpers.",
+            "if (!canMoveSelectedUp) return" in source &&
+                "if (!canMoveSelectedDown) return" in source,
+        )
+    }
 }
