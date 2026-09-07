@@ -48,6 +48,16 @@ import app.ownplay.player.ui.live.LiveBrowseScreen
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 
+private enum class RemoteOrderEdge {
+    TOP,
+    BOTTOM,
+}
+
+private data class PendingRemoteOrderFocusRestore(
+    val channelId: String,
+    val edge: RemoteOrderEdge,
+)
+
 @Composable
 internal fun LiveManagementScreen(
     runtime: OwnPlayAppRuntime,
@@ -63,6 +73,8 @@ internal fun LiveManagementScreen(
     val firstActionFocusRequester = remember { FocusRequester() }
     val categoryReorderFocusRequester = remember { FocusRequester() }
     val categoryVisibilityFocusRequester = remember { FocusRequester() }
+    val remoteMoveUpFocusRequester = remember { FocusRequester() }
+    val remoteMoveDownFocusRequester = remember { FocusRequester() }
     val sourceIds = summaries.map(PlaylistSourceSummary::sourceId)
     var sourceId by remember {
         mutableStateOf(summaries.firstOrNull()?.sourceId)
@@ -122,6 +134,9 @@ internal fun LiveManagementScreen(
     var showCategoryReorder by remember(selectedSourceId) { mutableStateOf(false) }
     var restoreCategoryReorderFocus by remember(selectedSourceId) { mutableStateOf(false) }
     var restoreCategoryVisibilityFocus by remember(selectedSourceId) { mutableStateOf(false) }
+    var pendingRemoteOrderFocusRestore by remember(selectedSourceId) {
+        mutableStateOf<PendingRemoteOrderFocusRestore?>(null)
+    }
     var categoryMutationInFlight by remember(selectedSourceId) { mutableStateOf(false) }
     var categoryError by remember(selectedSourceId) { mutableStateOf<String?>(null) }
     var orderError by remember(selectedSourceId) { mutableStateOf<String?>(null) }
@@ -178,6 +193,41 @@ internal fun LiveManagementScreen(
         restoreCategoryVisibilityFocus = false
     }
 
+    LaunchedEffect(
+        isTelevision,
+        selectedChannelId,
+        canMoveSelectedUp,
+        canMoveSelectedDown,
+        pendingRemoteOrderFocusRestore,
+    ) {
+        val request = pendingRemoteOrderFocusRestore ?: return@LaunchedEffect
+        if (!isTelevision || selectedChannelId != request.channelId) {
+            pendingRemoteOrderFocusRestore = null
+            return@LaunchedEffect
+        }
+        when (request.edge) {
+            RemoteOrderEdge.TOP -> {
+                if (canMoveSelectedUp) return@LaunchedEffect
+                if (!canMoveSelectedDown) {
+                    pendingRemoteOrderFocusRestore = null
+                    return@LaunchedEffect
+                }
+                withFrameNanos { }
+                remoteMoveDownFocusRequester.requestFocus()
+            }
+            RemoteOrderEdge.BOTTOM -> {
+                if (canMoveSelectedDown) return@LaunchedEffect
+                if (!canMoveSelectedUp) {
+                    pendingRemoteOrderFocusRestore = null
+                    return@LaunchedEffect
+                }
+                withFrameNanos { }
+                remoteMoveUpFocusRequester.requestFocus()
+            }
+        }
+        pendingRemoteOrderFocusRestore = null
+    }
+
     fun executeBulkAction(action: ChannelBulkAction) {
         val selection = editState.selectedChannelIds
         if (selection.isEmpty()) return
@@ -190,17 +240,22 @@ internal fun LiveManagementScreen(
         }
     }
 
-    fun moveSelectedRelative(anchorChannelId: String, placement: ManualOrderPlacement) {
+    fun moveSelectedRelative(
+        anchorChannelId: String,
+        placement: ManualOrderPlacement,
+        focusRestoreEdge: RemoteOrderEdge? = null,
+    ) {
         val channelId = selectedChannelId ?: return
         val useFavoriteOrder =
             state.query.favoritesOnly && state.query.order == LiveBrowseOrder.FAVORITE_ORDER
         val useManualOrder = state.query.order == LiveBrowseOrder.MY_ORDER
         if (!useFavoriteOrder && !useManualOrder) return
 
+        pendingRemoteOrderFocusRestore = null
         orderError = null
         scope.launch {
             try {
-                if (useFavoriteOrder) {
+                val succeeded = if (useFavoriteOrder) {
                     when (
                         runtime.moveFavoriteRelative(
                             sourceId = selectedSourceId,
@@ -209,9 +264,13 @@ internal fun LiveManagementScreen(
                             placement = placement,
                         )
                     ) {
-                        is FavoriteMutationResult.Success -> orderError = null
+                        is FavoriteMutationResult.Success -> {
+                            orderError = null
+                            true
+                        }
                         is FavoriteMutationResult.Failure -> {
                             orderError = "Could not save channel order."
+                            false
                         }
                     }
                 } else {
@@ -223,12 +282,24 @@ internal fun LiveManagementScreen(
                             placement = placement,
                         )
                     ) {
-                        is ManualOrderMutationResult.Success -> orderError = null
+                        is ManualOrderMutationResult.Success -> {
+                            orderError = null
+                            true
+                        }
                         is ManualOrderMutationResult.Rejected,
                         ManualOrderMutationResult.InvalidSourceId,
                         ManualOrderMutationResult.PersistenceFailure,
-                        -> orderError = "Could not save channel order."
+                        -> {
+                            orderError = "Could not save channel order."
+                            false
+                        }
                     }
+                }
+                if (succeeded && isTelevision && focusRestoreEdge != null) {
+                    pendingRemoteOrderFocusRestore = PendingRemoteOrderFocusRestore(
+                        channelId = channelId,
+                        edge = focusRestoreEdge,
+                    )
                 }
             } catch (cancelled: CancellationException) {
                 throw cancelled
@@ -290,6 +361,7 @@ internal fun LiveManagementScreen(
         moveSelectedRelative(
             anchorChannelId = state.channels[selectedChannelIndex - 1].channelId,
             placement = ManualOrderPlacement.BEFORE,
+            focusRestoreEdge = if (selectedChannelIndex == 1) RemoteOrderEdge.TOP else null,
         )
     }
 
@@ -298,6 +370,11 @@ internal fun LiveManagementScreen(
         moveSelectedRelative(
             anchorChannelId = state.channels[selectedChannelIndex + 1].channelId,
             placement = ManualOrderPlacement.AFTER,
+            focusRestoreEdge = if (selectedChannelIndex == state.channels.lastIndex - 1) {
+                RemoteOrderEdge.BOTTOM
+            } else {
+                null
+            },
         )
     }
 
@@ -306,6 +383,7 @@ internal fun LiveManagementScreen(
         moveSelectedRelative(
             anchorChannelId = state.channels.first().channelId,
             placement = ManualOrderPlacement.BEFORE,
+            focusRestoreEdge = RemoteOrderEdge.TOP,
         )
     }
 
@@ -314,6 +392,7 @@ internal fun LiveManagementScreen(
         moveSelectedRelative(
             anchorChannelId = state.channels.last().channelId,
             placement = ManualOrderPlacement.AFTER,
+            focusRestoreEdge = RemoteOrderEdge.BOTTOM,
         )
     }
 
@@ -441,10 +520,12 @@ internal fun LiveManagementScreen(
                 TextButton(
                     onClick = ::moveSelectedUp,
                     enabled = canMoveSelectedUp,
+                    modifier = Modifier.focusRequester(remoteMoveUpFocusRequester),
                 ) { Text("Move up") }
                 TextButton(
                     onClick = ::moveSelectedDown,
                     enabled = canMoveSelectedDown,
+                    modifier = Modifier.focusRequester(remoteMoveDownFocusRequester),
                 ) { Text("Move down") }
                 TextButton(
                     onClick = ::moveSelectedToBottom,
