@@ -72,4 +72,24 @@ class TvLiveManagementRemoteOrderingContractTest {
                 "moveWithRemote(index, 1)" in source,
         )
     }
+
+    @Test
+    fun `tv channel edit rows expose one selection focus target`() {
+        val source = normalizedSource(
+            sourceText("src/main/java/app/ownplay/player/ui/live/LiveBrowseScreen.kt"),
+        )
+
+        assertTrue(
+            "Live channel rows must receive the television form factor before configuring selection focus.",
+            "isTelevision = isTelevision" in source,
+        )
+        assertTrue(
+            "The TV checkbox must remain outside D-pad focus traversal so the row owns selection focus.",
+            "Modifier.focusProperties { canFocus = false }" in source,
+        )
+        assertTrue(
+            "The channel row must continue to own the selection activation path.",
+            "if (isEditing) onSelectionToggle() else onClick()" in source,
+        )
+    }
 }
