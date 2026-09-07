@@ -466,11 +466,11 @@ private fun TvPlaylistDetailPage(
         if (summary.enabled && !isActive) add(TvPlaylistDetailAction.ACTIVATE)
         add(TvPlaylistDetailAction.DELETE)
     }
-    val actionFocusRequesters = remember(actions) {
-        actions.associateWith { FocusRequester() }
+    val actionFocusRequesters = remember(summary.sourceId) {
+        TvPlaylistDetailAction.entries.associateWith { FocusRequester() }
     }
-    var focusedAction by remember(actions) {
-        mutableStateOf(restoreAction.takeIf { it in actions } ?: actions.first())
+    var focusedAction by remember(summary.sourceId) {
+        mutableStateOf(restoreAction)
     }
 
     fun actionEnabled(action: TvPlaylistDetailAction): Boolean = when (action) {
@@ -481,13 +481,13 @@ private fun TvPlaylistDetailPage(
         TvPlaylistDetailAction.DELETE -> !deleteWorking
     }
 
-    LaunchedEffect(actions, restoreAction, syncing, refreshWorking, editWorking, activateWorking, deleteWorking) {
+    LaunchedEffect(summary.sourceId, restoreAction) {
         withFrameNanos { }
         val requested = restoreAction.takeIf { it in actions && actionEnabled(it) }
         val target = requested ?: actions.firstOrNull { actionEnabled(it) }
         if (target != null) {
             focusedAction = target
-            actionFocusRequesters[target]?.requestFocus()
+            actionFocusRequesters.getValue(target).requestFocus()
         }
     }
 
