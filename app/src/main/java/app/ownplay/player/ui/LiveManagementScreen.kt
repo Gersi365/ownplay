@@ -39,6 +39,7 @@ import app.ownplay.player.personalization.CategoryVisibilityMutationResult
 import app.ownplay.player.personalization.ChannelBulkAction
 import app.ownplay.player.personalization.ChannelEditReducer
 import app.ownplay.player.personalization.ChannelEditState
+import app.ownplay.player.personalization.CustomGroupMutationResult
 import app.ownplay.player.personalization.FavoriteMutationResult
 import app.ownplay.player.personalization.ManualOrderMutationResult
 import app.ownplay.player.personalization.ManualOrderPlacement
@@ -452,7 +453,16 @@ internal fun LiveManagementScreen(
             onRenameGroup = { groupId, name ->
                 scope.launch { runtime.renameCustomGroup(groupId, name) }
             },
-            onDeleteGroup = { groupId -> scope.launch { runtime.deleteCustomGroup(groupId) } },
+            onDeleteGroup = { groupId ->
+                val clearDeletedActiveFilter = state.query.customGroupId == groupId
+                scope.launch {
+                    if (runtime.deleteCustomGroup(groupId) is CustomGroupMutationResult.Success &&
+                        clearDeletedActiveFilter
+                    ) {
+                        browseSession.selectCustomGroup(null)
+                    }
+                }
+            },
             onSetLocalDisplayName = { channelId, name ->
                 scope.launch { runtime.setLocalDisplayName(selectedSourceId, channelId, name) }
             },
