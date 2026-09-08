@@ -38,6 +38,7 @@ import app.ownplay.player.source.selection.resolveActivePlaylistId
 import app.ownplay.player.ui.home.TvHomeScreen
 import app.ownplay.player.ui.movies.TvMoviesRoute
 import app.ownplay.player.ui.series.SeriesRoute
+import app.ownplay.player.ui.series.TvSeriesRoute
 import app.ownplay.player.ui.shell.TvDestination
 import app.ownplay.player.ui.shell.TvMediaShell
 import app.ownplay.player.ui.shell.defaultTvDestination
@@ -488,23 +489,45 @@ private fun TVOwnPlayAppContent(
                 }
             }
 
-            TvDestination.SERIES -> SeriesRoute(
-                runtime = runtime,
-                sourceId = activeSourceId,
-                sourceKind = activeSummary?.sourceKind,
-                requestedSeriesId = requestedSeriesId,
-                onRequestedSeriesConsumed = { requestedSeriesId = null },
-                returnToLibraryOnDetailBack = seriesDetailReturnToHome,
-                onReturnToLibrary = {
-                    if (seriesDetailReturnToHome && homeReturnFocusKey != null) {
-                        homeReturnFocusGeneration += 1
-                        homeReturnFocusPending = true
-                    }
-                    openDestination(TvDestination.HOME)
-                },
-                onOpenSettings = { openDestination(TvDestination.SETTINGS) },
-                onFullscreenStateChanged = onPlaybackFullscreenChanged,
-            )
+            TvDestination.SERIES -> {
+                if (seriesFullscreen) {
+                    SeriesRoute(
+                        runtime = runtime,
+                        sourceId = activeSourceId,
+                        sourceKind = activeSummary?.sourceKind,
+                        requestedSeriesId = requestedSeriesId,
+                        onRequestedSeriesConsumed = { requestedSeriesId = null },
+                        returnToLibraryOnDetailBack = seriesDetailReturnToHome,
+                        onReturnToLibrary = {
+                            if (seriesDetailReturnToHome && homeReturnFocusKey != null) {
+                                homeReturnFocusGeneration += 1
+                                homeReturnFocusPending = true
+                            }
+                            openDestination(TvDestination.HOME)
+                        },
+                        onOpenSettings = { openDestination(TvDestination.SETTINGS) },
+                        onFullscreenStateChanged = onPlaybackFullscreenChanged,
+                    )
+                } else {
+                    TvSeriesRoute(
+                        runtime = runtime,
+                        sourceId = activeSourceId,
+                        sourceKind = activeSummary?.sourceKind,
+                        requestedSeriesId = requestedSeriesId,
+                        onRequestedSeriesConsumed = { requestedSeriesId = null },
+                        returnToLibraryOnDetailBack = seriesDetailReturnToHome,
+                        onReturnToLibrary = {
+                            if (seriesDetailReturnToHome && homeReturnFocusKey != null) {
+                                homeReturnFocusGeneration += 1
+                                homeReturnFocusPending = true
+                            }
+                            openDestination(TvDestination.HOME)
+                        },
+                        onOpenSettings = { openDestination(TvDestination.SETTINGS) },
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                }
+            }
 
             TvDestination.SETTINGS -> SettingsScreen(
                 runtime = runtime,
