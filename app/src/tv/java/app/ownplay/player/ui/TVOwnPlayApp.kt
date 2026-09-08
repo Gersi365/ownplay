@@ -34,7 +34,7 @@ import app.ownplay.player.source.SourceSyncState
 import app.ownplay.player.source.selection.ActivePlaylistSelection
 import app.ownplay.player.source.selection.ActivePlaylistStore
 import app.ownplay.player.source.selection.resolveActivePlaylistId
-import app.ownplay.player.ui.library.UnifiedLibraryRoute
+import app.ownplay.player.ui.home.TvHomeScreen
 import app.ownplay.player.ui.series.SeriesRoute
 import app.ownplay.player.ui.shell.TvDestination
 import app.ownplay.player.ui.shell.TvMediaShell
@@ -45,10 +45,9 @@ import kotlinx.coroutines.launch
 /**
  * TV-only OwnPlay presentation shell.
  *
- * Primary navigation is Home / Live TV / Movies / Series / Settings. Phase 1 intentionally keeps
- * the existing unified library presentation as the temporary Home content bridge while the shell
- * and remote-focus contract are established. Later phases replace that bridge without changing
- * playback, source, persistence, or Live session ownership.
+ * Primary navigation is Home / Live TV / Movies / Series / Settings. Home is a dedicated TV-first
+ * cache-backed presentation; playback, source, persistence, and Live session ownership remain in
+ * their established runtimes.
  */
 @Composable
 internal fun TVOwnPlayApp(
@@ -126,7 +125,6 @@ private fun TVOwnPlayAppContent(
                 onDemandPresentation.returnToLibraryOnDetailBack,
         )
     }
-    var homeBridgeFullscreen by remember { mutableStateOf(false) }
     val vodFullscreen = onDemandPresentation.isMoviePlayback
     val seriesFullscreen = onDemandPresentation.isSeriesPlayback
     val activeSelection = livePresentation.selection
@@ -284,8 +282,7 @@ private fun TVOwnPlayAppContent(
         previewActive ||
             fullscreenSelection != null ||
             vodFullscreen ||
-            seriesFullscreen ||
-            homeBridgeFullscreen
+            seriesFullscreen
     val observedLiveTransitionTarget =
         fullscreenSelection?.let(LivePlaybackTransitionTarget::fullscreen)
             ?: if (previewActive) {
@@ -343,8 +340,7 @@ private fun TVOwnPlayAppContent(
     val hideNavigationRail =
         previewActive ||
             vodFullscreen ||
-            seriesFullscreen ||
-            homeBridgeFullscreen
+            seriesFullscreen
 
     TvMediaShell(
         activeDestination = destination,
@@ -353,8 +349,7 @@ private fun TVOwnPlayAppContent(
         modifier = Modifier.fillMaxSize(),
     ) {
         when (destination) {
-            TvDestination.HOME -> UnifiedLibraryRoute(
-                runtime = runtime,
+            TvDestination.HOME -> TvHomeScreen(
                 sourceId = activeSourceId,
                 sourceKind = activeSummary?.sourceKind,
                 onOpenMovieDetails = { sourceId, movieId ->
@@ -379,10 +374,8 @@ private fun TVOwnPlayAppContent(
                     seriesDetailReturnToHome = true
                     openDestination(TvDestination.SERIES)
                 },
-                onFullscreenStateChanged = { fullscreen ->
-                    homeBridgeFullscreen = fullscreen
-                    onPlaybackFullscreenChanged(fullscreen)
-                },
+                onOpenSettings = { openDestination(TvDestination.SETTINGS) },
+                modifier = Modifier.fillMaxSize(),
             )
 
             TvDestination.LIVE_TV -> {
@@ -465,8 +458,7 @@ private fun TVOwnPlayAppContent(
                 hasActivePlayback =
                     activeSelection != null ||
                         vodFullscreen ||
-                        seriesFullscreen ||
-                        homeBridgeFullscreen,
+                        seriesFullscreen,
                 onOpenLive = { openDestination(TvDestination.LIVE_TV) },
                 onOpenSourceInLive = { sourceId ->
                     if (sourceId != activeSourceId && activeSelection != null) {
