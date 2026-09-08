@@ -51,13 +51,19 @@ class TvMoviesPresentationContractTest {
     }
 
     @Test
-    fun `tv movies exposes remote first library sections without download ui`() {
+    fun `tv movies exposes real sections without all or download ui`() {
         assertTrue("Continue Watching must remain first-class.", "\"Continue Watching\"" in moviesSource)
-        assertTrue("All Movies must remain directly reachable.", "\"All Movies\"" in moviesSource)
         assertTrue("Favorites must remain directly reachable.", "\"Favorites\"" in moviesSource)
         assertTrue(
             "Provider categories must remain represented in the TV section rail.",
             "MOVIES_CATEGORY_PREFIX + category.providerCategoryKey" in moviesSource,
+        )
+        assertFalse("The removed All section must not return.", "\"All Movies\"" in moviesSource)
+        assertFalse("The removed All key must not return.", "MOVIES_ALL_KEY" in moviesSource)
+        assertTrue(
+            "A neutral Movies fallback may exist only when provider categories are unavailable.",
+            "if (catalog.categories.isEmpty() && catalog.movies.isNotEmpty())" in moviesSource &&
+                "TvMovieSection(MOVIES_CATALOG_KEY, \"Movies\")" in moviesSource,
         )
         assertFalse("TV Movies must not expose Offline download models.", "OfflineDownload" in moviesSource)
         assertFalse("TV Movies must not instantiate download runtime.", "downloadRuntime" in moviesSource)
