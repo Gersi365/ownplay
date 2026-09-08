@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.itemsIndexed
@@ -362,21 +363,29 @@ internal fun TvSeriesRoute(
             ?.let { number -> loaded.seasons.firstOrNull { it.seasonNumber == number } }
             ?: loaded.seasons.minByOrNull { it.seasonNumber }
         if (currentSeason == null) {
-            selectedSeasonNumber = null
-            selectedEpisodeId = null
-            runtime.onDemandPresentationSession.updateSeriesSelection(null, null)
+            if (selectedSeasonNumber != null || selectedEpisodeId != null) {
+                selectedSeasonNumber = null
+                selectedEpisodeId = null
+                runtime.onDemandPresentationSession.updateSeriesSelection(null, null)
+            }
             return@LaunchedEffect
         }
-        if (selectedSeasonNumber != currentSeason.seasonNumber) {
-            selectedSeasonNumber = currentSeason.seasonNumber
+
+        val normalizedSeasonNumber = currentSeason.seasonNumber
+        val normalizedEpisodeId = selectedEpisodeId?.takeIf { episodeId ->
+            currentSeason.episodes.any { episode -> episode.episodeId == episodeId }
         }
-        if (selectedEpisodeId != null && currentSeason.episodes.none { it.episodeId == selectedEpisodeId }) {
-            selectedEpisodeId = null
+        if (
+            selectedSeasonNumber != normalizedSeasonNumber ||
+            selectedEpisodeId != normalizedEpisodeId
+        ) {
+            selectedSeasonNumber = normalizedSeasonNumber
+            selectedEpisodeId = normalizedEpisodeId
+            runtime.onDemandPresentationSession.updateSeriesSelection(
+                normalizedSeasonNumber,
+                normalizedEpisodeId,
+            )
         }
-        runtime.onDemandPresentationSession.updateSeriesSelection(
-            selectedSeasonNumber,
-            selectedEpisodeId,
-        )
     }
 
     val openedSeries = selectedSeries
@@ -527,7 +536,7 @@ private fun TvSeriesCatalogScreen(
                             onClick = { onSectionSelected(section.key) },
                             onRight = {
                                 when {
-                                    section.key == SERIES_CONTINUE_KEY -> continueEpisodes.isNotEmpty()
+                                    section.key == SERIES_CONTINUE_KEY -> false
                                     series.isNotEmpty() -> {
                                         onSeriesFocusRequested(series.first().seriesId)
                                         true
@@ -652,7 +661,11 @@ private fun TvSeriesSectionRow(
     onRight: () -> Boolean,
 ) {
     var focused by remember(section.key) { mutableStateOf(false) }
-    val requesterModifier = focusRequester?.let(Modifier::focusRequester) ?: Modifier
+    val requesterModifier = if (focusRequester != null) {
+        Modifier.focusRequester(focusRequester)
+    } else {
+        Modifier
+    }
     val background = when {
         focused -> MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.78f)
         selected -> MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.34f)
@@ -868,10 +881,8 @@ private fun TvSeriesDetailsScreen(
     val primaryEpisode = resumeEpisode ?: firstEpisode
 
     LaunchedEffect(series.seriesId, primaryEpisode?.episodeId) {
-        if (primaryEpisode != null) {
-            withFrameNanos { }
-            primaryFocusRequester.requestFocus()
-        }
+        withFrameNanos { }
+        primaryFocusRequester.requestFocus()
     }
 
     Row(
@@ -931,6 +942,7 @@ private fun TvSeriesDetailsScreen(
                 }
                 TvSeriesActionRow(
                     label = if (series.isFavorite) "Remove favorite" else "Add favorite",
+                    focusRequester = primaryFocusRequester.takeIf { primaryEpisode == null },
                     onClick = { onFavoriteChanged(!series.isFavorite) },
                 )
             }
@@ -958,8 +970,8 @@ private fun TvSeriesDetailsScreen(
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.SemiBold,
                 )
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    seasons.forEach { season ->
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    items(seasons, key = { season -> season.seasonId }) { season ->
                         TvSeasonChip(
                             label = season.name?.takeIf(String::isNotBlank)
                                 ?: "Season ${season.seasonNumber}",
@@ -1021,7 +1033,11 @@ private fun TvSeriesActionRow(
     onClick: () -> Unit,
 ) {
     var focused by remember(label) { mutableStateOf(false) }
-    val requesterModifier = focusRequester?.let(Modifier::focusRequester) ?: Modifier
+    val requesterModifier = if (focusRequester != null) {
+        Modifier.focusRequester(focusRequester)
+    } else {
+        Modifier
+    }
 
     Surface(
         modifier = Modifier
