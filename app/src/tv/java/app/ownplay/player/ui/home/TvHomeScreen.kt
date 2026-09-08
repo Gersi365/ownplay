@@ -12,8 +12,10 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.LinearProgressIndicator
@@ -29,7 +31,10 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -49,7 +54,23 @@ import kotlinx.coroutines.flow.flowOf
 
 private const val HOME_ROW_LIMIT = 20
 private const val HOME_CONTINUE_WATCHING_LIMIT = 20
+private const val HOME_CONTINUE_MOVIE_PREFIX = "continue-movie:"
+private const val HOME_CONTINUE_EPISODE_PREFIX = "continue-episode:"
+private const val HOME_MOVIE_PREFIX = "movie:"
+private const val HOME_SERIES_PREFIX = "series:"
 private val HomePosterWidth = 166.dp
+
+private enum class TvHomeShelfKind {
+    CONTINUE_WATCHING,
+    MOVIES,
+    SERIES,
+}
+
+private data class TvHomeFocusLocation(
+    val shelf: TvHomeShelfKind,
+    val rowIndex: Int,
+    val itemIndex: Int,
+)
 
 private sealed interface TvHomeContinueItem {
     val key: String
@@ -60,7 +81,7 @@ private sealed interface TvHomeContinueItem {
     val updatedAtEpochMillis: Long?
 
     data class Movie(val movie: VodMovie) : TvHomeContinueItem {
-        override val key: String = "movie:${movie.movieId}"
+        override val key: String = homeContinueMovieFocusKey(movie.movieId)
         override val title: String = movie.name
         override val posterUrl: String? = movie.posterUrl
         override val positionMs: Long? = movie.positionMs
@@ -69,7 +90,7 @@ private sealed interface TvHomeContinueItem {
     }
 
     data class Episode(val episode: SeriesEpisode) : TvHomeContinueItem {
-        override val key: String = "episode:${episode.episodeId}"
+        override val key: String = homeContinueEpisodeFocusKey(episode.episodeId)
         override val title: String = episode.seriesTitle
         override val posterUrl: String? = episode.posterUrl
         override val positionMs: Long? = episode.positionMs
@@ -82,14 +103,22 @@ private sealed interface TvHomeContinueItem {
 internal fun TvHomeScreen(
     sourceId: String?,
     sourceKind: String?,
-    onOpenMovieDetails: (sourceId: String, movieId: String) -> Unit,
-    onOpenSeriesDetails: (sourceId: String, seriesId: String) -> Unit,
+    returnFocusKey: String?,
+    returnFocusGeneration: Int,
+    onReturnFocusConsumed: () -> Unit,
+    onOpenMovieDetails: (sourceId: String, movieId: String, focusKey: String) -> Unit,
+    onOpenSeriesDetails: (sourceId: String, seriesId: String, focusKey: String) -> Unit,
     onOpenSettings: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
     val vodRuntime = remember(context) { VodFeatureRuntime(context.applicationContext) }
     val seriesRuntime = remember(context) { SeriesFeatureRuntime(context.applicationContext) }
+    val homeListState = rememberLazyListState()
+    val continueWatchingState = rememberLazyListState()
+    val moviesState = rememberLazyListState()
+    val seriesState = rememberLazyListState()
+    val returnFocusRequester = remember { FocusRequester() }
 
     DisposableEffect(vodRuntime, seriesRuntime) {
         onDispose {
@@ -144,6 +173,38 @@ internal fun TvHomeScreen(
     val series = remember(seriesCatalog.series) { seriesCatalog.series.take(HOME_ROW_LIMIT) }
     val refreshing = movieRefreshRunning || seriesRefreshRunning
 
+    LaunchedEffect(
+        returnFocusGeneration,
+        returnFocusKey,
+        continueWatching,
+        movies,
+        series,
+    ) {
+        if (returnFocusGeneration <= 0) return@LaunchedEffect
+        val focusKey = returnFocusKey ?: return@LaunchedEffect
+        val location = resolveHomeFocusLocation(
+            focusKey = focusKey,
+            continueWatching = continueWatching,
+            movies = movies,
+            series = series,
+        )
+        if (location == null) {
+            onReturnFocusConsumed()
+            return@LaunchedEffect
+        }
+
+        homeListState.scrollToItem(location.rowIndex)
+        when (location.shelf) {
+            TvHomeShelfKind.CONTINUE_WATCHING -> continueWatchingState.scrollToItem(location.itemIndex)
+            TvHomeShelfKind.MOVIES -> moviesState.scrollToItem(location.itemIndex)
+            TvHomeShelfKind.SERIES -> seriesState.scrollToItem(location.itemIndex)
+        }
+        withFrameNanos { }
+        withFrameNanos { }
+        returnFocusRequester.requestFocus()
+        onReturnFocusConsumed()
+    }
+
     when {
         sourceId == null -> TvHomeMessage(
             title = "No playlist configured",
@@ -170,6 +231,7 @@ internal fun TvHomeScreen(
             modifier = modifier,
         )
         else -> LazyColumn(
+            state = homeListState,
             modifier = modifier
                 .fillMaxSize()
                 .padding(horizontal = 28.dp),
@@ -195,11 +257,14 @@ internal fun TvHomeScreen(
                 item(key = "continue-watching") {
                     TvHomeContinueWatchingRow(
                         items = continueWatching,
-                        onOpenMovieDetails = { movie ->
-                            onOpenMovieDetails(sourceId, movie.movieId)
+                        state = continueWatchingState,
+                        returnFocusKey = returnFocusKey,
+                        returnFocusRequester = returnFocusRequester,
+                        onOpenMovieDetails = { movie, focusKey ->
+                            onOpenMovieDetails(sourceId, movie.movieId, focusKey)
                         },
-                        onOpenSeriesDetails = { episode ->
-                            onOpenSeriesDetails(sourceId, episode.seriesId)
+                        onOpenSeriesDetails = { episode, focusKey ->
+                            onOpenSeriesDetails(sourceId, episode.seriesId, focusKey)
                         },
                     )
                 }
@@ -209,8 +274,11 @@ internal fun TvHomeScreen(
                 item(key = "movies") {
                     TvHomeMovieRow(
                         movies = movies,
-                        onOpenMovieDetails = { movie ->
-                            onOpenMovieDetails(sourceId, movie.movieId)
+                        state = moviesState,
+                        returnFocusKey = returnFocusKey,
+                        returnFocusRequester = returnFocusRequester,
+                        onOpenMovieDetails = { movie, focusKey ->
+                            onOpenMovieDetails(sourceId, movie.movieId, focusKey)
                         },
                     )
                 }
@@ -220,8 +288,11 @@ internal fun TvHomeScreen(
                 item(key = "series") {
                     TvHomeSeriesRow(
                         series = series,
-                        onOpenSeriesDetails = { item ->
-                            onOpenSeriesDetails(sourceId, item.seriesId)
+                        state = seriesState,
+                        returnFocusKey = returnFocusKey,
+                        returnFocusRequester = returnFocusRequester,
+                        onOpenSeriesDetails = { item, focusKey ->
+                            onOpenSeriesDetails(sourceId, item.seriesId, focusKey)
                         },
                     )
                 }
@@ -233,12 +304,21 @@ internal fun TvHomeScreen(
 @Composable
 private fun TvHomeContinueWatchingRow(
     items: List<TvHomeContinueItem>,
-    onOpenMovieDetails: (VodMovie) -> Unit,
-    onOpenSeriesDetails: (SeriesEpisode) -> Unit,
+    state: LazyListState,
+    returnFocusKey: String?,
+    returnFocusRequester: FocusRequester,
+    onOpenMovieDetails: (VodMovie, focusKey: String) -> Unit,
+    onOpenSeriesDetails: (SeriesEpisode, focusKey: String) -> Unit,
 ) {
-    TvHomeShelf(title = "Continue Watching") {
+    TvHomeShelf(
+        title = "Continue Watching",
+        state = state,
+    ) {
         items(items = items, key = { it.key }) { item ->
             TvHomePosterCard(
+                focusKey = item.key,
+                returnFocusKey = returnFocusKey,
+                returnFocusRequester = returnFocusRequester,
                 title = item.title,
                 posterUrl = item.posterUrl,
                 subtitle = when (item) {
@@ -249,8 +329,8 @@ private fun TvHomeContinueWatchingRow(
                 progress = progressFraction(item.positionMs, item.durationMs),
                 onClick = {
                     when (item) {
-                        is TvHomeContinueItem.Movie -> onOpenMovieDetails(item.movie)
-                        is TvHomeContinueItem.Episode -> onOpenSeriesDetails(item.episode)
+                        is TvHomeContinueItem.Movie -> onOpenMovieDetails(item.movie, item.key)
+                        is TvHomeContinueItem.Episode -> onOpenSeriesDetails(item.episode, item.key)
                     }
                 },
             )
@@ -261,15 +341,25 @@ private fun TvHomeContinueWatchingRow(
 @Composable
 private fun TvHomeMovieRow(
     movies: List<VodMovie>,
-    onOpenMovieDetails: (VodMovie) -> Unit,
+    state: LazyListState,
+    returnFocusKey: String?,
+    returnFocusRequester: FocusRequester,
+    onOpenMovieDetails: (VodMovie, focusKey: String) -> Unit,
 ) {
-    TvHomeShelf(title = "Movies") {
+    TvHomeShelf(
+        title = "Movies",
+        state = state,
+    ) {
         items(items = movies, key = { it.movieId }) { movie ->
+            val focusKey = homeMovieFocusKey(movie.movieId)
             TvHomePosterCard(
+                focusKey = focusKey,
+                returnFocusKey = returnFocusKey,
+                returnFocusRequester = returnFocusRequester,
                 title = movie.name,
                 posterUrl = movie.posterUrl,
                 subtitle = movie.rating?.let { rating -> "Rating ${formatRating(rating)}" },
-                onClick = { onOpenMovieDetails(movie) },
+                onClick = { onOpenMovieDetails(movie, focusKey) },
             )
         }
     }
@@ -278,15 +368,25 @@ private fun TvHomeMovieRow(
 @Composable
 private fun TvHomeSeriesRow(
     series: List<SeriesSummary>,
-    onOpenSeriesDetails: (SeriesSummary) -> Unit,
+    state: LazyListState,
+    returnFocusKey: String?,
+    returnFocusRequester: FocusRequester,
+    onOpenSeriesDetails: (SeriesSummary, focusKey: String) -> Unit,
 ) {
-    TvHomeShelf(title = "Series") {
+    TvHomeShelf(
+        title = "Series",
+        state = state,
+    ) {
         items(items = series, key = { it.seriesId }) { item ->
+            val focusKey = homeSeriesFocusKey(item.seriesId)
             TvHomePosterCard(
+                focusKey = focusKey,
+                returnFocusKey = returnFocusKey,
+                returnFocusRequester = returnFocusRequester,
                 title = item.name,
                 posterUrl = item.posterUrl,
                 subtitle = item.rating?.let { rating -> "Rating ${formatRating(rating)}" },
-                onClick = { onOpenSeriesDetails(item) },
+                onClick = { onOpenSeriesDetails(item, focusKey) },
             )
         }
     }
@@ -295,6 +395,7 @@ private fun TvHomeSeriesRow(
 @Composable
 private fun TvHomeShelf(
     title: String,
+    state: LazyListState,
     content: androidx.compose.foundation.lazy.LazyListScope.() -> Unit,
 ) {
     Column(
@@ -307,6 +408,7 @@ private fun TvHomeShelf(
             fontWeight = FontWeight.SemiBold,
         )
         LazyRow(
+            state = state,
             modifier = Modifier.fillMaxWidth(),
             contentPadding = PaddingValues(end = 28.dp),
             horizontalArrangement = Arrangement.spacedBy(14.dp),
@@ -317,17 +419,26 @@ private fun TvHomeShelf(
 
 @Composable
 private fun TvHomePosterCard(
+    focusKey: String,
+    returnFocusKey: String?,
+    returnFocusRequester: FocusRequester,
     title: String,
     posterUrl: String?,
     subtitle: String? = null,
     progress: Float? = null,
     onClick: () -> Unit,
 ) {
-    var focused by remember(title, posterUrl) { mutableStateOf(false) }
+    var focused by remember(focusKey) { mutableStateOf(false) }
+    val restoreModifier = if (focusKey == returnFocusKey) {
+        Modifier.focusRequester(returnFocusRequester)
+    } else {
+        Modifier
+    }
 
     Surface(
         modifier = Modifier
             .width(HomePosterWidth)
+            .then(restoreModifier)
             .onFocusChanged { focused = it.isFocused }
             .clickable(onClick = onClick),
         shape = RoundedCornerShape(12.dp),
@@ -374,6 +485,71 @@ private fun TvHomePosterCard(
         }
     }
 }
+
+private fun resolveHomeFocusLocation(
+    focusKey: String,
+    continueWatching: List<TvHomeContinueItem>,
+    movies: List<VodMovie>,
+    series: List<SeriesSummary>,
+): TvHomeFocusLocation? {
+    var rowIndex = 1
+
+    if (continueWatching.isNotEmpty()) {
+        val exactIndex = continueWatching.indexOfFirst { item -> item.key == focusKey }
+        if (exactIndex >= 0) {
+            return TvHomeFocusLocation(
+                shelf = TvHomeShelfKind.CONTINUE_WATCHING,
+                rowIndex = rowIndex,
+                itemIndex = exactIndex,
+            )
+        }
+        if (
+            focusKey.startsWith(HOME_CONTINUE_MOVIE_PREFIX) ||
+            focusKey.startsWith(HOME_CONTINUE_EPISODE_PREFIX)
+        ) {
+            return TvHomeFocusLocation(TvHomeShelfKind.CONTINUE_WATCHING, rowIndex, 0)
+        }
+        rowIndex += 1
+    }
+
+    if (movies.isNotEmpty()) {
+        val exactIndex = movies.indexOfFirst { movie -> homeMovieFocusKey(movie.movieId) == focusKey }
+        if (exactIndex >= 0) {
+            return TvHomeFocusLocation(TvHomeShelfKind.MOVIES, rowIndex, exactIndex)
+        }
+        if (focusKey.startsWith(HOME_MOVIE_PREFIX)) {
+            return TvHomeFocusLocation(TvHomeShelfKind.MOVIES, rowIndex, 0)
+        }
+        rowIndex += 1
+    }
+
+    if (series.isNotEmpty()) {
+        val exactIndex = series.indexOfFirst { item -> homeSeriesFocusKey(item.seriesId) == focusKey }
+        if (exactIndex >= 0) {
+            return TvHomeFocusLocation(TvHomeShelfKind.SERIES, rowIndex, exactIndex)
+        }
+        if (focusKey.startsWith(HOME_SERIES_PREFIX)) {
+            return TvHomeFocusLocation(TvHomeShelfKind.SERIES, rowIndex, 0)
+        }
+    }
+
+    return when {
+        continueWatching.isNotEmpty() -> TvHomeFocusLocation(TvHomeShelfKind.CONTINUE_WATCHING, 1, 0)
+        movies.isNotEmpty() -> TvHomeFocusLocation(TvHomeShelfKind.MOVIES, 1, 0)
+        series.isNotEmpty() -> TvHomeFocusLocation(TvHomeShelfKind.SERIES, 1, 0)
+        else -> null
+    }
+}
+
+private fun homeContinueMovieFocusKey(movieId: String): String =
+    "$HOME_CONTINUE_MOVIE_PREFIX$movieId"
+
+private fun homeContinueEpisodeFocusKey(episodeId: String): String =
+    "$HOME_CONTINUE_EPISODE_PREFIX$episodeId"
+
+private fun homeMovieFocusKey(movieId: String): String = "$HOME_MOVIE_PREFIX$movieId"
+
+private fun homeSeriesFocusKey(seriesId: String): String = "$HOME_SERIES_PREFIX$seriesId"
 
 @Composable
 private fun TvHomeLoading(modifier: Modifier = Modifier) {
