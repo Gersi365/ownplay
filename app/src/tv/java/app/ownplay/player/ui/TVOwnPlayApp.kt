@@ -36,6 +36,7 @@ import app.ownplay.player.source.selection.ActivePlaylistSelection
 import app.ownplay.player.source.selection.ActivePlaylistStore
 import app.ownplay.player.source.selection.resolveActivePlaylistId
 import app.ownplay.player.ui.home.TvHomeScreen
+import app.ownplay.player.ui.movies.TvMoviesRoute
 import app.ownplay.player.ui.series.SeriesRoute
 import app.ownplay.player.ui.shell.TvDestination
 import app.ownplay.player.ui.shell.TvMediaShell
@@ -46,9 +47,9 @@ import kotlinx.coroutines.launch
 /**
  * TV-only OwnPlay presentation shell.
  *
- * Primary navigation is Home / Live TV / Movies / Series / Settings. Home is a dedicated TV-first
- * cache-backed presentation; playback, source, persistence, and Live session ownership remain in
- * their established runtimes.
+ * Durable primary-navigation structure is defined by the TV product source. This shell routes the
+ * current destination model while dedicated TV-first content surfaces are migrated independently;
+ * playback, source and persistence ownership remain in their established runtimes.
  */
 @Composable
 internal fun TVOwnPlayApp(
@@ -445,25 +446,47 @@ private fun TVOwnPlayAppContent(
                 }
             }
 
-            TvDestination.MOVIES -> VodRoute(
-                runtime = runtime,
-                sourceId = activeSourceId,
-                sourceKind = activeSummary?.sourceKind,
-                requestedMovieId = requestedVodMovieId,
-                onRequestedMovieConsumed = { requestedVodMovieId = null },
-                returnToLibraryOnDetailBack = movieDetailReturnToHome,
-                onReturnToLibrary = {
-                    if (movieDetailReturnToHome && homeReturnFocusKey != null) {
-                        homeReturnFocusGeneration += 1
-                        homeReturnFocusPending = true
-                    }
-                    openDestination(TvDestination.HOME)
-                },
-                onOpenLive = { openDestination(TvDestination.LIVE_TV) },
-                onOpenSeries = { openDestination(TvDestination.SERIES) },
-                onOpenSettings = { openDestination(TvDestination.SETTINGS) },
-                onFullscreenStateChanged = onPlaybackFullscreenChanged,
-            )
+            TvDestination.MOVIES -> {
+                if (vodFullscreen) {
+                    VodRoute(
+                        runtime = runtime,
+                        sourceId = activeSourceId,
+                        sourceKind = activeSummary?.sourceKind,
+                        requestedMovieId = requestedVodMovieId,
+                        onRequestedMovieConsumed = { requestedVodMovieId = null },
+                        returnToLibraryOnDetailBack = movieDetailReturnToHome,
+                        onReturnToLibrary = {
+                            if (movieDetailReturnToHome && homeReturnFocusKey != null) {
+                                homeReturnFocusGeneration += 1
+                                homeReturnFocusPending = true
+                            }
+                            openDestination(TvDestination.HOME)
+                        },
+                        onOpenLive = { openDestination(TvDestination.LIVE_TV) },
+                        onOpenSeries = { openDestination(TvDestination.SERIES) },
+                        onOpenSettings = { openDestination(TvDestination.SETTINGS) },
+                        onFullscreenStateChanged = onPlaybackFullscreenChanged,
+                    )
+                } else {
+                    TvMoviesRoute(
+                        runtime = runtime,
+                        sourceId = activeSourceId,
+                        sourceKind = activeSummary?.sourceKind,
+                        requestedMovieId = requestedVodMovieId,
+                        onRequestedMovieConsumed = { requestedVodMovieId = null },
+                        returnToLibraryOnDetailBack = movieDetailReturnToHome,
+                        onReturnToLibrary = {
+                            if (movieDetailReturnToHome && homeReturnFocusKey != null) {
+                                homeReturnFocusGeneration += 1
+                                homeReturnFocusPending = true
+                            }
+                            openDestination(TvDestination.HOME)
+                        },
+                        onOpenSettings = { openDestination(TvDestination.SETTINGS) },
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                }
+            }
 
             TvDestination.SERIES -> SeriesRoute(
                 runtime = runtime,
