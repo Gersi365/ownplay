@@ -15,9 +15,9 @@ class TvHomeBaselineContractTest {
 
     @Test
     fun `home uses only real baseline shelves`() {
-        assertTrue("Continue Watching must remain a first-class Home shelf.", "TvHomeShelf(title = \"Continue Watching\")" in source)
-        assertTrue("Movies must remain a direct Home shelf.", "TvHomeShelf(title = \"Movies\")" in source)
-        assertTrue("Series must remain a direct Home shelf.", "TvHomeShelf(title = \"Series\")" in source)
+        assertTrue("Continue Watching must remain a first-class Home shelf.", "title = \"Continue Watching\"" in source)
+        assertTrue("Movies must remain a direct Home shelf.", "title = \"Movies\"" in source)
+        assertTrue("Series must remain a direct Home shelf.", "title = \"Series\"" in source)
 
         assertFalse("Home must not invent a Trending shelf.", "Trending" in source)
         assertFalse("Home must not invent a Discover shelf.", "Discover" in source)
@@ -73,9 +73,18 @@ class TvHomeBaselineContractTest {
 
     @Test
     fun `home cards route to details without owning playback`() {
-        assertTrue("Movie cards must open the existing Movie detail callback.", "onOpenMovieDetails(sourceId, movie.movieId)" in source)
-        assertTrue("Series cards must open the existing Series detail callback.", "onOpenSeriesDetails(sourceId, item.seriesId)" in source)
-        assertTrue("Continue Watching episodes must open their Series detail context.", "onOpenSeriesDetails(sourceId, episode.seriesId)" in source)
+        assertTrue(
+            "Movie cards must open the existing Movie detail callback with their stable focus key.",
+            "onOpenMovieDetails(sourceId, movie.movieId, focusKey)" in source,
+        )
+        assertTrue(
+            "Series cards must open the existing Series detail callback with their stable focus key.",
+            "onOpenSeriesDetails(sourceId, item.seriesId, focusKey)" in source,
+        )
+        assertTrue(
+            "Continue Watching episodes must open their Series detail context with their stable focus key.",
+            "onOpenSeriesDetails(sourceId, episode.seriesId, focusKey)" in source,
+        )
         assertFalse("Home must not start playback directly.", "playbackController" in source)
         assertFalse("Home must not own playback interaction bridges.", "PlaybackInteractionBridge" in source)
     }
