@@ -81,32 +81,56 @@ class ShellLifecycleRegressionTest {
     }
 
     @Test
-    fun mobileAndTvBackHierarchyFallsThroughToExitOnlyAtLiveRoot() {
-        listOf(
-            "src/mobile/java/app/ownplay/player/ui/MobileOwnPlayApp.kt" to "MobileSection",
-            "src/tv/java/app/ownplay/player/ui/TVOwnPlayApp.kt" to "TVSection",
-        ).forEach { (path, sectionType) ->
-            val source = sourceText(path)
-            assertTrue("$path must install a Compose back handler", source.contains("import androidx.activity.compose.BackHandler"))
+    fun mobileBackHierarchyFallsThroughToExitOnlyAtLiveRoot() {
+        val path = "src/mobile/java/app/ownplay/player/ui/MobileOwnPlayApp.kt"
+        val source = sourceText(path)
+        assertTrue("$path must install a Compose back handler", source.contains("import androidx.activity.compose.BackHandler"))
 
-            val block = normalizedSource(
-                sourceBlockAfter(
-                    source,
-                    "BackHandler(enabled = section != $sectionType.LIVE)",
-                ),
-            )
+        val block = normalizedSource(
+            sourceBlockAfter(
+                source,
+                "BackHandler(enabled = section != MobileSection.LIVE)",
+            ),
+        )
 
-            assertTrue("$path must give detail/playback back actions priority", block.contains("PlaybackInteractionBridge.handleBack()"))
-            assertTrue(
-                "$path must return Movies/Series catalog roots to Library",
-                block.contains("$sectionType.MOVIES, $sectionType.SERIES, -> openSection($sectionType.LIBRARY)"),
-            )
-            assertTrue(
-                "$path must return Library/Settings roots to Live",
-                block.contains("$sectionType.LIBRARY, $sectionType.SETTINGS, -> openSection($sectionType.LIVE)"),
-            )
-            assertFalse("$path shell fallback must never show exit itself", block.contains("showExitConfirmation"))
-        }
+        assertTrue("$path must give detail/playback back actions priority", block.contains("PlaybackInteractionBridge.handleBack()"))
+        assertTrue(
+            "$path must return Movies/Series catalog roots to Library",
+            block.contains("MobileSection.MOVIES, MobileSection.SERIES, -> openSection(MobileSection.LIBRARY)"),
+        )
+        assertTrue(
+            "$path must return Library/Settings roots to Live",
+            block.contains("MobileSection.LIBRARY, MobileSection.SETTINGS, -> openSection(MobileSection.LIVE)"),
+        )
+        assertFalse("$path shell fallback must never show exit itself", block.contains("showExitConfirmation"))
+    }
+
+    @Test
+    fun tvBackHierarchyFallsThroughToExitOnlyAtHomeRoot() {
+        val path = "src/tv/java/app/ownplay/player/ui/TVOwnPlayApp.kt"
+        val source = sourceText(path)
+        assertTrue("$path must install a Compose back handler", source.contains("import androidx.activity.compose.BackHandler"))
+
+        val block = normalizedSource(
+            sourceBlockAfter(
+                source,
+                "BackHandler(enabled = destination != TvDestination.HOME)",
+            ),
+        )
+
+        assertTrue(
+            "$path must give Movie/Series detail and playback back actions priority",
+            block.contains("PlaybackInteractionBridge.handleBack()"),
+        )
+        assertTrue(
+            "$path must return non-Home shell destinations to Home after deeper interactions decline Back",
+            block.contains("openDestination(TvDestination.HOME)"),
+        )
+        assertFalse(
+            "$path must not restore the removed Library destination",
+            block.contains("TvDestination.LIBRARY"),
+        )
+        assertFalse("$path shell fallback must never show exit itself", block.contains("showExitConfirmation"))
     }
 
     private companion object {
