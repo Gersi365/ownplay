@@ -150,12 +150,24 @@ class TvMediaShellContractTest {
             "seriesDetailReturnToHome = true openDestination(TvDestination.SERIES)" in source,
         )
         assertTrue(
-            "Movie detail Back must map the shared return callback to Home on TV.",
-            "returnToLibraryOnDetailBack = movieDetailReturnToHome, onReturnToLibrary = { openDestination(TvDestination.HOME) }" in source,
+            "Movie detail Back must retain the shared Home return contract.",
+            "returnToLibraryOnDetailBack = movieDetailReturnToHome" in source,
         )
         assertTrue(
-            "Series detail Back must map the shared return callback to Home on TV.",
-            "returnToLibraryOnDetailBack = seriesDetailReturnToHome, onReturnToLibrary = { openDestination(TvDestination.HOME) }" in source,
+            "Movie detail Back must arm Home focus restoration only for a Home-originated detail.",
+            "if (movieDetailReturnToHome && homeReturnFocusKey != null)" in source,
+        )
+        assertTrue(
+            "Series detail Back must retain the shared Home return contract.",
+            "returnToLibraryOnDetailBack = seriesDetailReturnToHome" in source,
+        )
+        assertTrue(
+            "Series detail Back must arm Home focus restoration only for a Home-originated detail.",
+            "if (seriesDetailReturnToHome && homeReturnFocusKey != null)" in source,
+        )
+        assertTrue(
+            "Detail return must still resolve to the Home shell destination.",
+            "openDestination(TvDestination.HOME)" in source,
         )
     }
 }
