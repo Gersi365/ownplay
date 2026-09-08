@@ -52,10 +52,10 @@ import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.platform.LocalContext
 import app.ownplay.player.OwnPlayAppRuntime
 import app.ownplay.player.onDemandPresentationSession
 import app.ownplay.player.persistence.SourceKinds
@@ -447,8 +447,12 @@ private fun TvMoviesCatalogScreen(
                             },
                             onClick = { onSectionSelected(section.key) },
                             onRight = {
-                                movies.firstOrNull()?.let { movie ->
+                                val movie = movies.firstOrNull()
+                                if (movie == null) {
+                                    false
+                                } else {
                                     onMovieFocusRequested(movie.movieId)
+                                    true
                                 }
                             },
                         )
@@ -545,10 +549,14 @@ private fun TvMovieSectionRow(
     selected: Boolean,
     focusRequester: FocusRequester?,
     onClick: () -> Unit,
-    onRight: () -> Unit,
+    onRight: () -> Boolean,
 ) {
     var focused by remember(section.key) { mutableStateOf(false) }
-    val requesterModifier = focusRequester?.let(Modifier::focusRequester) ?: Modifier
+    val requesterModifier = if (focusRequester != null) {
+        Modifier.focusRequester(focusRequester)
+    } else {
+        Modifier
+    }
     val background = when {
         focused -> MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.78f)
         selected -> MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.34f)
@@ -569,7 +577,6 @@ private fun TvMovieSectionRow(
             .onPreviewKeyEvent { event ->
                 if (event.type == KeyEventType.KeyDown && event.key == Key.DirectionRight) {
                     onRight()
-                    true
                 } else {
                     false
                 }
@@ -821,7 +828,11 @@ private fun TvMovieActionRow(
     onClick: () -> Unit,
 ) {
     var focused by remember(label) { mutableStateOf(false) }
-    val requesterModifier = focusRequester?.let(Modifier::focusRequester) ?: Modifier
+    val requesterModifier = if (focusRequester != null) {
+        Modifier.focusRequester(focusRequester)
+    } else {
+        Modifier
+    }
 
     Surface(
         modifier = Modifier
