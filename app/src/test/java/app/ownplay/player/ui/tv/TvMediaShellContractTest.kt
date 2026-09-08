@@ -108,22 +108,18 @@ class TvMediaShellContractTest {
     }
 
     @Test
-    fun `movies use dedicated tv presentation while established fullscreen playback is preserved`() {
+    fun `movies and series use dedicated tv presentations while fullscreen playback is preserved`() {
         val source = normalizedSource(
             sourceText("src/tv/java/app/ownplay/player/ui/TVOwnPlayApp.kt"),
         )
 
         assertTrue(
             "Movies catalog and details must route to the dedicated TV presentation.",
-            "else { TvMoviesRoute(" in source,
+            "if (vodFullscreen) { VodRoute(" in source && "else { TvMoviesRoute(" in source,
         )
         assertTrue(
-            "Fullscreen Movies must retain the established VOD playback path.",
-            "if (vodFullscreen) { VodRoute(" in source,
-        )
-        assertTrue(
-            "Series must retain its current presentation path until its dedicated TV migration.",
-            "TvDestination.SERIES -> SeriesRoute(" in source,
+            "Series catalog and details must route to the dedicated TV presentation.",
+            "if (seriesFullscreen) { SeriesRoute(" in source && "else { TvSeriesRoute(" in source,
         )
         assertTrue(
             "Opening Movies must preserve the existing on-demand movie catalog session.",
