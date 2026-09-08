@@ -941,6 +941,7 @@ private fun TvPlaylistEditForm(
     onSaved: () -> Unit,
 ) {
     val nameFocusRequester = remember { FocusRequester() }
+    val saveFocusRequester = remember(snapshot.sourceId) { FocusRequester() }
     val scope = rememberCoroutineScope()
     var name by remember(snapshot) { mutableStateOf(snapshot.name) }
     var endpoint by remember(snapshot) { mutableStateOf(snapshot.endpoint.orEmpty()) }
@@ -948,6 +949,7 @@ private fun TvPlaylistEditForm(
     var password by remember(snapshot) { mutableStateOf("") }
     var allowCleartext by remember(snapshot) { mutableStateOf(snapshot.allowCleartext) }
     var working by remember(snapshot) { mutableStateOf(false) }
+    var restoreSaveFocus by remember(snapshot.sourceId) { mutableStateOf(false) }
     var error by remember(snapshot) { mutableStateOf<String?>(null) }
 
     BackHandler(enabled = working) { }
@@ -955,6 +957,13 @@ private fun TvPlaylistEditForm(
     LaunchedEffect(snapshot.sourceId) {
         withFrameNanos { }
         nameFocusRequester.requestFocus()
+    }
+
+    LaunchedEffect(snapshot.sourceId, working, restoreSaveFocus) {
+        if (working || !restoreSaveFocus) return@LaunchedEffect
+        withFrameNanos { }
+        saveFocusRequester.requestFocus()
+        restoreSaveFocus = false
     }
 
     TvPlaylistPageScaffold(
@@ -1050,6 +1059,7 @@ private fun TvPlaylistEditForm(
             Button(
                 enabled = !working,
                 onClick = {
+                    restoreSaveFocus = true
                     working = true
                     error = null
                     scope.launch {
@@ -1066,7 +1076,10 @@ private fun TvPlaylistEditForm(
                             runtime.renameSource(snapshot.sourceId, name)
                         }
                         when (result) {
-                            SourceMutationResult.Success -> onSaved()
+                            SourceMutationResult.Success -> {
+                                restoreSaveFocus = false
+                                onSaved()
+                            }
                             is SourceMutationResult.Failure -> {
                                 working = false
                                 error = tvPlaylistMutationFailureMessage(result.reason)
@@ -1074,7 +1087,9 @@ private fun TvPlaylistEditForm(
                         }
                     }
                 },
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .focusRequester(saveFocusRequester),
             ) {
                 Text("Save")
             }
