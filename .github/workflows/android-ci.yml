@@ -57,7 +57,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          SOURCE_SHA="7aaf0a60a6a2ad91a74f7dcc3de5f505a5254056"
+          SOURCE_SHA="308d6ed4d679a0a5d24b9b79295a3d23552bf9d7"
           git init tv-source
           cd tv-source
           git remote add origin https://github.com/Gersi365/ownplay.git
@@ -66,7 +66,7 @@ jobs:
           test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
           test -z "$(git status --porcelain)"
 
-      - name: Verify TV candidate identity
+      - name: Verify TV source candidate identity
         shell: bash
         run: |
           set -euo pipefail
@@ -74,6 +74,26 @@ jobs:
           grep -F 'applicationId = "app.ownplay.tv"' "$BUILD_FILE"
           grep -F 'versionCode = 16' "$BUILD_FILE"
           grep -F 'versionName = "1.0.13-product-polish-update"' "$BUILD_FILE"
+          test "$(git -C tv-source rev-parse HEAD)" = "308d6ed4d679a0a5d24b9b79295a3d23552bf9d7"
+
+      - name: Apply monotonic QA versionCode 17
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path("tv-source/app/build.gradle.kts")
+          text = path.read_text(encoding="utf-8")
+          old = '            versionCode = 16\n'
+          new = '            versionCode = 17\n'
+          if text.count(old) != 1:
+              raise SystemExit("Expected exactly one TV versionCode = 16 entry")
+          path.write_text(text.replace(old, new), encoding="utf-8")
+          PY
+          grep -F '            versionCode = 17' tv-source/app/build.gradle.kts
+          test "$(git -C tv-source diff --name-only)" = "app/build.gradle.kts"
+          git -C tv-source diff --check
 
       - name: Assemble TV QA APK
         shell: bash
@@ -94,7 +114,7 @@ jobs:
           BUILD_TOOLS="${ANDROID_HOME}/build-tools/36.0.0"
           EXPECTED_CERT="1bb783d452c85f3aa5c6252c811499e24a830da2f477eb92d9e237ff7817d53a"
           INPUT="tv-source/app/build/outputs/apk/tv/debug/app-tv-debug.apk"
-          OUTPUT="tv-source/app/build/outputs/apk/tv/debug/OwnPlay-TV-Settings-QA-code16.apk"
+          OUTPUT="tv-source/app/build/outputs/apk/tv/debug/OwnPlay-TV-Settings-QA-code17.apk"
 
           test -f "$INPUT"
           cp "$INPUT" "$OUTPUT"
@@ -108,7 +128,7 @@ jobs:
           BADGING="$("$BUILD_TOOLS/aapt" dump badging "$OUTPUT" | head -n 1)"
           printf '%s\n' "$BADGING"
           printf '%s\n' "$BADGING" | grep -F "name='app.ownplay.tv'"
-          printf '%s\n' "$BADGING" | grep -F "versionCode='16'"
+          printf '%s\n' "$BADGING" | grep -F "versionCode='17'"
           printf '%s\n' "$BADGING" | grep -F "versionName='1.0.13-product-polish-update'"
 
           sha256sum "$OUTPUT" | tee "$OUTPUT.sha256"
@@ -116,10 +136,10 @@ jobs:
       - name: Upload TV QA APK
         uses: actions/upload-artifact@v4
         with:
-          name: ownplay-tv-settings-qa-code16-7aaf0a6
+          name: ownplay-tv-settings-qa-code17-308d6ed
           path: |
-            tv-source/app/build/outputs/apk/tv/debug/OwnPlay-TV-Settings-QA-code16.apk
-            tv-source/app/build/outputs/apk/tv/debug/OwnPlay-TV-Settings-QA-code16.apk.sha256
+            tv-source/app/build/outputs/apk/tv/debug/OwnPlay-TV-Settings-QA-code17.apk
+            tv-source/app/build/outputs/apk/tv/debug/OwnPlay-TV-Settings-QA-code17.apk.sha256
           if-no-files-found: error
           retention-days: 7
           compression-level: 0
