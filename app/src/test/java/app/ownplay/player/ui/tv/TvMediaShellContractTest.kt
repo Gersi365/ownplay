@@ -108,17 +108,21 @@ class TvMediaShellContractTest {
     }
 
     @Test
-    fun `movies and series are direct primary destination routes`() {
+    fun `movies use dedicated tv presentation while established fullscreen playback is preserved`() {
         val source = normalizedSource(
             sourceText("src/tv/java/app/ownplay/player/ui/TVOwnPlayApp.kt"),
         )
 
         assertTrue(
-            "Movies must route directly to the existing VOD presentation.",
-            "TvDestination.MOVIES -> VodRoute(" in source,
+            "Movies catalog and details must route to the dedicated TV presentation.",
+            "else { TvMoviesRoute(" in source,
         )
         assertTrue(
-            "Series must route directly to the existing Series presentation.",
+            "Fullscreen Movies must retain the established VOD playback path.",
+            "if (vodFullscreen) { VodRoute(" in source,
+        )
+        assertTrue(
+            "Series must retain its current presentation path until its dedicated TV migration.",
             "TvDestination.SERIES -> SeriesRoute(" in source,
         )
         assertTrue(
@@ -128,10 +132,6 @@ class TvMediaShellContractTest {
         assertTrue(
             "Opening Series must preserve the existing on-demand series catalog session.",
             "runtime.onDemandPresentationSession::showSeriesCatalog" in source,
-        )
-        assertFalse(
-            "Direct Movies/Series routing must not reintroduce a Library destination.",
-            "TvDestination.LIBRARY" in source,
         )
     }
 
