@@ -455,6 +455,7 @@ private fun TvPlaylistDetailPage(
     var editWorking by remember(summary.sourceId) { mutableStateOf(false) }
     var deleteWorking by remember(summary.sourceId) { mutableStateOf(false) }
     var deleteConfirm by remember(summary.sourceId) { mutableStateOf(false) }
+    var restoreDeleteActionFocus by remember(summary.sourceId) { mutableStateOf(false) }
     var error by remember(summary.sourceId) { mutableStateOf<String?>(null) }
 
     val syncing = syncState?.stage == SourceSyncStage.LoadingChannels ||
@@ -469,6 +470,7 @@ private fun TvPlaylistDetailPage(
     val actionFocusRequesters = remember(summary.sourceId) {
         TvPlaylistDetailAction.entries.associateWith { FocusRequester() }
     }
+    val deleteCancelFocusRequester = remember(summary.sourceId) { FocusRequester() }
     var focusedAction by remember(summary.sourceId) {
         mutableStateOf(restoreAction)
     }
@@ -488,6 +490,33 @@ private fun TvPlaylistDetailPage(
         if (target != null) {
             focusedAction = target
             actionFocusRequesters.getValue(target).requestFocus()
+        }
+    }
+
+    LaunchedEffect(
+        summary.sourceId,
+        deleteConfirm,
+        deleteWorking,
+        restoreDeleteActionFocus,
+    ) {
+        when {
+            deleteConfirm && !deleteWorking -> {
+                withFrameNanos { }
+                deleteCancelFocusRequester.requestFocus()
+            }
+            !deleteConfirm && !deleteWorking && restoreDeleteActionFocus -> {
+                withFrameNanos { }
+                if (
+                    TvPlaylistDetailAction.DELETE in actions &&
+                    actionEnabled(TvPlaylistDetailAction.DELETE)
+                ) {
+                    focusedAction = TvPlaylistDetailAction.DELETE
+                    actionFocusRequesters
+                        .getValue(TvPlaylistDetailAction.DELETE)
+                        .requestFocus()
+                }
+                restoreDeleteActionFocus = false
+            }
         }
     }
 
@@ -570,7 +599,10 @@ private fun TvPlaylistDetailPage(
                                         }
                                     }
                                 }
-                                TvPlaylistDetailAction.DELETE -> deleteConfirm = true
+                                TvPlaylistDetailAction.DELETE -> {
+                                    restoreDeleteActionFocus = false
+                                    deleteConfirm = true
+                                }
                             }
                         },
                     )
@@ -626,7 +658,12 @@ private fun TvPlaylistDetailPage(
 
     if (deleteConfirm) {
         AlertDialog(
-            onDismissRequest = { if (!deleteWorking) deleteConfirm = false },
+            onDismissRequest = {
+                if (!deleteWorking) {
+                    restoreDeleteActionFocus = true
+                    deleteConfirm = false
+                }
+            },
             title = { Text("Delete playlist?") },
             text = {
                 Text(
@@ -645,11 +682,13 @@ private fun TvPlaylistDetailPage(
                         scope.launch {
                             when (val result = runtime.deleteSource(summary.sourceId)) {
                                 SourceMutationResult.Success -> {
+                                    restoreDeleteActionFocus = false
                                     deleteConfirm = false
                                     deleteWorking = false
                                     onDeleted()
                                 }
                                 is SourceMutationResult.Failure -> {
+                                    restoreDeleteActionFocus = true
                                     deleteConfirm = false
                                     deleteWorking = false
                                     error = tvPlaylistMutationFailureMessage(result.reason)
@@ -662,7 +701,11 @@ private fun TvPlaylistDetailPage(
             dismissButton = {
                 TextButton(
                     enabled = !deleteWorking,
-                    onClick = { deleteConfirm = false },
+                    onClick = {
+                        restoreDeleteActionFocus = true
+                        deleteConfirm = false
+                    },
+                    modifier = Modifier.focusRequester(deleteCancelFocusRequester),
                 ) { Text("Cancel") }
             },
         )
