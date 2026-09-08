@@ -104,4 +104,56 @@ class TvMediaShellContractTest {
         assertTrue("TvMediaShell(" in source)
         assertTrue("TvDestination.HOME -> UnifiedLibraryRoute(" in source)
     }
+
+    @Test
+    fun `movies and series are direct primary destination routes`() {
+        val source = normalizedSource(
+            sourceText("src/tv/java/app/ownplay/player/ui/TVOwnPlayApp.kt"),
+        )
+
+        assertTrue(
+            "Movies must route directly to the existing VOD presentation.",
+            "TvDestination.MOVIES -> VodRoute(" in source,
+        )
+        assertTrue(
+            "Series must route directly to the existing Series presentation.",
+            "TvDestination.SERIES -> SeriesRoute(" in source,
+        )
+        assertTrue(
+            "Opening Movies must preserve the existing on-demand movie catalog session.",
+            "runtime.onDemandPresentationSession::showMovieCatalog" in source,
+        )
+        assertTrue(
+            "Opening Series must preserve the existing on-demand series catalog session.",
+            "runtime.onDemandPresentationSession::showSeriesCatalog" in source,
+        )
+        assertFalse(
+            "Direct Movies/Series routing must not reintroduce a Library destination.",
+            "TvDestination.LIBRARY" in source,
+        )
+    }
+
+    @Test
+    fun `home originated movie and series details return to home`() {
+        val source = normalizedSource(
+            sourceText("src/tv/java/app/ownplay/player/ui/TVOwnPlayApp.kt"),
+        )
+
+        assertTrue(
+            "Home-originated Movie details must remember that their shell return target is Home.",
+            "movieDetailReturnToHome = true openDestination(TvDestination.MOVIES)" in source,
+        )
+        assertTrue(
+            "Home-originated Series details must remember that their shell return target is Home.",
+            "seriesDetailReturnToHome = true openDestination(TvDestination.SERIES)" in source,
+        )
+        assertTrue(
+            "Movie detail Back must map the shared return callback to Home on TV.",
+            "returnToLibraryOnDetailBack = movieDetailReturnToHome, onReturnToLibrary = { openDestination(TvDestination.HOME) }" in source,
+        )
+        assertTrue(
+            "Series detail Back must map the shared return callback to Home on TV.",
+            "returnToLibraryOnDetailBack = seriesDetailReturnToHome, onReturnToLibrary = { openDestination(TvDestination.HOME) }" in source,
+        )
+    }
 }
