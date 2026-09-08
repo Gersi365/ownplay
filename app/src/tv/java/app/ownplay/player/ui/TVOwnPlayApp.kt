@@ -13,6 +13,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -125,6 +126,9 @@ private fun TVOwnPlayAppContent(
                 onDemandPresentation.returnToLibraryOnDetailBack,
         )
     }
+    var homeReturnFocusKey by remember { mutableStateOf<String?>(null) }
+    var homeReturnFocusGeneration by remember { mutableIntStateOf(0) }
+    var homeReturnFocusPending by remember { mutableStateOf(false) }
     val vodFullscreen = onDemandPresentation.isMoviePlayback
     val seriesFullscreen = onDemandPresentation.isSeriesPlayback
     val activeSelection = livePresentation.selection
@@ -210,6 +214,9 @@ private fun TVOwnPlayAppContent(
             requestedSeriesId = null
             seriesDetailReturnToHome = false
         }
+        if (target == TvDestination.HOME && !homeReturnFocusPending) {
+            homeReturnFocusKey = null
+        }
         destination = target
     }
 
@@ -265,6 +272,10 @@ private fun TVOwnPlayAppContent(
             onDemandSourceId != resolvedSourceId
         ) {
             runtime.onDemandPresentationSession.clear()
+        }
+        if (resolvedSourceId == null || previousSourceId != resolvedSourceId) {
+            homeReturnFocusKey = null
+            homeReturnFocusPending = false
         }
         if (resolvedSourceId == null) {
             requestedVodMovieId = null
@@ -352,7 +363,15 @@ private fun TVOwnPlayAppContent(
             TvDestination.HOME -> TvHomeScreen(
                 sourceId = activeSourceId,
                 sourceKind = activeSummary?.sourceKind,
-                onOpenMovieDetails = { sourceId, movieId ->
+                returnFocusKey = homeReturnFocusKey.takeIf { homeReturnFocusPending },
+                returnFocusGeneration = homeReturnFocusGeneration,
+                onReturnFocusConsumed = {
+                    homeReturnFocusPending = false
+                    homeReturnFocusKey = null
+                },
+                onOpenMovieDetails = { sourceId, movieId, focusKey ->
+                    homeReturnFocusKey = focusKey
+                    homeReturnFocusPending = false
                     rememberActiveSource(sourceId)
                     runtime.onDemandPresentationSession.showMovieDetail(
                         sourceId = sourceId,
@@ -363,7 +382,9 @@ private fun TVOwnPlayAppContent(
                     movieDetailReturnToHome = true
                     openDestination(TvDestination.MOVIES)
                 },
-                onOpenSeriesDetails = { sourceId, seriesId ->
+                onOpenSeriesDetails = { sourceId, seriesId, focusKey ->
+                    homeReturnFocusKey = focusKey
+                    homeReturnFocusPending = false
                     rememberActiveSource(sourceId)
                     runtime.onDemandPresentationSession.showSeriesDetail(
                         sourceId = sourceId,
@@ -431,7 +452,13 @@ private fun TVOwnPlayAppContent(
                 requestedMovieId = requestedVodMovieId,
                 onRequestedMovieConsumed = { requestedVodMovieId = null },
                 returnToLibraryOnDetailBack = movieDetailReturnToHome,
-                onReturnToLibrary = { openDestination(TvDestination.HOME) },
+                onReturnToLibrary = {
+                    if (movieDetailReturnToHome && homeReturnFocusKey != null) {
+                        homeReturnFocusGeneration += 1
+                        homeReturnFocusPending = true
+                    }
+                    openDestination(TvDestination.HOME)
+                },
                 onOpenLive = { openDestination(TvDestination.LIVE_TV) },
                 onOpenSeries = { openDestination(TvDestination.SERIES) },
                 onOpenSettings = { openDestination(TvDestination.SETTINGS) },
@@ -445,7 +472,13 @@ private fun TVOwnPlayAppContent(
                 requestedSeriesId = requestedSeriesId,
                 onRequestedSeriesConsumed = { requestedSeriesId = null },
                 returnToLibraryOnDetailBack = seriesDetailReturnToHome,
-                onReturnToLibrary = { openDestination(TvDestination.HOME) },
+                onReturnToLibrary = {
+                    if (seriesDetailReturnToHome && homeReturnFocusKey != null) {
+                        homeReturnFocusGeneration += 1
+                        homeReturnFocusPending = true
+                    }
+                    openDestination(TvDestination.HOME)
+                },
                 onOpenSettings = { openDestination(TvDestination.SETTINGS) },
                 onFullscreenStateChanged = onPlaybackFullscreenChanged,
             )
