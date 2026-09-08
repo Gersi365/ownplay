@@ -73,8 +73,8 @@ import app.ownplay.player.vod.VodMovieDetails
 import kotlinx.coroutines.launch
 
 private const val MOVIES_CONTINUE_KEY = "movies:continue"
-private const val MOVIES_ALL_KEY = "movies:all"
 private const val MOVIES_FAVORITES_KEY = "movies:favorites"
+private const val MOVIES_CATALOG_KEY = "movies:catalog"
 private const val MOVIES_CATEGORY_PREFIX = "movies:category:"
 private const val MOVIE_GRID_COLUMNS = 5
 
@@ -135,7 +135,7 @@ internal fun TvMoviesRoute(
     val catalog by featureRuntime.observeCatalog(sourceId).collectAsState(initial = VodCatalog())
     var loading by remember(sourceId) { mutableStateOf(false) }
     var refreshError by remember(sourceId) { mutableStateOf<SourceError?>(null) }
-    var selectedSectionKey by remember(sourceId) { mutableStateOf(MOVIES_ALL_KEY) }
+    var selectedSectionKey by remember(sourceId) { mutableStateOf<String?>(null) }
     var selectedMovie by remember(sourceId) { mutableStateOf<VodMovie?>(null) }
     var details by remember(sourceId) { mutableStateOf<VodMovieDetails?>(null) }
     var detailsLoading by remember(sourceId) { mutableStateOf(false) }
@@ -243,7 +243,6 @@ internal fun TvMoviesRoute(
             if (catalog.continueWatching.isNotEmpty()) {
                 add(TvMovieSection(MOVIES_CONTINUE_KEY, "Continue Watching"))
             }
-            add(TvMovieSection(MOVIES_ALL_KEY, "All Movies"))
             if (catalog.movies.any(VodMovie::isFavorite)) {
                 add(TvMovieSection(MOVIES_FAVORITES_KEY, "Favorites"))
             }
@@ -255,22 +254,26 @@ internal fun TvMoviesRoute(
                     ),
                 )
             }
+            if (catalog.categories.isEmpty() && catalog.movies.isNotEmpty()) {
+                add(TvMovieSection(MOVIES_CATALOG_KEY, "Movies"))
+            }
         }
     }
 
     LaunchedEffect(sections, selectedSectionKey) {
-        if (sections.none { it.key == selectedSectionKey }) {
-            selectedSectionKey = sections.firstOrNull()?.key ?: MOVIES_ALL_KEY
+        if (selectedSectionKey == null || sections.none { it.key == selectedSectionKey }) {
+            selectedSectionKey = sections.firstOrNull()?.key
         }
     }
 
     val visibleMovies = remember(catalog, selectedSectionKey) {
         when (selectedSectionKey) {
             MOVIES_CONTINUE_KEY -> catalog.continueWatching
-            MOVIES_ALL_KEY -> catalog.movies
             MOVIES_FAVORITES_KEY -> catalog.movies.filter(VodMovie::isFavorite)
+            MOVIES_CATALOG_KEY -> catalog.movies
+            null -> emptyList()
             else -> {
-                val categoryKey = selectedSectionKey.removePrefix(MOVIES_CATEGORY_PREFIX)
+                val categoryKey = selectedSectionKey.orEmpty().removePrefix(MOVIES_CATEGORY_PREFIX)
                 catalog.movies.filter { movie -> movie.categoryKey == categoryKey }
             }
         }
@@ -291,7 +294,7 @@ internal fun TvMoviesRoute(
             selectedSectionKey = target.categoryKey
                 ?.let { MOVIES_CATEGORY_PREFIX + it }
                 ?.takeIf { key -> sections.any { section -> section.key == key } }
-                ?: MOVIES_ALL_KEY
+                ?: sections.firstOrNull { it.key != MOVIES_CONTINUE_KEY }?.key
             selectedMovie = target
         }
         if (requestedMovieId == targetId) {
@@ -372,7 +375,7 @@ internal fun TvMoviesRoute(
 @Composable
 private fun TvMoviesCatalogScreen(
     sections: List<TvMovieSection>,
-    selectedSectionKey: String,
+    selectedSectionKey: String?,
     movies: List<VodMovie>,
     totalMovieCount: Int,
     loading: Boolean,
