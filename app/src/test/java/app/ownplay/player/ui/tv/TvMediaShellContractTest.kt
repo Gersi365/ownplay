@@ -94,15 +94,17 @@ class TvMediaShellContractTest {
     }
 
     @Test
-    fun `old horizontal primary navigation is no longer active`() {
+    fun `old horizontal primary navigation and temporary home bridge are no longer active`() {
         val source = normalizedSource(
             sourceText("src/tv/java/app/ownplay/player/ui/TVOwnPlayApp.kt"),
         )
 
         assertFalse("TVPrimaryNavigationBar(" in source)
         assertFalse("TVSection.LIBRARY" in source)
+        assertFalse("UnifiedLibraryRoute(" in source)
+        assertFalse("homeBridgeFullscreen" in source)
         assertTrue("TvMediaShell(" in source)
-        assertTrue("TvDestination.HOME -> UnifiedLibraryRoute(" in source)
+        assertTrue("TvDestination.HOME -> TvHomeScreen(" in source)
     }
 
     @Test
