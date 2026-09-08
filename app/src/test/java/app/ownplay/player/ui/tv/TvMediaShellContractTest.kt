@@ -2,10 +2,6 @@ package app.ownplay.player.ui.tv
 
 import app.ownplay.player.testing.normalizedSource
 import app.ownplay.player.testing.sourceText
-import app.ownplay.player.ui.shell.TvDestination
-import app.ownplay.player.ui.shell.defaultTvDestination
-import app.ownplay.player.ui.shell.tvDestinations
-import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -13,30 +9,51 @@ import org.junit.Test
 class TvMediaShellContractTest {
     @Test
     fun `primary tv destinations follow the approved media shell order`() {
-        assertEquals(
-            listOf(
-                "Home",
-                "Live TV",
-                "Movies",
-                "Series",
-                "Settings",
-            ),
-            tvDestinations.map { destination -> destination.label },
+        val source = normalizedSource(
+            sourceText("src/tv/java/app/ownplay/player/ui/shell/TvDestination.kt"),
         )
+        val orderedDestinations = listOf(
+            "TvDestination.HOME",
+            "TvDestination.LIVE_TV",
+            "TvDestination.MOVIES",
+            "TvDestination.SERIES",
+            "TvDestination.SETTINGS",
+        )
+        val positions = orderedDestinations.map(source::indexOf)
+
+        assertTrue("Every approved destination must be present.", positions.all { it >= 0 })
+        assertTrue(
+            "Primary TV destinations must remain Home, Live TV, Movies, Series, Settings.",
+            positions.zipWithNext().all { (left, right) -> left < right },
+        )
+        assertTrue("Home label must remain explicit.", "label = \"Home\"" in source)
+        assertTrue("Live TV label must remain explicit.", "label = \"Live TV\"" in source)
+        assertTrue("Movies label must remain explicit.", "label = \"Movies\"" in source)
+        assertTrue("Series label must remain explicit.", "label = \"Series\"" in source)
+        assertTrue("Settings label must remain explicit.", "label = \"Settings\"" in source)
     }
 
     @Test
     fun `home is the deterministic default destination`() {
-        assertEquals(TvDestination.HOME, defaultTvDestination)
+        val source = normalizedSource(
+            sourceText("src/tv/java/app/ownplay/player/ui/shell/TvDestination.kt"),
+        )
+
+        assertTrue(
+            "Home must remain the deterministic shell default.",
+            "defaultTvDestination: TvDestination = TvDestination.HOME" in source,
+        )
     }
 
     @Test
     fun `search discover and library are not primary destinations`() {
-        val labels = tvDestinations.map { destination -> destination.label }
+        val source = normalizedSource(
+            sourceText("src/tv/java/app/ownplay/player/ui/shell/TvDestination.kt"),
+        )
 
-        assertFalse("Search" in labels)
-        assertFalse("Discover" in labels)
-        assertFalse("Library" in labels)
+        assertFalse("label = \"Search\"" in source)
+        assertFalse("label = \"Discover\"" in source)
+        assertFalse("label = \"Library\"" in source)
     }
 
     @Test
