@@ -15,7 +15,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
@@ -328,7 +328,7 @@ internal fun TvHomeScreen(
                         returnFocusRequester = returnFocusRequester,
                         contentEntryKey = contentEntryKey,
                         contentEntryFocusRequester = contentEntryFocusRequester,
-                        onContentEntryLeft = shellFocusBoundary.requestRailFocus,
+                        onLeftBoundary = shellFocusBoundary.requestRailFocus,
                         onOpenMovieDetails = { movie, focusKey ->
                             onOpenMovieDetails(sourceId, movie.movieId, focusKey)
                         },
@@ -348,7 +348,7 @@ internal fun TvHomeScreen(
                         returnFocusRequester = returnFocusRequester,
                         contentEntryKey = contentEntryKey,
                         contentEntryFocusRequester = contentEntryFocusRequester,
-                        onContentEntryLeft = shellFocusBoundary.requestRailFocus,
+                        onLeftBoundary = shellFocusBoundary.requestRailFocus,
                         onOpenMovieDetails = { movie, focusKey ->
                             onOpenMovieDetails(sourceId, movie.movieId, focusKey)
                         },
@@ -365,7 +365,7 @@ internal fun TvHomeScreen(
                         returnFocusRequester = returnFocusRequester,
                         contentEntryKey = contentEntryKey,
                         contentEntryFocusRequester = contentEntryFocusRequester,
-                        onContentEntryLeft = shellFocusBoundary.requestRailFocus,
+                        onLeftBoundary = shellFocusBoundary.requestRailFocus,
                         onOpenSeriesDetails = { item, focusKey ->
                             onOpenSeriesDetails(sourceId, item.seriesId, focusKey)
                         },
@@ -384,7 +384,7 @@ private fun TvHomeContinueWatchingRow(
     returnFocusRequester: FocusRequester,
     contentEntryKey: String?,
     contentEntryFocusRequester: FocusRequester,
-    onContentEntryLeft: () -> Unit,
+    onLeftBoundary: () -> Unit,
     onOpenMovieDetails: (VodMovie, focusKey: String) -> Unit,
     onOpenSeriesDetails: (SeriesEpisode, focusKey: String) -> Unit,
 ) {
@@ -392,14 +392,15 @@ private fun TvHomeContinueWatchingRow(
         title = "Continue Watching",
         state = state,
     ) {
-        items(items = items, key = { it.key }) { item ->
+        itemsIndexed(items = items, key = { _, item -> item.key }) { index, item ->
             TvHomePosterCard(
                 focusKey = item.key,
                 returnFocusKey = returnFocusKey,
                 returnFocusRequester = returnFocusRequester,
                 isContentEntry = item.key == contentEntryKey,
+                isLeftBoundary = index == 0,
                 contentEntryFocusRequester = contentEntryFocusRequester,
-                onContentEntryLeft = onContentEntryLeft,
+                onLeftBoundary = onLeftBoundary,
                 title = item.title,
                 posterUrl = item.posterUrl,
                 subtitle = when (item) {
@@ -427,22 +428,23 @@ private fun TvHomeMovieRow(
     returnFocusRequester: FocusRequester,
     contentEntryKey: String?,
     contentEntryFocusRequester: FocusRequester,
-    onContentEntryLeft: () -> Unit,
+    onLeftBoundary: () -> Unit,
     onOpenMovieDetails: (VodMovie, focusKey: String) -> Unit,
 ) {
     TvHomeShelf(
         title = "Movies",
         state = state,
     ) {
-        items(items = movies, key = { it.movieId }) { movie ->
+        itemsIndexed(items = movies, key = { _, movie -> movie.movieId }) { index, movie ->
             val focusKey = homeMovieFocusKey(movie.movieId)
             TvHomePosterCard(
                 focusKey = focusKey,
                 returnFocusKey = returnFocusKey,
                 returnFocusRequester = returnFocusRequester,
                 isContentEntry = focusKey == contentEntryKey,
+                isLeftBoundary = index == 0,
                 contentEntryFocusRequester = contentEntryFocusRequester,
-                onContentEntryLeft = onContentEntryLeft,
+                onLeftBoundary = onLeftBoundary,
                 title = movie.name,
                 posterUrl = movie.posterUrl,
                 subtitle = movie.rating?.let { rating -> "Rating ${formatRating(rating)}" },
@@ -460,22 +462,23 @@ private fun TvHomeSeriesRow(
     returnFocusRequester: FocusRequester,
     contentEntryKey: String?,
     contentEntryFocusRequester: FocusRequester,
-    onContentEntryLeft: () -> Unit,
+    onLeftBoundary: () -> Unit,
     onOpenSeriesDetails: (SeriesSummary, focusKey: String) -> Unit,
 ) {
     TvHomeShelf(
         title = "Series",
         state = state,
     ) {
-        items(items = series, key = { it.seriesId }) { item ->
+        itemsIndexed(items = series, key = { _, item -> item.seriesId }) { index, item ->
             val focusKey = homeSeriesFocusKey(item.seriesId)
             TvHomePosterCard(
                 focusKey = focusKey,
                 returnFocusKey = returnFocusKey,
                 returnFocusRequester = returnFocusRequester,
                 isContentEntry = focusKey == contentEntryKey,
+                isLeftBoundary = index == 0,
                 contentEntryFocusRequester = contentEntryFocusRequester,
-                onContentEntryLeft = onContentEntryLeft,
+                onLeftBoundary = onLeftBoundary,
                 title = item.name,
                 posterUrl = item.posterUrl,
                 subtitle = item.rating?.let { rating -> "Rating ${formatRating(rating)}" },
@@ -663,8 +666,9 @@ private fun TvHomePosterCard(
     returnFocusKey: String?,
     returnFocusRequester: FocusRequester,
     isContentEntry: Boolean,
+    isLeftBoundary: Boolean,
     contentEntryFocusRequester: FocusRequester,
-    onContentEntryLeft: () -> Unit,
+    onLeftBoundary: () -> Unit,
     title: String,
     posterUrl: String?,
     subtitle: String? = null,
@@ -678,16 +682,19 @@ private fun TvHomePosterCard(
         Modifier
     }
     val entryModifier = if (isContentEntry) {
+        Modifier.focusRequester(contentEntryFocusRequester)
+    } else {
         Modifier
-            .focusRequester(contentEntryFocusRequester)
-            .onPreviewKeyEvent { event ->
-                if (event.type == KeyEventType.KeyDown && event.key == Key.DirectionLeft) {
-                    onContentEntryLeft()
-                    true
-                } else {
-                    false
-                }
+    }
+    val leftBoundaryModifier = if (isLeftBoundary) {
+        Modifier.onPreviewKeyEvent { event ->
+            if (event.type == KeyEventType.KeyDown && event.key == Key.DirectionLeft) {
+                onLeftBoundary()
+                true
+            } else {
+                false
             }
+        }
     } else {
         Modifier
     }
@@ -697,6 +704,7 @@ private fun TvHomePosterCard(
             .width(HomePosterWidth)
             .then(restoreModifier)
             .then(entryModifier)
+            .then(leftBoundaryModifier)
             .onFocusChanged { focused = it.isFocused }
             .clickable(onClick = onClick),
         shape = RoundedCornerShape(12.dp),
