@@ -18,16 +18,10 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
-import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -44,7 +38,6 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import app.ownplay.player.OwnPlayAppRuntime
@@ -657,56 +650,42 @@ private fun TvPlaylistDetailPage(
     }
 
     if (deleteConfirm) {
-        AlertDialog(
-            onDismissRequest = {
+        TvPlaylistConfirmDialog(
+            title = "Delete playlist?",
+            body = if (summary.enabled) {
+                "${summary.name} and its imported catalog will be removed from OwnPlay."
+            } else {
+                "${summary.name} will be removed and any pending import will be cancelled."
+            },
+            confirmLabel = "Delete",
+            working = deleteWorking,
+            cancelFocusRequester = deleteCancelFocusRequester,
+            onCancel = {
                 if (!deleteWorking) {
                     restoreDeleteActionFocus = true
                     deleteConfirm = false
                 }
             },
-            title = { Text("Delete playlist?") },
-            text = {
-                Text(
-                    if (summary.enabled) {
-                        "${summary.name} and its imported catalog will be removed from OwnPlay."
-                    } else {
-                        "${summary.name} will be removed and any pending import will be cancelled."
-                    },
-                )
-            },
-            confirmButton = {
-                Button(
-                    enabled = !deleteWorking,
-                    onClick = {
-                        deleteWorking = true
-                        scope.launch {
-                            when (val result = runtime.deleteSource(summary.sourceId)) {
-                                SourceMutationResult.Success -> {
-                                    restoreDeleteActionFocus = false
-                                    deleteConfirm = false
-                                    deleteWorking = false
-                                    onDeleted()
-                                }
-                                is SourceMutationResult.Failure -> {
-                                    restoreDeleteActionFocus = true
-                                    deleteConfirm = false
-                                    deleteWorking = false
-                                    error = tvPlaylistMutationFailureMessage(result.reason)
-                                }
+            onConfirm = {
+                if (!deleteWorking) {
+                    deleteWorking = true
+                    scope.launch {
+                        when (val result = runtime.deleteSource(summary.sourceId)) {
+                            SourceMutationResult.Success -> {
+                                restoreDeleteActionFocus = false
+                                deleteConfirm = false
+                                deleteWorking = false
+                                onDeleted()
+                            }
+                            is SourceMutationResult.Failure -> {
+                                restoreDeleteActionFocus = true
+                                deleteConfirm = false
+                                deleteWorking = false
+                                error = tvPlaylistMutationFailureMessage(result.reason)
                             }
                         }
-                    },
-                ) { Text("Delete") }
-            },
-            dismissButton = {
-                TextButton(
-                    enabled = !deleteWorking,
-                    onClick = {
-                        restoreDeleteActionFocus = true
-                        deleteConfirm = false
-                    },
-                    modifier = Modifier.focusRequester(deleteCancelFocusRequester),
-                ) { Text("Cancel") }
+                    }
+                }
             },
         )
     }
@@ -746,6 +725,46 @@ private fun TvPlaylistAddForm(
         }
     }
 
+    fun submit() {
+        val validationError = validateTvPlaylistInput(
+            mode = mode,
+            name = name,
+            endpoint = endpoint,
+            username = username,
+            password = password,
+            allowCleartext = allowCleartext,
+            localUri = localUri,
+        )
+        if (validationError != null) {
+            error = validationError
+            return
+        }
+
+        when (mode) {
+            TvPlaylistAddMode.XTREAM -> SourceSubmissionCoordinator.submitXtream(
+                runtime = runtime,
+                name = name,
+                serverUrl = endpoint,
+                username = username,
+                password = password,
+                allowCleartext = allowCleartext,
+            )
+            TvPlaylistAddMode.REMOTE_M3U -> SourceSubmissionCoordinator.submitRemoteM3u(
+                runtime = runtime,
+                name = name,
+                playlistUrl = endpoint,
+                allowCleartext = allowCleartext,
+            )
+            TvPlaylistAddMode.LOCAL_M3U -> SourceSubmissionCoordinator.submitLocalM3u(
+                runtime = runtime,
+                name = name,
+                documentUri = checkNotNull(localUri),
+                allowCleartext = allowCleartext,
+            )
+        }
+        onCompleted()
+    }
+
     LaunchedEffect(mode) {
         withFrameNanos { }
         nameFocusRequester.requestFocus()
@@ -763,50 +782,37 @@ private fun TvPlaylistAddForm(
                 .verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
-            OutlinedTextField(
+            TvPlaylistTextField(
                 value = name,
                 onValueChange = { name = it },
-                label = { Text("Playlist name") },
-                singleLine = true,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .focusRequester(nameFocusRequester),
+                label = "Playlist name",
+                focusRequester = nameFocusRequester,
             )
 
             when (mode) {
                 TvPlaylistAddMode.XTREAM -> {
-                    OutlinedTextField(
+                    TvPlaylistTextField(
                         value = endpoint,
                         onValueChange = { endpoint = it },
-                        label = { Text("Server URL") },
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth(),
+                        label = "Server URL",
                     )
-                    OutlinedTextField(
+                    TvPlaylistTextField(
                         value = username,
                         onValueChange = { username = it },
-                        label = { Text("Username") },
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth(),
+                        label = "Username",
                     )
-                    OutlinedTextField(
+                    TvPlaylistTextField(
                         value = password,
                         onValueChange = { password = it },
-                        label = { Text("Password") },
-                        visualTransformation = PasswordVisualTransformation(),
-                        singleLine = true,
+                        label = "Password",
+                        obscureText = true,
+                    )
+                    TvPlaylistToggleRow(
+                        label = "Allow HTTP for this provider",
+                        checked = allowCleartext,
+                        onCheckedChange = { allowCleartext = it },
                         modifier = Modifier.fillMaxWidth(),
                     )
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(10.dp),
-                    ) {
-                        Checkbox(
-                            checked = allowCleartext,
-                            onCheckedChange = { allowCleartext = it },
-                        )
-                        Text("Allow HTTP for this provider")
-                    }
                     if (allowCleartext) {
                         Text(
                             text = "HTTP does not encrypt Xtream credentials or stream traffic.",
@@ -816,23 +822,17 @@ private fun TvPlaylistAddForm(
                 }
 
                 TvPlaylistAddMode.REMOTE_M3U -> {
-                    OutlinedTextField(
+                    TvPlaylistTextField(
                         value = endpoint,
                         onValueChange = { endpoint = it },
-                        label = { Text("Playlist URL") },
-                        singleLine = true,
+                        label = "Playlist URL",
+                    )
+                    TvPlaylistToggleRow(
+                        label = "Allow HTTP for this playlist and EPG",
+                        checked = allowCleartext,
+                        onCheckedChange = { allowCleartext = it },
                         modifier = Modifier.fillMaxWidth(),
                     )
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(10.dp),
-                    ) {
-                        Checkbox(
-                            checked = allowCleartext,
-                            onCheckedChange = { allowCleartext = it },
-                        )
-                        Text("Allow HTTP for this playlist and EPG")
-                    }
                     if (allowCleartext) {
                         Text(
                             text = "HTTP does not encrypt playlist, EPG, or stream traffic.",
@@ -842,22 +842,17 @@ private fun TvPlaylistAddForm(
                 }
 
                 TvPlaylistAddMode.LOCAL_M3U -> {
-                    OutlinedButton(
+                    TvPlaylistFormAction(
+                        label = if (localUri == null) "Choose file" else "File selected",
                         onClick = { picker.launch(arrayOf("*/*")) },
                         modifier = Modifier.fillMaxWidth(),
-                    ) {
-                        Text(if (localUri == null) "Choose file" else "File selected")
-                    }
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(10.dp),
-                    ) {
-                        Checkbox(
-                            checked = allowCleartext,
-                            onCheckedChange = { allowCleartext = it },
-                        )
-                        Text("Allow HTTP EPG links from this file")
-                    }
+                    )
+                    TvPlaylistToggleRow(
+                        label = "Allow HTTP EPG links from this file",
+                        checked = allowCleartext,
+                        onCheckedChange = { allowCleartext = it },
+                        modifier = Modifier.fillMaxWidth(),
+                    )
                     if (allowCleartext) {
                         Text(
                             text = "HTTP EPG traffic is not encrypted.",
@@ -879,56 +874,16 @@ private fun TvPlaylistAddForm(
                     style = MaterialTheme.typography.bodyMedium,
                 )
             }
-            Button(
-                onClick = {
-                    val validationError = validateTvPlaylistInput(
-                        mode = mode,
-                        name = name,
-                        endpoint = endpoint,
-                        username = username,
-                        password = password,
-                        allowCleartext = allowCleartext,
-                        localUri = localUri,
-                    )
-                    if (validationError != null) {
-                        error = validationError
-                        return@Button
-                    }
-
-                    when (mode) {
-                        TvPlaylistAddMode.XTREAM -> SourceSubmissionCoordinator.submitXtream(
-                            runtime = runtime,
-                            name = name,
-                            serverUrl = endpoint,
-                            username = username,
-                            password = password,
-                            allowCleartext = allowCleartext,
-                        )
-                        TvPlaylistAddMode.REMOTE_M3U -> SourceSubmissionCoordinator.submitRemoteM3u(
-                            runtime = runtime,
-                            name = name,
-                            playlistUrl = endpoint,
-                            allowCleartext = allowCleartext,
-                        )
-                        TvPlaylistAddMode.LOCAL_M3U -> SourceSubmissionCoordinator.submitLocalM3u(
-                            runtime = runtime,
-                            name = name,
-                            documentUri = checkNotNull(localUri),
-                            allowCleartext = allowCleartext,
-                        )
-                    }
-                    onCompleted()
-                },
+            TvPlaylistFormAction(
+                label = "Add",
+                onClick = ::submit,
                 modifier = Modifier.fillMaxWidth(),
-            ) {
-                Text("Add")
-            }
-            OutlinedButton(
+            )
+            TvPlaylistFormAction(
+                label = "Cancel",
                 onClick = onBack,
                 modifier = Modifier.fillMaxWidth(),
-            ) {
-                Text("Cancel")
-            }
+            )
         }
     }
 }
@@ -979,59 +934,46 @@ private fun TvPlaylistEditForm(
                 .verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
-            OutlinedTextField(
+            TvPlaylistTextField(
                 value = name,
                 onValueChange = { name = it },
-                label = { Text("Playlist name") },
-                singleLine = true,
+                label = "Playlist name",
                 enabled = !working,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .focusRequester(nameFocusRequester),
+                focusRequester = nameFocusRequester,
             )
 
             if (snapshot.sourceKind == SourceKinds.XTREAM) {
-                OutlinedTextField(
+                TvPlaylistTextField(
                     value = endpoint,
                     onValueChange = { endpoint = it },
-                    label = { Text("Server URL") },
-                    singleLine = true,
+                    label = "Server URL",
                     enabled = !working,
-                    modifier = Modifier.fillMaxWidth(),
                 )
                 Text(
                     text = "Leave both credential fields empty to keep the saved username and password.",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-                OutlinedTextField(
+                TvPlaylistTextField(
                     value = username,
                     onValueChange = { username = it },
-                    label = { Text("New username") },
-                    singleLine = true,
+                    label = "New username",
                     enabled = !working,
-                    modifier = Modifier.fillMaxWidth(),
                 )
-                OutlinedTextField(
+                TvPlaylistTextField(
                     value = password,
                     onValueChange = { password = it },
-                    label = { Text("New password") },
-                    visualTransformation = PasswordVisualTransformation(),
-                    singleLine = true,
+                    label = "New password",
+                    enabled = !working,
+                    obscureText = true,
+                )
+                TvPlaylistToggleRow(
+                    label = "Allow HTTP for this provider",
+                    checked = allowCleartext,
+                    onCheckedChange = { allowCleartext = it },
                     enabled = !working,
                     modifier = Modifier.fillMaxWidth(),
                 )
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
-                ) {
-                    Checkbox(
-                        checked = allowCleartext,
-                        onCheckedChange = { allowCleartext = it },
-                        enabled = !working,
-                    )
-                    Text("Allow HTTP for this provider")
-                }
             } else {
                 Text(
                     text = "This source type currently supports renaming only.",
@@ -1056,7 +998,8 @@ private fun TvPlaylistEditForm(
                     Text("Saving and refreshing…")
                 }
             }
-            Button(
+            TvPlaylistFormAction(
+                label = "Save",
                 enabled = !working,
                 onClick = {
                     restoreSaveFocus = true
@@ -1090,16 +1033,13 @@ private fun TvPlaylistEditForm(
                 modifier = Modifier
                     .fillMaxWidth()
                     .focusRequester(saveFocusRequester),
-            ) {
-                Text("Save")
-            }
-            OutlinedButton(
+            )
+            TvPlaylistFormAction(
+                label = "Cancel",
                 enabled = !working,
                 onClick = onBack,
                 modifier = Modifier.fillMaxWidth(),
-            ) {
-                Text("Cancel")
-            }
+            )
         }
     }
 }
@@ -1124,12 +1064,12 @@ private fun TvPlaylistPageScaffold(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(14.dp),
         ) {
-            TextButton(
+            TvPlaylistFormAction(
+                label = "‹ Back",
                 onClick = onBack,
                 enabled = backEnabled,
-            ) {
-                Text("‹ Back")
-            }
+                modifier = Modifier.width(128.dp),
+            )
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text(
                     text = title,

@@ -21,14 +21,14 @@ class TvPlaylistEditWorkingFocusContractTest {
             "onBack = onBack, backEnabled = !working" in source,
         )
         assertTrue(
-            "The shared playlist scaffold must expose an enabled gate for its Back button.",
+            "The shared playlist scaffold must preserve an enabled gate for its TV Back action.",
             "backEnabled: Boolean = true" in source &&
-                "TextButton( onClick = onBack, enabled = backEnabled" in source,
+                "TvPlaylistFormAction( label = \"‹ Back\", onClick = onBack, enabled = backEnabled" in source,
         )
         assertTrue(
             "Save and Cancel must remain disabled while the mutation is working.",
-            "Button( enabled = !working" in source &&
-                "OutlinedButton( enabled = !working, onClick = onBack" in source,
+            "TvPlaylistFormAction( label = \"Save\", enabled = !working" in source &&
+                "TvPlaylistFormAction( label = \"Cancel\", enabled = !working, onClick = onBack" in source,
         )
     }
 
@@ -57,7 +57,7 @@ class TvPlaylistEditWorkingFocusContractTest {
                 "withFrameNanos { } saveFocusRequester.requestFocus() restoreSaveFocus = false" in source,
         )
         assertTrue(
-            "The Save button must attach the dedicated focus requester.",
+            "The Save action must attach the dedicated focus requester.",
             "focusRequester(saveFocusRequester)" in source,
         )
     }

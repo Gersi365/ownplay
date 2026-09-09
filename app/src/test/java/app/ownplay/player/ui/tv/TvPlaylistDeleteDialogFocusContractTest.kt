@@ -11,6 +11,9 @@ class TvPlaylistDeleteDialogFocusContractTest {
         val screen = normalizedSource(
             sourceText("src/main/java/app/ownplay/player/ui/tv/TvPlaylistSettingsScreen.kt"),
         )
+        val controls = normalizedSource(
+            sourceText("src/main/java/app/ownplay/player/ui/tv/TvPlaylistFormComponents.kt"),
+        )
 
         assertTrue(
             "The playlist delete confirmation must own an explicit Cancel focus requester.",
@@ -20,7 +23,11 @@ class TvPlaylistDeleteDialogFocusContractTest {
             "Opening the delete confirmation must focus safe Cancel after composition.",
             "deleteConfirm && !deleteWorking" in screen &&
                 "deleteCancelFocusRequester.requestFocus()" in screen &&
-                ".focusRequester(deleteCancelFocusRequester)" in screen,
+                "cancelFocusRequester = deleteCancelFocusRequester" in screen,
+        )
+        assertTrue(
+            "The TV confirmation surface must attach the supplied Cancel requester to the Cancel action.",
+            "focusRequester(cancelFocusRequester)" in controls,
         )
     }
 
