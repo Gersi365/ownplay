@@ -1,0 +1,186 @@
+name: Android Stable Release
+
+on:
+  push:
+    branches:
+      - release/stable-1.0.0-2026-09-01
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ownplay-stable-1.0.0
+  cancel-in-progress: true
+
+jobs:
+  build-stable:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Gradle 9.5.0
+        uses: gradle/actions/setup-gradle@v6
+        with:
+          gradle-version: "9.5.0"
+
+      - name: Restore approved signing identity
+        id: signing-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ~/.android/debug.keystore
+          key: ownplay-pr16-debug-keystore-v1
+          fail-on-cache-miss: true
+
+      - name: Verify signing identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          KEYSTORE="$HOME/.android/debug.keystore"
+          test -f "$KEYSTORE"
+          CERT_OUTPUT="$(keytool -list -v -keystore "$KEYSTORE" -storepass android -alias androiddebugkey)"
+          printf '%s\n' "$CERT_OUTPUT"
+          printf '%s\n' "$CERT_OUTPUT" | grep -F "SHA256: 1B:B7:83:D4:52:C8:5F:3A:A5:C6:25:2C:81:14:99:E2:4A:83:0D:A2:F4:77:EB:92:D9:E2:37:FF:78:17:D5:3A"
+
+      - name: Verify Android SDK 36
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -d "${ANDROID_HOME}/platforms/android-36"
+          test -x "${ANDROID_HOME}/build-tools/36.0.0/zipalign"
+          test -x "${ANDROID_HOME}/build-tools/36.0.0/apksigner"
+
+      - name: Validate and assemble stable Mobile and TV
+        shell: bash
+        run: |
+          set -euo pipefail
+          gradle \
+            :app:kspMobileReleaseKotlin \
+            :app:kspTvReleaseKotlin \
+            :app:testMobileDebugUnitTest \
+            :app:testTvDebugUnitTest \
+            :app:lintMobileRelease \
+            :app:lintTvRelease \
+            :app:compileMobileDebugAndroidTestKotlin \
+            :app:compileTvDebugAndroidTestKotlin \
+            :app:assembleMobileRelease \
+            :app:assembleTvRelease \
+            --stacktrace
+
+      - name: Verify Room schema is committed
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json
+          import pathlib
+          import subprocess
+          import sys
+
+          root = pathlib.Path("app/schemas")
+          problems = []
+          generated = sorted(root.rglob("*.json"))
+          for path in generated:
+              relative = path.as_posix()
+              try:
+                  committed_text = subprocess.check_output(
+                      ["git", "show", f"HEAD:{relative}"],
+                      text=True,
+                      stderr=subprocess.DEVNULL,
+                  )
+              except subprocess.CalledProcessError:
+                  problems.append(f"Uncommitted Room schema: {relative}")
+                  continue
+              try:
+                  generated_json = json.loads(path.read_text(encoding="utf-8"))
+                  committed_json = json.loads(committed_text)
+              except json.JSONDecodeError as error:
+                  problems.append(f"Invalid Room schema JSON in {relative}: {error}")
+                  continue
+              if generated_json != committed_json:
+                  problems.append(f"Room schema drift: {relative}")
+
+          committed_paths = subprocess.check_output(
+              ["git", "ls-tree", "-r", "--name-only", "HEAD", "app/schemas"],
+              text=True,
+          ).splitlines()
+          for relative in committed_paths:
+              if relative.endswith(".json") and not pathlib.Path(relative).is_file():
+                  problems.append(f"Committed Room schema missing from build output: {relative}")
+
+          if problems:
+              print("\n".join(problems))
+              sys.exit(1)
+          PY
+
+      - name: Align, sign, and verify stable APKs
+        shell: bash
+        run: |
+          set -euo pipefail
+          KEYSTORE="$HOME/.android/debug.keystore"
+          BUILD_TOOLS="${ANDROID_HOME}/build-tools/36.0.0"
+
+          sign_one() {
+            local input="$1"
+            local aligned="$2"
+            local output="$3"
+            test -f "$input"
+            "$BUILD_TOOLS/zipalign" -f -p 4 "$input" "$aligned"
+            "$BUILD_TOOLS/apksigner" sign \
+              --ks "$KEYSTORE" \
+              --ks-key-alias androiddebugkey \
+              --ks-pass pass:android \
+              --key-pass pass:android \
+              --out "$output" \
+              "$aligned"
+            "$BUILD_TOOLS/apksigner" verify --verbose --print-certs "$output"
+            sha256sum "$output" | tee "$output.sha256"
+          }
+
+          sign_one \
+            app/build/outputs/apk/mobile/release/app-mobile-release-unsigned.apk \
+            app/build/outputs/apk/mobile/release/app-mobile-release-aligned.apk \
+            app/build/outputs/apk/mobile/release/OwnPlay-Mobile-Stable-1.0.0.apk
+
+          sign_one \
+            app/build/outputs/apk/tv/release/app-tv-release-unsigned.apk \
+            app/build/outputs/apk/tv/release/app-tv-release-aligned.apk \
+            app/build/outputs/apk/tv/release/OwnPlay-TV-Stable-1.0.0.apk
+
+      - name: Upload Mobile stable APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: ownplay-mobile-stable-1.0.0
+          path: |
+            app/build/outputs/apk/mobile/release/OwnPlay-Mobile-Stable-1.0.0.apk
+            app/build/outputs/apk/mobile/release/OwnPlay-Mobile-Stable-1.0.0.apk.sha256
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0
+
+      - name: Upload TV stable APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: ownplay-tv-stable-1.0.0
+          path: |
+            app/build/outputs/apk/tv/release/OwnPlay-TV-Stable-1.0.0.apk
+            app/build/outputs/apk/tv/release/OwnPlay-TV-Stable-1.0.0.apk.sha256
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0
+
+      - name: Upload Room schema
+        uses: actions/upload-artifact@v4
+        with:
+          name: ownplay-room-schema-stable-1.0.0
+          path: app/schemas
+          if-no-files-found: error
+          retention-days: 7

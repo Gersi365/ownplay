@@ -20,6 +20,8 @@ import app.ownplay.player.source.UrlValidationResult
 import app.ownplay.player.source.credential.CredentialStore
 import app.ownplay.player.source.credential.XtreamCredentials
 import app.ownplay.player.source.m3u.AndroidLocalM3uLoader
+import app.ownplay.player.source.m3u.M3uSourceLocator
+import app.ownplay.player.source.m3u.M3uSourceLocatorCodec
 import app.ownplay.player.source.m3u.RemoteM3uLoader
 import app.ownplay.player.source.xtream.XtreamClient
 import app.ownplay.player.source.xtream.XtreamSourceLocator
@@ -65,14 +67,35 @@ class SourceOnboardingService(
     suspend fun addRemoteM3u(
         name: String,
         playlistUrl: String,
+        allowCleartext: Boolean = false,
     ): SourceOnboardingResult {
         val normalizedName = name.trim()
         if (normalizedName.isEmpty()) {
             return SourceOnboardingResult.Failure(SourceOnboardingFailure.InvalidName)
         }
 
-        val normalizedUrl = playlistUrl.trim()
-        val playlist = when (val loaded = remoteM3uLoader.load(normalizedUrl)) {
+        val validatedUrl = when (val validation = SourceValidator.validateRemotePlaylistUrl(playlistUrl)) {
+            is UrlValidationResult.Invalid -> {
+                return SourceOnboardingResult.Failure(
+                    SourceOnboardingFailure.SourceFailure(validation.error),
+                )
+            }
+            is UrlValidationResult.Valid -> validation
+        }
+        if (validatedUrl.usesCleartext && !allowCleartext) {
+            return SourceOnboardingResult.Failure(
+                SourceOnboardingFailure.SourceFailure(
+                    SourceError.CleartextTransportRequiresOptIn,
+                ),
+            )
+        }
+
+        val playlist = when (
+            val loaded = remoteM3uLoader.load(
+                playlistUrl = validatedUrl.normalizedUrl,
+                allowCleartext = allowCleartext,
+            )
+        ) {
             is SourceResult.Success -> loaded.value
             is SourceResult.Failure -> {
                 return SourceOnboardingResult.Failure(
@@ -84,7 +107,13 @@ class SourceOnboardingService(
         return persistSourceAndCatalog(
             name = normalizedName,
             sourceKind = SourceKinds.REMOTE_M3U,
-            locatorValue = normalizedUrl,
+            locatorValue = M3uSourceLocatorCodec.encode(
+                M3uSourceLocator(
+                    endpoint = validatedUrl.normalizedUrl,
+                    allowCleartext = allowCleartext,
+                    epgUrls = playlist.epgUrls,
+                ),
+            ),
             credentialRef = null,
             catalog = InitialLiveCatalogFactory.fromM3u(playlist),
         )
@@ -93,6 +122,7 @@ class SourceOnboardingService(
     suspend fun addLocalM3u(
         name: String,
         documentUri: String,
+        allowCleartext: Boolean = false,
     ): SourceOnboardingResult {
         val normalizedName = name.trim()
         if (normalizedName.isEmpty()) {
@@ -112,9 +142,133 @@ class SourceOnboardingService(
         return persistSourceAndCatalog(
             name = normalizedName,
             sourceKind = SourceKinds.LOCAL_M3U,
-            locatorValue = normalizedDocumentUri,
+            locatorValue = M3uSourceLocatorCodec.encode(
+                M3uSourceLocator(
+                    endpoint = normalizedDocumentUri,
+                    allowCleartext = allowCleartext,
+                    epgUrls = playlist.epgUrls,
+                ),
+            ),
             credentialRef = null,
             catalog = InitialLiveCatalogFactory.fromM3u(playlist),
+        )
+    }
+
+    suspend fun refreshM3u(sourceId: String): SourceOnboardingResult {
+        val source = try {
+            database.playlistSourceDao().getById(sourceId)
+        } catch (error: Exception) {
+            error.rethrowCancellation()
+            null
+        } ?: return SourceOnboardingResult.Failure(SourceOnboardingFailure.PersistenceFailure)
+
+        if (
+            source.sourceKind != SourceKinds.REMOTE_M3U &&
+            source.sourceKind != SourceKinds.LOCAL_M3U
+        ) {
+            return SourceOnboardingResult.Failure(SourceOnboardingFailure.CatalogImportFailure)
+        }
+
+        val storedLocatorValue = try {
+            sensitiveValueStore.get(SensitiveValueRef(source.locatorRef))
+        } catch (error: Exception) {
+            error.rethrowCancellation()
+            null
+        } ?: return SourceOnboardingResult.Failure(SourceOnboardingFailure.SecureStorageFailure)
+
+        val storedLocator = M3uSourceLocatorCodec.parseOrLegacy(storedLocatorValue)
+        val effectiveLocator = if (source.sourceKind == SourceKinds.REMOTE_M3U) {
+            when (val validation = SourceValidator.validateRemotePlaylistUrl(storedLocator.endpoint)) {
+                is UrlValidationResult.Invalid -> {
+                    return SourceOnboardingResult.Failure(
+                        SourceOnboardingFailure.SourceFailure(validation.error),
+                    )
+                }
+                is UrlValidationResult.Valid -> {
+                    if (validation.usesCleartext && !storedLocator.allowCleartext) {
+                        return SourceOnboardingResult.Failure(
+                            SourceOnboardingFailure.SourceFailure(
+                                SourceError.CleartextTransportRequiresOptIn,
+                            ),
+                        )
+                    }
+                    storedLocator.copy(endpoint = validation.normalizedUrl)
+                }
+            }
+        } else {
+            storedLocator
+        }
+
+        val playlist = when (source.sourceKind) {
+            SourceKinds.REMOTE_M3U -> when (
+                val loaded = remoteM3uLoader.load(
+                    playlistUrl = effectiveLocator.endpoint,
+                    allowCleartext = effectiveLocator.allowCleartext,
+                )
+            ) {
+                is SourceResult.Success -> loaded.value
+                is SourceResult.Failure -> {
+                    return SourceOnboardingResult.Failure(
+                        SourceOnboardingFailure.SourceFailure(loaded.error),
+                    )
+                }
+            }
+            SourceKinds.LOCAL_M3U -> when (val loaded = localM3uLoader.load(effectiveLocator.endpoint)) {
+                is SourceResult.Success -> loaded.value
+                is SourceResult.Failure -> {
+                    return SourceOnboardingResult.Failure(
+                        SourceOnboardingFailure.SourceFailure(loaded.error),
+                    )
+                }
+            }
+            else -> error("M3U source kind changed while refreshing")
+        }
+
+        val generation = System.currentTimeMillis()
+        val ingestResult = try {
+            catalogIngestor.ingest(
+                sourceId = sourceId,
+                generation = generation,
+                catalog = InitialLiveCatalogFactory.fromM3u(playlist),
+            )
+        } catch (error: Exception) {
+            error.rethrowCancellation()
+            return SourceOnboardingResult.Failure(SourceOnboardingFailure.CatalogImportFailure)
+        }
+        if (ingestResult !is InitialLiveCatalogIngestResult.Success) {
+            return SourceOnboardingResult.Failure(SourceOnboardingFailure.CatalogImportFailure)
+        }
+
+        val refreshedLocatorValue = M3uSourceLocatorCodec.encode(
+            effectiveLocator.copy(epgUrls = playlist.epgUrls),
+        )
+        if (refreshedLocatorValue != storedLocatorValue) {
+            val newLocatorRef = try {
+                sensitiveValueStore.put(refreshedLocatorValue)
+            } catch (error: Exception) {
+                error.rethrowCancellation()
+                return SourceOnboardingResult.Failure(SourceOnboardingFailure.SecureStorageFailure)
+            }
+            try {
+                database.withTransaction {
+                    database.playlistSourceDao().upsert(
+                        source.copy(
+                            locatorRef = newLocatorRef.value,
+                            updatedAtEpochMillis = System.currentTimeMillis(),
+                        ),
+                    )
+                }
+            } catch (error: Exception) {
+                runCatching { sensitiveValueStore.delete(newLocatorRef) }
+                error.rethrowCancellation()
+                return SourceOnboardingResult.Failure(SourceOnboardingFailure.PersistenceFailure)
+            }
+            runCatching { sensitiveValueStore.delete(SensitiveValueRef(source.locatorRef)) }
+        }
+
+        return SourceOnboardingResult.Success(
+            sourceId = sourceId,
+            channelCount = ingestResult.channelCount,
         )
     }
 

@@ -1,5 +1,6 @@
 package app.ownplay.player.ui
 
+import app.ownplay.player.BuildConfig
 import app.ownplay.player.liveRotationFullscreenEnabled
 import app.ownplay.player.playback.LiveActivityBackgroundAction
 import app.ownplay.player.playback.LiveActivityLifecyclePolicy
@@ -108,7 +109,13 @@ class LiveSurfaceOwnershipRegressionHarnessTest {
     }
 
     @Test
-    fun `movie and series stay on existing media3 pip and lifecycle behavior`() {
+    fun `movie and series keep media3 pip transfer with target specific lifecycle behavior`() {
+        val expectedBackgroundAction = if (BuildConfig.IS_TV_BUILD) {
+            LiveActivityBackgroundAction.NONE
+        } else {
+            LiveActivityBackgroundAction.SUSPEND_AND_RETAIN_SURFACE
+        }
+
         listOf(
             PlaybackMediaKind.MOVIE,
             PlaybackMediaKind.SERIES_EPISODE,
@@ -127,7 +134,7 @@ class LiveSurfaceOwnershipRegressionHarnessTest {
             assertEquals(listOf("bind"), events)
 
             assertEquals(
-                LiveActivityBackgroundAction.NONE,
+                expectedBackgroundAction,
                 LiveActivityLifecyclePolicy.backgroundAction(
                     state = PlaybackState.Playing(request(mediaKind, "source", "content")),
                     inPictureInPicture = false,

@@ -115,6 +115,45 @@ class LiveBrowseProjectorTest {
     }
 
     @Test
+    fun transientFilteringMatchesDirectProjectionSemantics() {
+        val customized = records.map { record ->
+            if (record.channelId == "one") record.copy(localDisplayName = "My News") else record
+        }
+        val queries = listOf(
+            LiveBrowseQuery(searchTerm = "provider one"),
+            LiveBrowseQuery(searchTerm = "NEWS", categoryKey = "news"),
+            LiveBrowseQuery(
+                searchTerm = "news",
+                categoryKey = "news",
+                includeHidden = true,
+                order = LiveBrowseOrder.MY_ORDER,
+            ),
+            LiveBrowseQuery(
+                searchTerm = "sports",
+                favoritesOnly = true,
+                order = LiveBrowseOrder.A_TO_Z,
+            ),
+        )
+
+        queries.forEach { query ->
+            val navigation = LiveBrowseProjector.project(
+                records = customized,
+                query = query.copy(searchTerm = "", categoryKey = null),
+            )
+            val transient = LiveBrowseProjector.filterTransient(
+                navigationChannels = navigation,
+                query = query,
+            )
+            val direct = LiveBrowseProjector.project(
+                records = customized,
+                query = query,
+            )
+
+            assertEquals(direct, transient)
+        }
+    }
+
+    @Test
     fun searchAndCategoryFilteringDoNotMutatePersistentOrdering() {
         val query = LiveBrowseQuery(
             searchTerm = "news",

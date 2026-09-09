@@ -1,9 +1,11 @@
 package app.ownplay.player.live.ingest
 
 import app.ownplay.player.persistence.reconcile.ProviderIdentity
+import app.ownplay.player.source.m3u.M3uEntry
 import app.ownplay.player.source.m3u.M3uPlaylist
 import app.ownplay.player.source.xtream.XtreamCategory
 import app.ownplay.player.source.xtream.XtreamLiveStream
+import java.net.URI
 import java.nio.charset.StandardCharsets
 import java.security.MessageDigest
 import java.util.Locale
@@ -73,7 +75,10 @@ object InitialLiveCatalogFactory {
 
     fun fromM3u(playlist: M3uPlaylist): IncomingLiveCatalog {
         val categories = linkedMapOf<String, IncomingLiveCategory>()
-        val channels = playlist.entries.mapIndexed { index, entry ->
+        val baseProviderKeys = playlist.entries.map(ProviderIdentity::m3u)
+        val providerKeyCounts = baseProviderKeys.groupingBy { key -> key }.eachCount()
+        val emittedProviderKeys = hashSetOf<String>()
+        val channels = playlist.entries.mapIndexedNotNull { index, entry ->
             val categoryName = entry.groupTitle?.trim()?.takeIf(String::isNotEmpty)
             val categoryKey = categoryName?.let(::m3uCategoryKey)
             if (categoryName != null && categoryKey != null && categoryKey !in categories) {
@@ -85,8 +90,17 @@ object InitialLiveCatalogFactory {
                 )
             }
 
+            val baseProviderKey = baseProviderKeys[index]
+            val providerKey = if ((providerKeyCounts[baseProviderKey] ?: 0) > 1) {
+                "$baseProviderKey:${m3uCollisionKey(entry)}"
+            } else {
+                baseProviderKey
+            }
+            // Exact duplicate rows add no playable value and would otherwise still collide.
+            if (!emittedProviderKeys.add(providerKey)) return@mapIndexedNotNull null
+
             IncomingLiveChannel(
-                providerKey = ProviderIdentity.m3u(entry),
+                providerKey = providerKey,
                 providerStreamId = null,
                 providerCategoryKey = categoryKey,
                 providerName = entry.displayName,
@@ -105,11 +119,39 @@ object InitialLiveCatalogFactory {
     }
 
     private fun m3uCategoryKey(name: String): String {
-        val normalized = name.trim()
-            .lowercase(Locale.ROOT)
-            .replace(Regex("\\s+"), " ")
+        val normalized = normalizeM3uIdentity(name)
         return "m3u:group:${sha256(normalized)}"
     }
+
+    private fun m3uCollisionKey(entry: M3uEntry): String {
+        val uri = runCatching { URI(entry.streamUrl.trim()) }.getOrNull()
+        val locatorSignature = if (uri == null) {
+            entry.streamUrl.trim()
+        } else {
+            buildString {
+                append(uri.scheme?.lowercase(Locale.ROOT).orEmpty())
+                append("://")
+                append(uri.host?.lowercase(Locale.ROOT).orEmpty())
+                if (uri.port >= 0) {
+                    append(':')
+                    append(uri.port)
+                }
+                append(uri.path.orEmpty())
+            }
+        }
+        return sha256(
+            listOf(
+                normalizeM3uIdentity(entry.displayName),
+                normalizeM3uIdentity(entry.groupTitle.orEmpty()),
+                locatorSignature,
+            ).joinToString(separator = "|"),
+        )
+    }
+
+    private fun normalizeM3uIdentity(value: String): String =
+        value.trim()
+            .lowercase(Locale.ROOT)
+            .replace(Regex("\\s+"), " ")
 
     private fun sha256(value: String): String =
         MessageDigest.getInstance("SHA-256")

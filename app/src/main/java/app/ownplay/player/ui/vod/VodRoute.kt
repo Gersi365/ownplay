@@ -85,12 +85,14 @@ import androidx.media3.common.util.UnstableApi
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
 import app.ownplay.player.OwnPlayAppRuntime
+import app.ownplay.player.onDemandPresentationSession
 import app.ownplay.player.download.OfflineDownload
 import app.ownplay.player.download.OfflineDownloadFeatureRuntime
 import app.ownplay.player.download.OfflineDownloadSpec
 import app.ownplay.player.persistence.SourceKinds
 import app.ownplay.player.persistence.download.DownloadMediaKinds
 import app.ownplay.player.persistence.download.DownloadStates
+import app.ownplay.player.playback.OnDemandContentKind
 import app.ownplay.player.playback.PlaybackInteractionBridge
 import app.ownplay.player.playback.PlaybackMediaKind
 import app.ownplay.player.playback.PlaybackPresentationPolicy
@@ -141,6 +143,7 @@ internal fun VodRoute(
         OfflineDownloadFeatureRuntime(context.applicationContext)
     }
     val scope = rememberCoroutineScope()
+    val onDemandPresentation by runtime.onDemandPresentationSession.state.collectAsState()
 
     DisposableEffect(featureRuntime) {
         onDispose { featureRuntime.close() }
@@ -178,34 +181,42 @@ internal fun VodRoute(
     var details by remember(sourceId) { mutableStateOf<VodMovieDetails?>(null) }
     var detailsLoading by remember(sourceId) { mutableStateOf(false) }
     var detailsError by remember(sourceId) { mutableStateOf<SourceError?>(null) }
-    var playingMovie by remember(sourceId) { mutableStateOf<VodMovie?>(null) }
     var restoreDetailFocusAfterPlayback by remember(sourceId) { mutableStateOf(false) }
     var restoreCategoryFocusAfterDetailBack by remember(sourceId) { mutableStateOf(false) }
     val detailsBackOwner = remember(sourceId) { Any() }
+    val sessionMoviePlayback = onDemandPresentation.moviePlayback.takeIf {
+        onDemandPresentation.kind == OnDemandContentKind.MOVIE &&
+            onDemandPresentation.sourceId == sourceId
+    }
 
     fun closeMovieDetails() {
         restoreDetailFocusAfterPlayback = false
         if (returnToLibraryOnDetailBack) {
+            runtime.onDemandPresentationSession.clear()
             onReturnToLibrary()
             return
         }
         restoreCategoryFocusAfterDetailBack = true
         selectedMovie = null
+        runtime.onDemandPresentationSession.showMovieCatalog(sourceId)
     }
 
     DisposableEffect(
         selectedMovie?.movieId,
-        playingMovie?.movieId,
+        sessionMoviePlayback?.movieId,
         detailsBackOwner,
         returnToLibraryOnDetailBack,
     ) {
-        if (playingMovie == null) {
+        if (sessionMoviePlayback == null) {
             when {
                 selectedMovie != null -> {
                     PlaybackInteractionBridge.registerBackAction(detailsBackOwner, ::closeMovieDetails)
                 }
                 returnToLibraryOnDetailBack -> {
-                    PlaybackInteractionBridge.registerBackAction(detailsBackOwner, onReturnToLibrary)
+                    PlaybackInteractionBridge.registerBackAction(detailsBackOwner) {
+                        runtime.onDemandPresentationSession.clear()
+                        onReturnToLibrary()
+                    }
                 }
             }
         }
@@ -333,7 +344,37 @@ internal fun VodRoute(
         restoreDetailFocusAfterPlayback = false
         restoreCategoryFocusAfterDetailBack = false
         selectedMovie = target
+        runtime.onDemandPresentationSession.showMovieDetail(
+            sourceId = sourceId,
+            movieId = target.movieId,
+            returnToLibraryOnDetailBack = returnToLibraryOnDetailBack,
+        )
         onRequestedMovieConsumed()
+    }
+
+    LaunchedEffect(
+        sourceId,
+        onDemandPresentation.kind,
+        onDemandPresentation.sourceId,
+        onDemandPresentation.itemId,
+        catalog.movies,
+        catalog.categories,
+    ) {
+        if (
+            onDemandPresentation.kind != OnDemandContentKind.MOVIE ||
+            onDemandPresentation.sourceId != sourceId
+        ) {
+            return@LaunchedEffect
+        }
+        val targetMovieId = onDemandPresentation.itemId ?: return@LaunchedEffect
+        val target = catalog.movies.firstOrNull { movie -> movie.movieId == targetMovieId }
+            ?: return@LaunchedEffect
+        if (selectedMovie?.movieId != target.movieId) {
+            selectedMovie = target
+            selectedCategoryKey = target.categoryKey
+                ?.takeIf { key -> catalog.categories.any { it.providerCategoryKey == key } }
+                ?: selectedCategoryKey
+        }
     }
 
     LaunchedEffect(selectedMovie?.movieId) {
@@ -388,7 +429,7 @@ internal fun VodRoute(
             .toList()
     }
 
-    val movieToPlay = playingMovie
+    val movieToPlay = sessionMoviePlayback
     if (movieToPlay != null) {
         VodPlaybackScreen(
             runtime = runtime,
@@ -396,7 +437,7 @@ internal fun VodRoute(
             sourceId = sourceId,
             movie = movieToPlay,
             onExit = {
-                playingMovie = null
+                runtime.onDemandPresentationSession.returnFromMoviePlayback()
                 restoreDetailFocusAfterPlayback = true
             },
             onFullscreenStateChanged = onFullscreenStateChanged,
@@ -428,7 +469,11 @@ internal fun VodRoute(
                             mediaKind = PlaybackMediaKind.MOVIE,
                         ),
                     )
-                    playingMovie = target
+                    runtime.onDemandPresentationSession.showMoviePlayback(
+                        sourceId = sourceId,
+                        movie = target,
+                        returnToLibraryOnDetailBack = returnToLibraryOnDetailBack,
+                    )
                 },
                 modifier = Modifier.fillMaxSize(),
             )
@@ -469,6 +514,11 @@ internal fun VodRoute(
                     restoreDetailFocusAfterPlayback = false
                     restoreCategoryFocusAfterDetailBack = false
                     selectedMovie = it
+                    runtime.onDemandPresentationSession.showMovieDetail(
+                        sourceId = sourceId,
+                        movieId = it.movieId,
+                        returnToLibraryOnDetailBack = returnToLibraryOnDetailBack,
+                    )
                 },
                 showCategoryStrip = false,
                 selectedCategoryKey = selectedCategoryKey,
@@ -498,7 +548,11 @@ internal fun VodRoute(
                                 mediaKind = PlaybackMediaKind.MOVIE,
                             ),
                         )
-                        playingMovie = target
+                        runtime.onDemandPresentationSession.showMoviePlayback(
+                            sourceId = sourceId,
+                            movie = target,
+                            returnToLibraryOnDetailBack = returnToLibraryOnDetailBack,
+                        )
                     },
                     modifier = Modifier
                         .weight(0.37f)
@@ -523,6 +577,11 @@ internal fun VodRoute(
                 restoreDetailFocusAfterPlayback = false
                 restoreCategoryFocusAfterDetailBack = false
                 selectedMovie = it
+                runtime.onDemandPresentationSession.showMovieDetail(
+                    sourceId = sourceId,
+                    movieId = it.movieId,
+                    returnToLibraryOnDetailBack = returnToLibraryOnDetailBack,
+                )
             },
             showCategoryStrip = true,
             selectedCategoryKey = selectedCategoryKey,
@@ -961,6 +1020,12 @@ private fun VodPlaybackScreen(
             withTimeoutOrNull(VOD_EXIT_PROGRESS_SAVE_TIMEOUT_MILLIS) {
                 featureRuntime.saveProgress(sourceId, movie.movieId, lastPosition, lastDuration)
             }
+            runtime.playbackController.stopIfCurrent(
+                sourceId = sourceId,
+                channelId = movie.movieId,
+                mediaKind = PlaybackMediaKind.MOVIE,
+            )
+            onFullscreenStateChanged(false)
             onExit()
         }
     }
@@ -969,12 +1034,6 @@ private fun VodPlaybackScreen(
         onFullscreenStateChanged(true)
         PlaybackInteractionBridge.registerBackAction(backOwner, ::exitPlayback)
         onDispose {
-            onFullscreenStateChanged(false)
-            runtime.playbackController.stopIfCurrent(
-                sourceId = sourceId,
-                channelId = movie.movieId,
-                mediaKind = PlaybackMediaKind.MOVIE,
-            )
             PlaybackInteractionBridge.clearBackAction(backOwner)
         }
     }
@@ -990,10 +1049,16 @@ private fun VodPlaybackScreen(
             stateRequest?.mediaKind == PlaybackMediaKind.MOVIE &&
             stateRequest.channelId == movie.movieId
         ) {
-            movie.positionMs?.takeIf { it > 5_000L && !movie.progressCompleted }?.let { position ->
-                playerView?.player?.seekTo(position)
-                currentPosition = position
+            val player = playerView?.player ?: return@LaunchedEffect
+            val resumePosition = movie.positionMs
+                ?.takeIf { it > 5_000L && !movie.progressCompleted }
+            if (resumePosition != null && player.currentPosition < 1_000L) {
+                player.seekTo(resumePosition)
+                currentPosition = resumePosition
+            } else {
+                currentPosition = player.currentPosition.coerceAtLeast(0L)
             }
+            duration = player.duration.takeIf { it > 0L } ?: duration
             resumeApplied = true
         }
     }

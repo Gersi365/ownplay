@@ -40,10 +40,12 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import app.ownplay.player.OwnPlayAppRuntime
@@ -56,9 +58,13 @@ import app.ownplay.player.playback.LivePlaybackTransitionTarget
 import app.ownplay.player.playback.PlaybackInteractionBridge
 import app.ownplay.player.source.SourceSyncStage
 import app.ownplay.player.source.SourceSyncState
+import app.ownplay.player.source.selection.ActivePlaylistSelection
+import app.ownplay.player.source.selection.ActivePlaylistStore
+import app.ownplay.player.source.selection.resolveActivePlaylistId
 import app.ownplay.player.ui.library.UnifiedLibraryRoute
 import app.ownplay.player.ui.series.SeriesRoute
 import app.ownplay.player.ui.vod.VodRoute
+import kotlinx.coroutines.launch
 
 private const val SECTION_MOTION_MILLIS = 200
 
@@ -79,6 +85,14 @@ fun OwnPlayApp(
     onLivePreviewActiveChanged: (Boolean) -> Unit = {},
 ) {
     val configuration = LocalConfiguration.current
+    val context = LocalContext.current
+    val activePlaylistStore = remember(context) {
+        ActivePlaylistStore(context.applicationContext)
+    }
+    val activePlaylistSelection by activePlaylistStore.observe().collectAsState(
+        initial = ActivePlaylistSelection.Loading,
+    )
+    val activePlaylistScope = rememberCoroutineScope()
     val summaries by runtime.observeSourceSummaries().collectAsState(initial = emptyList())
     val syncState by runtime.sourceSyncState.collectAsState()
     val playbackState by runtime.playbackController.state.collectAsState()
@@ -98,6 +112,13 @@ fun OwnPlayApp(
     var seriesFullscreen by remember { mutableStateOf(false) }
     var libraryFullscreen by remember { mutableStateOf(false) }
     val liveTransitionGate = remember { LivePlaybackTransitionGate() }
+
+    fun rememberActiveSource(sourceId: String?) {
+        activeSourceId = sourceId
+        activePlaylistScope.launch {
+            activePlaylistStore.set(sourceId)
+        }
+    }
 
     fun openLiveFullscreen(
         selection: LivePlaybackSelection,
@@ -126,7 +147,7 @@ fun OwnPlayApp(
             },
             stopPlayback = runtime.playbackController::stop,
             switchPresentation = {
-                activeSourceId = selection.request.sourceId
+                rememberActiveSource(selection.request.sourceId)
                 section = OwnPlaySection.LIVE
                 activeSelection = selection
                 fullscreenSelection = null
@@ -146,22 +167,34 @@ fun OwnPlayApp(
         )
     }
 
-    LaunchedEffect(summaries) {
-        val ids = summaries.map { it.sourceId }.toSet()
-        activeSourceId = when {
-            activeSourceId in ids -> activeSourceId
-            summaries.isNotEmpty() -> summaries.first().sourceId
-            else -> null
+    LaunchedEffect(summaries, activePlaylistSelection) {
+        val persistedSelection = activePlaylistSelection as? ActivePlaylistSelection.Ready
+            ?: return@LaunchedEffect
+        val enabledSourceIds = summaries
+            .asSequence()
+            .filter { summary -> summary.enabled }
+            .map { summary -> summary.sourceId }
+            .toList()
+        val resolvedSourceId = resolveActivePlaylistId(
+            persistedSourceId = persistedSelection.sourceId,
+            currentSourceId = activeSourceId,
+            enabledSourceIds = enabledSourceIds,
+        )
+        activeSourceId = resolvedSourceId
+
+        if (enabledSourceIds.isNotEmpty() && persistedSelection.sourceId != resolvedSourceId) {
+            activePlaylistStore.set(resolvedSourceId)
         }
+
         val selectionSourceId = activeSelection?.request?.sourceId
-        if (selectionSourceId != null && selectionSourceId !in ids) {
+        if (selectionSourceId != null && selectionSourceId != resolvedSourceId) {
             stopLivePlaybackSurface {
                 activeSelection = null
                 fullscreenSelection = null
                 fullscreenEntryReason = null
             }
         }
-        if (activeSourceId !in ids) {
+        if (resolvedSourceId == null) {
             requestedVodMovieId = null
             requestedSeriesId = null
             movieDetailReturnToLibrary = false
@@ -298,7 +331,7 @@ fun OwnPlayApp(
         return
     }
 
-    val activeSummary = summaries.firstOrNull { it.sourceId == activeSourceId }
+    val activeSummary = summaries.firstOrNull { it.sourceId == activeSourceId && it.enabled }
 
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
@@ -486,13 +519,13 @@ fun OwnPlayApp(
                         sourceId = activeSourceId,
                         sourceKind = activeSummary?.sourceKind,
                         onOpenMovieDetails = { sourceId, movieId ->
-                            activeSourceId = sourceId
+                            rememberActiveSource(sourceId)
                             requestedVodMovieId = movieId
                             movieDetailReturnToLibrary = true
                             openContentSection(OwnPlaySection.MOVIES)
                         },
                         onOpenSeriesDetails = { sourceId, seriesId ->
-                            activeSourceId = sourceId
+                            rememberActiveSource(sourceId)
                             requestedSeriesId = seriesId
                             seriesDetailReturnToLibrary = true
                             openContentSection(OwnPlaySection.SERIES)
@@ -524,7 +557,7 @@ fun OwnPlayApp(
                                     }
                                 }
                             }
-                            activeSourceId = sourceId
+                            rememberActiveSource(sourceId)
                             section = OwnPlaySection.LIVE
                         },
                         onStopPlayback = {

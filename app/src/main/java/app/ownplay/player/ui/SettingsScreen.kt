@@ -45,6 +45,7 @@ internal fun SettingsScreen(
     val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
     val isTelevision =
         configuration.uiMode and Configuration.UI_MODE_TYPE_MASK == Configuration.UI_MODE_TYPE_TELEVISION
+    val readySummaries = summaries.filter { summary -> summary.enabled }
 
     val context = LocalContext.current
     val deviceProfileStore = remember(context) {
@@ -94,7 +95,7 @@ internal fun SettingsScreen(
         SettingsDestination.LIVE_MANAGEMENT -> {
             LiveManagementScreen(
                 runtime = runtime,
-                summaries = summaries,
+                summaries = readySummaries,
                 onBack = { destination = SettingsDestination.CONTENT },
                 focusBackOnEntry = true,
             )

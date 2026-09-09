@@ -22,4 +22,22 @@ class LibraryContinueWatchingTest {
         assertEquals(0f, progressFraction(positionMs = -5_000L, durationMs = 60_000L)!!, 0.0001f)
         assertEquals(1f, progressFraction(positionMs = 75_000L, durationMs = 60_000L)!!, 0.0001f)
     }
+
+    @Test
+    fun `resume label includes rounded watched percent`() {
+        assertEquals(
+            "Resume · 25%",
+            continueWatchingResumeLabel(positionMs = 15_000L, durationMs = 60_000L),
+        )
+        assertEquals(
+            "Resume · 33%",
+            continueWatchingResumeLabel(positionMs = 20_000L, durationMs = 60_000L),
+        )
+    }
+
+    @Test
+    fun `resume label falls back when duration is unavailable`() {
+        assertEquals("Resume", continueWatchingResumeLabel(positionMs = 15_000L, durationMs = null))
+        assertEquals("Resume", continueWatchingResumeLabel(positionMs = 15_000L, durationMs = 0L))
+    }
 }

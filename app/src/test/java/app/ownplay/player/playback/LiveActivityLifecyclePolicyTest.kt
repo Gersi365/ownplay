@@ -1,5 +1,6 @@
 package app.ownplay.player.playback
 
+import app.ownplay.player.BuildConfig
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
@@ -48,21 +49,66 @@ class LiveActivityLifecyclePolicyTest {
     }
 
     @Test
-    fun nonLiveAndFailedStatesAreOutsideLiveLifecyclePolicy() {
+    fun nonLiveSuspendsOnlyOnMobileOutsidePipAndConfigurationChange() {
+        val expected = if (BuildConfig.IS_TV_BUILD) {
+            LiveActivityBackgroundAction.NONE
+        } else {
+            LiveActivityBackgroundAction.SUSPEND_AND_RETAIN_SURFACE
+        }
+
         listOf(PlaybackMediaKind.MOVIE, PlaybackMediaKind.SERIES_EPISODE).forEach { kind ->
+            val request = request(kind)
+            listOf(
+                PlaybackState.Loading(request),
+                PlaybackState.Playing(request),
+                PlaybackState.Paused(request),
+            ).forEach { state ->
+                assertEquals(
+                    expected,
+                    LiveActivityLifecyclePolicy.backgroundAction(
+                        state = state,
+                        inPictureInPicture = false,
+                        changingConfigurations = false,
+                    ),
+                )
+            }
+
             assertEquals(
                 LiveActivityBackgroundAction.NONE,
                 LiveActivityLifecyclePolicy.backgroundAction(
-                    state = PlaybackState.Playing(request(kind)),
-                    inPictureInPicture = false,
+                    state = PlaybackState.Playing(request),
+                    inPictureInPicture = true,
                     changingConfigurations = false,
                 ),
             )
+            assertEquals(
+                LiveActivityBackgroundAction.NONE,
+                LiveActivityLifecyclePolicy.backgroundAction(
+                    state = PlaybackState.Playing(request),
+                    inPictureInPicture = false,
+                    changingConfigurations = true,
+                ),
+            )
         }
+    }
+
+    @Test
+    fun failedAndIdleStatesDoNotSuspend() {
         assertEquals(
             LiveActivityBackgroundAction.NONE,
             LiveActivityLifecyclePolicy.backgroundAction(
                 state = PlaybackState.Idle,
+                inPictureInPicture = false,
+                changingConfigurations = false,
+            ),
+        )
+        assertEquals(
+            LiveActivityBackgroundAction.NONE,
+            LiveActivityLifecyclePolicy.backgroundAction(
+                state = PlaybackState.Failed(
+                    request = request(PlaybackMediaKind.MOVIE),
+                    failure = PlaybackFailure(PlaybackFailureCategory.UNKNOWN),
+                ),
                 inPictureInPicture = false,
                 changingConfigurations = false,
             ),

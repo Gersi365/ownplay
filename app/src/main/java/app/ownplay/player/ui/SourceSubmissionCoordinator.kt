@@ -47,6 +47,7 @@ internal object SourceSubmissionCoordinator {
         runtime: OwnPlayAppRuntime,
         name: String,
         playlistUrl: String,
+        allowCleartext: Boolean,
     ) {
         scope.launch {
             submissionMutex.withLock {
@@ -54,6 +55,7 @@ internal object SourceSubmissionCoordinator {
                     runtime.addRemoteM3uSource(
                         name = name,
                         playlistUrl = playlistUrl,
+                        allowCleartext = allowCleartext,
                     )
                 }
             }
@@ -64,6 +66,7 @@ internal object SourceSubmissionCoordinator {
         runtime: OwnPlayAppRuntime,
         name: String,
         documentUri: String,
+        allowCleartext: Boolean,
     ) {
         scope.launch {
             submissionMutex.withLock {
@@ -71,6 +74,7 @@ internal object SourceSubmissionCoordinator {
                     runtime.addLocalM3uSource(
                         name = name,
                         documentUri = documentUri,
+                        allowCleartext = allowCleartext,
                     )
                 }
             }

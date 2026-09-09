@@ -8,6 +8,9 @@ import app.ownplay.player.source.CredentialRef
 import app.ownplay.player.source.SourceResult
 import app.ownplay.player.source.credential.CredentialStore
 import app.ownplay.player.source.credential.XtreamCredentials
+import app.ownplay.player.source.m3u.M3uSourceLocatorCodec
+import app.ownplay.player.source.m3u.M3uXmlTvClient
+import app.ownplay.player.source.m3u.M3uXmlTvProgram
 import app.ownplay.player.source.xtream.XtreamClient
 import app.ownplay.player.source.xtream.XtreamEpgProgram
 import app.ownplay.player.source.xtream.XtreamSourceLocatorCodec
@@ -47,6 +50,7 @@ class XtreamEpgRepository(
     private val credentialStore: CredentialStore,
     private val xmlTvClient: XtreamXmlTvClient = XtreamXmlTvClient(),
     private val xtreamClient: XtreamClient = XtreamClient(),
+    private val m3uXmlTvClient: M3uXmlTvClient = M3uXmlTvClient(),
 ) {
     private data class SourceCache(
         val channelIdsByEpgChannelId: Map<String, List<String>>,
@@ -69,14 +73,24 @@ class XtreamEpgRepository(
         val allowCleartext: Boolean,
     )
 
+    private data class M3uAccess(
+        val epgUrls: List<String>,
+        val allowCleartext: Boolean,
+    )
+
     private val cache = ConcurrentHashMap<String, SourceCache>()
     private val shortCache = ConcurrentHashMap<ShortCacheKey, ShortCacheEntry>()
     private val refreshGeneration = EpgRefreshGeneration()
+    private val shortRequestCoordinator = EpgShortRequestCoordinator()
 
     suspend fun refreshSource(sourceId: String): EpgRefreshResult? = withContext(Dispatchers.IO) {
         val generation = refreshGeneration.beginRefresh(sourceId)
         val source = database.playlistSourceDao().getById(sourceId) ?: return@withContext null
-        if (source.sourceKind != SourceKinds.XTREAM) {
+        if (
+            source.sourceKind != SourceKinds.XTREAM &&
+            source.sourceKind != SourceKinds.REMOTE_M3U &&
+            source.sourceKind != SourceKinds.LOCAL_M3U
+        ) {
             invalidateSource(sourceId)
             return@withContext EpgRefreshResult(0, 0)
         }
@@ -103,22 +117,51 @@ class XtreamEpgRepository(
             return@withContext EpgRefreshResult(0, 0)
         }
 
-        val access = resolveAccess(sourceId) ?: return@withContext null
-        val snapshot = when (
-            val result = xmlTvClient.load(
-                serverUrl = access.serverUrl,
-                credentials = access.credentials,
-                channelIds = epgIds,
-                allowCleartext = access.allowCleartext,
-            )
-        ) {
-            is SourceResult.Success -> result.value
-            is SourceResult.Failure -> return@withContext null
+        val mapped = when (source.sourceKind) {
+            SourceKinds.XTREAM -> {
+                val access = resolveAccess(sourceId) ?: return@withContext null
+                val snapshot = when (
+                    val result = xmlTvClient.load(
+                        serverUrl = access.serverUrl,
+                        credentials = access.credentials,
+                        channelIds = epgIds,
+                        allowCleartext = access.allowCleartext,
+                    )
+                ) {
+                    is SourceResult.Success -> result.value
+                    is SourceResult.Failure -> return@withContext null
+                }
+                snapshot.programsByChannelId.mapValues { (_, entries) ->
+                    EpgTimelineProjector.normalize(entries.map(::toProgram))
+                }
+            }
+
+            SourceKinds.REMOTE_M3U,
+            SourceKinds.LOCAL_M3U,
+            -> {
+                val access = resolveM3uAccess(sourceId) ?: return@withContext null
+                if (access.epgUrls.isEmpty()) {
+                    emptyMap()
+                } else {
+                    val snapshot = when (
+                        val result = m3uXmlTvClient.load(
+                            epgUrls = access.epgUrls,
+                            channelIds = epgIds,
+                            allowCleartext = access.allowCleartext,
+                        )
+                    ) {
+                        is SourceResult.Success -> result.value
+                        is SourceResult.Failure -> return@withContext null
+                    }
+                    snapshot.programsByChannelId.mapValues { (_, entries) ->
+                        EpgTimelineProjector.normalize(entries.map(::toProgram))
+                    }
+                }
+            }
+
+            else -> emptyMap()
         }
 
-        val mapped = snapshot.programsByChannelId.mapValues { (_, entries) ->
-            EpgTimelineProjector.normalize(entries.map(::toProgram))
-        }
         val published = refreshGeneration.runIfCurrentAndAdvance(sourceId, generation) {
             cache[sourceId] = SourceCache(
                 channelIdsByEpgChannelId = channelIdsByEpgChannelId,
@@ -233,27 +276,47 @@ class XtreamEpgRepository(
             ?.let { entry -> return entry.programs }
 
         val streamId = providerStreamId?.trim()?.takeIf(String::isNotBlank) ?: return emptyList()
-        val access = resolveAccess(sourceId) ?: return emptyList()
-        val guide = when (
-            val result = xtreamClient.getShortEpg(
-                serverUrl = access.serverUrl,
-                credentials = access.credentials,
-                streamId = streamId,
-                limit = SHORT_EPG_LIMIT,
-                allowCleartext = access.allowCleartext,
-            )
+        return shortRequestCoordinator.coalesce(
+            sourceId = sourceId,
+            channelId = channelId,
+            generation = generation,
         ) {
-            is SourceResult.Success -> result.value
-            is SourceResult.Failure -> return emptyList()
+            val loadStartedAtEpochSeconds = System.currentTimeMillis() / 1_000L
+            shortCache[key]
+                ?.takeIf { entry ->
+                    EpgCacheFreshness.isFresh(
+                        loadedAtEpochSeconds = entry.loadedAtEpochSeconds,
+                        nowEpochSeconds = loadStartedAtEpochSeconds,
+                        ttlSeconds = SHORT_CACHE_TTL_SECONDS,
+                    )
+                }
+                ?.let { entry -> return@coalesce entry.programs }
+            if (!refreshGeneration.isCurrent(sourceId, generation)) {
+                return@coalesce emptyList()
+            }
+
+            val access = resolveAccess(sourceId) ?: return@coalesce emptyList()
+            val guide = when (
+                val result = xtreamClient.getShortEpg(
+                    serverUrl = access.serverUrl,
+                    credentials = access.credentials,
+                    streamId = streamId,
+                    limit = SHORT_EPG_LIMIT,
+                    allowCleartext = access.allowCleartext,
+                )
+            ) {
+                is SourceResult.Success -> result.value
+                is SourceResult.Failure -> return@coalesce emptyList()
+            }
+            val programs = EpgTimelineProjector.normalize(guide.programs.map(::toProgram))
+            val published = refreshGeneration.runIfCurrent(sourceId, generation) {
+                shortCache[key] = ShortCacheEntry(
+                    programs = programs,
+                    loadedAtEpochSeconds = loadStartedAtEpochSeconds,
+                )
+            }
+            if (published) programs else emptyList()
         }
-        val programs = EpgTimelineProjector.normalize(guide.programs.map(::toProgram))
-        val published = refreshGeneration.runIfCurrent(sourceId, generation) {
-            shortCache[key] = ShortCacheEntry(
-                programs = programs,
-                loadedAtEpochSeconds = nowEpochSeconds,
-            )
-        }
-        return if (published) programs else emptyList()
     }
 
     private suspend fun resolveAccess(sourceId: String): XtreamAccess? {
@@ -282,7 +345,38 @@ class XtreamEpgRepository(
         )
     }
 
+    private suspend fun resolveM3uAccess(sourceId: String): M3uAccess? {
+        val source = database.playlistSourceDao().getById(sourceId) ?: return null
+        if (
+            source.sourceKind != SourceKinds.REMOTE_M3U &&
+            source.sourceKind != SourceKinds.LOCAL_M3U
+        ) {
+            return null
+        }
+        val locatorValue = try {
+            sensitiveValueStore.get(SensitiveValueRef(source.locatorRef))
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            null
+        } ?: return null
+        val locator = M3uSourceLocatorCodec.parseOrLegacy(locatorValue)
+        return M3uAccess(
+            epgUrls = locator.epgUrls,
+            allowCleartext = locator.allowCleartext,
+        )
+    }
+
     private fun toProgram(program: XtreamXmlTvProgram): EpgProgram = EpgProgram(
+        title = program.title,
+        description = program.description,
+        startEpochSeconds = program.startEpochSeconds,
+        endEpochSeconds = program.endEpochSeconds,
+        startLabel = program.startEpochSeconds?.let(::formatTime),
+        endLabel = program.endEpochSeconds?.let(::formatTime),
+    )
+
+    private fun toProgram(program: M3uXmlTvProgram): EpgProgram = EpgProgram(
         title = program.title,
         description = program.description,
         startEpochSeconds = program.startEpochSeconds,

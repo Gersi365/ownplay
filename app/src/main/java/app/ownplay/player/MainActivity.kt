@@ -76,7 +76,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        runtime = OwnPlayAppRuntime(applicationContext)
+        runtime = (application as OwnPlayApplication).runtime
         offlineDownloadRuntime = if (BuildConfig.IS_TV_BUILD) {
             null
         } else {
@@ -417,12 +417,14 @@ class MainActivity : ComponentActivity() {
     override fun onDestroy() {
         exitConfirmationDialog?.dismiss()
         exitConfirmationDialog = null
+        if (isFinishing && ::runtime.isInitialized) {
+            runtime.playbackController.stop()
+        }
         PlaybackInteractionBridge.discardLifecycleSuspendedSurface()
         activityScope.cancel()
         offlineDownloadRuntime?.close()
         offlineDownloadRuntime = null
         playbackWindowController.release()
-        runtime.close()
         super.onDestroy()
     }
 

@@ -3,10 +3,13 @@ package app.ownplay.player.ui.library
 import android.content.res.Configuration
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
@@ -30,6 +33,7 @@ import androidx.compose.ui.unit.dp
 import app.ownplay.player.series.SeriesEpisode
 import app.ownplay.player.ui.vod.RemotePoster
 import app.ownplay.player.vod.VodMovie
+import kotlin.math.roundToInt
 
 @Composable
 internal fun LibraryMovieContinueWatchingStrip(
@@ -45,6 +49,7 @@ internal fun LibraryMovieContinueWatchingStrip(
         posterUrl = { it.posterUrl },
         title = { it.name },
         subtitle = { "Continue movie" },
+        hideSubtitleOnMobile = true,
         positionMs = { it.positionMs },
         durationMs = { it.durationMs },
         onOpen = onOpenMovie,
@@ -67,6 +72,7 @@ internal fun LibrarySeriesContinueWatchingStrip(
         subtitle = { episode ->
             "S${episode.seasonNumber} · E${episode.episodeNumber} · ${episode.title}"
         },
+        hideSubtitleOnMobile = false,
         positionMs = { it.positionMs },
         durationMs = { it.durationMs },
         onOpen = onOpenSeries,
@@ -80,6 +86,7 @@ private fun <T> LibraryContinueWatchingStrip(
     posterUrl: (T) -> String?,
     title: (T) -> String,
     subtitle: (T) -> String,
+    hideSubtitleOnMobile: Boolean,
     positionMs: (T) -> Long?,
     durationMs: (T) -> Long?,
     onOpen: (T) -> Unit,
@@ -110,6 +117,7 @@ private fun <T> LibraryContinueWatchingStrip(
         ) {
             items(items = items, key = key) { item ->
                 var focused by remember(key(item)) { mutableStateOf(false) }
+                val progress = progressFraction(positionMs(item), durationMs(item))
                 Surface(
                     modifier = Modifier
                         .width(cardWidth)
@@ -134,6 +142,9 @@ private fun <T> LibraryContinueWatchingStrip(
                                 .fillMaxWidth()
                                 .aspectRatio(2f / 3f),
                         )
+                        if (!isTelevision) {
+                            ContinueWatchingProgressSlot(progress = progress)
+                        }
                         Text(
                             text = title(item),
                             style = MaterialTheme.typography.labelLarge,
@@ -141,17 +152,31 @@ private fun <T> LibraryContinueWatchingStrip(
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                         )
-                        Text(
-                            text = subtitle(item),
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                        progressFraction(positionMs(item), durationMs(item))?.let { progress ->
-                            LinearProgressIndicator(
-                                progress = { progress },
-                                modifier = Modifier.fillMaxWidth(),
+                        if (isTelevision || !hideSubtitleOnMobile) {
+                            Text(
+                                text = subtitle(item),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
+                        if (isTelevision) {
+                            progress?.let { watched ->
+                                LinearProgressIndicator(
+                                    progress = { watched },
+                                    modifier = Modifier.fillMaxWidth(),
+                                )
+                            }
+                        } else {
+                            Text(
+                                text = continueWatchingResumeLabel(
+                                    positionMs = positionMs(item),
+                                    durationMs = durationMs(item),
+                                ),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.primary,
+                                maxLines = 1,
                             )
                         }
                     }
@@ -161,8 +186,29 @@ private fun <T> LibraryContinueWatchingStrip(
     }
 }
 
+@Composable
+private fun ContinueWatchingProgressSlot(progress: Float?) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(3.dp),
+    ) {
+        progress?.let { watched ->
+            LinearProgressIndicator(
+                progress = { watched },
+                modifier = Modifier.fillMaxSize(),
+            )
+        }
+    }
+}
+
 internal fun progressFraction(positionMs: Long?, durationMs: Long?): Float? {
     val duration = durationMs?.takeIf { it > 0L } ?: return null
     val position = positionMs?.coerceAtLeast(0L) ?: return null
     return (position.toDouble() / duration.toDouble()).toFloat().coerceIn(0f, 1f)
+}
+
+internal fun continueWatchingResumeLabel(positionMs: Long?, durationMs: Long?): String {
+    val progress = progressFraction(positionMs, durationMs) ?: return "Resume"
+    return "Resume · ${(progress * 100f).roundToInt()}%"
 }

@@ -60,22 +60,33 @@ internal fun PlaylistManagementSubscreen(
                 .fillMaxWidth()
                 .widthIn(max = 760.dp)
                 .verticalScroll(rememberScrollState())
-                .padding(horizontal = 12.dp, vertical = 8.dp),
-            verticalArrangement = Arrangement.spacedBy(6.dp),
+                .padding(horizontal = 18.dp, vertical = 14.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
             ) {
                 TextButton(
                     onClick = onBack,
                     modifier = Modifier.focusRequester(backFocusRequester),
                 ) { Text("‹ Settings") }
-                Text(
-                    text = "Playlists",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.SemiBold,
-                )
+                Column(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(2.dp),
+                ) {
+                    Text(
+                        text = "Playlists",
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold,
+                    )
+                    Text(
+                        text = "Add, refresh and manage the media sources connected to OwnPlay.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
             }
             PlaylistSettingsScreen(
                 runtime = runtime,
@@ -86,4 +97,3 @@ internal fun PlaylistManagementSubscreen(
         }
     }
 }
-

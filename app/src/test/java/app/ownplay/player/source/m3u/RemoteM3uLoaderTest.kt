@@ -50,6 +50,33 @@ class RemoteM3uLoaderTest {
     }
 
     @Test
+    fun load_allowsCleartextWithPerCallOptIn() = runBlocking {
+        server.enqueue(
+            MockResponse.Builder()
+                .body(
+                    """
+                    #EXTM3U
+                    #EXTINF:-1,Per-call HTTP
+                    https://stream.example/live/http-opt-in.m3u8
+                    """.trimIndent(),
+                )
+                .build(),
+        )
+        val loader = RemoteM3uLoader()
+
+        val result = loader.load(
+            playlistUrl = server.url("/playlist.m3u").toString(),
+            allowCleartext = true,
+        )
+
+        assertTrue(result is SourceResult.Success)
+        assertEquals(
+            "Per-call HTTP",
+            (result as SourceResult.Success).value.entries.single().displayName,
+        )
+    }
+
+    @Test
     fun load_rejectsCleartextWithoutExplicitOptIn() = runBlocking {
         val loader = RemoteM3uLoader()
 
