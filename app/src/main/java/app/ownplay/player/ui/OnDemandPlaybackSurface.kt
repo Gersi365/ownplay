@@ -58,6 +58,7 @@ import kotlinx.coroutines.delay
 import kotlin.math.max
 
 private const val ON_DEMAND_CONTROLS_AUTO_HIDE_MILLIS = 3_000L
+private const val TV_ON_DEMAND_SEEK_MILLIS = 10_000L
 
 @OptIn(UnstableApi::class)
 @Composable
@@ -92,6 +93,29 @@ internal fun OnDemandPlaybackSurface(
         controlsInteractionToken += 1
     }
 
+    fun seekBy(deltaMs: Long) {
+        val maxDuration = durationMs.coerceAtLeast(1L)
+        val origin = playerView?.player?.currentPosition ?: scrubPositionMs
+        val target = (origin + deltaMs).coerceIn(0L, maxDuration)
+        playerView?.player?.seekTo(target)
+        scrubPositionMs = target
+        onSeekPositionChanged(target)
+        scrubbing = false
+        revealControls()
+    }
+
+    fun runPrimaryAction() {
+        when (playbackState) {
+            is PlaybackState.Playing -> runtime.playbackController.pause()
+            is PlaybackState.Paused -> runtime.playbackController.play()
+            is PlaybackState.Failed -> if (playbackControls.canRetry) {
+                runtime.playbackController.retry()
+            }
+            else -> Unit
+        }
+        revealControls()
+    }
+
     LaunchedEffect(currentPositionMs, scrubbing, contentKey) {
         if (!scrubbing) {
             scrubPositionMs = currentPositionMs.coerceAtLeast(0L)
@@ -117,7 +141,6 @@ internal fun OnDemandPlaybackSurface(
     LaunchedEffect(isTelevision, controlsVisible, playbackState, contentKey) {
         if (!isTelevision) return@LaunchedEffect
         when {
-            playbackState is PlaybackState.Failed -> backFocusRequester.requestFocus()
             controlsVisible -> controlsFocusRequester.requestFocus()
             else -> wakeFocusRequester.requestFocus()
         }
@@ -207,114 +230,118 @@ internal fun OnDemandPlaybackSurface(
             )
 
             if (controlsVisible) {
-                Row(
-                    modifier = Modifier
-                        .align(Alignment.TopStart)
-                        .fillMaxWidth()
-                        .background(Color.Black.copy(alpha = 0.65f))
-                        .padding(horizontal = 8.dp, vertical = 5.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    IconButton(
-                        modifier = Modifier.focusRequester(backFocusRequester),
-                        enabled = !exitRequested,
-                        onClick = onExit,
+                if (isTelevision) {
+                    TvOnDemandPlaybackControls(
+                        title = title,
+                        playbackState = playbackState,
+                        currentPositionMs = scrubPositionMs,
+                        durationMs = durationMs,
+                        primaryFocusRequester = controlsFocusRequester,
+                        onSeekBackward = { seekBy(-TV_ON_DEMAND_SEEK_MILLIS) },
+                        onPrimaryAction = ::runPrimaryAction,
+                        onSeekForward = { seekBy(TV_ON_DEMAND_SEEK_MILLIS) },
+                        modifier = Modifier.align(Alignment.BottomCenter),
+                    )
+                } else {
+                    Row(
+                        modifier = Modifier
+                            .align(Alignment.TopStart)
+                            .fillMaxWidth()
+                            .background(Color.Black.copy(alpha = 0.65f))
+                            .padding(horizontal = 8.dp, vertical = 5.dp),
+                        verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        Icon(Icons.Filled.ArrowBack, contentDescription = "Back", tint = Color.White)
-                    }
-                    Text(
-                        text = title,
-                        modifier = Modifier.weight(1f),
-                        color = Color.White,
-                        style = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.SemiBold,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                }
-
-                Column(
-                    modifier = Modifier
-                        .align(Alignment.BottomCenter)
-                        .fillMaxWidth()
-                        .background(Color.Black.copy(alpha = 0.70f))
-                        .padding(horizontal = 14.dp, vertical = 8.dp),
-                    verticalArrangement = Arrangement.spacedBy(4.dp),
-                ) {
-                    val maxDuration = max(durationMs, 1L)
-                    Slider(
-                        value = scrubPositionMs.coerceIn(0L, maxDuration).toFloat(),
-                        onValueChange = { value ->
-                            scrubbing = true
-                            scrubPositionMs = value.toLong()
-                            revealControls()
-                        },
-                        onValueChangeFinished = {
-                            val target = scrubPositionMs.coerceIn(0L, maxDuration)
-                            playerView?.player?.seekTo(target)
-                            onSeekPositionChanged(target)
-                            scrubbing = false
-                            revealControls()
-                        },
-                        valueRange = 0f..maxDuration.toFloat(),
-                    )
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        val playbackActionEnabled =
-                            playbackState is PlaybackState.Playing ||
-                                playbackState is PlaybackState.Paused ||
-                                (playbackState is PlaybackState.Failed && playbackControls.canRetry)
                         IconButton(
-                            modifier = Modifier.focusRequester(controlsFocusRequester),
-                            enabled = playbackActionEnabled,
-                            onClick = {
-                                when (playbackState) {
-                                    is PlaybackState.Playing -> runtime.playbackController.pause()
-                                    is PlaybackState.Paused -> runtime.playbackController.play()
-                                    is PlaybackState.Failed -> if (playbackControls.canRetry) {
-                                        runtime.playbackController.retry()
-                                    }
-                                    else -> Unit
-                                }
-                                revealControls()
-                            },
+                            modifier = Modifier.focusRequester(backFocusRequester),
+                            enabled = !exitRequested,
+                            onClick = onExit,
                         ) {
-                            val playing = playbackState is PlaybackState.Playing
-                            val failed = playbackState is PlaybackState.Failed
-                            Icon(
-                                imageVector = when {
-                                    failed -> Icons.Filled.Refresh
-                                    playing -> Icons.Filled.Pause
-                                    else -> Icons.Filled.PlayArrow
-                                },
-                                contentDescription = when {
-                                    failed -> "Retry"
-                                    playing -> "Pause"
-                                    else -> "Play"
-                                },
-                                tint = if (playbackActionEnabled) {
-                                    Color.White
-                                } else {
-                                    Color.White.copy(alpha = 0.38f)
-                                },
-                            )
+                            Icon(Icons.Filled.ArrowBack, contentDescription = "Back", tint = Color.White)
                         }
                         Text(
-                            text = "${formatOnDemandDuration(scrubPositionMs)} / ${formatOnDemandDuration(durationMs)}",
-                            color = Color.White.copy(alpha = 0.82f),
-                            style = MaterialTheme.typography.labelMedium,
+                            text = title,
+                            modifier = Modifier.weight(1f),
+                            color = Color.White,
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.SemiBold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
                         )
-                        Spacer(Modifier.weight(1f))
-                        when (playbackState) {
-                            is PlaybackState.Loading -> CircularProgressIndicator(
-                                modifier = Modifier.size(20.dp),
-                                strokeWidth = 2.dp,
-                            )
-                            is PlaybackState.Failed -> Text(
-                                text = "Playback failed",
-                                color = MaterialTheme.colorScheme.error,
+                    }
+
+                    Column(
+                        modifier = Modifier
+                            .align(Alignment.BottomCenter)
+                            .fillMaxWidth()
+                            .background(Color.Black.copy(alpha = 0.70f))
+                            .padding(horizontal = 14.dp, vertical = 8.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp),
+                    ) {
+                        val maxDuration = max(durationMs, 1L)
+                        Slider(
+                            value = scrubPositionMs.coerceIn(0L, maxDuration).toFloat(),
+                            onValueChange = { value ->
+                                scrubbing = true
+                                scrubPositionMs = value.toLong()
+                                revealControls()
+                            },
+                            onValueChangeFinished = {
+                                val target = scrubPositionMs.coerceIn(0L, maxDuration)
+                                playerView?.player?.seekTo(target)
+                                onSeekPositionChanged(target)
+                                scrubbing = false
+                                revealControls()
+                            },
+                            valueRange = 0f..maxDuration.toFloat(),
+                        )
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            val playbackActionEnabled =
+                                playbackState is PlaybackState.Playing ||
+                                    playbackState is PlaybackState.Paused ||
+                                    (playbackState is PlaybackState.Failed && playbackControls.canRetry)
+                            IconButton(
+                                modifier = Modifier.focusRequester(controlsFocusRequester),
+                                enabled = playbackActionEnabled,
+                                onClick = ::runPrimaryAction,
+                            ) {
+                                val playing = playbackState is PlaybackState.Playing
+                                val failed = playbackState is PlaybackState.Failed
+                                Icon(
+                                    imageVector = when {
+                                        failed -> Icons.Filled.Refresh
+                                        playing -> Icons.Filled.Pause
+                                        else -> Icons.Filled.PlayArrow
+                                    },
+                                    contentDescription = when {
+                                        failed -> "Retry"
+                                        playing -> "Pause"
+                                        else -> "Play"
+                                    },
+                                    tint = if (playbackActionEnabled) {
+                                        Color.White
+                                    } else {
+                                        Color.White.copy(alpha = 0.38f)
+                                    },
+                                )
+                            }
+                            Text(
+                                text = "${formatOnDemandDuration(scrubPositionMs)} / ${formatOnDemandDuration(durationMs)}",
+                                color = Color.White.copy(alpha = 0.82f),
                                 style = MaterialTheme.typography.labelMedium,
                             )
-                            else -> Unit
+                            Spacer(Modifier.weight(1f))
+                            when (playbackState) {
+                                is PlaybackState.Loading -> CircularProgressIndicator(
+                                    modifier = Modifier.size(20.dp),
+                                    strokeWidth = 2.dp,
+                                )
+                                is PlaybackState.Failed -> Text(
+                                    text = "Playback failed",
+                                    color = MaterialTheme.colorScheme.error,
+                                    style = MaterialTheme.typography.labelMedium,
+                                )
+                                else -> Unit
+                            }
                         }
                     }
                 }
