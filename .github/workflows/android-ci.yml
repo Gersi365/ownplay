@@ -57,7 +57,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          SOURCE_SHA="cfb7743cb6c87eec2f4b9e472e5e79fd74211b81"
+          SOURCE_SHA="f833f1fa8b846516d092143d5f3b065d9d70aee3"
           git init tv-source
           cd tv-source
           git remote add origin https://github.com/Gersi365/ownplay.git
@@ -74,9 +74,9 @@ jobs:
           grep -F 'applicationId = "app.ownplay.tv"' "$BUILD_FILE"
           grep -F 'versionCode = 16' "$BUILD_FILE"
           grep -F 'versionName = "1.0.13"' "$BUILD_FILE"
-          test "$(git -C tv-source rev-parse HEAD)" = "cfb7743cb6c87eec2f4b9e472e5e79fd74211b81"
+          test "$(git -C tv-source rev-parse HEAD)" = "f833f1fa8b846516d092143d5f3b065d9d70aee3"
 
-      - name: Apply QA packaging versionCode 19
+      - name: Apply QA packaging versionCode 20
         shell: bash
         run: |
           set -euo pipefail
@@ -86,12 +86,12 @@ jobs:
           path = Path("tv-source/app/build.gradle.kts")
           text = path.read_text(encoding="utf-8")
           old = '            versionCode = 16\n'
-          new = '            versionCode = 19\n'
+          new = '            versionCode = 20\n'
           if text.count(old) != 1:
               raise SystemExit("Expected exactly one TV versionCode = 16 entry")
           path.write_text(text.replace(old, new), encoding="utf-8")
           PY
-          grep -F '            versionCode = 19' tv-source/app/build.gradle.kts
+          grep -F '            versionCode = 20' tv-source/app/build.gradle.kts
           test "$(git -C tv-source diff --name-only)" = "app/build.gradle.kts"
           git -C tv-source diff --check
 
@@ -128,7 +128,7 @@ jobs:
           BADGING="$("$BUILD_TOOLS/aapt" dump badging "$OUTPUT" | head -n 1)"
           printf '%s\n' "$BADGING"
           printf '%s\n' "$BADGING" | grep -F "name='app.ownplay.tv'"
-          printf '%s\n' "$BADGING" | grep -F "versionCode='19'"
+          printf '%s\n' "$BADGING" | grep -F "versionCode='20'"
           printf '%s\n' "$BADGING" | grep -F "versionName='1.0.13'"
 
           sha256sum "$OUTPUT" | tee "$OUTPUT.sha256"
@@ -136,7 +136,7 @@ jobs:
       - name: Upload TV fresh-install QA APK
         uses: actions/upload-artifact@v4
         with:
-          name: ownplay-tv-fresh-install-qa-cfb7743
+          name: ownplay-tv-fresh-install-qa-code20-f833f1f
           path: |
             tv-source/app/build/outputs/apk/tv/debug/OwnPlay-TV-Fresh-Install-QA.apk
             tv-source/app/build/outputs/apk/tv/debug/OwnPlay-TV-Fresh-Install-QA.apk.sha256
