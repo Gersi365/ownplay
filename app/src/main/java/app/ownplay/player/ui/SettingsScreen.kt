@@ -39,6 +39,18 @@ internal fun SettingsScreen(
     onOpenLive: () -> Unit,
     onOpenSourceInLive: (String) -> Unit,
     onStopPlayback: () -> Unit,
+    tvLiveManagementContent: @Composable (
+        OwnPlayAppRuntime,
+        List<PlaylistSourceSummary>,
+        () -> Unit,
+    ) -> Unit = { tvRuntime, tvSummaries, tvOnBack ->
+        LiveManagementScreen(
+            runtime = tvRuntime,
+            summaries = tvSummaries,
+            onBack = tvOnBack,
+            focusFirstActionOnEntry = true,
+        )
+    },
 ) {
     var destination by remember { mutableStateOf(SettingsDestination.CONTENT) }
     val configuration = LocalConfiguration.current
@@ -66,6 +78,7 @@ internal fun SettingsScreen(
             summaries = summaries,
             syncState = syncState,
             onOpenSourceInLive = onOpenSourceInLive,
+            liveManagementContent = tvLiveManagementContent,
         )
         return
     }
