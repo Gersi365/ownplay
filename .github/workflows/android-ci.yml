@@ -1,4 +1,4 @@
-name: OwnPlay Mobile vNext QA code19 APK
+name: OwnPlay TV Fresh-Install QA APK
 
 on:
   pull_request:
@@ -7,11 +7,11 @@ permissions:
   contents: read
 
 concurrency:
-  group: ownplay-mobile-vnext-qa-code19-${{ github.ref }}
+  group: ownplay-tv-fresh-install-qa-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  build-mobile-qa:
+  build-tv-qa:
     runs-on: ubuntu-latest
     timeout-minutes: 30
 
@@ -53,49 +53,68 @@ jobs:
           test -x "$BUILD_TOOLS/apksigner"
           test -x "$BUILD_TOOLS/aapt"
 
-      - name: Checkout exact OwnPlay Mobile candidate
+      - name: Checkout exact OwnPlay TV candidate
         shell: bash
         run: |
           set -euo pipefail
-          SOURCE_SHA="42c878c785a57e72b1a0af3e449efc11c7a40200"
-          git init mobile-source
-          cd mobile-source
-          git remote add origin https://github.com/Gersi365/OwnPlay-Mobile.git
+          SOURCE_SHA="cfb7743cb6c87eec2f4b9e472e5e79fd74211b81"
+          git init tv-source
+          cd tv-source
+          git remote add origin https://github.com/Gersi365/ownplay.git
           git fetch --depth=1 origin "$SOURCE_SHA"
           git checkout --detach FETCH_HEAD
           test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
           test -z "$(git status --porcelain)"
 
-      - name: Verify Mobile candidate identity
+      - name: Verify TV source candidate identity
         shell: bash
         run: |
           set -euo pipefail
-          BUILD_FILE="mobile-source/app/build.gradle.kts"
-          grep -F 'applicationId = "app.ownplay.mobile"' "$BUILD_FILE"
-          grep -F 'versionCode = 19' "$BUILD_FILE"
-          grep -F 'versionName = "1.0.13-product-polish-update"' "$BUILD_FILE"
-          test "$(git -C mobile-source rev-parse HEAD)" = "42c878c785a57e72b1a0af3e449efc11c7a40200"
+          BUILD_FILE="tv-source/app/build.gradle.kts"
+          grep -F 'applicationId = "app.ownplay.tv"' "$BUILD_FILE"
+          grep -F 'versionCode = 16' "$BUILD_FILE"
+          grep -F 'versionName = "1.0.13"' "$BUILD_FILE"
+          test "$(git -C tv-source rev-parse HEAD)" = "cfb7743cb6c87eec2f4b9e472e5e79fd74211b81"
 
-      - name: Assemble Mobile QA APK
+      - name: Apply QA packaging versionCode 19
         shell: bash
         run: |
           set -euo pipefail
-          cd mobile-source
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path("tv-source/app/build.gradle.kts")
+          text = path.read_text(encoding="utf-8")
+          old = '            versionCode = 16\n'
+          new = '            versionCode = 19\n'
+          if text.count(old) != 1:
+              raise SystemExit("Expected exactly one TV versionCode = 16 entry")
+          path.write_text(text.replace(old, new), encoding="utf-8")
+          PY
+          grep -F '            versionCode = 19' tv-source/app/build.gradle.kts
+          test "$(git -C tv-source diff --name-only)" = "app/build.gradle.kts"
+          git -C tv-source diff --check
+
+      - name: Assemble TV fresh-install QA APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd tv-source
           gradle \
             -Dorg.gradle.jvmargs="-Xmx4g -XX:MaxMetaspaceSize=1g" \
             --max-workers=2 \
             --no-daemon \
-            :app:assembleMobileDebug \
+            :app:assembleTvDebug \
             --stacktrace
 
-      - name: Verify Mobile QA APK
+      - name: Verify TV fresh-install QA APK
         shell: bash
         run: |
           set -euo pipefail
           BUILD_TOOLS="${ANDROID_HOME}/build-tools/36.0.0"
           EXPECTED_CERT="1bb783d452c85f3aa5c6252c811499e24a830da2f477eb92d9e237ff7817d53a"
-          INPUT="mobile-source/app/build/outputs/apk/mobile/debug/app-mobile-debug.apk"
-          OUTPUT="mobile-source/app/build/outputs/apk/mobile/debug/OwnPlay-Mobile-vNext-QA-code19.apk"
+          INPUT="tv-source/app/build/outputs/apk/tv/debug/app-tv-debug.apk"
+          OUTPUT="tv-source/app/build/outputs/apk/tv/debug/OwnPlay-TV-Fresh-Install-QA.apk"
 
           test -f "$INPUT"
           cp "$INPUT" "$OUTPUT"
@@ -108,19 +127,19 @@ jobs:
 
           BADGING="$("$BUILD_TOOLS/aapt" dump badging "$OUTPUT" | head -n 1)"
           printf '%s\n' "$BADGING"
-          printf '%s\n' "$BADGING" | grep -F "name='app.ownplay.mobile'"
+          printf '%s\n' "$BADGING" | grep -F "name='app.ownplay.tv'"
           printf '%s\n' "$BADGING" | grep -F "versionCode='19'"
-          printf '%s\n' "$BADGING" | grep -F "versionName='1.0.13-product-polish-update'"
+          printf '%s\n' "$BADGING" | grep -F "versionName='1.0.13'"
 
           sha256sum "$OUTPUT" | tee "$OUTPUT.sha256"
 
-      - name: Upload Mobile QA APK
+      - name: Upload TV fresh-install QA APK
         uses: actions/upload-artifact@v4
         with:
-          name: ownplay-mobile-vnext-qa-code19-42c878c
+          name: ownplay-tv-fresh-install-qa-cfb7743
           path: |
-            mobile-source/app/build/outputs/apk/mobile/debug/OwnPlay-Mobile-vNext-QA-code19.apk
-            mobile-source/app/build/outputs/apk/mobile/debug/OwnPlay-Mobile-vNext-QA-code19.apk.sha256
+            tv-source/app/build/outputs/apk/tv/debug/OwnPlay-TV-Fresh-Install-QA.apk
+            tv-source/app/build/outputs/apk/tv/debug/OwnPlay-TV-Fresh-Install-QA.apk.sha256
           if-no-files-found: error
           retention-days: 7
           compression-level: 0
