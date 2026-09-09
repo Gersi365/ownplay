@@ -29,7 +29,6 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -66,6 +65,7 @@ import app.ownplay.player.playback.PlaybackRequest
 import app.ownplay.player.source.SourceError
 import app.ownplay.player.source.SourceResult
 import app.ownplay.player.ui.tv.LocalTvShellFocusBoundary
+import app.ownplay.player.ui.tv.TvActionSurface
 import app.ownplay.player.ui.vod.RemotePoster
 import app.ownplay.player.vod.VodCatalog
 import app.ownplay.player.vod.VodFeatureRuntime
@@ -522,7 +522,8 @@ private fun TvMoviesCatalogScreen(
                 }
                 when {
                     loading -> CircularProgressIndicator(modifier = Modifier.size(24.dp), strokeWidth = 2.dp)
-                    refreshFailed -> TextButton(
+                    refreshFailed -> TvActionSurface(
+                        label = "Retry refresh",
                         onClick = onRetry,
                         modifier = Modifier
                             .focusRequester(retryFocusRequester)
@@ -536,7 +537,7 @@ private fun TvMoviesCatalogScreen(
                                     false
                                 }
                             },
-                    ) { Text("Retry refresh") }
+                    )
                 }
             }
 
@@ -962,7 +963,8 @@ private fun TvMoviesMessage(
                 style = MaterialTheme.typography.bodyLarge,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            TextButton(
+            TvActionSurface(
+                label = actionLabel,
                 onClick = onAction,
                 modifier = Modifier
                     .focusRequester(actionFocusRequester)
@@ -976,7 +978,7 @@ private fun TvMoviesMessage(
                             false
                         }
                     },
-            ) { Text(actionLabel) }
+            )
         }
     }
 }

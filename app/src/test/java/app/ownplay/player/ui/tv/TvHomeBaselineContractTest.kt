@@ -95,9 +95,10 @@ class TvHomeBaselineContractTest {
         assertTrue("Unsupported on-demand sources must be explained.", "title = \"No on-demand catalog for this playlist\"" in source)
         assertTrue("Empty supported catalogs must be explicit.", "title = \"No Movies or Series found\"" in source)
         assertTrue(
-            "Empty states must retain a remote action.",
-            "TextButton(" in source && "onClick = onAction" in source,
+            "Empty states must retain an OwnPlay TV remote action.",
+            "TvActionSurface(" in source && "onClick = onAction" in source,
         )
+        assertFalse("Home empty states must not regress to Material TextButton.", "TextButton(" in source)
         assertTrue(
             "The empty-state action must remain part of the deterministic Home rail boundary.",
             ".focusRequester(entryFocusRequester)" in source,

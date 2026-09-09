@@ -23,7 +23,6 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -54,6 +53,7 @@ import app.ownplay.player.series.SeriesFeatureRuntime
 import app.ownplay.player.series.SeriesSummary
 import app.ownplay.player.ui.library.progressFraction
 import app.ownplay.player.ui.shell.LocalTvHomeShellFocusBoundary
+import app.ownplay.player.ui.tv.TvActionSurface
 import app.ownplay.player.ui.vod.RemotePoster
 import app.ownplay.player.vod.VodCatalog
 import app.ownplay.player.vod.VodFeatureRuntime
@@ -862,7 +862,8 @@ private fun TvHomeMessage(
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         Spacer(modifier = Modifier.height(12.dp))
-        TextButton(
+        TvActionSurface(
+            label = actionLabel,
             onClick = onAction,
             modifier = Modifier
                 .focusRequester(entryFocusRequester)
@@ -874,9 +875,7 @@ private fun TvHomeMessage(
                         false
                     }
                 },
-        ) {
-            Text(actionLabel)
-        }
+        )
     }
 }
 

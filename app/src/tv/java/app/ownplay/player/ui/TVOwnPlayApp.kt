@@ -6,7 +6,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
@@ -18,8 +17,16 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import app.ownplay.player.OwnPlayAppRuntime
@@ -44,6 +51,8 @@ import app.ownplay.player.ui.series.TvSeriesRoute
 import app.ownplay.player.ui.shell.TvDestination
 import app.ownplay.player.ui.shell.TvMediaShell
 import app.ownplay.player.ui.shell.defaultTvDestination
+import app.ownplay.player.ui.tv.LocalTvShellFocusBoundary
+import app.ownplay.player.ui.tv.TvActionSurface
 import kotlinx.coroutines.launch
 
 /**
@@ -573,6 +582,16 @@ private fun TVNoSourceScreen(
     onAddPlaylist: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val shellFocusBoundary = LocalTvShellFocusBoundary.current
+    val actionFocusRequester = remember { FocusRequester() }
+
+    LaunchedEffect(shellFocusBoundary.contentEntryGeneration) {
+        if (shellFocusBoundary.contentEntryGeneration > 0) {
+            withFrameNanos { }
+            actionFocusRequester.requestFocus()
+        }
+    }
+
     Column(
         modifier = modifier,
         verticalArrangement = androidx.compose.foundation.layout.Arrangement.Center,
@@ -582,9 +601,24 @@ private fun TVNoSourceScreen(
             text = if (syncState.sourceId != null) "Loading Live TV…" else "No playlist configured",
             style = MaterialTheme.typography.titleLarge,
         )
-        TextButton(onClick = onAddPlaylist) {
-            Text("Open Settings")
-        }
+        TvActionSurface(
+            label = "Open Settings",
+            onClick = onAddPlaylist,
+            modifier = Modifier
+                .focusRequester(actionFocusRequester)
+                .onPreviewKeyEvent { event ->
+                    if (
+                        event.type == KeyEventType.KeyDown &&
+                        event.key == Key.DirectionLeft &&
+                        shellFocusBoundary.railVisible
+                    ) {
+                        shellFocusBoundary.requestRailFocus()
+                        true
+                    } else {
+                        false
+                    }
+                },
+        )
     }
 }
 

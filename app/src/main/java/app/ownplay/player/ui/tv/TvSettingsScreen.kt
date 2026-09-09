@@ -22,7 +22,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -350,12 +349,11 @@ private fun TvSettingsSubpage(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(14.dp),
         ) {
-            TextButton(
+            TvActionSurface(
+                label = "‹ Settings",
                 onClick = onBack,
                 modifier = Modifier.focusRequester(backFocusRequester),
-            ) {
-                Text("‹ Settings")
-            }
+            )
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text(
                     text = title,

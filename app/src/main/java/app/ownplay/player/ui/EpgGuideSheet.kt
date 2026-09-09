@@ -42,6 +42,7 @@ import androidx.compose.ui.window.DialogProperties
 import app.ownplay.player.epg.EpgProgram
 import app.ownplay.player.epg.EpgSnapshot
 import app.ownplay.player.epg.EpgTimelineProjector
+import app.ownplay.player.ui.tv.TvActionSurface
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
@@ -254,12 +255,11 @@ private fun TvEpgGuideOverlay(
                             overflow = TextOverflow.Ellipsis,
                         )
                     }
-                    TextButton(
+                    TvActionSurface(
+                        label = "Done",
                         onClick = onDismiss,
                         modifier = Modifier.focusRequester(doneFocusRequester),
-                    ) {
-                        Text("Done")
-                    }
+                    )
                 }
 
                 when {

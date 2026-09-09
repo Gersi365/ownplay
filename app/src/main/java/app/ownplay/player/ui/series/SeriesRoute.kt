@@ -77,6 +77,7 @@ import app.ownplay.player.source.SourceError
 import app.ownplay.player.source.SourceResult
 import app.ownplay.player.ui.OnDemandPlaybackSurface
 import app.ownplay.player.ui.playbackStatusLabel
+import app.ownplay.player.ui.tv.TvActionSurface
 import app.ownplay.player.ui.vod.RemotePoster
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
@@ -101,6 +102,8 @@ internal fun SeriesRoute(
     val context = LocalContext.current
     val configuration = LocalConfiguration.current
     val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
+    val isTelevision =
+        configuration.uiMode and Configuration.UI_MODE_TYPE_MASK == Configuration.UI_MODE_TYPE_TELEVISION
     val featureRuntime = remember(context) { SeriesFeatureRuntime(context.applicationContext) }
     val downloadRuntime = remember(context) {
         OfflineDownloadFeatureRuntime(context.applicationContext)
@@ -119,6 +122,7 @@ internal fun SeriesRoute(
         SeriesUnavailableState(
             title = "No playlist configured",
             body = "Add an Xtream playlist from Settings to load Series.",
+            isTelevision = isTelevision,
             onOpenSettings = onOpenSettings,
         )
         return
@@ -127,6 +131,7 @@ internal fun SeriesRoute(
         SeriesUnavailableState(
             title = "Series are not available for this source",
             body = "Series and episodes currently use Xtream-compatible sources.",
+            isTelevision = isTelevision,
             onOpenSettings = onOpenSettings,
         )
         return
@@ -870,8 +875,17 @@ private fun SeriesPlaybackScreen(
 private fun SeriesUnavailableState(
     title: String,
     body: String,
+    isTelevision: Boolean,
     onOpenSettings: () -> Unit,
 ) {
+    val actionFocusRequester = remember { FocusRequester() }
+
+    LaunchedEffect(isTelevision) {
+        if (isTelevision) {
+            actionFocusRequester.requestFocus()
+        }
+    }
+
     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
         Surface(
             modifier = Modifier
@@ -886,7 +900,15 @@ private fun SeriesUnavailableState(
             ) {
                 Text(title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
                 Text(body, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Button(onClick = onOpenSettings) { Text("Open Settings") }
+                if (isTelevision) {
+                    TvActionSurface(
+                        label = "Open Settings",
+                        onClick = onOpenSettings,
+                        modifier = Modifier.focusRequester(actionFocusRequester),
+                    )
+                } else {
+                    Button(onClick = onOpenSettings) { Text("Open Settings") }
+                }
             }
         }
     }

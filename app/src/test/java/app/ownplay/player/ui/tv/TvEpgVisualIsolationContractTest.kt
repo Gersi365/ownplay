@@ -34,6 +34,7 @@ class TvEpgVisualIsolationContractTest {
         )
         assertFalse("TV EPG focus must not scale layout geometry.", ".scale(" in tvBlock)
         assertFalse("TV EPG rows must not animate their size on focus.", "animateContentSize" in tvBlock)
+        assertFalse("TV EPG must not render Material TextButton.", "TextButton(" in tvBlock)
     }
 
     @Test
@@ -45,6 +46,10 @@ class TvEpgVisualIsolationContractTest {
         assertTrue(
             "TV-selected programme state must not force a mobile details dialog on sheet open.",
             "isTelevision && (selectedProgram == null || selectedProgram !in timeline.programs)" in source,
+        )
+        assertTrue(
+            "Mobile may retain its Material TextButton independently of TV.",
+            "TextButton(" in source,
         )
     }
 
@@ -60,8 +65,10 @@ class TvEpgVisualIsolationContractTest {
                 "TvGuideDetailPane(" in source,
         )
         assertTrue(
-            "Back or Done must dismiss the full guide without replacing playback.",
-            "dismissOnBackPress = true" in source && "Text(\"Done\")" in source,
+            "Back or the OwnPlay TV Done action must dismiss the full guide without replacing playback.",
+            "dismissOnBackPress = true" in source &&
+                "TvActionSurface(" in source &&
+                "label = \"Done\"" in source,
         )
     }
 }
