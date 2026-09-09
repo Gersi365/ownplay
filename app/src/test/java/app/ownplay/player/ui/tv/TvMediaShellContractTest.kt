@@ -23,11 +23,11 @@ class TvMediaShellContractTest {
 
         assertTrue("Every approved destination must be present.", positions.all { it >= 0 })
         assertTrue(
-            "Primary TV destinations must remain Home, Live TV, Movies, Series, Settings.",
+            "Primary TV destinations must remain Home, Live, Movies, Series, Settings.",
             positions.zipWithNext().all { (left, right) -> left < right },
         )
         assertTrue("Home label must remain explicit.", "label = \"Home\"" in source)
-        assertTrue("Live TV label must remain explicit.", "label = \"Live TV\"" in source)
+        assertTrue("Live label must remain explicit.", "label = \"Live\"" in source)
         assertTrue("Movies label must remain explicit.", "label = \"Movies\"" in source)
         assertTrue("Series label must remain explicit.", "label = \"Series\"" in source)
         assertTrue("Settings label must remain explicit.", "label = \"Settings\"" in source)
