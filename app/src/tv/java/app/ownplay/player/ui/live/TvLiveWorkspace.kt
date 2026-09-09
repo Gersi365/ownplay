@@ -237,18 +237,11 @@ private fun TvLiveBrowseSurface(
         color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.14f),
         tonalElevation = 0.dp,
     ) {
-        HierarchicalLiveBrowse(
+        TvLiveChannelBrowser(
             state = state,
             hierarchyLevel = hierarchyLevel,
             playingChannelId = playingChannelId,
-            currentEpgByChannelId = currentEpgByChannelId,
-            viewMode = viewMode,
-            onViewModeSelected = onViewModeSelected,
-            onSearchChange = onSearchChange,
             onCategorySelected = onCategorySelected,
-            onFavoritesOnlyChanged = onFavoritesOnlyChanged,
-            onOrderChanged = onOrderChanged,
-            onCustomGroupSelected = onCustomGroupSelected,
             onChannelSelected = onChannelSelected,
             focusChannelId = focusChannelId,
             focusRequestGeneration = focusRequestGeneration,

@@ -17,6 +17,11 @@ class TvLiveShellIntegrationContractTest {
             sourceText("src/tv/java/app/ownplay/player/ui/live/TvLiveWorkspace.kt"),
         )
     }
+    private val browserSource by lazy {
+        normalizedSource(
+            sourceText("src/tv/java/app/ownplay/player/ui/live/TvLiveChannelBrowser.kt"),
+        )
+    }
 
     @Test
     fun `tv live landscape uses a dedicated tv presentation workspace`() {
@@ -31,14 +36,46 @@ class TvLiveShellIntegrationContractTest {
     }
 
     @Test
-    fun `dedicated workspace reuses established browse preview and epg surfaces`() {
-        assertTrue("TV Live must reuse established hierarchical browsing.", "HierarchicalLiveBrowse(" in workspaceSource)
+    fun `dedicated workspace uses tv native browse preview and epg surfaces`() {
+        assertTrue(
+            "TV Live must route categories and channels through the dedicated TV browser.",
+            "TvLiveChannelBrowser(" in workspaceSource,
+        )
+        assertFalse(
+            "TV Live must not route through the shared hierarchy presentation.",
+            "HierarchicalLiveBrowse(" in workspaceSource,
+        )
+        assertFalse(
+            "TV Live must not reference the portrait view-mode presentation.",
+            "PortraitLiveBrowseWithViewModes(" in workspaceSource ||
+                "PortraitLiveBrowseWithViewModes(" in browserSource,
+        )
         assertTrue("TV Live must reuse the presentation-only Preview surface.", "LivePreviewPanel(" in workspaceSource)
         assertTrue("Selected-channel EPG must remain beside Preview.", "EpgPanel(" in workspaceSource)
+    }
+
+    @Test
+    fun `tv browser keeps stable remote first geometry`() {
+        assertTrue("Category rows must have fixed geometry.", ".height(70.dp)" in browserSource)
+        assertTrue("Channel rows must have fixed geometry.", ".height(72.dp)" in browserSource)
         assertTrue(
-            "Existing channel search/filter semantics must remain wired through the TV workspace.",
-            "onSearchChange = onSearchChange" in workspaceSource,
+            "Channel focus must remain explicitly restorable.",
+            "channelFocusRequester.requestFocus()" in browserSource,
         )
+        assertTrue(
+            "Focused channel rows must use color rather than resizing.",
+            "focused -> MaterialTheme.colorScheme.primaryContainer" in browserSource,
+        )
+        assertFalse("TV browser focus must never scale row geometry.", ".scale(" in browserSource)
+        assertFalse("TV browser must not animate row size.", "animateContentSize" in browserSource)
+    }
+
+    @Test
+    fun `tv browser excludes touch derived browse chrome`() {
+        assertFalse("TV browser must not expose outlined text fields.", "OutlinedTextField" in browserSource)
+        assertFalse("TV browser must not expose filter chips.", "FilterChip" in browserSource)
+        assertFalse("TV browser must not expose dropdown menus.", "DropdownMenu" in browserSource)
+        assertFalse("TV browser must not expose pointer drag handling.", "pointerInput" in browserSource)
     }
 
     @Test
