@@ -38,6 +38,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -48,6 +53,7 @@ import app.ownplay.player.series.SeriesEpisode
 import app.ownplay.player.series.SeriesFeatureRuntime
 import app.ownplay.player.series.SeriesSummary
 import app.ownplay.player.ui.library.progressFraction
+import app.ownplay.player.ui.shell.LocalTvHomeShellFocusBoundary
 import app.ownplay.player.ui.vod.RemotePoster
 import app.ownplay.player.vod.VodCatalog
 import app.ownplay.player.vod.VodFeatureRuntime
@@ -60,6 +66,7 @@ private const val HOME_CONTINUE_MOVIE_PREFIX = "continue-movie:"
 private const val HOME_CONTINUE_EPISODE_PREFIX = "continue-episode:"
 private const val HOME_MOVIE_PREFIX = "movie:"
 private const val HOME_SERIES_PREFIX = "series:"
+private const val HOME_EMPTY_ACTION_FOCUS_KEY = "home-empty-action"
 private val HomePosterWidth = 166.dp
 
 private enum class TvHomeShelfKind {
@@ -122,6 +129,7 @@ internal fun TvHomeScreen(
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
+    val shellFocusBoundary = LocalTvHomeShellFocusBoundary.current
     val vodRuntime = remember(context) { VodFeatureRuntime(context.applicationContext) }
     val seriesRuntime = remember(context) { SeriesFeatureRuntime(context.applicationContext) }
     val homeListState = rememberLazyListState()
@@ -129,6 +137,7 @@ internal fun TvHomeScreen(
     val moviesState = rememberLazyListState()
     val seriesState = rememberLazyListState()
     val returnFocusRequester = remember { FocusRequester() }
+    val contentEntryFocusRequester = remember { FocusRequester() }
 
     DisposableEffect(vodRuntime, seriesRuntime) {
         onDispose {
@@ -189,6 +198,23 @@ internal fun TvHomeScreen(
             series = series,
         )
     }
+    val contentEntryKey = remember(
+        sourceId,
+        sourceKind,
+        refreshing,
+        continueWatching,
+        movies,
+        series,
+    ) {
+        resolveHomeContentEntryKey(
+            sourceId = sourceId,
+            sourceKind = sourceKind,
+            refreshing = refreshing,
+            continueWatching = continueWatching,
+            movies = movies,
+            series = series,
+        )
+    }
 
     LaunchedEffect(
         returnFocusGeneration,
@@ -222,11 +248,41 @@ internal fun TvHomeScreen(
         onReturnFocusConsumed()
     }
 
+    LaunchedEffect(
+        shellFocusBoundary.contentEntryGeneration,
+        contentEntryKey,
+        continueWatching,
+        movies,
+        series,
+    ) {
+        if (shellFocusBoundary.contentEntryGeneration <= 0) return@LaunchedEffect
+        val focusKey = contentEntryKey ?: return@LaunchedEffect
+        val location = resolveHomeFocusLocation(
+            focusKey = focusKey,
+            continueWatching = continueWatching,
+            movies = movies,
+            series = series,
+        )
+        if (location != null) {
+            homeListState.scrollToItem(location.rowIndex)
+            when (location.shelf) {
+                TvHomeShelfKind.CONTINUE_WATCHING -> continueWatchingState.scrollToItem(location.itemIndex)
+                TvHomeShelfKind.MOVIES -> moviesState.scrollToItem(location.itemIndex)
+                TvHomeShelfKind.SERIES -> seriesState.scrollToItem(location.itemIndex)
+            }
+        }
+        withFrameNanos { }
+        withFrameNanos { }
+        contentEntryFocusRequester.requestFocus()
+    }
+
     when {
         sourceId == null -> TvHomeMessage(
             title = "No playlist configured",
             detail = "Add a playlist to see Movies and Series on Home.",
             actionLabel = "Open Settings",
+            entryFocusRequester = contentEntryFocusRequester,
+            onEntryLeft = shellFocusBoundary.requestRailFocus,
             onAction = onOpenSettings,
             modifier = modifier,
         )
@@ -234,6 +290,8 @@ internal fun TvHomeScreen(
             title = "No on-demand catalog for this playlist",
             detail = "Home shows Movies and Series when the active playlist provides them.",
             actionLabel = "Open Settings",
+            entryFocusRequester = contentEntryFocusRequester,
+            onEntryLeft = shellFocusBoundary.requestRailFocus,
             onAction = onOpenSettings,
             modifier = modifier,
         )
@@ -244,6 +302,8 @@ internal fun TvHomeScreen(
             title = "No Movies or Series found",
             detail = "The active playlist does not currently provide on-demand content.",
             actionLabel = "Open Settings",
+            entryFocusRequester = contentEntryFocusRequester,
+            onEntryLeft = shellFocusBoundary.requestRailFocus,
             onAction = onOpenSettings,
             modifier = modifier,
         )
@@ -266,6 +326,9 @@ internal fun TvHomeScreen(
                         state = continueWatchingState,
                         returnFocusKey = returnFocusKey,
                         returnFocusRequester = returnFocusRequester,
+                        contentEntryKey = contentEntryKey,
+                        contentEntryFocusRequester = contentEntryFocusRequester,
+                        onContentEntryLeft = shellFocusBoundary.requestRailFocus,
                         onOpenMovieDetails = { movie, focusKey ->
                             onOpenMovieDetails(sourceId, movie.movieId, focusKey)
                         },
@@ -283,6 +346,9 @@ internal fun TvHomeScreen(
                         state = moviesState,
                         returnFocusKey = returnFocusKey,
                         returnFocusRequester = returnFocusRequester,
+                        contentEntryKey = contentEntryKey,
+                        contentEntryFocusRequester = contentEntryFocusRequester,
+                        onContentEntryLeft = shellFocusBoundary.requestRailFocus,
                         onOpenMovieDetails = { movie, focusKey ->
                             onOpenMovieDetails(sourceId, movie.movieId, focusKey)
                         },
@@ -297,6 +363,9 @@ internal fun TvHomeScreen(
                         state = seriesState,
                         returnFocusKey = returnFocusKey,
                         returnFocusRequester = returnFocusRequester,
+                        contentEntryKey = contentEntryKey,
+                        contentEntryFocusRequester = contentEntryFocusRequester,
+                        onContentEntryLeft = shellFocusBoundary.requestRailFocus,
                         onOpenSeriesDetails = { item, focusKey ->
                             onOpenSeriesDetails(sourceId, item.seriesId, focusKey)
                         },
@@ -313,6 +382,9 @@ private fun TvHomeContinueWatchingRow(
     state: LazyListState,
     returnFocusKey: String?,
     returnFocusRequester: FocusRequester,
+    contentEntryKey: String?,
+    contentEntryFocusRequester: FocusRequester,
+    onContentEntryLeft: () -> Unit,
     onOpenMovieDetails: (VodMovie, focusKey: String) -> Unit,
     onOpenSeriesDetails: (SeriesEpisode, focusKey: String) -> Unit,
 ) {
@@ -325,6 +397,9 @@ private fun TvHomeContinueWatchingRow(
                 focusKey = item.key,
                 returnFocusKey = returnFocusKey,
                 returnFocusRequester = returnFocusRequester,
+                isContentEntry = item.key == contentEntryKey,
+                contentEntryFocusRequester = contentEntryFocusRequester,
+                onContentEntryLeft = onContentEntryLeft,
                 title = item.title,
                 posterUrl = item.posterUrl,
                 subtitle = when (item) {
@@ -350,6 +425,9 @@ private fun TvHomeMovieRow(
     state: LazyListState,
     returnFocusKey: String?,
     returnFocusRequester: FocusRequester,
+    contentEntryKey: String?,
+    contentEntryFocusRequester: FocusRequester,
+    onContentEntryLeft: () -> Unit,
     onOpenMovieDetails: (VodMovie, focusKey: String) -> Unit,
 ) {
     TvHomeShelf(
@@ -362,6 +440,9 @@ private fun TvHomeMovieRow(
                 focusKey = focusKey,
                 returnFocusKey = returnFocusKey,
                 returnFocusRequester = returnFocusRequester,
+                isContentEntry = focusKey == contentEntryKey,
+                contentEntryFocusRequester = contentEntryFocusRequester,
+                onContentEntryLeft = onContentEntryLeft,
                 title = movie.name,
                 posterUrl = movie.posterUrl,
                 subtitle = movie.rating?.let { rating -> "Rating ${formatRating(rating)}" },
@@ -377,6 +458,9 @@ private fun TvHomeSeriesRow(
     state: LazyListState,
     returnFocusKey: String?,
     returnFocusRequester: FocusRequester,
+    contentEntryKey: String?,
+    contentEntryFocusRequester: FocusRequester,
+    onContentEntryLeft: () -> Unit,
     onOpenSeriesDetails: (SeriesSummary, focusKey: String) -> Unit,
 ) {
     TvHomeShelf(
@@ -389,6 +473,9 @@ private fun TvHomeSeriesRow(
                 focusKey = focusKey,
                 returnFocusKey = returnFocusKey,
                 returnFocusRequester = returnFocusRequester,
+                isContentEntry = focusKey == contentEntryKey,
+                contentEntryFocusRequester = contentEntryFocusRequester,
+                onContentEntryLeft = onContentEntryLeft,
                 title = item.name,
                 posterUrl = item.posterUrl,
                 subtitle = item.rating?.let { rating -> "Rating ${formatRating(rating)}" },
@@ -553,11 +640,31 @@ private fun resolveHomeHero(
     return null
 }
 
+private fun resolveHomeContentEntryKey(
+    sourceId: String?,
+    sourceKind: String?,
+    refreshing: Boolean,
+    continueWatching: List<TvHomeContinueItem>,
+    movies: List<VodMovie>,
+    series: List<SeriesSummary>,
+): String? = when {
+    sourceId == null -> HOME_EMPTY_ACTION_FOCUS_KEY
+    sourceKind != SourceKinds.XTREAM -> HOME_EMPTY_ACTION_FOCUS_KEY
+    refreshing && continueWatching.isEmpty() && movies.isEmpty() && series.isEmpty() -> null
+    continueWatching.isNotEmpty() -> continueWatching.first().key
+    movies.isNotEmpty() -> homeMovieFocusKey(movies.first().movieId)
+    series.isNotEmpty() -> homeSeriesFocusKey(series.first().seriesId)
+    else -> HOME_EMPTY_ACTION_FOCUS_KEY
+}
+
 @Composable
 private fun TvHomePosterCard(
     focusKey: String,
     returnFocusKey: String?,
     returnFocusRequester: FocusRequester,
+    isContentEntry: Boolean,
+    contentEntryFocusRequester: FocusRequester,
+    onContentEntryLeft: () -> Unit,
     title: String,
     posterUrl: String?,
     subtitle: String? = null,
@@ -570,11 +677,26 @@ private fun TvHomePosterCard(
     } else {
         Modifier
     }
+    val entryModifier = if (isContentEntry) {
+        Modifier
+            .focusRequester(contentEntryFocusRequester)
+            .onPreviewKeyEvent { event ->
+                if (event.type == KeyEventType.KeyDown && event.key == Key.DirectionLeft) {
+                    onContentEntryLeft()
+                    true
+                } else {
+                    false
+                }
+            }
+    } else {
+        Modifier
+    }
 
     Surface(
         modifier = Modifier
             .width(HomePosterWidth)
             .then(restoreModifier)
+            .then(entryModifier)
             .onFocusChanged { focused = it.isFocused }
             .clickable(onClick = onClick),
         shape = RoundedCornerShape(12.dp),
@@ -709,6 +831,8 @@ private fun TvHomeMessage(
     title: String,
     detail: String,
     actionLabel: String,
+    entryFocusRequester: FocusRequester,
+    onEntryLeft: () -> Unit,
     onAction: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -730,7 +854,19 @@ private fun TvHomeMessage(
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         Spacer(modifier = Modifier.height(12.dp))
-        TextButton(onClick = onAction) {
+        TextButton(
+            onClick = onAction,
+            modifier = Modifier
+                .focusRequester(entryFocusRequester)
+                .onPreviewKeyEvent { event ->
+                    if (event.type == KeyEventType.KeyDown && event.key == Key.DirectionLeft) {
+                        onEntryLeft()
+                        true
+                    } else {
+                        false
+                    }
+                },
+        ) {
             Text(actionLabel)
         }
     }
