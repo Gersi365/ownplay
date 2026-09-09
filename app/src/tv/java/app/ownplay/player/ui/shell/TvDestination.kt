@@ -17,7 +17,7 @@ internal enum class TvDestination(
         icon = Icons.Filled.Home,
     ),
     LIVE_TV(
-        label = "Live TV",
+        label = "Live",
         icon = Icons.Filled.LiveTv,
     ),
     MOVIES(
