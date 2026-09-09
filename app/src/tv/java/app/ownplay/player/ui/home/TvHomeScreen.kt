@@ -4,6 +4,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
@@ -32,6 +33,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
@@ -70,6 +72,14 @@ private data class TvHomeFocusLocation(
     val shelf: TvHomeShelfKind,
     val rowIndex: Int,
     val itemIndex: Int,
+)
+
+private data class TvHomeHeroModel(
+    val eyebrow: String,
+    val title: String,
+    val detail: String?,
+    val posterUrl: String?,
+    val progress: Float?,
 )
 
 private sealed interface TvHomeContinueItem {
@@ -172,6 +182,13 @@ internal fun TvHomeScreen(
     val movies = remember(vodCatalog.movies) { vodCatalog.movies.take(HOME_ROW_LIMIT) }
     val series = remember(seriesCatalog.series) { seriesCatalog.series.take(HOME_ROW_LIMIT) }
     val refreshing = movieRefreshRunning || seriesRefreshRunning
+    val hero = remember(continueWatching, movies, series) {
+        resolveHomeHero(
+            continueWatching = continueWatching,
+            movies = movies,
+            series = series,
+        )
+    }
 
     LaunchedEffect(
         returnFocusGeneration,
@@ -239,18 +256,7 @@ internal fun TvHomeScreen(
             verticalArrangement = Arrangement.spacedBy(26.dp),
         ) {
             item(key = "home-header") {
-                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Text(
-                        text = "Home",
-                        style = MaterialTheme.typography.headlineMedium,
-                        fontWeight = FontWeight.SemiBold,
-                    )
-                    Text(
-                        text = "Your Movies and Series",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
+                TvHomeHero(model = hero)
             }
 
             if (continueWatching.isNotEmpty()) {
@@ -415,6 +421,136 @@ private fun TvHomeShelf(
             content = content,
         )
     }
+}
+
+@Composable
+private fun TvHomeHero(model: TvHomeHeroModel?) {
+    if (model == null) {
+        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text(
+                text = "Home",
+                style = MaterialTheme.typography.headlineMedium,
+                fontWeight = FontWeight.SemiBold,
+            )
+            Text(
+                text = "Your Movies and Series",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        return
+    }
+
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(18.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.24f),
+        tonalElevation = 0.dp,
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(220.dp)
+                .padding(horizontal = 22.dp, vertical = 12.dp),
+            horizontalArrangement = Arrangement.spacedBy(24.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Text(
+                    text = "HOME",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                Text(
+                    text = model.eyebrow,
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.primary,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                Text(
+                    text = model.title,
+                    style = MaterialTheme.typography.headlineLarge,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                model.detail?.let { detail ->
+                    Text(
+                        text = detail,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+                model.progress?.let { watched ->
+                    LinearProgressIndicator(
+                        progress = { watched },
+                        modifier = Modifier.fillMaxWidth(0.68f),
+                    )
+                }
+            }
+
+            RemotePoster(
+                url = model.posterUrl,
+                title = model.title,
+                modifier = Modifier
+                    .width(132.dp)
+                    .aspectRatio(2f / 3f),
+            )
+        }
+    }
+}
+
+private fun resolveHomeHero(
+    continueWatching: List<TvHomeContinueItem>,
+    movies: List<VodMovie>,
+    series: List<SeriesSummary>,
+): TvHomeHeroModel? {
+    continueWatching.firstOrNull()?.let { item ->
+        return when (item) {
+            is TvHomeContinueItem.Movie -> TvHomeHeroModel(
+                eyebrow = "CONTINUE WATCHING",
+                title = item.movie.name,
+                detail = item.movie.rating?.let { rating -> "Rating ${formatRating(rating)}" },
+                posterUrl = item.movie.posterUrl,
+                progress = progressFraction(item.movie.positionMs, item.movie.durationMs),
+            )
+            is TvHomeContinueItem.Episode -> TvHomeHeroModel(
+                eyebrow = "CONTINUE WATCHING",
+                title = item.episode.seriesTitle,
+                detail = "S${item.episode.seasonNumber} · E${item.episode.episodeNumber} · ${item.episode.title}",
+                posterUrl = item.episode.posterUrl,
+                progress = progressFraction(item.episode.positionMs, item.episode.durationMs),
+            )
+        }
+    }
+
+    movies.firstOrNull()?.let { movie ->
+        return TvHomeHeroModel(
+            eyebrow = "MOVIE",
+            title = movie.name,
+            detail = movie.rating?.let { rating -> "Rating ${formatRating(rating)}" },
+            posterUrl = movie.posterUrl,
+            progress = null,
+        )
+    }
+
+    series.firstOrNull()?.let { item ->
+        return TvHomeHeroModel(
+            eyebrow = "SERIES",
+            title = item.name,
+            detail = item.rating?.let { rating -> "Rating ${formatRating(rating)}" },
+            posterUrl = item.posterUrl,
+            progress = null,
+        )
+    }
+
+    return null
 }
 
 @Composable
