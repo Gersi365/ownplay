@@ -13,18 +13,32 @@ class TvLiveManagementFocusContractTest {
     }
 
     @Test
-    fun `tv settings enters live management on the selected source`() {
+    fun `tv settings enters injected live management on the selected source`() {
         val tvSettings = normalizedSource(
             sourceText("src/main/java/app/ownplay/player/ui/tv/TvSettingsScreen.kt"),
         )
+        val sharedSettings = normalizedSource(
+            sourceText("src/main/java/app/ownplay/player/ui/SettingsScreen.kt"),
+        )
+        val tvShell = normalizedSource(
+            sourceText("src/tv/java/app/ownplay/player/ui/TVOwnPlayApp.kt"),
+        )
 
         assertTrue(
-            "TV Settings must route Live Management through the dedicated TV screen.",
-            "TvLiveManagementScreen(" in tvSettings,
+            "Shared TV Settings must invoke the injected Live Management content.",
+            "liveManagementContent(" in tvSettings,
         )
         assertTrue(
-            "TV Settings must request first-action focus for Live Management.",
-            "focusFirstActionOnEntry = true" in tvSettings,
+            "SettingsScreen must pass its flavor injection into TV Settings.",
+            "liveManagementContent = tvLiveManagementContent" in sharedSettings,
+        )
+        assertTrue(
+            "The TV source set must inject the dedicated TV Live Management screen.",
+            "TvLiveManagementScreen(" in tvShell,
+        )
+        assertTrue(
+            "The injected TV screen must request first-action focus.",
+            "focusFirstActionOnEntry = true" in tvShell,
         )
         assertTrue(
             "The TV screen must request its first action after composition.",
