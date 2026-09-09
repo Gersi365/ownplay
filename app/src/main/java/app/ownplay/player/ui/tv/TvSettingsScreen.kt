@@ -29,12 +29,18 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import app.ownplay.player.OwnPlayAppRuntime
@@ -87,6 +93,7 @@ internal fun TvSettingsScreen(
         () -> Unit,
     ) -> Unit,
 ) {
+    val shellFocusBoundary = LocalTvShellFocusBoundary.current
     var openDestination by remember { mutableStateOf<TvSettingsDestination?>(null) }
     var focusedDestination by remember { mutableStateOf(defaultTvSettingsDestination) }
     var originatingDestination by remember { mutableStateOf(defaultTvSettingsDestination) }
@@ -102,6 +109,16 @@ internal fun TvSettingsScreen(
         if (openDestination == null) {
             focusedDestination = originatingDestination
             rootFocusRequesters.getValue(originatingDestination).requestFocus()
+        }
+    }
+
+    LaunchedEffect(shellFocusBoundary.contentEntryGeneration, openDestination) {
+        if (
+            shellFocusBoundary.contentEntryGeneration > 0 &&
+            openDestination == null
+        ) {
+            withFrameNanos { }
+            rootFocusRequesters.getValue(focusedDestination).requestFocus()
         }
     }
 
@@ -155,6 +172,14 @@ internal fun TvSettingsScreen(
                     originatingDestination = destination
                     openDestination = destination
                 },
+                onLeftBoundary = {
+                    if (shellFocusBoundary.railVisible) {
+                        shellFocusBoundary.requestRailFocus()
+                        true
+                    } else {
+                        false
+                    }
+                },
             )
         }
     }
@@ -167,6 +192,7 @@ private fun TvSettingsRoot(
     focusRequesters: Map<TvSettingsDestination, FocusRequester>,
     onFocused: (TvSettingsDestination) -> Unit,
     onOpen: (TvSettingsDestination) -> Unit,
+    onLeftBoundary: () -> Boolean,
 ) {
     Row(
         modifier = Modifier
@@ -200,6 +226,7 @@ private fun TvSettingsRoot(
                     focusRequester = focusRequesters.getValue(destination),
                     onFocused = { onFocused(destination) },
                     onClick = { onOpen(destination) },
+                    onLeftBoundary = onLeftBoundary,
                 )
             }
         }
@@ -243,6 +270,7 @@ private fun TvSettingsDestinationRow(
     focusRequester: FocusRequester,
     onFocused: () -> Unit,
     onClick: () -> Unit,
+    onLeftBoundary: () -> Boolean,
 ) {
     val containerColor = if (focused) {
         MaterialTheme.colorScheme.primaryContainer
@@ -263,6 +291,16 @@ private fun TvSettingsDestinationRow(
             .focusRequester(focusRequester)
             .onFocusChanged { state ->
                 if (state.isFocused) onFocused()
+            }
+            .onPreviewKeyEvent { event ->
+                if (
+                    event.type == KeyEventType.KeyDown &&
+                    event.key == Key.DirectionLeft
+                ) {
+                    onLeftBoundary()
+                } else {
+                    false
+                }
             },
         shape = RoundedCornerShape(14.dp),
         color = containerColor,
