@@ -43,7 +43,6 @@ import app.ownplay.player.source.SourceSyncState
 import app.ownplay.player.ui.AboutSettingsContent
 import app.ownplay.player.ui.BackupRestoreSettingsContent
 import app.ownplay.player.ui.PlaylistManagementSubscreen
-import app.ownplay.player.ui.live.TvLiveManagementScreen
 
 internal enum class TvSettingsDestination(
     val title: String,
@@ -82,6 +81,11 @@ internal fun TvSettingsScreen(
     summaries: List<PlaylistSourceSummary>,
     syncState: SourceSyncState,
     onOpenSourceInLive: (String) -> Unit,
+    liveManagementContent: @Composable (
+        OwnPlayAppRuntime,
+        List<PlaylistSourceSummary>,
+        () -> Unit,
+    ) -> Unit,
 ) {
     var openDestination by remember { mutableStateOf<TvSettingsDestination?>(null) }
     var focusedDestination by remember { mutableStateOf(defaultTvSettingsDestination) }
@@ -117,11 +121,10 @@ internal fun TvSettingsScreen(
             )
         }
         TvSettingsDestination.LIVE_MANAGEMENT -> {
-            TvLiveManagementScreen(
-                runtime = runtime,
-                summaries = summaries.filter { summary -> summary.enabled },
-                onBack = returnToRoot,
-                focusFirstActionOnEntry = true,
+            liveManagementContent(
+                runtime,
+                summaries.filter { summary -> summary.enabled },
+                returnToRoot,
             )
         }
         TvSettingsDestination.BACKUP_RESTORE -> {
