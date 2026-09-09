@@ -8,21 +8,32 @@ import org.junit.Test
 
 class OnDemandPresentationLifecycleRegressionTest {
     @Test
-    fun mobileAndTvShellsRestoreOnDemandRouteFromProcessSession() {
+    fun mobileShellRestoresOnDemandRouteFromProcessSession() {
         val mobile = sourceText("src/mobile/java/app/ownplay/player/ui/MobileOwnPlayApp.kt")
-        val tv = sourceText("src/tv/java/app/ownplay/player/ui/TVOwnPlayApp.kt")
 
-        listOf(mobile, tv).forEach { shell ->
-            assertTrue(shell.contains("runtime.onDemandPresentationSession.state.collectAsState()"))
-            assertTrue(shell.contains("OnDemandContentKind.MOVIE"))
-            assertTrue(shell.contains("OnDemandContentKind.SERIES"))
-            assertTrue(shell.contains("val vodFullscreen = onDemandPresentation.isMoviePlayback"))
-            assertTrue(shell.contains("val seriesFullscreen = onDemandPresentation.isSeriesPlayback"))
-            assertFalse(shell.contains("var vodFullscreen by remember"))
-            assertFalse(shell.contains("var seriesFullscreen by remember"))
-            assertTrue(shell.contains("runtime.onDemandPresentationSession.showMovieDetail("))
-            assertTrue(shell.contains("runtime.onDemandPresentationSession.showSeriesDetail("))
-        }
+        assertTrue(mobile.contains("runtime.onDemandPresentationSession.state.collectAsState()"))
+        assertTrue(mobile.contains("OnDemandContentKind.MOVIE"))
+        assertTrue(mobile.contains("OnDemandContentKind.SERIES"))
+        assertTrue(mobile.contains("val vodFullscreen = onDemandPresentation.isMoviePlayback"))
+        assertTrue(mobile.contains("val seriesFullscreen = onDemandPresentation.isSeriesPlayback"))
+        assertFalse(mobile.contains("var vodFullscreen by remember"))
+        assertFalse(mobile.contains("var seriesFullscreen by remember"))
+        assertTrue(mobile.contains("runtime.onDemandPresentationSession.showMovieDetail("))
+        assertTrue(mobile.contains("runtime.onDemandPresentationSession.showSeriesDetail("))
+    }
+
+    @Test
+    fun rebuiltTvFoundationDoesNotRestoreLegacyOnDemandRouteBeforeNativeCatalogStage() {
+        val target = sourceText("src/tv/java/app/ownplay/player/ui/TargetOwnPlayApp.kt")
+        val root = sourceText(
+            "src/tv/java/app/ownplay/player/ui/rebuild/RebuiltOwnPlayTvApp.kt",
+        )
+
+        assertTrue(target.contains("RebuiltOwnPlayTvApp("))
+        assertFalse(target.contains("TVOwnPlayApp("))
+        assertFalse(root.contains("onDemandPresentationSession"))
+        assertFalse(root.contains("VodRoute("))
+        assertFalse(root.contains("SeriesRoute("))
     }
 
     @Test
