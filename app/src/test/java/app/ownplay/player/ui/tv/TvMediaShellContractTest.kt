@@ -57,19 +57,27 @@ class TvMediaShellContractTest {
     }
 
     @Test
-    fun `rail starts expanded and right activates destination before content handoff`() {
+    fun `rail starts expanded and right publishes an explicit destination scoped handoff`() {
         val source = normalizedSource(
             sourceText("src/tv/java/app/ownplay/player/ui/shell/TvMediaShell.kt"),
         )
 
         assertTrue("Rail must start expanded.", "var railExpanded by remember { mutableStateOf(true) }" in source)
         assertTrue(
-            "Right must activate the focused destination before content focus moves.",
+            "Right must activate the focused destination before content entry is armed.",
             "onDestinationActivated(destination) pendingContentEntry = destination" in source,
         )
         assertTrue(
-            "Content handoff must use D-pad Right focus movement.",
-            "focusManager.moveFocus(FocusDirection.Right)" in source,
+            "A matched destination must publish an explicit entry generation.",
+            "contentEntryDestination = destination contentEntryGeneration += 1" in source,
+        )
+        assertTrue(
+            "Entry generation must only be visible to the active destination that owns it.",
+            "contentEntryGeneration = if (contentEntryDestination == activeDestination)" in source,
+        )
+        assertFalse(
+            "Primary TV content handoff must not fall back to spatial D-pad focus search.",
+            "moveFocus(FocusDirection.Right)" in source,
         )
     }
 
@@ -90,6 +98,10 @@ class TvMediaShellContractTest {
         assertTrue(
             "Entry from content must restore the active destination instead of an arbitrary row.",
             "if (enteringCollapsedRail && destination != activeDestination) { pendingRailRestore = activeDestination }" in source,
+        )
+        assertTrue(
+            "The shared shell callback must only restore the rail while it is visible.",
+            "if (railVisible) { railExpanded = true pendingRailRestore = activeDestination }" in source,
         )
     }
 
