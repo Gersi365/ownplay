@@ -19,18 +19,24 @@ class TvHomeRailBoundaryContractTest {
     }
 
     @Test
-    fun `home right handoff uses an explicit entry event instead of spatial focus`() {
+    fun `home right handoff uses the shared explicit entry event instead of spatial focus`() {
         assertTrue(
-            "Home must receive an explicit content-entry generation from the shell.",
-            "if (destination == TvDestination.HOME) { homeContentEntryGeneration += 1 } else { focusManager.moveFocus(FocusDirection.Right) }" in shellSource,
+            "Home must receive the shared destination-scoped content-entry generation.",
+            "contentEntryDestination = destination contentEntryGeneration += 1" in shellSource &&
+                "contentEntryGeneration = if (contentEntryDestination == activeDestination)" in shellSource,
         )
         assertTrue(
-            "Leaving Home must clear the old entry generation so detail returns do not replay rail entry.",
-            "if (activeDestination != TvDestination.HOME) { homeContentEntryGeneration = 0 }" in shellSource,
+            "The Home compatibility boundary must point at the shared shell boundary.",
+            "typealias TvHomeShellFocusBoundary = TvShellFocusBoundary" in shellSource &&
+                "LocalTvHomeShellFocusBoundary = LocalTvShellFocusBoundary" in shellSource,
         )
         assertTrue(
-            "The Home boundary must be provided only around shell content.",
-            "LocalTvHomeShellFocusBoundary provides TvHomeShellFocusBoundary" in shellSource,
+            "The shared boundary must be provided only around shell content.",
+            "LocalTvShellFocusBoundary provides TvShellFocusBoundary" in shellSource,
+        )
+        assertFalse(
+            "Home entry must not regress to spatial focus movement.",
+            "moveFocus(FocusDirection.Right)" in shellSource,
         )
     }
 
