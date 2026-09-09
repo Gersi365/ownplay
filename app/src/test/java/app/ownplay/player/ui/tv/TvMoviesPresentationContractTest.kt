@@ -128,8 +128,9 @@ class TvMoviesPresentationContractTest {
             "val movie = movies.firstOrNull() if (movie == null) { false } else" in moviesSource,
         )
         assertTrue(
-            "Category Right handling must return the actual consumption decision.",
-            "event.key == Key.DirectionRight) { onRight() } else" in moviesSource,
+            "Section key handling must preserve explicit Left and Right consumption decisions.",
+            "Key.DirectionLeft -> onLeft()" in moviesSource &&
+                "Key.DirectionRight -> onRight()" in moviesSource,
         )
     }
 }
