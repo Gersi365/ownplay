@@ -37,13 +37,13 @@ import app.ownplay.player.source.selection.ActivePlaylistStore
 import app.ownplay.player.source.selection.resolveActivePlaylistId
 import app.ownplay.player.ui.home.TvHomeScreen
 import app.ownplay.player.ui.live.TvLiveManagementScreen
+import app.ownplay.player.ui.movies.TvMoviePlaybackRoute
 import app.ownplay.player.ui.movies.TvMoviesRoute
 import app.ownplay.player.ui.series.SeriesRoute
 import app.ownplay.player.ui.series.TvSeriesRoute
 import app.ownplay.player.ui.shell.TvDestination
 import app.ownplay.player.ui.shell.TvMediaShell
 import app.ownplay.player.ui.shell.defaultTvDestination
-import app.ownplay.player.ui.vod.VodRoute
 import kotlinx.coroutines.launch
 
 /**
@@ -450,25 +450,19 @@ private fun TVOwnPlayAppContent(
 
             TvDestination.MOVIES -> {
                 if (vodFullscreen) {
-                    VodRoute(
-                        runtime = runtime,
-                        sourceId = activeSourceId,
-                        sourceKind = activeSummary?.sourceKind,
-                        requestedMovieId = requestedVodMovieId,
-                        onRequestedMovieConsumed = { requestedVodMovieId = null },
-                        returnToLibraryOnDetailBack = movieDetailReturnToHome,
-                        onReturnToLibrary = {
-                            if (movieDetailReturnToHome && homeReturnFocusKey != null) {
-                                homeReturnFocusGeneration += 1
-                                homeReturnFocusPending = true
-                            }
-                            openDestination(TvDestination.HOME)
-                        },
-                        onOpenLive = { openDestination(TvDestination.LIVE_TV) },
-                        onOpenSeries = { openDestination(TvDestination.SERIES) },
-                        onOpenSettings = { openDestination(TvDestination.SETTINGS) },
-                        onFullscreenStateChanged = onPlaybackFullscreenChanged,
-                    )
+                    val movie = onDemandPresentation.moviePlayback
+                    val playbackSourceId = onDemandPresentation.sourceId
+                    if (movie != null && playbackSourceId != null) {
+                        TvMoviePlaybackRoute(
+                            runtime = runtime,
+                            sourceId = playbackSourceId,
+                            movie = movie,
+                            onExit = {
+                                runtime.onDemandPresentationSession.returnFromMoviePlayback()
+                            },
+                            onFullscreenStateChanged = onPlaybackFullscreenChanged,
+                        )
+                    }
                 } else {
                     TvMoviesRoute(
                         runtime = runtime,
