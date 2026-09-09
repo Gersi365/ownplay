@@ -30,6 +30,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -54,12 +59,16 @@ internal fun TvLiveChannelBrowser(
     focusChannelId: String?,
     focusRequestGeneration: Int,
     channelFocusRequester: FocusRequester,
+    contentEntryGeneration: Int,
+    onLeftBoundary: () -> Boolean,
     modifier: Modifier = Modifier,
 ) {
     when (hierarchyLevel) {
         LiveBrowseHierarchyLevel.CATEGORIES -> TvLiveCategoryList(
             state = state,
+            contentEntryGeneration = contentEntryGeneration,
             onCategorySelected = onCategorySelected,
+            onLeftBoundary = onLeftBoundary,
             modifier = modifier,
         )
 
@@ -70,6 +79,7 @@ internal fun TvLiveChannelBrowser(
             focusChannelId = focusChannelId,
             focusRequestGeneration = focusRequestGeneration,
             channelFocusRequester = channelFocusRequester,
+            onLeftBoundary = onLeftBoundary,
             modifier = modifier,
         )
     }
@@ -78,7 +88,9 @@ internal fun TvLiveChannelBrowser(
 @Composable
 private fun TvLiveCategoryList(
     state: LiveBrowseState,
+    contentEntryGeneration: Int,
     onCategorySelected: (String?) -> Unit,
+    onLeftBoundary: () -> Boolean,
     modifier: Modifier = Modifier,
 ) {
     val preferredCategoryKey = state.query.categoryKey?.takeIf { selected ->
@@ -92,7 +104,12 @@ private fun TvLiveCategoryList(
     val listState = rememberLazyListState()
     val initialFocusRequester = remember(preferredCategoryKey, state.categories) { FocusRequester() }
 
-    LaunchedEffect(preferredCategoryKey, preferredCategoryIndex, state.categories) {
+    LaunchedEffect(
+        preferredCategoryKey,
+        preferredCategoryIndex,
+        state.categories,
+        contentEntryGeneration,
+    ) {
         if (preferredCategoryKey == null || preferredCategoryIndex < 0) return@LaunchedEffect
         listState.scrollToItem(preferredCategoryIndex)
         withFrameNanos { }
@@ -122,6 +139,7 @@ private fun TvLiveCategoryList(
                 TvLiveCategoryRow(
                     category = category,
                     onClick = { onCategorySelected(category.providerCategoryKey) },
+                    onLeftBoundary = onLeftBoundary,
                     modifier = if (preferred) {
                         Modifier.focusRequester(initialFocusRequester)
                     } else {
@@ -141,6 +159,7 @@ private fun TvLiveChannelList(
     focusChannelId: String?,
     focusRequestGeneration: Int,
     channelFocusRequester: FocusRequester,
+    onLeftBoundary: () -> Boolean,
     modifier: Modifier = Modifier,
 ) {
     val resolvedFocusId = focusChannelId?.takeIf { candidate ->
@@ -191,6 +210,7 @@ private fun TvLiveChannelList(
                     channel = channel,
                     playing = channel.channelId == playingChannelId,
                     onClick = { onChannelSelected(channel.channelId) },
+                    onLeftBoundary = onLeftBoundary,
                     modifier = if (ownsFocusRequester) {
                         Modifier.focusRequester(channelFocusRequester)
                     } else {
@@ -241,6 +261,7 @@ private fun TvLiveSectionHeader(
 private fun TvLiveCategoryRow(
     category: LiveCategory,
     onClick: () -> Unit,
+    onLeftBoundary: () -> Boolean,
     modifier: Modifier = Modifier,
 ) {
     var focused by remember(category.providerCategoryKey) { mutableStateOf(false) }
@@ -250,7 +271,17 @@ private fun TvLiveCategoryRow(
         modifier = modifier
             .fillMaxWidth()
             .height(70.dp)
-            .onFocusChanged { focused = it.isFocused },
+            .onFocusChanged { focused = it.isFocused }
+            .onPreviewKeyEvent { event ->
+                if (
+                    event.type == KeyEventType.KeyDown &&
+                    event.key == Key.DirectionLeft
+                ) {
+                    onLeftBoundary()
+                } else {
+                    false
+                }
+            },
         shape = RoundedCornerShape(14.dp),
         color = if (focused) {
             MaterialTheme.colorScheme.primaryContainer
@@ -306,6 +337,7 @@ private fun TvLiveChannelRow(
     channel: LiveChannelItem,
     playing: Boolean,
     onClick: () -> Unit,
+    onLeftBoundary: () -> Boolean,
     modifier: Modifier = Modifier,
 ) {
     var focused by remember(channel.channelId) { mutableStateOf(false) }
@@ -315,7 +347,17 @@ private fun TvLiveChannelRow(
         modifier = modifier
             .fillMaxWidth()
             .height(72.dp)
-            .onFocusChanged { focused = it.isFocused },
+            .onFocusChanged { focused = it.isFocused }
+            .onPreviewKeyEvent { event ->
+                if (
+                    event.type == KeyEventType.KeyDown &&
+                    event.key == Key.DirectionLeft
+                ) {
+                    onLeftBoundary()
+                } else {
+                    false
+                }
+            },
         shape = RoundedCornerShape(14.dp),
         color = when {
             focused -> MaterialTheme.colorScheme.primaryContainer
