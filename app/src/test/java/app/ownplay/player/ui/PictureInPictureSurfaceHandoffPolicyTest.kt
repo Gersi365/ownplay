@@ -6,10 +6,33 @@ import org.junit.Test
 
 class PictureInPictureSurfaceHandoffPolicyTest {
     @Test
-    fun `live detaches before PiP destination bind`() {
+    fun `live preview uses Media3 transfer for PiP handoff`() {
+        assertEquals(
+            PictureInPictureSurfaceBindingMode.MEDIA3_TRANSFER,
+            PictureInPictureSurfaceHandoffPolicy.modeFor(
+                mediaKind = PlaybackMediaKind.LIVE,
+                liveWasFullscreen = false,
+            ),
+        )
+
+        val events = mutableListOf<String>()
+        PictureInPictureSurfaceHandoffPolicy.handoff(
+            mode = PictureInPictureSurfaceBindingMode.MEDIA3_TRANSFER,
+            detachCurrentSurface = { events += "detach" },
+            bindDestinationSurface = { events += "bind" },
+        )
+
+        assertEquals(listOf("bind"), events)
+    }
+
+    @Test
+    fun `live fullscreen retains detach before PiP destination bind`() {
         assertEquals(
             PictureInPictureSurfaceBindingMode.DETACH_BEFORE_BIND,
-            PictureInPictureSurfaceHandoffPolicy.modeFor(PlaybackMediaKind.LIVE),
+            PictureInPictureSurfaceHandoffPolicy.modeFor(
+                mediaKind = PlaybackMediaKind.LIVE,
+                liveWasFullscreen = true,
+            ),
         )
 
         val events = mutableListOf<String>()

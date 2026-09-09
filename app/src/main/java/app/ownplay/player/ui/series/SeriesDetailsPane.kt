@@ -14,9 +14,13 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -61,6 +65,8 @@ internal fun SeriesDetailsPane(
     onDownload: (SeriesEpisode) -> Unit,
     onPauseDownload: (OfflineDownload) -> Unit,
     onResumeDownload: (OfflineDownload) -> Unit,
+    onRetryDownload: (OfflineDownload) -> Unit,
+    onRemoveDownload: (OfflineDownload) -> Unit,
     onClearProgress: (SeriesEpisode) -> Unit,
     onClose: () -> Unit,
     modifier: Modifier,
@@ -167,6 +173,8 @@ internal fun SeriesDetailsPane(
                             onDownload = { onDownload(selectedEpisode) },
                             onPauseDownload = onPauseDownload,
                             onResumeDownload = onResumeDownload,
+                            onRetryDownload = onRetryDownload,
+                            onRemoveDownload = onRemoveDownload,
                             onClearProgress = { onClearProgress(selectedEpisode) },
                         )
                     }
@@ -219,6 +227,8 @@ internal fun SeriesDetailsPane(
                                         onDownload = { onDownload(episode) },
                                         onPauseDownload = onPauseDownload,
                                         onResumeDownload = onResumeDownload,
+                                        onRetryDownload = onRetryDownload,
+                                        onRemoveDownload = onRemoveDownload,
                                         onClearProgress = { onClearProgress(episode) },
                                     )
                                 }
@@ -387,6 +397,8 @@ private fun SeriesEpisodeDetailsPane(
     onDownload: () -> Unit,
     onPauseDownload: (OfflineDownload) -> Unit,
     onResumeDownload: (OfflineDownload) -> Unit,
+    onRetryDownload: (OfflineDownload) -> Unit,
+    onRemoveDownload: (OfflineDownload) -> Unit,
     onClearProgress: () -> Unit,
 ) {
     Surface(
@@ -454,6 +466,8 @@ private fun SeriesEpisodeDetailsPane(
         onDownload = onDownload,
         onPauseDownload = onPauseDownload,
         onResumeDownload = onResumeDownload,
+        onRetryDownload = onRetryDownload,
+        onRemoveDownload = onRemoveDownload,
         onClearProgress = onClearProgress,
     )
 }
@@ -469,6 +483,8 @@ private fun EpisodeRow(
     onDownload: () -> Unit,
     onPauseDownload: (OfflineDownload) -> Unit,
     onResumeDownload: (OfflineDownload) -> Unit,
+    onRetryDownload: (OfflineDownload) -> Unit,
+    onRemoveDownload: (OfflineDownload) -> Unit,
     onClearProgress: () -> Unit,
 ) {
     val configuration = LocalConfiguration.current
@@ -527,6 +543,7 @@ private fun EpisodeRow(
             Row(
                 modifier = Modifier.padding(top = if (showHeader) 7.dp else 0.dp),
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalAlignment = Alignment.CenterVertically,
             ) {
                 Button(
                     onClick = onPlay,
@@ -550,7 +567,8 @@ private fun EpisodeRow(
                                 DownloadStates.DOWNLOADING,
                                 -> onPauseDownload(download)
                                 DownloadStates.PAUSED -> onResumeDownload(download)
-                                DownloadStates.FAILED, null -> onDownload()
+                                DownloadStates.FAILED -> onRetryDownload(download)
+                                null -> onDownload()
                                 DownloadStates.COMPLETED -> Unit
                             }
                         },
@@ -561,11 +579,16 @@ private fun EpisodeRow(
                                 DownloadStates.QUEUED,
                                 DownloadStates.DOWNLOADING,
                                 -> "Pause"
-                                DownloadStates.PAUSED -> "Resume DL"
+                                DownloadStates.PAUSED -> "Resume"
                                 DownloadStates.FAILED -> "Retry"
                                 else -> "Download"
                             },
                         )
+                    }
+                }
+                if (!isTelevision && download != null) {
+                    IconButton(onClick = { onRemoveDownload(download) }) {
+                        Icon(Icons.Filled.Delete, contentDescription = "Remove episode download")
                     }
                 }
                 if ((episode.positionMs ?: 0L) > 0L) {

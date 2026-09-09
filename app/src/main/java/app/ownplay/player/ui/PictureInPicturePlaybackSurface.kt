@@ -30,12 +30,16 @@ import kotlinx.coroutines.isActive
 fun PictureInPicturePlaybackSurface(
     videoOutput: PlaybackVideoOutput,
     mediaKind: PlaybackMediaKind? = null,
+    liveWasFullscreen: Boolean = true,
     onProgress: ((positionMs: Long, durationMs: Long?) -> Unit)? = null,
 ) {
     var playerView by remember { mutableStateOf<PlayerView?>(null) }
     val returnTarget = remember { AtomicReference<WeakReference<PlayerView>?>(null) }
     val progressCallback by rememberUpdatedState(onProgress)
-    val handoffMode = PictureInPictureSurfaceHandoffPolicy.modeFor(mediaKind)
+    val handoffMode = PictureInPictureSurfaceHandoffPolicy.modeFor(
+        mediaKind = mediaKind,
+        liveWasFullscreen = liveWasFullscreen,
+    )
 
     fun reportProgress(view: PlayerView?) {
         val player = view?.player ?: return

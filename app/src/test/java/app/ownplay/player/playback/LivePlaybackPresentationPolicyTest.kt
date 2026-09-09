@@ -71,7 +71,39 @@ class LivePlaybackPresentationPolicyTest {
     }
 
     @Test
-    fun `live surface handoff detaches before stop switch and restart`() {
+    fun `same stream surface transfer detaches before presentation switch`() {
+        val events = mutableListOf<String>()
+
+        val detached = LivePlaybackSurfaceHandoff.transferAcrossPresentation(
+            detachCurrentSurface = {
+                events += "detach"
+                true
+            },
+            switchPresentation = { events += "switch" },
+        )
+
+        assertTrue(detached)
+        assertEquals(listOf("detach", "switch"), events)
+    }
+
+    @Test
+    fun `same stream transfer still switches when no surface is currently bound`() {
+        val events = mutableListOf<String>()
+
+        val detached = LivePlaybackSurfaceHandoff.transferAcrossPresentation(
+            detachCurrentSurface = {
+                events += "detach"
+                false
+            },
+            switchPresentation = { events += "switch" },
+        )
+
+        assertFalse(detached)
+        assertEquals(listOf("detach", "switch"), events)
+    }
+
+    @Test
+    fun `content replacement restart detaches before stop switch and start`() {
         val events = mutableListOf<String>()
 
         val detached = LivePlaybackSurfaceHandoff.restartAcrossPresentation(
@@ -85,24 +117,6 @@ class LivePlaybackPresentationPolicyTest {
         )
 
         assertTrue(detached)
-        assertEquals(listOf("detach", "stop", "switch", "start"), events)
-    }
-
-    @Test
-    fun `live handoff still restarts when no surface is currently bound`() {
-        val events = mutableListOf<String>()
-
-        val detached = LivePlaybackSurfaceHandoff.restartAcrossPresentation(
-            detachCurrentSurface = {
-                events += "detach"
-                false
-            },
-            stopPlayback = { events += "stop" },
-            switchPresentation = { events += "switch" },
-            startPlayback = { events += "start" },
-        )
-
-        assertFalse(detached)
         assertEquals(listOf("detach", "stop", "switch", "start"), events)
     }
 
@@ -141,14 +155,68 @@ class LivePlaybackPresentationPolicyTest {
     }
 
     @Test
-    fun `transition gate ignores repeated request before compose acknowledgement`() {
+    fun `transition gate preserves stream for same channel presentation change`() {
         val gate = LivePlaybackTransitionGate()
-        val target = LivePlaybackTransitionTarget(
-            surface = LivePlaybackPresentationSurface.FULLSCREEN,
+        val preview = LivePlaybackTransitionTarget(
+            surface = LivePlaybackPresentationSurface.PREVIEW,
             sourceId = "source",
             channelId = "channel",
         )
+        val fullscreen = preview.copy(surface = LivePlaybackPresentationSurface.FULLSCREEN)
         val events = mutableListOf<String>()
+        gate.reconcileObserved(preview)
+
+        val result = gate.requestHandoff(
+            target = fullscreen,
+            detachCurrentSurface = { events += "detach"; true },
+            stopPlayback = { events += "stop" },
+            switchPresentation = { events += "switch" },
+            startPlayback = { events += "start" },
+        )
+
+        assertEquals(LivePlaybackTransitionDecision.APPLIED, result)
+        assertEquals(listOf("detach", "switch"), events)
+    }
+
+    @Test
+    fun `transition gate restarts when live content changes`() {
+        val gate = LivePlaybackTransitionGate()
+        val preview = LivePlaybackTransitionTarget(
+            surface = LivePlaybackPresentationSurface.PREVIEW,
+            sourceId = "source",
+            channelId = "channel-a",
+        )
+        val differentContent = LivePlaybackTransitionTarget(
+            surface = LivePlaybackPresentationSurface.FULLSCREEN,
+            sourceId = "source",
+            channelId = "channel-b",
+        )
+        val events = mutableListOf<String>()
+        gate.reconcileObserved(preview)
+
+        val result = gate.requestHandoff(
+            target = differentContent,
+            detachCurrentSurface = { events += "detach"; true },
+            stopPlayback = { events += "stop" },
+            switchPresentation = { events += "switch" },
+            startPlayback = { events += "start" },
+        )
+
+        assertEquals(LivePlaybackTransitionDecision.APPLIED, result)
+        assertEquals(listOf("detach", "stop", "switch", "start"), events)
+    }
+
+    @Test
+    fun `transition gate ignores repeated pending request`() {
+        val gate = LivePlaybackTransitionGate()
+        val preview = LivePlaybackTransitionTarget(
+            surface = LivePlaybackPresentationSurface.PREVIEW,
+            sourceId = "source",
+            channelId = "channel",
+        )
+        val target = preview.copy(surface = LivePlaybackPresentationSurface.FULLSCREEN)
+        val events = mutableListOf<String>()
+        gate.reconcileObserved(preview)
 
         val first = gate.requestHandoff(
             target = target,
@@ -167,19 +235,20 @@ class LivePlaybackPresentationPolicyTest {
 
         assertEquals(LivePlaybackTransitionDecision.APPLIED, first)
         assertEquals(LivePlaybackTransitionDecision.DUPLICATE, duplicate)
-        assertEquals(listOf("detach", "stop", "switch", "start"), events)
+        assertEquals(listOf("detach", "switch"), events)
     }
 
     @Test
-    fun `transition gate accepts opposite destination before prior request is acknowledged`() {
+    fun `transition gate accepts reverse destination while prior handoff is pending`() {
         val gate = LivePlaybackTransitionGate()
-        val fullscreen = LivePlaybackTransitionTarget(
-            surface = LivePlaybackPresentationSurface.FULLSCREEN,
+        val preview = LivePlaybackTransitionTarget(
+            surface = LivePlaybackPresentationSurface.PREVIEW,
             sourceId = "source",
             channelId = "channel",
         )
-        val preview = fullscreen.copy(surface = LivePlaybackPresentationSurface.PREVIEW)
+        val fullscreen = preview.copy(surface = LivePlaybackPresentationSurface.FULLSCREEN)
         val events = mutableListOf<String>()
+        gate.reconcileObserved(preview)
 
         gate.requestHandoff(
             target = fullscreen,
@@ -200,13 +269,9 @@ class LivePlaybackPresentationPolicyTest {
         assertEquals(
             listOf(
                 "fullscreen-detach",
-                "fullscreen-stop",
                 "fullscreen-switch",
-                "fullscreen-start",
                 "preview-detach",
-                "preview-stop",
                 "preview-switch",
-                "preview-start",
             ),
             events,
         )
@@ -236,11 +301,13 @@ class LivePlaybackPresentationPolicyTest {
     @Test
     fun `failed handoff can be retried`() {
         val gate = LivePlaybackTransitionGate()
-        val target = LivePlaybackTransitionTarget(
-            surface = LivePlaybackPresentationSurface.FULLSCREEN,
+        val preview = LivePlaybackTransitionTarget(
+            surface = LivePlaybackPresentationSurface.PREVIEW,
             sourceId = "source",
             channelId = "channel",
         )
+        val target = preview.copy(surface = LivePlaybackPresentationSurface.FULLSCREEN)
+        gate.reconcileObserved(preview)
 
         runCatching {
             gate.requestHandoff(

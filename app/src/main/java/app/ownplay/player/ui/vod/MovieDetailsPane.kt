@@ -16,12 +16,14 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.DownloadDone
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilledTonalButton
@@ -63,6 +65,8 @@ internal fun MovieDetailsPane(
     onDownload: (VodMovie) -> Unit,
     onPauseDownload: (OfflineDownload) -> Unit,
     onResumeDownload: (OfflineDownload) -> Unit,
+    onRetryDownload: (OfflineDownload) -> Unit,
+    onRemoveDownload: (OfflineDownload) -> Unit,
     onClearProgress: () -> Unit,
     onPlay: (VodMovie) -> Unit,
     modifier: Modifier,
@@ -204,7 +208,7 @@ internal fun MovieDetailsPane(
                         tonalElevation = 0.dp,
                     ) {
                         Row(
-                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(10.dp),
                         ) {
@@ -225,44 +229,58 @@ internal fun MovieDetailsPane(
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
                             }
+                            IconButton(onClick = { onRemoveDownload(requireNotNull(download)) }) {
+                                Icon(Icons.Filled.Delete, contentDescription = "Remove download")
+                            }
                         }
                     }
                 } else {
-                    val downloadLabel = when (download?.state) {
-                        DownloadStates.QUEUED -> "Pause"
-                        DownloadStates.DOWNLOADING -> "Pause"
-                        DownloadStates.PAUSED -> "Resume"
-                        DownloadStates.FAILED -> "Retry download"
-                        else -> "Download"
-                    }
-                    FilledTonalButton(
-                        onClick = {
-                            when (download?.state) {
-                                DownloadStates.QUEUED,
-                                DownloadStates.DOWNLOADING,
-                                -> onPauseDownload(download)
-                                DownloadStates.PAUSED -> onResumeDownload(download)
-                                DownloadStates.FAILED, null -> onDownload(target)
-                                DownloadStates.COMPLETED -> Unit
-                            }
-                        },
-                        modifier = Modifier.align(Alignment.Start),
-                        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 4.dp),
-                        shape = RoundedCornerShape(10.dp),
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
                     ) {
-                        Icon(
-                            imageVector = when (download?.state) {
-                                DownloadStates.QUEUED,
-                                DownloadStates.DOWNLOADING,
-                                -> Icons.Filled.Pause
-                                DownloadStates.PAUSED -> Icons.Filled.PlayArrow
-                                else -> Icons.Filled.Download
+                        val downloadLabel = when (download?.state) {
+                            DownloadStates.QUEUED -> "Pause"
+                            DownloadStates.DOWNLOADING -> "Pause"
+                            DownloadStates.PAUSED -> "Resume"
+                            DownloadStates.FAILED -> "Retry"
+                            else -> "Download"
+                        }
+                        FilledTonalButton(
+                            onClick = {
+                                when (download?.state) {
+                                    DownloadStates.QUEUED,
+                                    DownloadStates.DOWNLOADING,
+                                    -> onPauseDownload(download)
+                                    DownloadStates.PAUSED -> onResumeDownload(download)
+                                    DownloadStates.FAILED -> onRetryDownload(download)
+                                    null -> onDownload(target)
+                                    DownloadStates.COMPLETED -> Unit
+                                }
                             },
-                            contentDescription = null,
-                            modifier = Modifier.size(18.dp),
-                        )
-                        Spacer(Modifier.width(6.dp))
-                        Text(downloadLabel)
+                            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 4.dp),
+                            shape = RoundedCornerShape(10.dp),
+                        ) {
+                            Icon(
+                                imageVector = when (download?.state) {
+                                    DownloadStates.QUEUED,
+                                    DownloadStates.DOWNLOADING,
+                                    -> Icons.Filled.Pause
+                                    DownloadStates.PAUSED -> Icons.Filled.PlayArrow
+                                    DownloadStates.FAILED -> Icons.Filled.Refresh
+                                    else -> Icons.Filled.Download
+                                },
+                                contentDescription = null,
+                                modifier = Modifier.size(18.dp),
+                            )
+                            Spacer(Modifier.width(6.dp))
+                            Text(downloadLabel)
+                        }
+                        download?.let { managedDownload ->
+                            IconButton(onClick = { onRemoveDownload(managedDownload) }) {
+                                Icon(Icons.Filled.Delete, contentDescription = "Remove download")
+                            }
+                        }
                     }
                 }
 

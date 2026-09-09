@@ -17,6 +17,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import app.ownplay.player.BuildConfig
 import app.ownplay.player.personalization.AppDeviceProfile
 import app.ownplay.player.ui.tv.TvRemoteIndication
 
@@ -43,6 +44,40 @@ private val OwnPlayDarkColors = darkColorScheme(
     onSurfaceVariant = Color(0xFFB8B4C2),
     outline = Color(0xFF373846),
     outlineVariant = Color(0xFF252833),
+    error = Color(0xFFFFB4AB),
+    onError = Color(0xFF690005),
+    errorContainer = Color(0xFF501A1E),
+    onErrorContainer = Color(0xFFFFDAD6),
+)
+
+/**
+ * OwnPlay TV visual identity.
+ *
+ * This palette is intentionally isolated behind the TV build gate so the TV application keeps
+ * one coherent dark-navy + cyan presentation from startup/loading through browse, Settings and
+ * playback overlays without inheriting the older purple mobile visual language.
+ */
+private val OwnPlayTvDarkColors = darkColorScheme(
+    primary = Color(0xFF18C7FF),
+    onPrimary = Color(0xFF00131D),
+    primaryContainer = Color(0xFF063A55),
+    onPrimaryContainer = Color(0xFFE9F8FF),
+    secondary = Color(0xFF73BFFF),
+    onSecondary = Color(0xFF001B2A),
+    secondaryContainer = Color(0xFF0B2A3D),
+    onSecondaryContainer = Color(0xFFD5EEFF),
+    tertiary = Color(0xFF7FE4FF),
+    onTertiary = Color(0xFF00212C),
+    tertiaryContainer = Color(0xFF103849),
+    onTertiaryContainer = Color(0xFFD8F6FF),
+    background = Color(0xFF030B14),
+    onBackground = Color(0xFFF3FAFF),
+    surface = Color(0xFF07131F),
+    onSurface = Color(0xFFF3FAFF),
+    surfaceVariant = Color(0xFF0B1C2A),
+    onSurfaceVariant = Color(0xFF9FB7C8),
+    outline = Color(0xFF315267),
+    outlineVariant = Color(0xFF173247),
     error = Color(0xFFFFB4AB),
     onError = Color(0xFF690005),
     errorContainer = Color(0xFF501A1E),
@@ -157,15 +192,16 @@ fun OwnPlayTheme(
         }
     }
     val usesDpad = deviceProfile?.usesDpad == true
-    val tvIndication = remember {
+    val activeColors = if (BuildConfig.IS_TV_BUILD) OwnPlayTvDarkColors else OwnPlayDarkColors
+    val tvIndication = remember(activeColors) {
         TvRemoteIndication(
-            focusColor = OwnPlayDarkColors.primary,
+            focusColor = activeColors.primary,
             pressedColor = Color.White,
         )
     }
 
     MaterialTheme(
-        colorScheme = OwnPlayDarkColors,
+        colorScheme = activeColors,
         typography = OwnPlayTypography,
         shapes = OwnPlayShapes,
     ) {

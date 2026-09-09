@@ -41,12 +41,12 @@ import app.ownplay.player.playback.PlaybackVideoOutput
 import app.ownplay.player.source.SourceSyncStage
 import app.ownplay.player.source.SourceSyncState
 import app.ownplay.player.ui.live.HierarchicalLiveBrowse
-import app.ownplay.player.ui.live.LandscapeLiveWorkspaceAdaptive
 import app.ownplay.player.ui.live.LiveBrowseBackAction
 import app.ownplay.player.ui.live.LiveBrowseHierarchyLevel
 import app.ownplay.player.ui.live.LiveBrowseHierarchyPolicy
 import app.ownplay.player.ui.live.LiveChannelActivationAction
 import app.ownplay.player.ui.live.PortraitLiveBrowseWithViewModes
+import app.ownplay.player.ui.live.TvLiveWorkspace
 import app.ownplay.player.ui.view.ContentViewMode
 import app.ownplay.player.ui.view.ContentViewModeStore
 import kotlinx.coroutines.CancellationException
@@ -228,7 +228,7 @@ internal fun LiveRoute(
     }
 
     if (isLandscape) {
-        LandscapeLiveWorkspaceAdaptive(
+        TvLiveWorkspace(
             state = browseState,
             hierarchyLevel = effectiveHierarchyLevel,
             preview = preview,
@@ -243,11 +243,7 @@ internal fun LiveRoute(
                 mutationScope.launch { viewModeStore.setLiveMode(mode) }
             },
             onSearchChange = browseSession::updateSearch,
-            onCategorySelected = if (isTelevision) {
-                ::selectCategory
-            } else {
-                browseSession::selectCategory
-            },
+            onCategorySelected = ::selectCategory,
             onFavoritesOnlyChanged = browseSession::setFavoritesOnly,
             onOrderChanged = browseSession::setOrder,
             onCustomGroupSelected = browseSession::selectCustomGroup,

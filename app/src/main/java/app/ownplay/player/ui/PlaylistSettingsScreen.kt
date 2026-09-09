@@ -94,7 +94,7 @@ internal fun PlaylistSettingsScreen(
 
     Column(
         modifier = Modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(14.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -103,7 +103,7 @@ internal fun PlaylistSettingsScreen(
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = "Configured playlists",
-                    style = MaterialTheme.typography.titleLarge,
+                    style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.SemiBold,
                 )
                 Text(
@@ -120,7 +120,7 @@ internal fun PlaylistSettingsScreen(
         sourceSyncStatus(bannerSyncState)?.let { status ->
             Surface(
                 modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(16.dp),
+                shape = RoundedCornerShape(14.dp),
                 color = MaterialTheme.colorScheme.secondaryContainer,
             ) {
                 Row(
@@ -152,11 +152,12 @@ internal fun PlaylistSettingsScreen(
         if (summaries.isEmpty()) {
             Surface(
                 modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(20.dp),
-                color = MaterialTheme.colorScheme.surfaceVariant,
+                shape = RoundedCornerShape(18.dp),
+                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.34f),
+                tonalElevation = 0.dp,
             ) {
                 Column(
-                    modifier = Modifier.padding(18.dp),
+                    modifier = Modifier.padding(16.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     Text("No playlists yet", fontWeight = FontWeight.SemiBold)
@@ -326,9 +327,9 @@ private fun PlaylistCard(
         importing && !queued && !activelyImporting && syncState.stage == SourceSyncStage.ChannelsFailed
     Surface(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(20.dp),
-        tonalElevation = 2.dp,
-        color = MaterialTheme.colorScheme.surface,
+        shape = RoundedCornerShape(18.dp),
+        tonalElevation = 0.dp,
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.28f),
     ) {
         Column(
             modifier = Modifier.padding(16.dp),
@@ -396,11 +397,10 @@ private fun PlaylistCard(
                         queued -> "Queued for import"
                         importFailed -> "Retry import before activating"
                         importing -> "Available after import"
-                        isActive -> "Active playlist"
                         else -> "Use as active playlist"
                     },
                     style = MaterialTheme.typography.bodyMedium,
-                    fontWeight = if (isActive) FontWeight.SemiBold else FontWeight.Normal,
+                    fontWeight = FontWeight.Medium,
                     color = if (summary.enabled) {
                         MaterialTheme.colorScheme.onSurface
                     } else {

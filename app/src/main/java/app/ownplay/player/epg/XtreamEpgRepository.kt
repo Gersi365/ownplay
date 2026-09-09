@@ -81,6 +81,7 @@ class XtreamEpgRepository(
     private val cache = ConcurrentHashMap<String, SourceCache>()
     private val shortCache = ConcurrentHashMap<ShortCacheKey, ShortCacheEntry>()
     private val refreshGeneration = EpgRefreshGeneration()
+    private val shortRequestCoordinator = EpgShortRequestCoordinator()
 
     suspend fun refreshSource(sourceId: String): EpgRefreshResult? = withContext(Dispatchers.IO) {
         val generation = refreshGeneration.beginRefresh(sourceId)
@@ -275,27 +276,47 @@ class XtreamEpgRepository(
             ?.let { entry -> return entry.programs }
 
         val streamId = providerStreamId?.trim()?.takeIf(String::isNotBlank) ?: return emptyList()
-        val access = resolveAccess(sourceId) ?: return emptyList()
-        val guide = when (
-            val result = xtreamClient.getShortEpg(
-                serverUrl = access.serverUrl,
-                credentials = access.credentials,
-                streamId = streamId,
-                limit = SHORT_EPG_LIMIT,
-                allowCleartext = access.allowCleartext,
-            )
+        return shortRequestCoordinator.coalesce(
+            sourceId = sourceId,
+            channelId = channelId,
+            generation = generation,
         ) {
-            is SourceResult.Success -> result.value
-            is SourceResult.Failure -> return emptyList()
+            val loadStartedAtEpochSeconds = System.currentTimeMillis() / 1_000L
+            shortCache[key]
+                ?.takeIf { entry ->
+                    EpgCacheFreshness.isFresh(
+                        loadedAtEpochSeconds = entry.loadedAtEpochSeconds,
+                        nowEpochSeconds = loadStartedAtEpochSeconds,
+                        ttlSeconds = SHORT_CACHE_TTL_SECONDS,
+                    )
+                }
+                ?.let { entry -> return@coalesce entry.programs }
+            if (!refreshGeneration.isCurrent(sourceId, generation)) {
+                return@coalesce emptyList()
+            }
+
+            val access = resolveAccess(sourceId) ?: return@coalesce emptyList()
+            val guide = when (
+                val result = xtreamClient.getShortEpg(
+                    serverUrl = access.serverUrl,
+                    credentials = access.credentials,
+                    streamId = streamId,
+                    limit = SHORT_EPG_LIMIT,
+                    allowCleartext = access.allowCleartext,
+                )
+            ) {
+                is SourceResult.Success -> result.value
+                is SourceResult.Failure -> return@coalesce emptyList()
+            }
+            val programs = EpgTimelineProjector.normalize(guide.programs.map(::toProgram))
+            val published = refreshGeneration.runIfCurrent(sourceId, generation) {
+                shortCache[key] = ShortCacheEntry(
+                    programs = programs,
+                    loadedAtEpochSeconds = loadStartedAtEpochSeconds,
+                )
+            }
+            if (published) programs else emptyList()
         }
-        val programs = EpgTimelineProjector.normalize(guide.programs.map(::toProgram))
-        val published = refreshGeneration.runIfCurrent(sourceId, generation) {
-            shortCache[key] = ShortCacheEntry(
-                programs = programs,
-                loadedAtEpochSeconds = nowEpochSeconds,
-            )
-        }
-        return if (published) programs else emptyList()
     }
 
     private suspend fun resolveAccess(sourceId: String): XtreamAccess? {

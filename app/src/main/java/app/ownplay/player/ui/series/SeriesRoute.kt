@@ -54,12 +54,14 @@ import androidx.media3.common.util.UnstableApi
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
 import app.ownplay.player.OwnPlayAppRuntime
+import app.ownplay.player.onDemandPresentationSession
 import app.ownplay.player.download.OfflineDownload
 import app.ownplay.player.download.OfflineDownloadFeatureRuntime
 import app.ownplay.player.download.OfflineDownloadSpec
 import app.ownplay.player.persistence.SourceKinds
 import app.ownplay.player.persistence.download.DownloadMediaKinds
 import app.ownplay.player.persistence.download.DownloadStates
+import app.ownplay.player.playback.OnDemandContentKind
 import app.ownplay.player.playback.PlaybackInteractionBridge
 import app.ownplay.player.playback.PlaybackMediaKind
 import app.ownplay.player.playback.PlaybackPresentationPolicy
@@ -73,7 +75,9 @@ import app.ownplay.player.series.SeriesSeason
 import app.ownplay.player.series.SeriesSummary
 import app.ownplay.player.source.SourceError
 import app.ownplay.player.source.SourceResult
+import app.ownplay.player.ui.OnDemandPlaybackSurface
 import app.ownplay.player.ui.playbackStatusLabel
+import app.ownplay.player.ui.tv.TvActionSurface
 import app.ownplay.player.ui.vod.RemotePoster
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
@@ -98,11 +102,14 @@ internal fun SeriesRoute(
     val context = LocalContext.current
     val configuration = LocalConfiguration.current
     val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
+    val isTelevision =
+        configuration.uiMode and Configuration.UI_MODE_TYPE_MASK == Configuration.UI_MODE_TYPE_TELEVISION
     val featureRuntime = remember(context) { SeriesFeatureRuntime(context.applicationContext) }
     val downloadRuntime = remember(context) {
         OfflineDownloadFeatureRuntime(context.applicationContext)
     }
     val scope = rememberCoroutineScope()
+    val onDemandPresentation by runtime.onDemandPresentationSession.state.collectAsState()
 
     DisposableEffect(featureRuntime) {
         onDispose { featureRuntime.close() }
@@ -115,6 +122,7 @@ internal fun SeriesRoute(
         SeriesUnavailableState(
             title = "No playlist configured",
             body = "Add an Xtream playlist from Settings to load Series.",
+            isTelevision = isTelevision,
             onOpenSettings = onOpenSettings,
         )
         return
@@ -123,6 +131,7 @@ internal fun SeriesRoute(
         SeriesUnavailableState(
             title = "Series are not available for this source",
             body = "Series and episodes currently use Xtream-compatible sources.",
+            isTelevision = isTelevision,
             onOpenSettings = onOpenSettings,
         )
         return
@@ -139,29 +148,55 @@ internal fun SeriesRoute(
     var details by remember(sourceId) { mutableStateOf<SeriesDetails?>(null) }
     var detailsLoading by remember(sourceId) { mutableStateOf(false) }
     var detailsError by remember(sourceId) { mutableStateOf<SourceError?>(null) }
-    var selectedSeasonNumber by remember(sourceId) { mutableStateOf<Int?>(null) }
-    var selectedEpisodeId by remember(sourceId) { mutableStateOf<String?>(null) }
-    var playingEpisode by remember(sourceId) { mutableStateOf<SeriesEpisode?>(null) }
-    var playbackReturnsToCatalog by remember(sourceId) { mutableStateOf(false) }
+    val initialSeriesPresentation = remember(sourceId) {
+        runtime.onDemandPresentationSession.current.takeIf { current ->
+            current.kind == OnDemandContentKind.SERIES && current.sourceId == sourceId
+        }
+    }
+    var selectedSeasonNumber by remember(sourceId) {
+        mutableStateOf(initialSeriesPresentation?.seriesSeasonNumber)
+    }
+    var selectedEpisodeId by remember(sourceId) {
+        mutableStateOf(initialSeriesPresentation?.seriesEpisodeId)
+    }
     var restoreCatalogFocusAfterPlayback by remember(sourceId) { mutableStateOf(false) }
     val detailsBackOwner = remember(sourceId) { Any() }
+    val sessionSeriesPlayback = onDemandPresentation.seriesPlayback.takeIf {
+        onDemandPresentation.kind == OnDemandContentKind.SERIES &&
+            onDemandPresentation.sourceId == sourceId
+    }
 
     fun closeSeriesLevel() {
         when {
-            selectedEpisodeId != null -> selectedEpisodeId = null
+            selectedEpisodeId != null -> {
+                selectedEpisodeId = null
+                runtime.onDemandPresentationSession.updateSeriesSelection(
+                    seasonNumber = selectedSeasonNumber,
+                    episodeId = null,
+                )
+            }
             selectedSeasonNumber != null -> {
                 selectedSeasonNumber = null
                 selectedEpisodeId = null
+                runtime.onDemandPresentationSession.updateSeriesSelection(
+                    seasonNumber = null,
+                    episodeId = null,
+                )
             }
             selectedSeries != null -> {
                 if (returnToLibraryOnDetailBack) {
+                    runtime.onDemandPresentationSession.clear()
                     onReturnToLibrary()
                 } else {
                     restoreCatalogFocusAfterPlayback = true
                     selectedSeries = null
+                    runtime.onDemandPresentationSession.showSeriesCatalog(sourceId)
                 }
             }
-            returnToLibraryOnDetailBack -> onReturnToLibrary()
+            returnToLibraryOnDetailBack -> {
+                runtime.onDemandPresentationSession.clear()
+                onReturnToLibrary()
+            }
         }
     }
 
@@ -169,17 +204,20 @@ internal fun SeriesRoute(
         selectedSeries?.seriesId,
         selectedSeasonNumber,
         selectedEpisodeId,
-        playingEpisode?.episodeId,
+        sessionSeriesPlayback?.episodeId,
         detailsBackOwner,
         returnToLibraryOnDetailBack,
     ) {
-        if (playingEpisode == null) {
+        if (sessionSeriesPlayback == null) {
             when {
                 selectedSeries != null -> {
                     PlaybackInteractionBridge.registerBackAction(detailsBackOwner, ::closeSeriesLevel)
                 }
                 returnToLibraryOnDetailBack -> {
-                    PlaybackInteractionBridge.registerBackAction(detailsBackOwner, onReturnToLibrary)
+                    PlaybackInteractionBridge.registerBackAction(detailsBackOwner) {
+                        runtime.onDemandPresentationSession.clear()
+                        onReturnToLibrary()
+                    }
                 }
             }
         }
@@ -202,7 +240,6 @@ internal fun SeriesRoute(
 
     fun playEpisode(episode: SeriesEpisode, returnFocusToCatalog: Boolean) {
         restoreCatalogFocusAfterPlayback = false
-        playbackReturnsToCatalog = returnFocusToCatalog
         runtime.playbackController.start(
             PlaybackRequest(
                 sourceId = sourceId,
@@ -212,7 +249,14 @@ internal fun SeriesRoute(
                 containerExtension = episode.containerExtension,
             ),
         )
-        playingEpisode = episode
+        runtime.onDemandPresentationSession.showSeriesPlayback(
+            sourceId = sourceId,
+            episode = episode,
+            returnToLibraryOnDetailBack = returnToLibraryOnDetailBack,
+            returnToCatalog = returnFocusToCatalog,
+            selectedSeasonNumber = selectedSeasonNumber,
+            selectedEpisodeId = selectedEpisodeId,
+        )
     }
 
     fun downloadEpisode(episode: SeriesEpisode) {
@@ -240,6 +284,14 @@ internal fun SeriesRoute(
 
     fun resumeDownload(download: OfflineDownload) {
         scope.launch { downloadRuntime.resume(download.downloadId) }
+    }
+
+    fun retryDownload(download: OfflineDownload) {
+        scope.launch { downloadRuntime.retry(download.downloadId) }
+    }
+
+    fun removeDownload(download: OfflineDownload) {
+        scope.launch { downloadRuntime.remove(download.downloadId) }
     }
 
     LaunchedEffect(sourceId) {
@@ -273,65 +325,125 @@ internal fun SeriesRoute(
             ?.takeIf { key -> catalog.categories.any { it.providerCategoryKey == key } }
             ?: catalog.categories.firstOrNull()?.providerCategoryKey
         favoritesOnly = false
-        selectedSeasonNumber = null
-        selectedEpisodeId = null
+        val current = runtime.onDemandPresentationSession.current
+        val restoringCurrentSeries =
+            current.kind == OnDemandContentKind.SERIES &&
+                current.sourceId == sourceId &&
+                current.itemId == target.seriesId
+        selectedSeasonNumber = if (restoringCurrentSeries) current.seriesSeasonNumber else null
+        selectedEpisodeId = if (restoringCurrentSeries) current.seriesEpisodeId else null
         restoreCatalogFocusAfterPlayback = false
         selectedSeries = target
+        if (!restoringCurrentSeries) {
+            runtime.onDemandPresentationSession.showSeriesDetail(
+                sourceId = sourceId,
+                seriesId = target.seriesId,
+                returnToLibraryOnDetailBack = returnToLibraryOnDetailBack,
+            )
+        }
         onRequestedSeriesConsumed()
+    }
+
+    LaunchedEffect(
+        sourceId,
+        onDemandPresentation.kind,
+        onDemandPresentation.sourceId,
+        onDemandPresentation.itemId,
+        onDemandPresentation.seriesSeasonNumber,
+        onDemandPresentation.seriesEpisodeId,
+        catalog.series,
+        catalog.categories,
+    ) {
+        if (
+            onDemandPresentation.kind != OnDemandContentKind.SERIES ||
+            onDemandPresentation.sourceId != sourceId
+        ) {
+            return@LaunchedEffect
+        }
+        val targetSeriesId = onDemandPresentation.itemId ?: return@LaunchedEffect
+        val target = catalog.series.firstOrNull { item -> item.seriesId == targetSeriesId }
+            ?: return@LaunchedEffect
+        if (selectedSeries?.seriesId != target.seriesId) {
+            selectedSeries = target
+            categoryKey = target.categoryKey
+                ?.takeIf { key -> catalog.categories.any { it.providerCategoryKey == key } }
+                ?: categoryKey
+        }
+        selectedSeasonNumber = onDemandPresentation.seriesSeasonNumber
+        selectedEpisodeId = onDemandPresentation.seriesEpisodeId
     }
 
     LaunchedEffect(selectedSeries?.seriesId) {
         val selected = selectedSeries
-        selectedSeasonNumber = null
-        selectedEpisodeId = null
         if (selected == null) {
             details = null
             detailsError = null
             return@LaunchedEffect
         }
+        val current = runtime.onDemandPresentationSession.current
+        if (
+            current.kind != OnDemandContentKind.SERIES ||
+            current.sourceId != sourceId ||
+            current.itemId != selected.seriesId
+        ) {
+            selectedSeasonNumber = null
+            selectedEpisodeId = null
+        }
+        details = null
         detailsLoading = true
         detailsError = null
-        details = when (val result = featureRuntime.details(sourceId, selected.seriesId)) {
-            is SourceResult.Success -> result.value
+        val cachedDetails = featureRuntime.cachedDetails(sourceId, selected.seriesId)
+        if (cachedDetails != null) {
+            details = cachedDetails
+            detailsLoading = false
+        }
+        when (val result = featureRuntime.details(sourceId, selected.seriesId)) {
+            is SourceResult.Success -> details = result.value
             is SourceResult.Failure -> {
-                detailsError = result.error
-                null
+                if (cachedDetails == null) {
+                    detailsError = result.error
+                    details = null
+                }
             }
         }
         detailsLoading = false
     }
 
     LaunchedEffect(details, selectedSeasonNumber, selectedEpisodeId) {
+        val loadedDetails = details ?: return@LaunchedEffect
         val seasonNumber = selectedSeasonNumber
         if (seasonNumber != null) {
-            val season = details?.seasons?.firstOrNull { it.seasonNumber == seasonNumber }
+            val season = loadedDetails.seasons.firstOrNull { it.seasonNumber == seasonNumber }
             if (season == null) {
                 selectedSeasonNumber = null
                 selectedEpisodeId = null
+                runtime.onDemandPresentationSession.updateSeriesSelection(null, null)
             } else {
                 val episodeId = selectedEpisodeId
                 if (episodeId != null && season.episodes.none { it.episodeId == episodeId }) {
                     selectedEpisodeId = null
+                    runtime.onDemandPresentationSession.updateSeriesSelection(seasonNumber, null)
                 }
             }
         } else if (selectedEpisodeId != null) {
             selectedEpisodeId = null
+            runtime.onDemandPresentationSession.updateSeriesSelection(null, null)
         }
     }
 
-    val currentEpisode = playingEpisode
+    val currentEpisode = sessionSeriesPlayback
     if (currentEpisode != null) {
+        val returnPlaybackToCatalog = onDemandPresentation.seriesPlaybackReturnsToCatalog
         SeriesPlaybackScreen(
             runtime = runtime,
             featureRuntime = featureRuntime,
             sourceId = sourceId,
             episode = currentEpisode,
             onExit = {
-                playingEpisode = null
-                if (playbackReturnsToCatalog) {
+                runtime.onDemandPresentationSession.returnFromSeriesPlayback()
+                if (returnPlaybackToCatalog) {
                     restoreCatalogFocusAfterPlayback = true
                 }
-                playbackReturnsToCatalog = false
             },
             onFullscreenStateChanged = onFullscreenStateChanged,
         )
@@ -359,8 +471,12 @@ internal fun SeriesRoute(
             onSeasonSelected = {
                 selectedSeasonNumber = it
                 selectedEpisodeId = null
+                runtime.onDemandPresentationSession.updateSeriesSelection(it, null)
             },
-            onEpisodeSelected = { selectedEpisodeId = it },
+            onEpisodeSelected = {
+                selectedEpisodeId = it
+                runtime.onDemandPresentationSession.updateSeriesSelection(selectedSeasonNumber, it)
+            },
             onFavoriteChanged = { favorite ->
                 selectedSeries = portraitSelection.copy(isFavorite = favorite)
                 scope.launch {
@@ -371,6 +487,8 @@ internal fun SeriesRoute(
             onDownload = ::downloadEpisode,
             onPauseDownload = ::pauseDownload,
             onResumeDownload = ::resumeDownload,
+            onRetryDownload = ::retryDownload,
+            onRemoveDownload = ::removeDownload,
             onClearProgress = { episode ->
                 scope.launch {
                     featureRuntime.clearEpisodeProgress(sourceId, episode.episodeId)
@@ -408,6 +526,11 @@ internal fun SeriesRoute(
                 selectedSeasonNumber = null
                 selectedEpisodeId = null
                 selectedSeries = it
+                runtime.onDemandPresentationSession.showSeriesDetail(
+                    sourceId = sourceId,
+                    seriesId = it.seriesId,
+                    returnToLibraryOnDetailBack = returnToLibraryOnDetailBack,
+                )
             },
             onContinueEpisode = { episode -> playEpisode(episode, returnFocusToCatalog = true) },
             modifier = Modifier.weight(if (selectedSeries == null) 1f else 0.58f),
@@ -425,8 +548,12 @@ internal fun SeriesRoute(
                 onSeasonSelected = {
                     selectedSeasonNumber = it
                     selectedEpisodeId = null
+                    runtime.onDemandPresentationSession.updateSeriesSelection(it, null)
                 },
-                onEpisodeSelected = { selectedEpisodeId = it },
+                onEpisodeSelected = {
+                    selectedEpisodeId = it
+                    runtime.onDemandPresentationSession.updateSeriesSelection(selectedSeasonNumber, it)
+                },
                 onFavoriteChanged = { favorite ->
                     selectedSeries = selected.copy(isFavorite = favorite)
                     scope.launch {
@@ -437,6 +564,8 @@ internal fun SeriesRoute(
                 onDownload = ::downloadEpisode,
                 onPauseDownload = ::pauseDownload,
                 onResumeDownload = ::resumeDownload,
+                onRetryDownload = ::retryDownload,
+                onRemoveDownload = ::removeDownload,
                 onClearProgress = { episode ->
                     scope.launch {
                         featureRuntime.clearEpisodeProgress(sourceId, episode.episodeId)
@@ -659,15 +788,12 @@ private fun SeriesPlaybackScreen(
     onFullscreenStateChanged: (Boolean) -> Unit,
 ) {
     val playbackState by runtime.playbackController.state.collectAsState()
-    val playbackControls = PlaybackPresentationPolicy.controlsFor(playbackState)
-    val configuration = LocalConfiguration.current
-    val isTelevision =
-        configuration.uiMode and Configuration.UI_MODE_TYPE_MASK == Configuration.UI_MODE_TYPE_TELEVISION
     val scope = rememberCoroutineScope()
-    var playerView by remember { mutableStateOf<PlayerView?>(null) }
+    var playerView by remember(episode.episodeId) { mutableStateOf<PlayerView?>(null) }
+    var currentPosition by remember(episode.episodeId) { mutableStateOf(episode.positionMs ?: 0L) }
+    var duration by remember(episode.episodeId) { mutableStateOf(0L) }
     var exitRequested by remember(episode.episodeId) { mutableStateOf(false) }
     val backOwner = remember(episode.episodeId) { Any() }
-    val backFocusRequester = remember(episode.episodeId) { FocusRequester() }
 
     fun exitPlayback() {
         if (exitRequested) return
@@ -687,6 +813,12 @@ private fun SeriesPlaybackScreen(
                     )
                 }
             }
+            runtime.playbackController.stopIfCurrent(
+                sourceId = sourceId,
+                channelId = episode.episodeId,
+                mediaKind = PlaybackMediaKind.SERIES_EPISODE,
+            )
+            onFullscreenStateChanged(false)
             onExit()
         }
     }
@@ -695,26 +827,8 @@ private fun SeriesPlaybackScreen(
         onFullscreenStateChanged(true)
         PlaybackInteractionBridge.registerBackAction(backOwner, ::exitPlayback)
         onDispose {
-            onFullscreenStateChanged(false)
-            runtime.playbackController.stopIfCurrent(
-                sourceId = sourceId,
-                channelId = episode.episodeId,
-                mediaKind = PlaybackMediaKind.SERIES_EPISODE,
-            )
             PlaybackInteractionBridge.clearBackAction(backOwner)
         }
-    }
-
-    LaunchedEffect(isTelevision, playbackState, playerView, episode.episodeId) {
-        if (!isTelevision) return@LaunchedEffect
-        if (playbackState is PlaybackState.Failed) {
-            backFocusRequester.requestFocus()
-            return@LaunchedEffect
-        }
-        val view = playerView ?: return@LaunchedEffect
-        view.isFocusable = true
-        view.showController()
-        view.requestFocus()
     }
 
     LaunchedEffect(playerView, episode.episodeId) {
@@ -724,105 +838,54 @@ private fun SeriesPlaybackScreen(
         val resumePosition = episode.positionMs ?: 0L
         if (resumePosition > 0L && player != null && player.currentPosition < 1_000L) {
             player.seekTo(resumePosition)
+            currentPosition = resumePosition
         }
         while (currentCoroutineContext().isActive) {
             delay(2_000L)
             val activePlayer = view.player ?: continue
-            val duration = activePlayer.duration.takeIf { it != C.TIME_UNSET && it > 0L }
+            currentPosition = activePlayer.currentPosition.coerceAtLeast(0L)
+            duration = activePlayer.duration.takeIf { it != C.TIME_UNSET && it > 0L } ?: duration
             featureRuntime.saveEpisodeProgress(
                 sourceId = sourceId,
                 episodeId = episode.episodeId,
-                positionMs = activePlayer.currentPosition,
-                durationMs = duration,
+                positionMs = currentPosition,
+                durationMs = duration.takeIf { it > 0L },
             )
         }
     }
 
-    Column(modifier = Modifier.fillMaxSize()) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Column(modifier = Modifier.weight(1f)) {
-                Text(episode.seriesTitle, fontWeight = FontWeight.Bold)
-                Text(
-                    "S${episode.seasonNumber} · E${episode.episodeNumber} · ${episode.title}",
-                    style = MaterialTheme.typography.bodySmall,
-                )
-            }
-            TextButton(
-                modifier = Modifier.focusRequester(backFocusRequester),
-                enabled = !exitRequested,
-                onClick = ::exitPlayback,
-            ) { Text("Back") }
-        }
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .weight(1f),
-            contentAlignment = Alignment.Center,
-        ) {
-            AndroidView(
-                modifier = Modifier.fillMaxSize(),
-                factory = { context ->
-                    PlayerView(context).also { view ->
-                        view.resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
-                        PlaybackInteractionBridge.bind(
-                            output = runtime.playbackVideoOutput,
-                            view = view,
-                            showNativeController = true,
-                        )
-                        playerView = view
-                    }
-                },
-                update = { view ->
-                    PlaybackInteractionBridge.bind(
-                        output = runtime.playbackVideoOutput,
-                        view = view,
-                        showNativeController = true,
-                    )
-                    playerView = view
-                },
-                onRelease = { view ->
-                    PlaybackInteractionBridge.unbind(runtime.playbackVideoOutput, view)
-                    if (playerView === view) playerView = null
-                },
-            )
-            if (playbackState is PlaybackState.Loading) {
-                CircularProgressIndicator()
-            }
-            val failedState = playbackState as? PlaybackState.Failed
-            if (failedState != null) {
-                Surface(
-                    shape = RoundedCornerShape(12.dp),
-                    tonalElevation = 6.dp,
-                ) {
-                    Column(
-                        modifier = Modifier.padding(16.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.spacedBy(8.dp),
-                    ) {
-                        Text(playbackStatusLabel(failedState))
-                        if (playbackControls.canRetry) {
-                            TextButton(onClick = runtime.playbackController::retry) {
-                                Text("Retry")
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
+    OnDemandPlaybackSurface(
+        runtime = runtime,
+        contentKey = episode.episodeId,
+        title = "${episode.seriesTitle} · S${episode.seasonNumber} · E${episode.episodeNumber} · ${episode.title}",
+        playbackState = playbackState,
+        currentPositionMs = currentPosition,
+        durationMs = duration,
+        exitRequested = exitRequested,
+        onExit = ::exitPlayback,
+        onPlayerViewAvailable = { view -> playerView = view },
+        onPlayerViewReleased = { view ->
+            if (playerView === view) playerView = null
+        },
+        onSeekPositionChanged = { position -> currentPosition = position },
+    )
 }
 
 @Composable
 private fun SeriesUnavailableState(
     title: String,
     body: String,
+    isTelevision: Boolean,
     onOpenSettings: () -> Unit,
 ) {
+    val actionFocusRequester = remember { FocusRequester() }
+
+    LaunchedEffect(isTelevision) {
+        if (isTelevision) {
+            actionFocusRequester.requestFocus()
+        }
+    }
+
     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
         Surface(
             modifier = Modifier
@@ -837,7 +900,15 @@ private fun SeriesUnavailableState(
             ) {
                 Text(title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
                 Text(body, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Button(onClick = onOpenSettings) { Text("Open Settings") }
+                if (isTelevision) {
+                    TvActionSurface(
+                        label = "Open Settings",
+                        onClick = onOpenSettings,
+                        modifier = Modifier.focusRequester(actionFocusRequester),
+                    )
+                } else {
+                    Button(onClick = onOpenSettings) { Text("Open Settings") }
+                }
             }
         }
     }

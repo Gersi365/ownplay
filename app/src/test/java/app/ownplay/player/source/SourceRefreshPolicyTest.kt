@@ -19,4 +19,9 @@ class SourceRefreshPolicyTest {
     fun oldSuccess_isStale() {
         assertTrue(shouldRefreshSource(50L, nowEpochMillis = 100L, staleAfterMillis = 50L))
     }
+
+    @Test
+    fun clockRollbackTreatsPersistedSuccessAsStale() {
+        assertTrue(shouldRefreshSource(120L, nowEpochMillis = 100L, staleAfterMillis = 50L))
+    }
 }

@@ -5,6 +5,7 @@ import app.ownplay.player.persistence.ChannelAvailability
 import app.ownplay.player.persistence.OwnPlayDatabase
 import app.ownplay.player.persistence.ProviderCategoryEntity
 import app.ownplay.player.persistence.ProviderChannelEntity
+import app.ownplay.player.persistence.reconcile.CatalogGenerationClock
 import app.ownplay.player.persistence.reconcile.ChannelReconciler
 import app.ownplay.player.persistence.reconcile.ExistingChannelIdentity
 import app.ownplay.player.persistence.reconcile.ReconciliationResult
@@ -91,6 +92,10 @@ class InitialLiveCatalogIngestor(
             error.rethrowCancellation()
             return InitialLiveCatalogIngestResult.PersistenceFailure
         }
+        val effectiveGeneration = CatalogGenerationClock(
+            initialGeneration = existing.maxOfOrNull(ProviderChannelEntity::lastSeenGeneration)
+                ?: Long.MIN_VALUE,
+        ).next(generation)
 
         val reconciliation = ChannelReconciler.plan(
             existing = existing.map { channel ->
@@ -153,7 +158,7 @@ class InitialLiveCatalogIngestor(
                     streamLocatorRef = streamRef.value,
                     providerOrder = incoming.providerOrder,
                     availability = ChannelAvailability.AVAILABLE,
-                    lastSeenGeneration = generation,
+                    lastSeenGeneration = effectiveGeneration,
                 )
             }
         } catch (error: Exception) {

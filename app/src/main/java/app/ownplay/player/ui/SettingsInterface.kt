@@ -11,6 +11,11 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -44,28 +49,35 @@ internal fun PortraitSettingsMenu(
                 .fillMaxWidth()
                 .widthIn(max = 760.dp)
                 .verticalScroll(rememberScrollState())
-                .padding(horizontal = 16.dp, vertical = 12.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
+                .padding(horizontal = 20.dp, vertical = 20.dp),
+            verticalArrangement = Arrangement.spacedBy(20.dp),
         ) {
             Column(
-                modifier = Modifier.padding(horizontal = 2.dp, vertical = 4.dp),
-                verticalArrangement = Arrangement.spacedBy(3.dp),
+                modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp),
+                verticalArrangement = Arrangement.spacedBy(5.dp),
             ) {
                 Text(
+                    text = "OWNPLAY",
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.primary,
+                )
+                Text(
                     text = "Settings",
-                    style = MaterialTheme.typography.headlineSmall,
+                    style = MaterialTheme.typography.headlineMedium,
                     fontWeight = FontWeight.Bold,
                 )
                 Text(
-                    text = "Device, content, downloads and app information.",
-                    style = MaterialTheme.typography.bodySmall,
+                    text = "Personalize the player, organize your sources and manage offline media.",
+                    style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
 
             CompactSettingsSection(
+                icon = Icons.Filled.Tune,
                 title = "Interface",
-                subtitle = "App target and orientation",
+                subtitle = "Device behavior and orientation",
             ) {
                 InterfaceSettingsContent(
                     deviceProfile = deviceProfile,
@@ -75,8 +87,9 @@ internal fun PortraitSettingsMenu(
             }
 
             CompactSettingsSection(
+                icon = Icons.Filled.Folder,
                 title = "Content",
-                subtitle = "Live organization, playlists and backup",
+                subtitle = "Live organization, playlists and personalization",
             ) {
                 ContentSettingsContent(
                     summaries = summaries,
@@ -86,20 +99,22 @@ internal fun PortraitSettingsMenu(
             }
 
             CompactSettingsSection(
+                icon = Icons.Filled.Download,
                 title = "Downloads",
-                subtitle = "Offline movies and series episodes",
+                subtitle = "Movies and episodes available offline",
             ) {
                 SettingsActionRow(
                     title = "Downloaded media",
-                    detail = "Progress · retry · remove",
-                    actionLabel = "Open",
+                    detail = "View progress, retry downloads or remove saved media",
+                    actionLabel = "Open downloads",
                     onClick = onOpenDownloads,
                 )
             }
 
             CompactSettingsSection(
+                icon = Icons.Filled.Info,
                 title = "About",
-                subtitle = "OwnPlay information",
+                subtitle = "OwnPlay and build information",
             ) {
                 AboutSettingsContent()
             }
@@ -114,7 +129,7 @@ internal fun InterfaceSettingsContent(
     onSetOrientation: (AppOrientationMode) -> Unit,
 ) {
     SettingValueRow(
-        label = "App target",
+        label = "Device target",
         value = when (deviceProfile) {
             AppDeviceProfile.SMARTPHONE -> "Mobile"
             AppDeviceProfile.ANDROID_TV -> "TV"
@@ -124,18 +139,18 @@ internal fun InterfaceSettingsContent(
     Text(
         text = when (deviceProfile) {
             AppDeviceProfile.SMARTPHONE ->
-                "This APK is touch-first. Device target switching is disabled."
+                "This build uses touch-first Mobile controls."
             AppDeviceProfile.ANDROID_TV ->
-                "This APK is D-pad/remote-first. Device target switching is disabled."
-            null -> "Loading app target…"
+                "This build uses remote-first TV controls."
+            null -> "Loading device target…"
         },
-        style = MaterialTheme.typography.labelSmall,
+        style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
 
     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
     SettingValueRow(
-        label = "App orientation",
+        label = "Orientation",
         value = when (deviceProfile) {
             AppDeviceProfile.SMARTPHONE -> if (orientationMode == AppOrientationMode.LANDSCAPE) {
                 "Landscape"
@@ -170,10 +185,10 @@ internal fun InterfaceSettingsContent(
             AppDeviceProfile.SMARTPHONE ->
                 "With an active Live preview, rotating to landscape can open the full player."
             AppDeviceProfile.ANDROID_TV ->
-                "TV target stays landscape and uses the D-pad/remote layout."
+                "TV stays landscape and uses the D-pad/remote layout."
             null -> "Loading orientation…"
         },
-        style = MaterialTheme.typography.labelSmall,
+        style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
 }

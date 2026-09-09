@@ -1,5 +1,6 @@
 package app.ownplay.player.ui.live
 
+import android.content.res.Configuration
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
@@ -40,7 +41,11 @@ import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusProperties
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -70,6 +75,8 @@ fun LiveBrowseScreen(
     playingChannelId: String? = null,
     onEditModeChanged: (Boolean) -> Unit = {},
     onReorderCategoriesRequested: () -> Unit = {},
+    reorderCategoriesEnabled: Boolean = true,
+    reorderCategoriesFocusRequester: FocusRequester? = null,
     onChannelSelectionToggle: (String) -> Unit = {},
     onSelectVisible: () -> Unit = {},
     onClearSelection: () -> Unit = {},
@@ -85,6 +92,9 @@ fun LiveBrowseScreen(
     onFavoriteMoveRelative: (String, String, ManualOrderPlacement) -> Unit = { _, _, _ -> },
     modifier: Modifier = Modifier,
 ) {
+    val configuration = LocalConfiguration.current
+    val isTelevision =
+        configuration.uiMode and Configuration.UI_MODE_TYPE_MASK == Configuration.UI_MODE_TYPE_TELEVISION
     val listState = rememberLazyListState()
     var draggedChannelId by remember { mutableStateOf<String?>(null) }
     var draggedPointerY by remember { mutableStateOf<Float?>(null) }
@@ -94,7 +104,7 @@ fun LiveBrowseScreen(
     val favoriteDragEnabled = editState.isEditing &&
         state.query.favoritesOnly &&
         state.query.order == LiveBrowseOrder.FAVORITE_ORDER
-    val dragEnabled = manualDragEnabled || favoriteDragEnabled
+    val dragEnabled = (manualDragEnabled || favoriteDragEnabled) && !isTelevision
     val draggableChannelIds = remember(state.channels) {
         state.channels.map { channel -> channel.channelId }.toSet()
     }
@@ -218,6 +228,8 @@ fun LiveBrowseScreen(
                     onHiddenOnlyChanged = onHiddenOnlyChanged,
                     onOrderChanged = onOrderChanged,
                     onReorderCategoriesRequested = onReorderCategoriesRequested,
+                    reorderCategoriesEnabled = reorderCategoriesEnabled,
+                    reorderCategoriesFocusRequester = reorderCategoriesFocusRequester,
                     onEditModeChanged = { editing ->
                         val editOrder = if (state.query.favoritesOnly) {
                             LiveBrowseOrder.FAVORITE_ORDER
@@ -262,6 +274,7 @@ fun LiveBrowseScreen(
                         groups = state.customGroups,
                         dragEnabled = dragEnabled,
                         favoriteDragEnabled = favoriteDragEnabled,
+                        isTelevision = isTelevision,
                         onSelectVisible = onSelectVisible,
                         onClearSelection = onClearSelection,
                         onBulkAction = onBulkAction,
@@ -306,6 +319,7 @@ fun LiveBrowseScreen(
                         dropPlacement = if (isDropAnchor) dragTarget?.placement else null,
                         showDragHandle = dragEnabled,
                         dragHandleModifier = Modifier,
+                        isTelevision = isTelevision,
                         onClick = { onChannelSelected(channel.channelId) },
                         onSelectionToggle = { onChannelSelectionToggle(channel.channelId) },
                     )
@@ -364,6 +378,8 @@ private fun LiveBrowseHeader(
     onHiddenOnlyChanged: (Boolean) -> Unit,
     onOrderChanged: (LiveBrowseOrder) -> Unit,
     onReorderCategoriesRequested: () -> Unit,
+    reorderCategoriesEnabled: Boolean,
+    reorderCategoriesFocusRequester: FocusRequester?,
     onEditModeChanged: (Boolean) -> Unit,
 ) {
     var searchExpanded by remember { mutableStateOf(false) }
@@ -391,7 +407,15 @@ private fun LiveBrowseHeader(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             if (editState.isEditing) {
-                TextButton(onClick = onReorderCategoriesRequested) {
+                TextButton(
+                    onClick = onReorderCategoriesRequested,
+                    enabled = reorderCategoriesEnabled,
+                    modifier = if (reorderCategoriesFocusRequester != null) {
+                        Modifier.focusRequester(reorderCategoriesFocusRequester)
+                    } else {
+                        Modifier
+                    },
+                ) {
                     Text("Categories")
                 }
             } else {
@@ -531,6 +555,11 @@ private fun CustomGroupStrip(
     }
 }
 
+private enum class BulkEditDialogOrigin {
+    CUSTOMIZE,
+    GROUPS,
+}
+
 @Composable
 private fun BulkEditBar(
     selectedCount: Int,
@@ -538,6 +567,7 @@ private fun BulkEditBar(
     groups: List<LiveCustomGroup>,
     dragEnabled: Boolean,
     favoriteDragEnabled: Boolean,
+    isTelevision: Boolean,
     onSelectVisible: () -> Unit,
     onClearSelection: () -> Unit,
     onBulkAction: (ChannelBulkAction) -> Unit,
@@ -552,6 +582,35 @@ private fun BulkEditBar(
     val hasSelection = selectedCount > 0
     var showGroupManager by remember { mutableStateOf(false) }
     var customizeTarget by remember { mutableStateOf<LiveChannelItem?>(null) }
+    var restoreDialogOrigin by remember { mutableStateOf<BulkEditDialogOrigin?>(null) }
+    var restoreClearSelectionFocus by remember { mutableStateOf(false) }
+    val selectVisibleFocusRequester = remember { FocusRequester() }
+    val customizeFocusRequester = remember { FocusRequester() }
+    val groupsFocusRequester = remember { FocusRequester() }
+
+    LaunchedEffect(isTelevision, customizeTarget, showGroupManager, restoreDialogOrigin) {
+        val origin = restoreDialogOrigin ?: return@LaunchedEffect
+        if (!isTelevision || customizeTarget != null || showGroupManager) return@LaunchedEffect
+        withFrameNanos { }
+        when (origin) {
+            BulkEditDialogOrigin.CUSTOMIZE -> customizeFocusRequester.requestFocus()
+            BulkEditDialogOrigin.GROUPS -> groupsFocusRequester.requestFocus()
+        }
+        restoreDialogOrigin = null
+    }
+
+    LaunchedEffect(isTelevision, selectedCount, restoreClearSelectionFocus) {
+        if (!restoreClearSelectionFocus) return@LaunchedEffect
+        if (!isTelevision) {
+            restoreClearSelectionFocus = false
+            return@LaunchedEffect
+        }
+        if (selectedCount != 0) return@LaunchedEffect
+        withFrameNanos { }
+        selectVisibleFocusRequester.requestFocus()
+        restoreClearSelectionFocus = false
+    }
+
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -568,11 +627,21 @@ private fun BulkEditBar(
                 style = MaterialTheme.typography.labelLarge,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            TextButton(onClick = onSelectVisible) {
+            TextButton(
+                onClick = onSelectVisible,
+                modifier = if (isTelevision) {
+                    Modifier.focusRequester(selectVisibleFocusRequester)
+                } else {
+                    Modifier
+                },
+            ) {
                 Text("Select visible")
             }
             TextButton(
-                onClick = onClearSelection,
+                onClick = {
+                    if (isTelevision) restoreClearSelectionFocus = true
+                    onClearSelection()
+                },
                 enabled = hasSelection,
             ) {
                 Text("Clear")
@@ -661,12 +730,16 @@ private fun BulkEditBar(
                 TextButton(
                     onClick = { customizeTarget = selectedVisibleChannel },
                     enabled = selectedCount == 1 && selectedVisibleChannel != null,
+                    modifier = Modifier.focusRequester(customizeFocusRequester),
                 ) {
                     Text("Customize")
                 }
             }
             item(key = "manage-groups") {
-                TextButton(onClick = { showGroupManager = true }) {
+                TextButton(
+                    onClick = { showGroupManager = true },
+                    modifier = Modifier.focusRequester(groupsFocusRequester),
+                ) {
                     Text("Groups")
                 }
             }
@@ -702,7 +775,10 @@ private fun BulkEditBar(
             onClearLocalDisplayName = onClearLocalDisplayName,
             onSetLogoOverride = onSetLogoOverride,
             onClearLogoOverride = onClearLogoOverride,
-            onDismiss = { customizeTarget = null },
+            onDismiss = {
+                customizeTarget = null
+                if (isTelevision) restoreDialogOrigin = BulkEditDialogOrigin.CUSTOMIZE
+            },
         )
     }
 
@@ -712,7 +788,10 @@ private fun BulkEditBar(
             onCreateGroup = onCreateGroup,
             onRenameGroup = onRenameGroup,
             onDeleteGroup = onDeleteGroup,
-            onDismiss = { showGroupManager = false },
+            onDismiss = {
+                showGroupManager = false
+                if (isTelevision) restoreDialogOrigin = BulkEditDialogOrigin.GROUPS
+            },
         )
     }
 }
@@ -759,6 +838,7 @@ private fun LiveChannelRow(
     dropPlacement: ManualOrderPlacement?,
     showDragHandle: Boolean,
     dragHandleModifier: Modifier,
+    isTelevision: Boolean,
     onClick: () -> Unit,
     onSelectionToggle: () -> Unit,
 ) {
@@ -782,6 +862,11 @@ private fun LiveChannelRow(
             Checkbox(
                 checked = isSelected,
                 onCheckedChange = { onSelectionToggle() },
+                modifier = if (isTelevision) {
+                    Modifier.focusProperties { canFocus = false }
+                } else {
+                    Modifier
+                },
             )
         }
 

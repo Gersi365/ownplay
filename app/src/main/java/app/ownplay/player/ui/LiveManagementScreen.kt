@@ -21,6 +21,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
@@ -39,6 +40,7 @@ import app.ownplay.player.personalization.CategoryVisibilityMutationResult
 import app.ownplay.player.personalization.ChannelBulkAction
 import app.ownplay.player.personalization.ChannelEditReducer
 import app.ownplay.player.personalization.ChannelEditState
+import app.ownplay.player.personalization.CustomGroupMutationResult
 import app.ownplay.player.personalization.FavoriteMutationResult
 import app.ownplay.player.personalization.ManualOrderMutationResult
 import app.ownplay.player.personalization.ManualOrderPlacement
@@ -46,25 +48,57 @@ import app.ownplay.player.ui.live.LiveBrowseScreen
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 
+private enum class RemoteOrderEdge {
+    TOP,
+    BOTTOM,
+}
+
+private data class PendingRemoteOrderFocusRestore(
+    val channelId: String,
+    val edge: RemoteOrderEdge,
+)
+
 @Composable
 internal fun LiveManagementScreen(
     runtime: OwnPlayAppRuntime,
     summaries: List<PlaylistSourceSummary>,
     onBack: () -> Unit,
     focusBackOnEntry: Boolean = false,
+    focusFirstActionOnEntry: Boolean = false,
 ) {
     val configuration = LocalConfiguration.current
     val isTelevision =
         configuration.uiMode and Configuration.UI_MODE_TYPE_MASK == Configuration.UI_MODE_TYPE_TELEVISION
     val backFocusRequester = remember { FocusRequester() }
-    var sourceId by remember(summaries) {
+    val firstActionFocusRequester = remember { FocusRequester() }
+    val categoryReorderFocusRequester = remember { FocusRequester() }
+    val categoryVisibilityFocusRequester = remember { FocusRequester() }
+    val remoteMoveUpFocusRequester = remember { FocusRequester() }
+    val remoteMoveDownFocusRequester = remember { FocusRequester() }
+    val sourceIds = summaries.map(PlaylistSourceSummary::sourceId)
+    var sourceId by remember {
         mutableStateOf(summaries.firstOrNull()?.sourceId)
     }
-    val selectedSourceId = sourceId
+    val selectedSourceId = sourceId?.takeIf { it in sourceIds } ?: sourceIds.firstOrNull()
 
-    LaunchedEffect(isTelevision, focusBackOnEntry, selectedSourceId) {
-        if (isTelevision && focusBackOnEntry) {
-            backFocusRequester.requestFocus()
+    LaunchedEffect(sourceIds, selectedSourceId) {
+        if (sourceId != selectedSourceId) {
+            sourceId = selectedSourceId
+        }
+    }
+
+    LaunchedEffect(
+        isTelevision,
+        focusBackOnEntry,
+        focusFirstActionOnEntry,
+        selectedSourceId,
+    ) {
+        if (!isTelevision) return@LaunchedEffect
+        when {
+            focusFirstActionOnEntry && selectedSourceId != null ->
+                firstActionFocusRequester.requestFocus()
+            focusFirstActionOnEntry || focusBackOnEntry ->
+                backFocusRequester.requestFocus()
         }
     }
 
@@ -98,6 +132,11 @@ internal fun LiveManagementScreen(
         mutableStateOf(ChannelEditState(isEditing = true))
     }
     var showCategoryReorder by remember(selectedSourceId) { mutableStateOf(false) }
+    var restoreCategoryReorderFocus by remember(selectedSourceId) { mutableStateOf(false) }
+    var restoreCategoryVisibilityFocus by remember(selectedSourceId) { mutableStateOf(false) }
+    var pendingRemoteOrderFocusRestore by remember(selectedSourceId) {
+        mutableStateOf<PendingRemoteOrderFocusRestore?>(null)
+    }
     var categoryMutationInFlight by remember(selectedSourceId) { mutableStateOf(false) }
     var categoryError by remember(selectedSourceId) { mutableStateOf<String?>(null) }
     var orderError by remember(selectedSourceId) { mutableStateOf<String?>(null) }
@@ -124,6 +163,71 @@ internal fun LiveManagementScreen(
         )
     }
 
+    LaunchedEffect(isTelevision, showCategoryReorder, restoreCategoryReorderFocus) {
+        if (!isTelevision || showCategoryReorder || !restoreCategoryReorderFocus) {
+            return@LaunchedEffect
+        }
+        withFrameNanos { }
+        categoryReorderFocusRequester.requestFocus()
+        restoreCategoryReorderFocus = false
+    }
+
+    LaunchedEffect(
+        isTelevision,
+        selectedCategory?.providerCategoryKey,
+        categoryMutationInFlight,
+        restoreCategoryVisibilityFocus,
+    ) {
+        if (!restoreCategoryVisibilityFocus) return@LaunchedEffect
+        if (!isTelevision) {
+            restoreCategoryVisibilityFocus = false
+            return@LaunchedEffect
+        }
+        if (categoryMutationInFlight) return@LaunchedEffect
+        if (selectedCategory == null) {
+            restoreCategoryVisibilityFocus = false
+            return@LaunchedEffect
+        }
+        withFrameNanos { }
+        categoryVisibilityFocusRequester.requestFocus()
+        restoreCategoryVisibilityFocus = false
+    }
+
+    LaunchedEffect(
+        isTelevision,
+        selectedChannelId,
+        canMoveSelectedUp,
+        canMoveSelectedDown,
+        pendingRemoteOrderFocusRestore,
+    ) {
+        val request = pendingRemoteOrderFocusRestore ?: return@LaunchedEffect
+        if (!isTelevision || selectedChannelId != request.channelId) {
+            pendingRemoteOrderFocusRestore = null
+            return@LaunchedEffect
+        }
+        when (request.edge) {
+            RemoteOrderEdge.TOP -> {
+                if (canMoveSelectedUp) return@LaunchedEffect
+                if (!canMoveSelectedDown) {
+                    pendingRemoteOrderFocusRestore = null
+                    return@LaunchedEffect
+                }
+                withFrameNanos { }
+                remoteMoveDownFocusRequester.requestFocus()
+            }
+            RemoteOrderEdge.BOTTOM -> {
+                if (canMoveSelectedDown) return@LaunchedEffect
+                if (!canMoveSelectedUp) {
+                    pendingRemoteOrderFocusRestore = null
+                    return@LaunchedEffect
+                }
+                withFrameNanos { }
+                remoteMoveUpFocusRequester.requestFocus()
+            }
+        }
+        pendingRemoteOrderFocusRestore = null
+    }
+
     fun executeBulkAction(action: ChannelBulkAction) {
         val selection = editState.selectedChannelIds
         if (selection.isEmpty()) return
@@ -136,17 +240,22 @@ internal fun LiveManagementScreen(
         }
     }
 
-    fun moveSelectedRelative(anchorChannelId: String, placement: ManualOrderPlacement) {
+    fun moveSelectedRelative(
+        anchorChannelId: String,
+        placement: ManualOrderPlacement,
+        focusRestoreEdge: RemoteOrderEdge? = null,
+    ) {
         val channelId = selectedChannelId ?: return
         val useFavoriteOrder =
             state.query.favoritesOnly && state.query.order == LiveBrowseOrder.FAVORITE_ORDER
         val useManualOrder = state.query.order == LiveBrowseOrder.MY_ORDER
         if (!useFavoriteOrder && !useManualOrder) return
 
+        pendingRemoteOrderFocusRestore = null
         orderError = null
         scope.launch {
             try {
-                if (useFavoriteOrder) {
+                val succeeded = if (useFavoriteOrder) {
                     when (
                         runtime.moveFavoriteRelative(
                             sourceId = selectedSourceId,
@@ -155,9 +264,13 @@ internal fun LiveManagementScreen(
                             placement = placement,
                         )
                     ) {
-                        is FavoriteMutationResult.Success -> orderError = null
+                        is FavoriteMutationResult.Success -> {
+                            orderError = null
+                            true
+                        }
                         is FavoriteMutationResult.Failure -> {
                             orderError = "Could not save channel order."
+                            false
                         }
                     }
                 } else {
@@ -169,12 +282,24 @@ internal fun LiveManagementScreen(
                             placement = placement,
                         )
                     ) {
-                        is ManualOrderMutationResult.Success -> orderError = null
+                        is ManualOrderMutationResult.Success -> {
+                            orderError = null
+                            true
+                        }
                         is ManualOrderMutationResult.Rejected,
                         ManualOrderMutationResult.InvalidSourceId,
                         ManualOrderMutationResult.PersistenceFailure,
-                        -> orderError = "Could not save channel order."
+                        -> {
+                            orderError = "Could not save channel order."
+                            false
+                        }
                     }
+                }
+                if (succeeded && isTelevision && focusRestoreEdge != null) {
+                    pendingRemoteOrderFocusRestore = PendingRemoteOrderFocusRestore(
+                        channelId = channelId,
+                        edge = focusRestoreEdge,
+                    )
                 }
             } catch (cancelled: CancellationException) {
                 throw cancelled
@@ -236,6 +361,7 @@ internal fun LiveManagementScreen(
         moveSelectedRelative(
             anchorChannelId = state.channels[selectedChannelIndex - 1].channelId,
             placement = ManualOrderPlacement.BEFORE,
+            focusRestoreEdge = if (selectedChannelIndex == 1) RemoteOrderEdge.TOP else null,
         )
     }
 
@@ -244,6 +370,11 @@ internal fun LiveManagementScreen(
         moveSelectedRelative(
             anchorChannelId = state.channels[selectedChannelIndex + 1].channelId,
             placement = ManualOrderPlacement.AFTER,
+            focusRestoreEdge = if (selectedChannelIndex == state.channels.lastIndex - 1) {
+                RemoteOrderEdge.BOTTOM
+            } else {
+                null
+            },
         )
     }
 
@@ -252,6 +383,7 @@ internal fun LiveManagementScreen(
         moveSelectedRelative(
             anchorChannelId = state.channels.first().channelId,
             placement = ManualOrderPlacement.BEFORE,
+            focusRestoreEdge = RemoteOrderEdge.TOP,
         )
     }
 
@@ -260,12 +392,14 @@ internal fun LiveManagementScreen(
         moveSelectedRelative(
             anchorChannelId = state.channels.last().channelId,
             placement = ManualOrderPlacement.AFTER,
+            focusRestoreEdge = RemoteOrderEdge.BOTTOM,
         )
     }
 
     fun toggleCategoryVisibility() {
         val category = selectedCategory ?: return
         if (categoryMutationInFlight) return
+        if (isTelevision) restoreCategoryVisibilityFocus = true
         categoryMutationInFlight = true
         categoryError = null
         scope.launch {
@@ -311,14 +445,17 @@ internal fun LiveManagementScreen(
             ManagementSourceMenu(
                 summaries = summaries,
                 selectedSourceId = selectedSourceId,
+                focusRequester = firstActionFocusRequester,
                 onSelected = { nextSourceId ->
                     sourceId = nextSourceId
                 },
             )
-            TextButton(
-                onClick = onBack,
-                modifier = Modifier.focusRequester(backFocusRequester),
-            ) { Text("Done") }
+            if (!isTelevision || focusBackOnEntry) {
+                TextButton(
+                    onClick = onBack,
+                    modifier = Modifier.focusRequester(backFocusRequester),
+                ) { Text("Done") }
+            }
         }
 
         if (selectedCategory != null) {
@@ -338,6 +475,7 @@ internal fun LiveManagementScreen(
                 TextButton(
                     onClick = ::toggleCategoryVisibility,
                     enabled = !categoryMutationInFlight,
+                    modifier = Modifier.focusRequester(categoryVisibilityFocusRequester),
                 ) {
                     Text(if (selectedCategory.isHidden) "Unhide category" else "Hide category")
                 }
@@ -375,10 +513,24 @@ internal fun LiveManagementScreen(
                     style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-                TextButton(onClick = ::moveSelectedToTop) { Text("Top") }
-                TextButton(onClick = ::moveSelectedUp) { Text("Move up") }
-                TextButton(onClick = ::moveSelectedDown) { Text("Move down") }
-                TextButton(onClick = ::moveSelectedToBottom) { Text("Bottom") }
+                TextButton(
+                    onClick = ::moveSelectedToTop,
+                    enabled = canMoveSelectedUp,
+                ) { Text("Top") }
+                TextButton(
+                    onClick = ::moveSelectedUp,
+                    enabled = canMoveSelectedUp,
+                    modifier = Modifier.focusRequester(remoteMoveUpFocusRequester),
+                ) { Text("Move up") }
+                TextButton(
+                    onClick = ::moveSelectedDown,
+                    enabled = canMoveSelectedDown,
+                    modifier = Modifier.focusRequester(remoteMoveDownFocusRequester),
+                ) { Text("Move down") }
+                TextButton(
+                    onClick = ::moveSelectedToBottom,
+                    enabled = canMoveSelectedDown,
+                ) { Text("Bottom") }
             }
         }
 
@@ -411,6 +563,12 @@ internal fun LiveManagementScreen(
                 orderError = null
                 showCategoryReorder = true
             },
+            reorderCategoriesEnabled = !isTelevision || state.categories.size > 1,
+            reorderCategoriesFocusRequester = if (isTelevision) {
+                categoryReorderFocusRequester
+            } else {
+                null
+            },
             onChannelSelectionToggle = { channelId ->
                 editState = ChannelEditReducer.toggleSelection(editState, channelId)
             },
@@ -428,7 +586,16 @@ internal fun LiveManagementScreen(
             onRenameGroup = { groupId, name ->
                 scope.launch { runtime.renameCustomGroup(groupId, name) }
             },
-            onDeleteGroup = { groupId -> scope.launch { runtime.deleteCustomGroup(groupId) } },
+            onDeleteGroup = { groupId ->
+                val clearDeletedActiveFilter = state.query.customGroupId == groupId
+                scope.launch {
+                    if (runtime.deleteCustomGroup(groupId) is CustomGroupMutationResult.Success &&
+                        clearDeletedActiveFilter
+                    ) {
+                        browseSession.selectCustomGroup(null)
+                    }
+                }
+            },
             onSetLocalDisplayName = { channelId, name ->
                 scope.launch { runtime.setLocalDisplayName(selectedSourceId, channelId, name) }
             },
@@ -487,7 +654,10 @@ internal fun LiveManagementScreen(
                     }
                 }
             },
-            onDismiss = { showCategoryReorder = false },
+            onDismiss = {
+                showCategoryReorder = false
+                if (isTelevision) restoreCategoryReorderFocus = true
+            },
         )
     }
 }
@@ -496,12 +666,20 @@ internal fun LiveManagementScreen(
 private fun ManagementSourceMenu(
     summaries: List<PlaylistSourceSummary>,
     selectedSourceId: String,
+    focusRequester: FocusRequester? = null,
     onSelected: (String) -> Unit,
 ) {
     var expanded by remember { mutableStateOf(false) }
     val selected = summaries.firstOrNull { it.sourceId == selectedSourceId }
     Box {
-        TextButton(onClick = { expanded = true }) {
+        TextButton(
+            onClick = { expanded = true },
+            modifier = if (focusRequester != null) {
+                Modifier.focusRequester(focusRequester)
+            } else {
+                Modifier
+            },
+        ) {
             Text(
                 text = selected?.name ?: "Source",
                 maxLines = 1,

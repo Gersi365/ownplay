@@ -8,4 +8,5 @@ internal fun shouldRefreshSource(
     staleAfterMillis: Long = SOURCE_REFRESH_STALE_MILLIS,
 ): Boolean =
     lastSuccessAtEpochMillis == null ||
+        nowEpochMillis < lastSuccessAtEpochMillis ||
         nowEpochMillis - lastSuccessAtEpochMillis >= staleAfterMillis

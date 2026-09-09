@@ -1,74 +1,66 @@
 package app.ownplay.player.ui
 
 import android.content.res.Configuration
-import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.LiveTv
-import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.filled.VideoLibrary
-import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.focus.onFocusChanged
-import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.unit.dp
 import app.ownplay.player.OwnPlayAppRuntime
-import app.ownplay.player.playback.LiveFullscreenEntryReason
+import app.ownplay.player.livePlaybackPresentationSession
+import app.ownplay.player.onDemandPresentationSession
 import app.ownplay.player.playback.LivePlaybackSelection
 import app.ownplay.player.playback.LivePlaybackSurfaceTeardown
 import app.ownplay.player.playback.LivePlaybackTransitionGate
 import app.ownplay.player.playback.LivePlaybackTransitionTarget
+import app.ownplay.player.playback.OnDemandContentKind
 import app.ownplay.player.playback.PlaybackInteractionBridge
 import app.ownplay.player.source.SourceSyncState
 import app.ownplay.player.source.selection.ActivePlaylistSelection
 import app.ownplay.player.source.selection.ActivePlaylistStore
 import app.ownplay.player.source.selection.resolveActivePlaylistId
-import app.ownplay.player.ui.library.UnifiedLibraryRoute
+import app.ownplay.player.ui.home.TvHomeScreen
+import app.ownplay.player.ui.live.TvLiveManagementScreen
+import app.ownplay.player.ui.movies.TvMoviePlaybackRoute
+import app.ownplay.player.ui.movies.TvMoviesRoute
 import app.ownplay.player.ui.series.SeriesRoute
-import app.ownplay.player.ui.vod.VodRoute
+import app.ownplay.player.ui.series.TvSeriesRoute
+import app.ownplay.player.ui.shell.TvDestination
+import app.ownplay.player.ui.shell.TvMediaShell
+import app.ownplay.player.ui.shell.defaultTvDestination
+import app.ownplay.player.ui.tv.LocalTvShellFocusBoundary
+import app.ownplay.player.ui.tv.TvActionSurface
 import kotlinx.coroutines.launch
-
-private enum class TVSection {
-    LIVE,
-    LIBRARY,
-    MOVIES,
-    SERIES,
-    SETTINGS,
-}
 
 /**
  * TV-only OwnPlay presentation shell.
  *
- * Primary navigation exposes Live / Library / Settings only. Movies and Series are internal
- * Library routes. The TV configuration boundary makes D-pad/TV presentation deterministic and
- * prevents shared presentation components from exposing Mobile-only Offline/Download UI.
+ * Durable primary-navigation structure is defined by the TV product source. This shell routes the
+ * current destination model while dedicated TV-first content surfaces are migrated independently;
+ * playback, source and persistence ownership remain in their established runtimes.
  */
 @Composable
 internal fun TVOwnPlayApp(
@@ -106,18 +98,53 @@ private fun TVOwnPlayAppContent(
     val syncState by runtime.sourceSyncState.collectAsState()
     val playbackState by runtime.playbackController.state.collectAsState()
     val playbackTrackState by runtime.playbackTrackController.state.collectAsState()
+    val livePresentation by runtime.livePlaybackPresentationSession.state.collectAsState()
+    val onDemandPresentation by runtime.onDemandPresentationSession.state.collectAsState()
 
-    var section by remember { mutableStateOf(TVSection.LIVE) }
-    var activeSourceId by remember { mutableStateOf<String?>(null) }
-    var activeSelection by remember { mutableStateOf<LivePlaybackSelection?>(null) }
-    var fullscreenSelection by remember { mutableStateOf<LivePlaybackSelection?>(null) }
-    var requestedVodMovieId by remember { mutableStateOf<String?>(null) }
-    var requestedSeriesId by remember { mutableStateOf<String?>(null) }
-    var movieDetailReturnToLibrary by remember { mutableStateOf(false) }
-    var seriesDetailReturnToLibrary by remember { mutableStateOf(false) }
-    var vodFullscreen by remember { mutableStateOf(false) }
-    var seriesFullscreen by remember { mutableStateOf(false) }
-    var libraryFullscreen by remember { mutableStateOf(false) }
+    var destination by remember {
+        mutableStateOf(
+            when {
+                onDemandPresentation.kind == OnDemandContentKind.MOVIE -> TvDestination.MOVIES
+                onDemandPresentation.kind == OnDemandContentKind.SERIES -> TvDestination.SERIES
+                livePresentation.selection != null -> TvDestination.LIVE_TV
+                else -> defaultTvDestination
+            },
+        )
+    }
+    var activeSourceId by remember { mutableStateOf(onDemandPresentation.sourceId) }
+    var requestedVodMovieId by remember {
+        mutableStateOf(
+            onDemandPresentation.itemId.takeIf {
+                onDemandPresentation.kind == OnDemandContentKind.MOVIE
+            },
+        )
+    }
+    var requestedSeriesId by remember {
+        mutableStateOf(
+            onDemandPresentation.itemId.takeIf {
+                onDemandPresentation.kind == OnDemandContentKind.SERIES
+            },
+        )
+    }
+    var movieDetailReturnToHome by remember {
+        mutableStateOf(
+            onDemandPresentation.kind == OnDemandContentKind.MOVIE &&
+                onDemandPresentation.returnToLibraryOnDetailBack,
+        )
+    }
+    var seriesDetailReturnToHome by remember {
+        mutableStateOf(
+            onDemandPresentation.kind == OnDemandContentKind.SERIES &&
+                onDemandPresentation.returnToLibraryOnDetailBack,
+        )
+    }
+    var homeReturnFocusKey by remember { mutableStateOf<String?>(null) }
+    var homeReturnFocusGeneration by remember { mutableIntStateOf(0) }
+    var homeReturnFocusPending by remember { mutableStateOf(false) }
+    val vodFullscreen = onDemandPresentation.isMoviePlayback
+    val seriesFullscreen = onDemandPresentation.isSeriesPlayback
+    val activeSelection = livePresentation.selection
+    val fullscreenSelection = livePresentation.fullscreenSelection
     val liveTransitionGate = remember { LivePlaybackTransitionGate() }
 
     fun rememberActiveSource(sourceId: String?) {
@@ -145,8 +172,7 @@ private fun TVOwnPlayAppContent(
             },
             stopPlayback = runtime.playbackController::stop,
             switchPresentation = {
-                activeSelection = selection
-                fullscreenSelection = selection
+                runtime.livePlaybackPresentationSession.showFullscreen(selection)
             },
             startPlayback = { runtime.playbackController.start(selection.request) },
         )
@@ -161,30 +187,64 @@ private fun TVOwnPlayAppContent(
             stopPlayback = runtime.playbackController::stop,
             switchPresentation = {
                 rememberActiveSource(selection.request.sourceId)
-                section = TVSection.LIVE
-                activeSelection = selection
-                fullscreenSelection = null
+                destination = TvDestination.LIVE_TV
+                runtime.livePlaybackPresentationSession.showPreview(selection)
             },
             startPlayback = { runtime.playbackController.start(selection.request) },
         )
     }
 
-    fun openSection(target: TVSection) {
-        if (target != TVSection.LIVE && activeSelection != null) {
+    fun openDestination(target: TvDestination) {
+        if (target != TvDestination.LIVE_TV && activeSelection != null) {
             stopLivePresentation {
-                activeSelection = null
-                fullscreenSelection = null
+                runtime.livePlaybackPresentationSession.clear()
             }
         }
-        if (target != TVSection.MOVIES) {
+
+        val onDemandCurrent = runtime.onDemandPresentationSession.current
+        when (target) {
+            TvDestination.MOVIES -> {
+                if (onDemandCurrent.kind != OnDemandContentKind.MOVIE) {
+                    activeSourceId?.let(runtime.onDemandPresentationSession::showMovieCatalog)
+                }
+            }
+            TvDestination.SERIES -> {
+                if (onDemandCurrent.kind != OnDemandContentKind.SERIES) {
+                    activeSourceId?.let(runtime.onDemandPresentationSession::showSeriesCatalog)
+                }
+            }
+            else -> if (onDemandCurrent.kind != null) {
+                runtime.onDemandPresentationSession.clear()
+            }
+        }
+
+        if (target != TvDestination.MOVIES) {
             requestedVodMovieId = null
-            movieDetailReturnToLibrary = false
+            movieDetailReturnToHome = false
         }
-        if (target != TVSection.SERIES) {
+        if (target != TvDestination.SERIES) {
             requestedSeriesId = null
-            seriesDetailReturnToLibrary = false
+            seriesDetailReturnToHome = false
         }
-        section = target
+        if (target == TvDestination.HOME && !homeReturnFocusPending) {
+            homeReturnFocusKey = null
+        }
+        destination = target
+    }
+
+    BackHandler(enabled = destination != TvDestination.HOME) {
+        val interactionHandled = when (destination) {
+            TvDestination.MOVIES,
+            TvDestination.SERIES,
+            -> PlaybackInteractionBridge.handleBack()
+            TvDestination.HOME,
+            TvDestination.LIVE_TV,
+            TvDestination.SETTINGS,
+            -> false
+        }
+        if (interactionHandled) return@BackHandler
+
+        openDestination(TvDestination.HOME)
     }
 
     LaunchedEffect(summaries, activePlaylistSelection) {
@@ -213,28 +273,39 @@ private fun TVOwnPlayAppContent(
         val selectionSourceId = activeSelection?.request?.sourceId
         if (selectionSourceId != null && selectionSourceId != resolvedSourceId) {
             stopLivePresentation {
-                activeSelection = null
-                fullscreenSelection = null
+                runtime.livePlaybackPresentationSession.clear()
             }
+        }
+        val onDemandSourceId = runtime.onDemandPresentationSession.current.sourceId
+        if (
+            enabledSourceIds.isNotEmpty() &&
+            resolvedSourceId != null &&
+            onDemandSourceId != null &&
+            onDemandSourceId != resolvedSourceId
+        ) {
+            runtime.onDemandPresentationSession.clear()
+        }
+        if (resolvedSourceId == null || previousSourceId != resolvedSourceId) {
+            homeReturnFocusKey = null
+            homeReturnFocusPending = false
         }
         if (resolvedSourceId == null) {
             requestedVodMovieId = null
             requestedSeriesId = null
-            movieDetailReturnToLibrary = false
-            seriesDetailReturnToLibrary = false
+            movieDetailReturnToHome = false
+            seriesDetailReturnToHome = false
         }
     }
 
     val previewActive =
-        section == TVSection.LIVE &&
+        destination == TvDestination.LIVE_TV &&
             activeSelection != null &&
             fullscreenSelection == null
     val playbackSurfaceActive =
         previewActive ||
             fullscreenSelection != null ||
             vodFullscreen ||
-            seriesFullscreen ||
-            libraryFullscreen
+            seriesFullscreen
     val observedLiveTransitionTarget =
         fullscreenSelection?.let(LivePlaybackTransitionTarget::fullscreen)
             ?: if (previewActive) {
@@ -274,8 +345,7 @@ private fun TVOwnPlayAppContent(
                 (fullscreenSelection ?: openedFullscreen)
                     .navigate(direction)
                     ?.let { target ->
-                        activeSelection = target
-                        fullscreenSelection = target
+                        runtime.livePlaybackPresentationSession.replaceSelection(target)
                         runtime.playbackController.start(target.request)
                     }
             },
@@ -290,257 +360,216 @@ private fun TVOwnPlayAppContent(
     }
 
     val activeSummary = summaries.firstOrNull { it.sourceId == activeSourceId && it.enabled }
-    val librarySectionActive =
-        section == TVSection.LIBRARY ||
-            section == TVSection.MOVIES ||
-            section == TVSection.SERIES
-    val hidePrimaryNavigation = vodFullscreen || seriesFullscreen || libraryFullscreen
+    val hideNavigationRail =
+        previewActive ||
+            vodFullscreen ||
+            seriesFullscreen
 
-    Scaffold(
-        containerColor = MaterialTheme.colorScheme.background,
-        topBar = {
-            if (!hidePrimaryNavigation) {
-                TVPrimaryNavigationBar(
-                    liveSelected = section == TVSection.LIVE,
-                    librarySelected = librarySectionActive,
-                    settingsSelected = section == TVSection.SETTINGS,
-                    onOpenLive = { openSection(TVSection.LIVE) },
-                    onOpenLibrary = { openSection(TVSection.LIBRARY) },
-                    onOpenSettings = { openSection(TVSection.SETTINGS) },
-                )
+    TvMediaShell(
+        activeDestination = destination,
+        railVisible = !hideNavigationRail,
+        onDestinationActivated = ::openDestination,
+        modifier = Modifier.fillMaxSize(),
+    ) {
+        when (destination) {
+            TvDestination.HOME -> TvHomeScreen(
+                sourceId = activeSourceId,
+                sourceKind = activeSummary?.sourceKind,
+                returnFocusKey = homeReturnFocusKey.takeIf { homeReturnFocusPending },
+                returnFocusGeneration = homeReturnFocusGeneration,
+                onReturnFocusConsumed = {
+                    homeReturnFocusPending = false
+                    homeReturnFocusKey = null
+                },
+                onOpenMovieDetails = { sourceId, movieId, focusKey ->
+                    homeReturnFocusKey = focusKey
+                    homeReturnFocusPending = false
+                    rememberActiveSource(sourceId)
+                    runtime.onDemandPresentationSession.showMovieDetail(
+                        sourceId = sourceId,
+                        movieId = movieId,
+                        returnToLibraryOnDetailBack = true,
+                    )
+                    requestedVodMovieId = movieId
+                    movieDetailReturnToHome = true
+                    openDestination(TvDestination.MOVIES)
+                },
+                onOpenSeriesDetails = { sourceId, seriesId, focusKey ->
+                    homeReturnFocusKey = focusKey
+                    homeReturnFocusPending = false
+                    rememberActiveSource(sourceId)
+                    runtime.onDemandPresentationSession.showSeriesDetail(
+                        sourceId = sourceId,
+                        seriesId = seriesId,
+                        returnToLibraryOnDetailBack = true,
+                    )
+                    requestedSeriesId = seriesId
+                    seriesDetailReturnToHome = true
+                    openDestination(TvDestination.SERIES)
+                },
+                onOpenSettings = { openDestination(TvDestination.SETTINGS) },
+                modifier = Modifier.fillMaxSize(),
+            )
+
+            TvDestination.LIVE_TV -> {
+                val sourceId = activeSourceId
+                if (sourceId == null) {
+                    TVNoSourceScreen(
+                        syncState = syncState,
+                        onAddPlaylist = { openDestination(TvDestination.SETTINGS) },
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                } else {
+                    LiveRoute(
+                        runtime = runtime,
+                        sourceId = sourceId,
+                        activeSelection = activeSelection,
+                        playbackState = playbackState,
+                        videoOutput = runtime.playbackVideoOutput,
+                        syncState = syncState,
+                        onPlay = runtime.playbackController::play,
+                        onPause = runtime.playbackController::pause,
+                        onRetry = runtime.playbackController::retry,
+                        onOpenMovies = { openDestination(TvDestination.MOVIES) },
+                        onOpenSeries = { openDestination(TvDestination.SERIES) },
+                        onOpenSettings = { openDestination(TvDestination.SETTINGS) },
+                        onPreviewRequested = { selection ->
+                            runtime.livePlaybackPresentationSession.showPreview(selection)
+                            runtime.playbackController.start(selection.request)
+                        },
+                        onPreviewClosed = {
+                            stopLivePresentation {
+                                runtime.livePlaybackPresentationSession.clear()
+                            }
+                        },
+                        onOpenFullscreen = { selection ->
+                            openLiveFullscreen(activeSelection ?: selection)
+                        },
+                        onNavigatePreview = { direction ->
+                            activeSelection
+                                ?.navigate(direction)
+                                ?.let { target ->
+                                    runtime.livePlaybackPresentationSession.replaceSelection(target)
+                                    runtime.playbackController.start(target.request)
+                                }
+                        },
+                    )
+                }
             }
-        },
-    ) { innerPadding ->
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(MaterialTheme.colorScheme.background)
-                .padding(innerPadding),
-        ) {
-            when (section) {
-                TVSection.LIVE -> {
-                    val sourceId = activeSourceId
-                    if (sourceId == null) {
-                        TVNoSourceScreen(
-                            syncState = syncState,
-                            onAddPlaylist = { openSection(TVSection.SETTINGS) },
-                            modifier = Modifier.fillMaxSize(),
-                        )
-                    } else {
-                        LiveRoute(
+
+            TvDestination.MOVIES -> {
+                if (vodFullscreen) {
+                    val movie = onDemandPresentation.moviePlayback
+                    val playbackSourceId = onDemandPresentation.sourceId
+                    if (movie != null && playbackSourceId != null) {
+                        TvMoviePlaybackRoute(
                             runtime = runtime,
-                            sourceId = sourceId,
-                            activeSelection = activeSelection,
-                            playbackState = playbackState,
-                            videoOutput = runtime.playbackVideoOutput,
-                            syncState = syncState,
-                            onPlay = runtime.playbackController::play,
-                            onPause = runtime.playbackController::pause,
-                            onRetry = runtime.playbackController::retry,
-                            onOpenMovies = { openSection(TVSection.MOVIES) },
-                            onOpenSeries = { openSection(TVSection.SERIES) },
-                            onOpenSettings = { openSection(TVSection.SETTINGS) },
-                            onPreviewRequested = { selection ->
-                                activeSelection = selection
-                                runtime.playbackController.start(selection.request)
+                            sourceId = playbackSourceId,
+                            movie = movie,
+                            onExit = {
+                                runtime.onDemandPresentationSession.returnFromMoviePlayback()
                             },
-                            onPreviewClosed = {
-                                stopLivePresentation { activeSelection = null }
-                            },
-                            onOpenFullscreen = { selection ->
-                                openLiveFullscreen(activeSelection ?: selection)
-                            },
-                            onNavigatePreview = { direction ->
-                                activeSelection
-                                    ?.navigate(direction)
-                                    ?.let { target ->
-                                        activeSelection = target
-                                        runtime.playbackController.start(target.request)
-                                    }
-                            },
+                            onFullscreenStateChanged = onPlaybackFullscreenChanged,
                         )
                     }
-                }
-
-                TVSection.LIBRARY -> UnifiedLibraryRoute(
-                    runtime = runtime,
-                    sourceId = activeSourceId,
-                    sourceKind = activeSummary?.sourceKind,
-                    onOpenMovieDetails = { sourceId, movieId ->
-                        rememberActiveSource(sourceId)
-                        requestedVodMovieId = movieId
-                        movieDetailReturnToLibrary = true
-                        openSection(TVSection.MOVIES)
-                    },
-                    onOpenSeriesDetails = { sourceId, seriesId ->
-                        rememberActiveSource(sourceId)
-                        requestedSeriesId = seriesId
-                        seriesDetailReturnToLibrary = true
-                        openSection(TVSection.SERIES)
-                    },
-                    onFullscreenStateChanged = { fullscreen ->
-                        libraryFullscreen = fullscreen
-                        onPlaybackFullscreenChanged(fullscreen)
-                    },
-                )
-
-                TVSection.MOVIES -> VodRoute(
-                    runtime = runtime,
-                    sourceId = activeSourceId,
-                    sourceKind = activeSummary?.sourceKind,
-                    requestedMovieId = requestedVodMovieId,
-                    onRequestedMovieConsumed = { requestedVodMovieId = null },
-                    returnToLibraryOnDetailBack = movieDetailReturnToLibrary,
-                    onReturnToLibrary = { openSection(TVSection.LIBRARY) },
-                    onOpenLive = { openSection(TVSection.LIVE) },
-                    onOpenSeries = { openSection(TVSection.SERIES) },
-                    onOpenSettings = { openSection(TVSection.SETTINGS) },
-                    onFullscreenStateChanged = { fullscreen ->
-                        vodFullscreen = fullscreen
-                        onPlaybackFullscreenChanged(fullscreen)
-                    },
-                )
-
-                TVSection.SERIES -> SeriesRoute(
-                    runtime = runtime,
-                    sourceId = activeSourceId,
-                    sourceKind = activeSummary?.sourceKind,
-                    requestedSeriesId = requestedSeriesId,
-                    onRequestedSeriesConsumed = { requestedSeriesId = null },
-                    returnToLibraryOnDetailBack = seriesDetailReturnToLibrary,
-                    onReturnToLibrary = { openSection(TVSection.LIBRARY) },
-                    onOpenSettings = { openSection(TVSection.SETTINGS) },
-                    onFullscreenStateChanged = { fullscreen ->
-                        seriesFullscreen = fullscreen
-                        onPlaybackFullscreenChanged(fullscreen)
-                    },
-                )
-
-                TVSection.SETTINGS -> SettingsScreen(
-                    runtime = runtime,
-                    summaries = summaries,
-                    syncState = syncState,
-                    activeSourceName = activeSummary?.name,
-                    hasActivePlayback =
-                        activeSelection != null ||
-                            vodFullscreen ||
-                            seriesFullscreen ||
-                            libraryFullscreen,
-                    onOpenLive = { openSection(TVSection.LIVE) },
-                    onOpenSourceInLive = { sourceId ->
-                        if (sourceId != activeSourceId && activeSelection != null) {
-                            stopLivePresentation {
-                                activeSelection = null
-                                fullscreenSelection = null
-                            }
-                        }
-                        rememberActiveSource(sourceId)
-                        section = TVSection.LIVE
-                    },
-                    onStopPlayback = {
-                        if (activeSelection != null || fullscreenSelection != null) {
-                            stopLivePresentation {
-                                activeSelection = null
-                                fullscreenSelection = null
-                            }
-                        } else {
-                            runtime.playbackController.stop()
-                        }
-                    },
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun TVPrimaryNavigationBar(
-    liveSelected: Boolean,
-    librarySelected: Boolean,
-    settingsSelected: Boolean,
-    onOpenLive: () -> Unit,
-    onOpenLibrary: () -> Unit,
-    onOpenSettings: () -> Unit,
-) {
-    Surface(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 12.dp, vertical = 6.dp),
-        shape = RoundedCornerShape(12.dp),
-        color = MaterialTheme.colorScheme.surface,
-        tonalElevation = 1.dp,
-    ) {
-        Row(
-            modifier = Modifier.padding(6.dp),
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            TVPrimaryNavigationItem(
-                label = "Live",
-                icon = Icons.Filled.LiveTv,
-                selected = liveSelected,
-                onClick = onOpenLive,
-            )
-            TVPrimaryNavigationItem(
-                label = "Library",
-                icon = Icons.Filled.VideoLibrary,
-                selected = librarySelected,
-                onClick = onOpenLibrary,
-            )
-            TVPrimaryNavigationItem(
-                label = "Settings",
-                icon = Icons.Filled.Settings,
-                selected = settingsSelected,
-                onClick = onOpenSettings,
-            )
-        }
-    }
-}
-
-@Composable
-private fun TVPrimaryNavigationItem(
-    label: String,
-    icon: ImageVector,
-    selected: Boolean,
-    onClick: () -> Unit,
-) {
-    var focused by remember(label) { mutableStateOf(false) }
-    val emphasized = selected || focused
-
-    Surface(
-        modifier = Modifier
-            .widthIn(min = 132.dp)
-            .onFocusChanged { focused = it.isFocused }
-            .clickable(onClick = onClick),
-        shape = RoundedCornerShape(10.dp),
-        color = if (focused) {
-            MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.72f)
-        } else {
-            MaterialTheme.colorScheme.surface
-        },
-        tonalElevation = 0.dp,
-    ) {
-        Row(
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Icon(
-                imageVector = icon,
-                contentDescription = label,
-                tint = if (emphasized) {
-                    MaterialTheme.colorScheme.primary
                 } else {
-                    MaterialTheme.colorScheme.onSurfaceVariant
+                    TvMoviesRoute(
+                        runtime = runtime,
+                        sourceId = activeSourceId,
+                        sourceKind = activeSummary?.sourceKind,
+                        requestedMovieId = requestedVodMovieId,
+                        onRequestedMovieConsumed = { requestedVodMovieId = null },
+                        returnToLibraryOnDetailBack = movieDetailReturnToHome,
+                        onReturnToLibrary = {
+                            if (movieDetailReturnToHome && homeReturnFocusKey != null) {
+                                homeReturnFocusGeneration += 1
+                                homeReturnFocusPending = true
+                            }
+                            openDestination(TvDestination.HOME)
+                        },
+                        onOpenSettings = { openDestination(TvDestination.SETTINGS) },
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                }
+            }
+
+            TvDestination.SERIES -> {
+                if (seriesFullscreen) {
+                    SeriesRoute(
+                        runtime = runtime,
+                        sourceId = activeSourceId,
+                        sourceKind = activeSummary?.sourceKind,
+                        requestedSeriesId = requestedSeriesId,
+                        onRequestedSeriesConsumed = { requestedSeriesId = null },
+                        returnToLibraryOnDetailBack = seriesDetailReturnToHome,
+                        onReturnToLibrary = {
+                            if (seriesDetailReturnToHome && homeReturnFocusKey != null) {
+                                homeReturnFocusGeneration += 1
+                                homeReturnFocusPending = true
+                            }
+                            openDestination(TvDestination.HOME)
+                        },
+                        onOpenSettings = { openDestination(TvDestination.SETTINGS) },
+                        onFullscreenStateChanged = onPlaybackFullscreenChanged,
+                    )
+                } else {
+                    TvSeriesRoute(
+                        runtime = runtime,
+                        sourceId = activeSourceId,
+                        sourceKind = activeSummary?.sourceKind,
+                        requestedSeriesId = requestedSeriesId,
+                        onRequestedSeriesConsumed = { requestedSeriesId = null },
+                        returnToLibraryOnDetailBack = seriesDetailReturnToHome,
+                        onReturnToLibrary = {
+                            if (seriesDetailReturnToHome && homeReturnFocusKey != null) {
+                                homeReturnFocusGeneration += 1
+                                homeReturnFocusPending = true
+                            }
+                            openDestination(TvDestination.HOME)
+                        },
+                        onOpenSettings = { openDestination(TvDestination.SETTINGS) },
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                }
+            }
+
+            TvDestination.SETTINGS -> SettingsScreen(
+                runtime = runtime,
+                summaries = summaries,
+                syncState = syncState,
+                activeSourceName = activeSummary?.name,
+                hasActivePlayback =
+                    activeSelection != null ||
+                        vodFullscreen ||
+                        seriesFullscreen,
+                onOpenLive = { openDestination(TvDestination.LIVE_TV) },
+                onOpenSourceInLive = { sourceId ->
+                    if (sourceId != activeSourceId && activeSelection != null) {
+                        stopLivePresentation {
+                            runtime.livePlaybackPresentationSession.clear()
+                        }
+                    }
+                    rememberActiveSource(sourceId)
+                    runtime.onDemandPresentationSession.clear()
+                    destination = TvDestination.LIVE_TV
                 },
-            )
-            Text(
-                text = label,
-                style = MaterialTheme.typography.bodyMedium,
-                color = when {
-                    focused -> MaterialTheme.colorScheme.onPrimaryContainer
-                    selected -> MaterialTheme.colorScheme.primary
-                    else -> MaterialTheme.colorScheme.onSurface
+                onStopPlayback = {
+                    if (activeSelection != null || fullscreenSelection != null) {
+                        stopLivePresentation {
+                            runtime.livePlaybackPresentationSession.clear()
+                        }
+                    } else {
+                        runtime.playbackController.stop()
+                        runtime.onDemandPresentationSession.clear()
+                    }
+                },
+                tvLiveManagementContent = { tvRuntime, tvSummaries, tvOnBack ->
+                    TvLiveManagementScreen(
+                        runtime = tvRuntime,
+                        summaries = tvSummaries,
+                        onBack = tvOnBack,
+                        focusFirstActionOnEntry = true,
+                    )
                 },
             )
         }
@@ -553,18 +582,43 @@ private fun TVNoSourceScreen(
     onAddPlaylist: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val shellFocusBoundary = LocalTvShellFocusBoundary.current
+    val actionFocusRequester = remember { FocusRequester() }
+
+    LaunchedEffect(shellFocusBoundary.contentEntryGeneration) {
+        if (shellFocusBoundary.contentEntryGeneration > 0) {
+            withFrameNanos { }
+            actionFocusRequester.requestFocus()
+        }
+    }
+
     Column(
         modifier = modifier,
-        verticalArrangement = Arrangement.Center,
+        verticalArrangement = androidx.compose.foundation.layout.Arrangement.Center,
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Text(
             text = if (syncState.sourceId != null) "Loading Live TV…" else "No playlist configured",
             style = MaterialTheme.typography.titleLarge,
         )
-        TextButton(onClick = onAddPlaylist) {
-            Text("Open Settings")
-        }
+        TvActionSurface(
+            label = "Open Settings",
+            onClick = onAddPlaylist,
+            modifier = Modifier
+                .focusRequester(actionFocusRequester)
+                .onPreviewKeyEvent { event ->
+                    if (
+                        event.type == KeyEventType.KeyDown &&
+                        event.key == Key.DirectionLeft &&
+                        shellFocusBoundary.railVisible
+                    ) {
+                        shellFocusBoundary.requestRailFocus()
+                        true
+                    } else {
+                        false
+                    }
+                },
+        )
     }
 }
 

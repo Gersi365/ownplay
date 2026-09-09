@@ -217,6 +217,7 @@ class MainActivity : ComponentActivity() {
                                     PictureInPicturePlaybackSurface(
                                         videoOutput = runtime.playbackVideoOutput,
                                         mediaKind = currentPlaybackMediaKind(),
+                                        liveWasFullscreen = playbackFullscreen,
                                         onProgress = { positionMs, durationMs ->
                                             val request = when (
                                                 val state = runtime.playbackController.state.value
@@ -352,6 +353,7 @@ class MainActivity : ComponentActivity() {
         offlineDownloadRuntime?.let { downloadRuntime ->
             activityScope.launch {
                 downloadRuntime.reconcileCompletedFiles()
+                downloadRuntime.reconcilePendingWork()
             }
         }
     }

@@ -3,7 +3,6 @@ package app.ownplay.player.ui
 import android.content.res.Configuration
 import androidx.activity.compose.BackHandler
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -18,6 +17,7 @@ import app.ownplay.player.personalization.AppDeviceProfileSelection
 import app.ownplay.player.personalization.AppDeviceProfileStore
 import app.ownplay.player.personalization.AppOrientationMode
 import app.ownplay.player.source.SourceSyncState
+import app.ownplay.player.ui.tv.TvSettingsScreen
 import kotlinx.coroutines.launch
 
 internal enum class SettingsDestination {
@@ -39,6 +39,18 @@ internal fun SettingsScreen(
     onOpenLive: () -> Unit,
     onOpenSourceInLive: (String) -> Unit,
     onStopPlayback: () -> Unit,
+    tvLiveManagementContent: @Composable (
+        OwnPlayAppRuntime,
+        List<PlaylistSourceSummary>,
+        () -> Unit,
+    ) -> Unit = { tvRuntime, tvSummaries, tvOnBack ->
+        LiveManagementScreen(
+            runtime = tvRuntime,
+            summaries = tvSummaries,
+            onBack = tvOnBack,
+            focusFirstActionOnEntry = true,
+        )
+    },
 ) {
     var destination by remember { mutableStateOf(SettingsDestination.CONTENT) }
     val configuration = LocalConfiguration.current
@@ -60,10 +72,15 @@ internal fun SettingsScreen(
     val orientationMode = deviceSettings?.effectiveOrientation ?: AppOrientationMode.PORTRAIT
     val scope = rememberCoroutineScope()
 
-    LaunchedEffect(isTelevision, destination) {
-        if (isTelevision && destination == SettingsDestination.DOWNLOADS) {
-            destination = SettingsDestination.CONTENT
-        }
+    if (isTelevision) {
+        TvSettingsScreen(
+            runtime = runtime,
+            summaries = summaries,
+            syncState = syncState,
+            onOpenSourceInLive = onOpenSourceInLive,
+            liveManagementContent = tvLiveManagementContent,
+        )
+        return
     }
 
     val nestedDestinationBackEnabled =
