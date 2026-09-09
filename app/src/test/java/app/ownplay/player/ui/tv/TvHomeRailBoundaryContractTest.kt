@@ -80,19 +80,23 @@ class TvHomeRailBoundaryContractTest {
     }
 
     @Test
-    fun `left from the first Home content target returns directly to the active rail item`() {
+    fun `left from every first Home shelf column returns directly to the active rail item`() {
         assertTrue(
             "The shell callback must restore the active destination, not a nearest rail row.",
             "pendingRailRestore = activeDestination" in shellSource,
         )
         assertTrue(
-            "Only the resolved first content card receives the entry boundary behavior.",
-            "isContentEntry = item.key == contentEntryKey" in homeSource &&
-                "isContentEntry = focusKey == contentEntryKey" in homeSource,
+            "Shelf rendering must know the actual first column rather than infer it spatially.",
+            "itemsIndexed(" in homeSource && "isLeftBoundary = index == 0" in homeSource,
         )
         assertTrue(
-            "Left on the entry card must call the shell boundary directly.",
-            "event.key == Key.DirectionLeft) { onContentEntryLeft() true" in homeSource,
+            "Left on a first-column card must call the shell boundary directly.",
+            "event.key == Key.DirectionLeft) { onLeftBoundary() true" in homeSource,
+        )
+        assertTrue(
+            "The explicit content-entry requester must remain separate from the left-column rule.",
+            "isContentEntry = item.key == contentEntryKey" in homeSource &&
+                "isContentEntry = focusKey == contentEntryKey" in homeSource,
         )
         assertTrue(
             "Empty-state actions must participate in the same deterministic rail boundary.",
