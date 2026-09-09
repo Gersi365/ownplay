@@ -42,8 +42,8 @@ import app.ownplay.player.persistence.PlaylistSourceSummary
 import app.ownplay.player.source.SourceSyncState
 import app.ownplay.player.ui.AboutSettingsContent
 import app.ownplay.player.ui.BackupRestoreSettingsContent
-import app.ownplay.player.ui.LiveManagementScreen
 import app.ownplay.player.ui.PlaylistManagementSubscreen
+import app.ownplay.player.ui.live.TvLiveManagementScreen
 
 internal enum class TvSettingsDestination(
     val title: String,
@@ -117,7 +117,7 @@ internal fun TvSettingsScreen(
             )
         }
         TvSettingsDestination.LIVE_MANAGEMENT -> {
-            LiveManagementScreen(
+            TvLiveManagementScreen(
                 runtime = runtime,
                 summaries = summaries.filter { summary -> summary.enabled },
                 onBack = returnToRoot,
