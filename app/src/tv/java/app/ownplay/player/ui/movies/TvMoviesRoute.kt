@@ -65,6 +65,7 @@ import app.ownplay.player.playback.PlaybackMediaKind
 import app.ownplay.player.playback.PlaybackRequest
 import app.ownplay.player.source.SourceError
 import app.ownplay.player.source.SourceResult
+import app.ownplay.player.ui.tv.LocalTvShellFocusBoundary
 import app.ownplay.player.ui.vod.RemotePoster
 import app.ownplay.player.vod.VodCatalog
 import app.ownplay.player.vod.VodFeatureRuntime
@@ -106,6 +107,15 @@ internal fun TvMoviesRoute(
     val featureRuntime = remember(context) { VodFeatureRuntime(context.applicationContext) }
     val scope = rememberCoroutineScope()
     val onDemandPresentation by runtime.onDemandPresentationSession.state.collectAsState()
+    val shellFocusBoundary = LocalTvShellFocusBoundary.current
+    val onShellLeftBoundary: () -> Boolean = {
+        if (shellFocusBoundary.railVisible) {
+            shellFocusBoundary.requestRailFocus()
+            true
+        } else {
+            false
+        }
+    }
 
     DisposableEffect(featureRuntime) {
         onDispose { featureRuntime.close() }
@@ -116,6 +126,8 @@ internal fun TvMoviesRoute(
             title = "No playlist configured",
             detail = "Add an Xtream playlist from Settings to load Movies.",
             actionLabel = "Open Settings",
+            contentEntryGeneration = shellFocusBoundary.contentEntryGeneration,
+            onLeftBoundary = onShellLeftBoundary,
             onAction = onOpenSettings,
             modifier = modifier,
         )
@@ -126,6 +138,8 @@ internal fun TvMoviesRoute(
             title = "Movies are not available for this playlist",
             detail = "The active playlist does not currently provide an Xtream Movies catalog.",
             actionLabel = "Open Settings",
+            contentEntryGeneration = shellFocusBoundary.contentEntryGeneration,
+            onLeftBoundary = onShellLeftBoundary,
             onAction = onOpenSettings,
             modifier = modifier,
         )
@@ -361,6 +375,8 @@ internal fun TvMoviesRoute(
         refreshFailed = refreshError != null,
         movieFocusTargetId = movieFocusTargetId,
         movieFocusRequestGeneration = movieFocusRequestGeneration,
+        contentEntryGeneration = shellFocusBoundary.contentEntryGeneration,
+        onLeftBoundary = onShellLeftBoundary,
         onSectionSelected = { selectedSectionKey = it },
         onMovieFocusRequested = { movieId ->
             movieFocusTargetId = movieId
@@ -382,6 +398,8 @@ private fun TvMoviesCatalogScreen(
     refreshFailed: Boolean,
     movieFocusTargetId: String?,
     movieFocusRequestGeneration: Int,
+    contentEntryGeneration: Int,
+    onLeftBoundary: () -> Boolean,
     onSectionSelected: (String) -> Unit,
     onMovieFocusRequested: (String) -> Unit,
     onMovieSelected: (VodMovie) -> Unit,
@@ -390,6 +408,7 @@ private fun TvMoviesCatalogScreen(
 ) {
     val categoryFocusRequester = remember { FocusRequester() }
     val movieFocusRequester = remember { FocusRequester() }
+    val retryFocusRequester = remember { FocusRequester() }
     val gridState = rememberLazyGridState()
     val selectedSectionLabel = sections.firstOrNull { it.key == selectedSectionKey }?.label ?: "Movies"
 
@@ -402,6 +421,20 @@ private fun TvMoviesCatalogScreen(
         withFrameNanos { }
         withFrameNanos { }
         movieFocusRequester.requestFocus()
+    }
+
+    LaunchedEffect(contentEntryGeneration, selectedSectionKey, sections, refreshFailed) {
+        if (contentEntryGeneration <= 0) return@LaunchedEffect
+        when {
+            selectedSectionKey != null && sections.any { it.key == selectedSectionKey } -> {
+                withFrameNanos { }
+                categoryFocusRequester.requestFocus()
+            }
+            sections.isEmpty() && refreshFailed -> {
+                withFrameNanos { }
+                retryFocusRequester.requestFocus()
+            }
+        }
     }
 
     Row(
@@ -449,6 +482,7 @@ private fun TvMoviesCatalogScreen(
                                 section.key == selectedSectionKey
                             },
                             onClick = { onSectionSelected(section.key) },
+                            onLeft = onLeftBoundary,
                             onRight = {
                                 val movie = movies.firstOrNull()
                                 if (movie == null) {
@@ -488,7 +522,21 @@ private fun TvMoviesCatalogScreen(
                 }
                 when {
                     loading -> CircularProgressIndicator(modifier = Modifier.size(24.dp), strokeWidth = 2.dp)
-                    refreshFailed -> TextButton(onClick = onRetry) { Text("Retry refresh") }
+                    refreshFailed -> TextButton(
+                        onClick = onRetry,
+                        modifier = Modifier
+                            .focusRequester(retryFocusRequester)
+                            .onPreviewKeyEvent { event ->
+                                if (
+                                    event.type == KeyEventType.KeyDown &&
+                                    event.key == Key.DirectionLeft
+                                ) {
+                                    onLeftBoundary()
+                                } else {
+                                    false
+                                }
+                            },
+                    ) { Text("Retry refresh") }
                 }
             }
 
@@ -552,6 +600,7 @@ private fun TvMovieSectionRow(
     selected: Boolean,
     focusRequester: FocusRequester?,
     onClick: () -> Unit,
+    onLeft: () -> Boolean,
     onRight: () -> Boolean,
 ) {
     var focused by remember(section.key) { mutableStateOf(false) }
@@ -578,10 +627,14 @@ private fun TvMovieSectionRow(
             .then(requesterModifier)
             .onFocusChanged { focused = it.isFocused }
             .onPreviewKeyEvent { event ->
-                if (event.type == KeyEventType.KeyDown && event.key == Key.DirectionRight) {
-                    onRight()
-                } else {
+                if (event.type != KeyEventType.KeyDown) {
                     false
+                } else {
+                    when (event.key) {
+                        Key.DirectionLeft -> onLeft()
+                        Key.DirectionRight -> onRight()
+                        else -> false
+                    }
                 }
             }
             .clickable(onClick = onClick),
@@ -877,9 +930,19 @@ private fun TvMoviesMessage(
     title: String,
     detail: String,
     actionLabel: String,
+    contentEntryGeneration: Int,
+    onLeftBoundary: () -> Boolean,
     onAction: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val actionFocusRequester = remember { FocusRequester() }
+
+    LaunchedEffect(contentEntryGeneration) {
+        if (contentEntryGeneration <= 0) return@LaunchedEffect
+        withFrameNanos { }
+        actionFocusRequester.requestFocus()
+    }
+
     Box(
         modifier = modifier.fillMaxSize(),
         contentAlignment = Alignment.Center,
@@ -899,7 +962,21 @@ private fun TvMoviesMessage(
                 style = MaterialTheme.typography.bodyLarge,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            TextButton(onClick = onAction) { Text(actionLabel) }
+            TextButton(
+                onClick = onAction,
+                modifier = Modifier
+                    .focusRequester(actionFocusRequester)
+                    .onPreviewKeyEvent { event ->
+                        if (
+                            event.type == KeyEventType.KeyDown &&
+                            event.key == Key.DirectionLeft
+                        ) {
+                            onLeftBoundary()
+                        } else {
+                            false
+                        }
+                    },
+            ) { Text(actionLabel) }
         }
     }
 }
