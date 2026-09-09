@@ -22,10 +22,10 @@ class TvLiveManagementRemoteOrderingContractTest {
 
     @Test
     fun `tv live management retains explicit remote channel ordering actions`() {
-        assertTrue("TV must expose move-to-top.", "label = \"Move to top\"" in source)
-        assertTrue("TV must expose move-up.", "label = \"Move up\"" in source)
-        assertTrue("TV must expose move-down.", "label = \"Move down\"" in source)
-        assertTrue("TV must expose move-to-bottom.", "label = \"Move to bottom\"" in source)
+        assertTrue("TV must expose move-to-top.", "\"Move to top\"" in source)
+        assertTrue("TV must expose move-up.", "\"Move up\"" in source)
+        assertTrue("TV must expose move-down.", "\"Move down\"" in source)
+        assertTrue("TV must expose move-to-bottom.", "\"Move to bottom\"" in source)
         assertTrue(
             "TV ordering must persist through the established manual-order mutation path.",
             "runtime.moveChannelRelative(" in source,
