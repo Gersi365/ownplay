@@ -35,6 +35,7 @@ import app.ownplay.player.playback.PlaybackState
 import app.ownplay.player.playback.PlaybackVideoOutput
 import app.ownplay.player.ui.EpgPanel
 import app.ownplay.player.ui.LivePreviewPanel
+import app.ownplay.player.ui.tv.LocalTvShellFocusBoundary
 import app.ownplay.player.ui.view.ContentViewMode
 
 /**
@@ -72,6 +73,7 @@ internal fun TvLiveWorkspace(
     onOpenEpgGuide: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val shellFocusBoundary = LocalTvShellFocusBoundary.current
     val channelFocusRequester = remember { FocusRequester() }
     var focusChannelId by remember { mutableStateOf<String?>(null) }
     var channelFocusRequestGeneration by remember { mutableIntStateOf(0) }
@@ -110,6 +112,27 @@ internal fun TvLiveWorkspace(
         previousPreviewChannelId = currentPreviewChannelId
     }
 
+    LaunchedEffect(
+        shellFocusBoundary.contentEntryGeneration,
+        hierarchyLevel,
+        state.channels.firstOrNull()?.channelId,
+        preview?.request?.channelId,
+    ) {
+        if (shellFocusBoundary.contentEntryGeneration <= 0) return@LaunchedEffect
+        if (hierarchyLevel == LiveBrowseHierarchyLevel.CHANNELS) {
+            requestChannelFocus(preview?.request?.channelId ?: focusChannelId)
+        }
+    }
+
+    val onShellLeftBoundary: () -> Boolean = {
+        if (shellFocusBoundary.railVisible) {
+            shellFocusBoundary.requestRailFocus()
+            true
+        } else {
+            false
+        }
+    }
+
     if (preview == null) {
         TvLiveBrowseSurface(
             state = state,
@@ -127,6 +150,8 @@ internal fun TvLiveWorkspace(
             focusChannelId = focusChannelId,
             focusRequestGeneration = channelFocusRequestGeneration,
             channelFocusRequester = channelFocusRequester,
+            contentEntryGeneration = shellFocusBoundary.contentEntryGeneration,
+            onLeftBoundary = onShellLeftBoundary,
             modifier = modifier
                 .fillMaxSize()
                 .padding(horizontal = 22.dp, vertical = 18.dp),
@@ -156,6 +181,8 @@ internal fun TvLiveWorkspace(
             focusChannelId = focusChannelId,
             focusRequestGeneration = channelFocusRequestGeneration,
             channelFocusRequester = channelFocusRequester,
+            contentEntryGeneration = shellFocusBoundary.contentEntryGeneration,
+            onLeftBoundary = onShellLeftBoundary,
             modifier = Modifier
                 .weight(0.59f)
                 .fillMaxHeight(),
@@ -229,6 +256,8 @@ private fun TvLiveBrowseSurface(
     focusChannelId: String?,
     focusRequestGeneration: Int,
     channelFocusRequester: FocusRequester,
+    contentEntryGeneration: Int,
+    onLeftBoundary: () -> Boolean,
     modifier: Modifier,
 ) {
     Surface(
@@ -246,6 +275,8 @@ private fun TvLiveBrowseSurface(
             focusChannelId = focusChannelId,
             focusRequestGeneration = focusRequestGeneration,
             channelFocusRequester = channelFocusRequester,
+            contentEntryGeneration = contentEntryGeneration,
+            onLeftBoundary = onLeftBoundary,
             modifier = Modifier.fillMaxSize(),
         )
     }
