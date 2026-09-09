@@ -12,6 +12,16 @@ class TvLiveManagementPresentationIsolationContractTest {
             sourceText("src/main/java/app/ownplay/player/ui/tv/TvSettingsScreen.kt"),
         )
     }
+    private val sharedSettingsSource by lazy {
+        normalizedSource(
+            sourceText("src/main/java/app/ownplay/player/ui/SettingsScreen.kt"),
+        )
+    }
+    private val tvShellSource by lazy {
+        normalizedSource(
+            sourceText("src/tv/java/app/ownplay/player/ui/TVOwnPlayApp.kt"),
+        )
+    }
     private val managementSource by lazy {
         normalizedSource(
             sourceText("src/tv/java/app/ownplay/player/ui/live/TvLiveManagementScreen.kt"),
@@ -19,11 +29,30 @@ class TvLiveManagementPresentationIsolationContractTest {
     }
 
     @Test
-    fun `tv settings routes live management to a dedicated tv source-set screen`() {
-        assertTrue("TV Settings must open the dedicated TV screen.", "TvLiveManagementScreen(" in settingsSource)
+    fun `tv live management presentation is injected only from the tv source set`() {
+        assertTrue(
+            "Shared Settings must expose a flavor-safe TV Live Management content injection.",
+            "tvLiveManagementContent:" in sharedSettingsSource,
+        )
+        assertTrue(
+            "Shared Settings must pass the injection into its TV Settings root.",
+            "liveManagementContent = tvLiveManagementContent" in sharedSettingsSource,
+        )
+        assertTrue(
+            "Shared TV Settings must invoke only the injected content.",
+            "liveManagementContent(" in settingsSource,
+        )
         assertFalse(
-            "TV Settings must not import the generic Live Management presentation.",
-            "import app.ownplay.player.ui.LiveManagementScreen" in settingsSource,
+            "Shared TV Settings must not import a TV-only implementation.",
+            "import app.ownplay.player.ui.live.TvLiveManagementScreen" in settingsSource,
+        )
+        assertTrue(
+            "The TV shell must inject the dedicated source-set implementation.",
+            "TvLiveManagementScreen(" in tvShellSource,
+        )
+        assertTrue(
+            "The TV-only implementation must be imported only by the TV shell.",
+            "import app.ownplay.player.ui.live.TvLiveManagementScreen" in tvShellSource,
         )
     }
 
