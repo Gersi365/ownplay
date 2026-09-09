@@ -2,37 +2,43 @@ package app.ownplay.player.ui.tv
 
 import app.ownplay.player.testing.normalizedSource
 import app.ownplay.player.testing.sourceText
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class TvLiveManagementSingleDoneContractTest {
     @Test
-    fun `tv settings live management exposes one explicit done action`() {
+    fun `tv live management has one logical top-level exit and nested done actions`() {
         val tvSettings = normalizedSource(
             sourceText("src/main/java/app/ownplay/player/ui/tv/TvSettingsScreen.kt"),
         )
         val liveManagement = normalizedSource(
-            sourceText("src/main/java/app/ownplay/player/ui/LiveManagementScreen.kt"),
-        )
-        val liveBrowse = normalizedSource(
-            sourceText("src/main/java/app/ownplay/player/ui/live/LiveBrowseScreen.kt"),
+            sourceText("src/tv/java/app/ownplay/player/ui/live/TvLiveManagementScreen.kt"),
         )
 
         assertTrue(
-            "TV Settings must enter Live Management through the first-action focus path.",
-            "focusFirstActionOnEntry = true" in tvSettings,
+            "Shared TV Settings must enter Live Management through its injected presentation slot.",
+            "liveManagementContent(" in tvSettings,
         )
         assertTrue(
-            "The outer Done must be omitted for the TV first-action path while preserving legacy back-focus callers.",
-            "if (!isTelevision || focusBackOnEntry)" in liveManagement,
+            "The TV-native main page must expose an explicit Settings return action.",
+            "label = \"‹ Settings\"" in liveManagement,
+        )
+        assertFalse(
+            "The TV-native screen must not retain the generic edit-mode Done toggle.",
+            "Text(if (editState.isEditing) \"Done\" else \"Edit\")" in liveManagement,
+        )
+        assertFalse(
+            "The TV-native screen must not embed the generic LiveBrowseScreen exit path.",
+            "LiveBrowseScreen(" in liveManagement,
         )
         assertTrue(
-            "The embedded browse Done must still exit Live Management.",
-            "onEditModeChanged = { editing -> if (!editing) onBack() }" in liveManagement,
+            "Dedicated nested pages must retain one logical Done action back to their parent page.",
+            "label = \"Done\"" in liveManagement && "onClick = onDone" in liveManagement,
         )
         assertTrue(
-            "The browse header must retain the edit-mode Done action.",
-            "Text(if (editState.isEditing) \"Done\" else \"Edit\")" in liveBrowse,
+            "Back from nested pages must return to Live Management rather than directly leaving Settings.",
+            "BackHandler(enabled = page != TvLiveManagementPage.MAIN)" in liveManagement,
         )
     }
 }
