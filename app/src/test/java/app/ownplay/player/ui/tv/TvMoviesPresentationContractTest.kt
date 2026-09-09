@@ -17,12 +17,25 @@ class TvMoviesPresentationContractTest {
             sourceText("src/tv/java/app/ownplay/player/ui/movies/TvMoviesRoute.kt"),
         )
     }
+    private val moviePlaybackSource by lazy {
+        normalizedSource(
+            sourceText("src/tv/java/app/ownplay/player/ui/movies/TvMoviePlaybackRoute.kt"),
+        )
+    }
 
     @Test
-    fun `tv movies catalog and details use dedicated tv presentation`() {
+    fun `tv movies catalog details and fullscreen use dedicated tv presentation`() {
         assertTrue(
-            "TV Movies must route non-fullscreen presentation through the dedicated TV route.",
-            "if (vodFullscreen) { VodRoute(" in appSource && "else { TvMoviesRoute(" in appSource,
+            "TV Movies must route non-fullscreen presentation through the dedicated TV catalog route.",
+            "else { TvMoviesRoute(" in appSource,
+        )
+        assertTrue(
+            "TV Movie fullscreen must route through the dedicated TV playback adapter.",
+            "TvMoviePlaybackRoute(" in appSource,
+        )
+        assertFalse(
+            "TV Movie presentation must not regress to the shared VOD route.",
+            "VodRoute(" in appSource,
         )
         assertTrue(
             "The dedicated route must own TV catalog geometry.",
@@ -35,10 +48,19 @@ class TvMoviesPresentationContractTest {
     }
 
     @Test
-    fun `existing vod playback remains the fullscreen owner`() {
+    fun `tv movie playback adapter preserves established playback ownership`() {
         assertTrue(
-            "Fullscreen Movie playback must continue through the established VOD route.",
-            "if (vodFullscreen) { VodRoute(" in appSource,
+            "Fullscreen Movie playback must reuse the established on-demand playback surface.",
+            "OnDemandPlaybackSurface(" in moviePlaybackSource,
+        )
+        assertTrue(
+            "Fullscreen Movie playback must preserve progress persistence.",
+            "featureRuntime.saveProgress(" in moviePlaybackSource,
+        )
+        assertTrue(
+            "Fullscreen Movie playback must stop only the active Movie request on exit.",
+            "runtime.playbackController.stopIfCurrent(" in moviePlaybackSource &&
+                "mediaKind = PlaybackMediaKind.MOVIE" in moviePlaybackSource,
         )
         assertFalse(
             "The TV catalog route must not own a PlayerView.",

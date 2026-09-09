@@ -126,8 +126,14 @@ class TvMediaShellContractTest {
         )
 
         assertTrue(
-            "Movies catalog and details must route to the dedicated TV presentation.",
-            "if (vodFullscreen) { VodRoute(" in source && "else { TvMoviesRoute(" in source,
+            "Movies catalog, details and fullscreen playback must route through dedicated TV presentation layers.",
+            "if (vodFullscreen) { val movie = onDemandPresentation.moviePlayback" in source &&
+                "TvMoviePlaybackRoute(" in source &&
+                "else { TvMoviesRoute(" in source,
+        )
+        assertFalse(
+            "TV Movie fullscreen must not regress to the shared VOD route.",
+            "VodRoute(" in source,
         )
         assertTrue(
             "Series catalog and details must route to the dedicated TV presentation.",

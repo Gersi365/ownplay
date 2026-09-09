@@ -1,6 +1,5 @@
 package app.ownplay.player.ui
 
-import app.ownplay.player.testing.sourceBlockAfter
 import app.ownplay.player.testing.sourceText
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -10,11 +9,12 @@ class TvMoviePlaybackPresentationIsolationContractTest {
     @Test
     fun `tv shell routes movie fullscreen to dedicated tv adapter`() {
         val shell = sourceText("src/tv/java/app/ownplay/player/ui/TVOwnPlayApp.kt")
-        val moviesBlock = sourceBlockAfter(shell, "TvDestination.MOVIES -> {")
 
         assertTrue(shell.contains("import app.ownplay.player.ui.movies.TvMoviePlaybackRoute"))
-        assertTrue(moviesBlock.contains("TvMoviePlaybackRoute("))
-        assertFalse(moviesBlock.contains("VodRoute("))
+        assertTrue(shell.contains("if (vodFullscreen) {"))
+        assertTrue(shell.contains("TvMoviePlaybackRoute("))
+        assertTrue(shell.contains("else {\n                    TvMoviesRoute("))
+        assertFalse(shell.contains("VodRoute("))
     }
 
     @Test
