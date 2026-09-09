@@ -71,6 +71,7 @@ import app.ownplay.player.series.SeriesFeatureRuntime
 import app.ownplay.player.series.SeriesSummary
 import app.ownplay.player.source.SourceError
 import app.ownplay.player.source.SourceResult
+import app.ownplay.player.ui.tv.LocalTvShellFocusBoundary
 import app.ownplay.player.ui.vod.RemotePoster
 import kotlinx.coroutines.launch
 
@@ -109,6 +110,15 @@ internal fun TvSeriesRoute(
     val featureRuntime = remember(context) { SeriesFeatureRuntime(context.applicationContext) }
     val scope = rememberCoroutineScope()
     val onDemandPresentation by runtime.onDemandPresentationSession.state.collectAsState()
+    val shellFocusBoundary = LocalTvShellFocusBoundary.current
+    val onShellLeftBoundary: () -> Boolean = {
+        if (shellFocusBoundary.railVisible) {
+            shellFocusBoundary.requestRailFocus()
+            true
+        } else {
+            false
+        }
+    }
 
     DisposableEffect(featureRuntime) {
         onDispose { featureRuntime.close() }
@@ -119,6 +129,8 @@ internal fun TvSeriesRoute(
             title = "No playlist configured",
             detail = "Add an Xtream playlist from Settings to load Series.",
             actionLabel = "Open Settings",
+            contentEntryGeneration = shellFocusBoundary.contentEntryGeneration,
+            onLeftBoundary = onShellLeftBoundary,
             onAction = onOpenSettings,
             modifier = modifier,
         )
@@ -129,6 +141,8 @@ internal fun TvSeriesRoute(
             title = "Series are not available for this playlist",
             detail = "The active playlist does not currently provide an Xtream Series catalog.",
             actionLabel = "Open Settings",
+            contentEntryGeneration = shellFocusBoundary.contentEntryGeneration,
+            onLeftBoundary = onShellLeftBoundary,
             onAction = onOpenSettings,
             modifier = modifier,
         )
@@ -436,6 +450,8 @@ internal fun TvSeriesRoute(
         refreshFailed = refreshError != null,
         seriesFocusTargetId = seriesFocusTargetId,
         seriesFocusRequestGeneration = seriesFocusRequestGeneration,
+        contentEntryGeneration = shellFocusBoundary.contentEntryGeneration,
+        onLeftBoundary = onShellLeftBoundary,
         onSectionSelected = { selectedSectionKey = it },
         onSeriesFocusRequested = { seriesId ->
             seriesFocusTargetId = seriesId
@@ -461,6 +477,8 @@ private fun TvSeriesCatalogScreen(
     refreshFailed: Boolean,
     seriesFocusTargetId: String?,
     seriesFocusRequestGeneration: Int,
+    contentEntryGeneration: Int,
+    onLeftBoundary: () -> Boolean,
     onSectionSelected: (String) -> Unit,
     onSeriesFocusRequested: (String) -> Unit,
     onSeriesSelected: (SeriesSummary) -> Unit,
@@ -470,6 +488,7 @@ private fun TvSeriesCatalogScreen(
 ) {
     val sectionFocusRequester = remember { FocusRequester() }
     val seriesFocusRequester = remember { FocusRequester() }
+    val retryFocusRequester = remember { FocusRequester() }
     val gridState = rememberLazyGridState()
     val selectedSectionLabel = sections.firstOrNull { it.key == selectedSectionKey }?.label ?: "Series"
     val contentHasItems = if (selectedSectionKey == SERIES_CONTINUE_KEY) {
@@ -487,6 +506,20 @@ private fun TvSeriesCatalogScreen(
         withFrameNanos { }
         withFrameNanos { }
         seriesFocusRequester.requestFocus()
+    }
+
+    LaunchedEffect(contentEntryGeneration, selectedSectionKey, sections, refreshFailed) {
+        if (contentEntryGeneration <= 0) return@LaunchedEffect
+        when {
+            selectedSectionKey != null && sections.any { it.key == selectedSectionKey } -> {
+                withFrameNanos { }
+                sectionFocusRequester.requestFocus()
+            }
+            sections.isEmpty() && refreshFailed -> {
+                withFrameNanos { }
+                retryFocusRequester.requestFocus()
+            }
+        }
     }
 
     Row(
@@ -534,6 +567,7 @@ private fun TvSeriesCatalogScreen(
                                 section.key == selectedSectionKey
                             },
                             onClick = { onSectionSelected(section.key) },
+                            onLeft = onLeftBoundary,
                             onRight = {
                                 when {
                                     section.key == SERIES_CONTINUE_KEY -> false
@@ -577,7 +611,21 @@ private fun TvSeriesCatalogScreen(
                 }
                 when {
                     loading -> CircularProgressIndicator(modifier = Modifier.size(24.dp), strokeWidth = 2.dp)
-                    refreshFailed -> TextButton(onClick = onRetry) { Text("Retry refresh") }
+                    refreshFailed -> TextButton(
+                        onClick = onRetry,
+                        modifier = Modifier
+                            .focusRequester(retryFocusRequester)
+                            .onPreviewKeyEvent { event ->
+                                if (
+                                    event.type == KeyEventType.KeyDown &&
+                                    event.key == Key.DirectionLeft
+                                ) {
+                                    onLeftBoundary()
+                                } else {
+                                    false
+                                }
+                            },
+                    ) { Text("Retry refresh") }
                 }
             }
 
@@ -658,6 +706,7 @@ private fun TvSeriesSectionRow(
     selected: Boolean,
     focusRequester: FocusRequester?,
     onClick: () -> Unit,
+    onLeft: () -> Boolean,
     onRight: () -> Boolean,
 ) {
     var focused by remember(section.key) { mutableStateOf(false) }
@@ -684,10 +733,14 @@ private fun TvSeriesSectionRow(
             .then(requesterModifier)
             .onFocusChanged { focused = it.isFocused }
             .onPreviewKeyEvent { event ->
-                if (event.type == KeyEventType.KeyDown && event.key == Key.DirectionRight) {
-                    onRight()
-                } else {
+                if (event.type != KeyEventType.KeyDown) {
                     false
+                } else {
+                    when (event.key) {
+                        Key.DirectionLeft -> onLeft()
+                        Key.DirectionRight -> onRight()
+                        else -> false
+                    }
                 }
             }
             .clickable(onClick = onClick),
@@ -1185,9 +1238,19 @@ private fun TvSeriesMessage(
     title: String,
     detail: String,
     actionLabel: String,
+    contentEntryGeneration: Int,
+    onLeftBoundary: () -> Boolean,
     onAction: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val actionFocusRequester = remember { FocusRequester() }
+
+    LaunchedEffect(contentEntryGeneration) {
+        if (contentEntryGeneration <= 0) return@LaunchedEffect
+        withFrameNanos { }
+        actionFocusRequester.requestFocus()
+    }
+
     Box(
         modifier = modifier.fillMaxSize(),
         contentAlignment = Alignment.Center,
@@ -1207,7 +1270,21 @@ private fun TvSeriesMessage(
                 style = MaterialTheme.typography.bodyLarge,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            TextButton(onClick = onAction) { Text(actionLabel) }
+            TextButton(
+                onClick = onAction,
+                modifier = Modifier
+                    .focusRequester(actionFocusRequester)
+                    .onPreviewKeyEvent { event ->
+                        if (
+                            event.type == KeyEventType.KeyDown &&
+                            event.key == Key.DirectionLeft
+                        ) {
+                            onLeftBoundary()
+                        } else {
+                            false
+                        }
+                    },
+            ) { Text(actionLabel) }
         }
     }
 }
