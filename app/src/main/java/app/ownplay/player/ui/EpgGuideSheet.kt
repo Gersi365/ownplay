@@ -79,8 +79,11 @@ internal fun EpgGuideSheet(
     val listState = rememberLazyListState()
     var selectedProgram by remember { mutableStateOf<EpgProgram?>(null) }
 
-    LaunchedEffect(timeline.programs, timeline.current) {
-        if (selectedProgram == null || selectedProgram !in timeline.programs) {
+    LaunchedEffect(isTelevision, timeline.programs, timeline.current) {
+        if (
+            isTelevision &&
+            (selectedProgram == null || selectedProgram !in timeline.programs)
+        ) {
             selectedProgram = timeline.current ?: timeline.programs.firstOrNull()
         }
     }
