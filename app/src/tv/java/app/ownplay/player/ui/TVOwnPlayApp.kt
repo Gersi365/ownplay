@@ -36,6 +36,7 @@ import app.ownplay.player.source.selection.ActivePlaylistSelection
 import app.ownplay.player.source.selection.ActivePlaylistStore
 import app.ownplay.player.source.selection.resolveActivePlaylistId
 import app.ownplay.player.ui.home.TvHomeScreen
+import app.ownplay.player.ui.live.TvLiveManagementScreen
 import app.ownplay.player.ui.movies.TvMoviesRoute
 import app.ownplay.player.ui.series.SeriesRoute
 import app.ownplay.player.ui.series.TvSeriesRoute
@@ -558,6 +559,14 @@ private fun TVOwnPlayAppContent(
                         runtime.playbackController.stop()
                         runtime.onDemandPresentationSession.clear()
                     }
+                },
+                tvLiveManagementContent = { tvRuntime, tvSummaries, tvOnBack ->
+                    TvLiveManagementScreen(
+                        runtime = tvRuntime,
+                        summaries = tvSummaries,
+                        onBack = tvOnBack,
+                        focusFirstActionOnEntry = true,
+                    )
                 },
             )
         }
