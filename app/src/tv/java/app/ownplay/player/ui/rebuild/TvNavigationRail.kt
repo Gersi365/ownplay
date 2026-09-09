@@ -46,7 +46,7 @@ internal fun TvNavigationRail(
     selected: TvDestination,
     requesters: Map<TvDestination, FocusRequester>,
     onSelected: (TvDestination) -> Unit,
-    onEnterContent: () -> Unit,
+    onEnterContent: (TvDestination) -> Unit,
 ) {
     Surface(
         modifier = Modifier
@@ -78,7 +78,7 @@ internal fun TvNavigationRail(
                     selected = destination == selected,
                     requester = requesters.getValue(destination),
                     onClick = { onSelected(destination) },
-                    onEnterContent = onEnterContent,
+                    onEnterContent = { onEnterContent(destination) },
                 )
                 Spacer(Modifier.height(8.dp))
             }
