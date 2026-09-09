@@ -26,11 +26,9 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
@@ -40,21 +38,16 @@ import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
-import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.unit.dp
+import app.ownplay.player.ui.tv.LocalTvShellFocusBoundary
+import app.ownplay.player.ui.tv.TvShellFocusBoundary
 
 private val CollapsedRailWidth = 88.dp
 private val ExpandedRailWidth = 232.dp
 private val RailItemHeight = 58.dp
 
-internal data class TvHomeShellFocusBoundary(
-    val contentEntryGeneration: Int = 0,
-    val requestRailFocus: () -> Unit = {},
-)
-
-internal val LocalTvHomeShellFocusBoundary = staticCompositionLocalOf {
-    TvHomeShellFocusBoundary()
-}
+internal typealias TvHomeShellFocusBoundary = TvShellFocusBoundary
+internal val LocalTvHomeShellFocusBoundary = LocalTvShellFocusBoundary
 
 @Composable
 internal fun TvMediaShell(
@@ -64,7 +57,6 @@ internal fun TvMediaShell(
     modifier: Modifier = Modifier,
     content: @Composable () -> Unit,
 ) {
-    val focusManager = LocalFocusManager.current
     val railFocusRequesters = remember {
         tvDestinations.associateWith { FocusRequester() }
     }
@@ -72,8 +64,9 @@ internal fun TvMediaShell(
     var railExpanded by remember { mutableStateOf(true) }
     var focusedRailDestination by remember { mutableStateOf<TvDestination?>(null) }
     var pendingContentEntry by remember { mutableStateOf<TvDestination?>(null) }
+    var contentEntryDestination by remember { mutableStateOf<TvDestination?>(null) }
+    var contentEntryGeneration by remember { mutableIntStateOf(0) }
     var pendingRailRestore by remember { mutableStateOf<TvDestination?>(null) }
-    var homeContentEntryGeneration by remember { mutableIntStateOf(0) }
     var initialFocusApplied by remember { mutableStateOf(false) }
 
     LaunchedEffect(railVisible) {
@@ -81,12 +74,6 @@ internal fun TvMediaShell(
             railExpanded = true
             railFocusRequesters.getValue(activeDestination).requestFocus()
             initialFocusApplied = true
-        }
-    }
-
-    LaunchedEffect(activeDestination) {
-        if (activeDestination != TvDestination.HOME) {
-            homeContentEntryGeneration = 0
         }
     }
 
@@ -110,11 +97,8 @@ internal fun TvMediaShell(
     LaunchedEffect(pendingContentEntry, activeDestination, railVisible) {
         val destination = pendingContentEntry ?: return@LaunchedEffect
         if (railVisible && destination == activeDestination) {
-            if (destination == TvDestination.HOME) {
-                homeContentEntryGeneration += 1
-            } else {
-                focusManager.moveFocus(FocusDirection.Right)
-            }
+            contentEntryDestination = destination
+            contentEntryGeneration += 1
         }
         pendingContentEntry = null
     }
@@ -128,11 +112,18 @@ internal fun TvMediaShell(
                 .padding(start = if (railVisible) CollapsedRailWidth else 0.dp),
         ) {
             CompositionLocalProvider(
-                LocalTvHomeShellFocusBoundary provides TvHomeShellFocusBoundary(
-                    contentEntryGeneration = homeContentEntryGeneration,
+                LocalTvShellFocusBoundary provides TvShellFocusBoundary(
+                    contentEntryGeneration = if (contentEntryDestination == activeDestination) {
+                        contentEntryGeneration
+                    } else {
+                        0
+                    },
+                    railVisible = railVisible,
                     requestRailFocus = {
-                        railExpanded = true
-                        pendingRailRestore = activeDestination
+                        if (railVisible) {
+                            railExpanded = true
+                            pendingRailRestore = activeDestination
+                        }
                     },
                 ),
             ) {
