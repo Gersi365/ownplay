@@ -2,103 +2,61 @@ package app.ownplay.player.ui.tv
 
 import app.ownplay.player.testing.normalizedSource
 import app.ownplay.player.testing.sourceText
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class TvLiveManagementRemoteOrderingContractTest {
-    @Test
-    fun `tv live management does not expose pointer drag ordering`() {
-        val source = normalizedSource(
-            sourceText("src/main/java/app/ownplay/player/ui/live/LiveBrowseScreen.kt"),
-        )
-
-        assertTrue(
-            "Live browse must identify the television form factor before enabling pointer drag.",
-            "configuration.uiMode and Configuration.UI_MODE_TYPE_MASK == Configuration.UI_MODE_TYPE_TELEVISION" in source,
-        )
-        assertTrue(
-            "Pointer drag must remain disabled on television even while manual ordering is active.",
-            "dragEnabled = (manualDragEnabled || favoriteDragEnabled) && !isTelevision" in source,
-        )
-        assertTrue(
-            "The channel drag handle must follow the pointer-drag gate.",
-            "showDragHandle = dragEnabled" in source,
-        )
-        assertTrue(
-            "The hold-and-drag instruction must only render when pointer drag is available.",
-            "if (dragEnabled) { Text(" in source &&
-                "Hold a channel, then drag to reorder My Order." in source,
+    private val source by lazy {
+        normalizedSource(
+            sourceText("src/tv/java/app/ownplay/player/ui/live/TvLiveManagementScreen.kt"),
         )
     }
 
     @Test
-    fun `tv live management retains remote usable ordering actions`() {
-        val source = normalizedSource(
-            sourceText("src/main/java/app/ownplay/player/ui/live/LiveBrowseScreen.kt"),
-        )
+    fun `tv live management does not expose pointer drag ordering`() {
+        assertFalse("TV management must not expose pointer input.", "pointerInput" in source)
+        assertFalse("TV management must not expose drag gesture handlers.", "detectDragGestures" in source)
+        assertFalse("TV management must not expose drag handles.", "showDragHandle" in source)
+    }
 
+    @Test
+    fun `tv live management retains explicit remote channel ordering actions`() {
+        assertTrue("TV must expose move-to-top.", "label = \"Move to top\"" in source)
+        assertTrue("TV must expose move-up.", "label = \"Move up\"" in source)
+        assertTrue("TV must expose move-down.", "label = \"Move down\"" in source)
+        assertTrue("TV must expose move-to-bottom.", "label = \"Move to bottom\"" in source)
         assertTrue(
-            "Manual ordering must retain a remote-usable move-to-top action.",
-            "ChannelBulkAction.MoveToTop" in source,
-        )
-        assertTrue(
-            "Manual ordering must retain a remote-usable move-to-bottom action.",
-            "ChannelBulkAction.MoveToBottom" in source,
-        )
-        assertTrue(
-            "Favorite ordering must retain the equivalent top and bottom actions.",
-            "ChannelBulkAction.MoveFavoritesToTop" in source &&
-                "ChannelBulkAction.MoveFavoritesToBottom" in source,
+            "TV ordering must persist through the established manual-order mutation path.",
+            "runtime.moveChannelRelative(" in source,
         )
     }
 
     @Test
     fun `tv category reorder disables unreachable edge moves`() {
-        val source = normalizedSource(
-            sourceText("src/main/java/app/ownplay/player/ui/CategoryReorderSheet.kt"),
-        )
-
+        assertTrue("First category move-up must be disabled.", "enabled = index > 0" in source)
         assertTrue(
-            "The first category must not expose an enabled move-up action.",
-            "enabled = index > 0" in source,
-        )
-        assertTrue(
-            "The last category must not expose an enabled move-down action.",
+            "Last category move-down must be disabled.",
             "enabled = index < working.lastIndex" in source,
         )
         assertTrue(
-            "Valid category moves must continue using the remote ordering path.",
-            "moveWithRemote(index, -1)" in source &&
-                "moveWithRemote(index, 1)" in source,
+            "Valid category moves must use explicit remote actions.",
+            "move(index, -1)" in source && "move(index, 1)" in source,
         )
     }
 
     @Test
-    fun `tv channel edit rows expose one selection focus target`() {
-        val source = normalizedSource(
-            sourceText("src/main/java/app/ownplay/player/ui/live/LiveBrowseScreen.kt"),
-        )
-
+    fun `tv channel selection uses one row focus target`() {
+        assertFalse("TV channel rows must not expose a second checkbox focus target.", "Checkbox(" in source)
         assertTrue(
-            "Live channel rows must receive the television form factor before configuring selection focus.",
-            "isTelevision = isTelevision" in source,
+            "The channel row must own selection activation.",
+            "onClick = { onChannelSelectionToggle(channel.channelId) }" in source,
         )
-        assertTrue(
-            "The TV checkbox must remain outside D-pad focus traversal so the row owns selection focus.",
-            "Modifier.focusProperties { canFocus = false }" in source,
-        )
-        assertTrue(
-            "The channel row must continue to own the selection activation path.",
-            "if (isEditing) onSelectionToggle() else onClick()" in source,
-        )
+        assertTrue("Channel rows must keep fixed geometry.", ".height(64.dp)" in source)
     }
 
     @Test
     fun `tv remote order disables unreachable selected channel moves`() {
-        val source = normalizedSource(
-            sourceText("src/main/java/app/ownplay/player/ui/LiveManagementScreen.kt"),
-        )
-
         assertTrue(
             "Move-to-top and move-up must both require an upward move.",
             source.split("enabled = canMoveSelectedUp").size - 1 >= 2,
@@ -108,9 +66,9 @@ class TvLiveManagementRemoteOrderingContractTest {
             source.split("enabled = canMoveSelectedDown").size - 1 >= 2,
         )
         assertTrue(
-            "Remote ordering must keep explicit edge guards in the mutation helpers.",
-            "if (!canMoveSelectedUp) return" in source &&
-                "if (!canMoveSelectedDown) return" in source,
+            "Mutation helpers must keep explicit edge guards.",
+            source.split("if (!canMoveSelectedUp) return").size - 1 >= 2 &&
+                source.split("if (!canMoveSelectedDown) return").size - 1 >= 2,
         )
     }
 }
