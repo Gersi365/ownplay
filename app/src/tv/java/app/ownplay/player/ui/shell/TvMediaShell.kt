@@ -19,11 +19,14 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -44,6 +47,15 @@ private val CollapsedRailWidth = 88.dp
 private val ExpandedRailWidth = 232.dp
 private val RailItemHeight = 58.dp
 
+internal data class TvHomeShellFocusBoundary(
+    val contentEntryGeneration: Int = 0,
+    val requestRailFocus: () -> Unit = {},
+)
+
+internal val LocalTvHomeShellFocusBoundary = staticCompositionLocalOf {
+    TvHomeShellFocusBoundary()
+}
+
 @Composable
 internal fun TvMediaShell(
     activeDestination: TvDestination,
@@ -61,6 +73,7 @@ internal fun TvMediaShell(
     var focusedRailDestination by remember { mutableStateOf<TvDestination?>(null) }
     var pendingContentEntry by remember { mutableStateOf<TvDestination?>(null) }
     var pendingRailRestore by remember { mutableStateOf<TvDestination?>(null) }
+    var homeContentEntryGeneration by remember { mutableIntStateOf(0) }
     var initialFocusApplied by remember { mutableStateOf(false) }
 
     LaunchedEffect(railVisible) {
@@ -68,6 +81,12 @@ internal fun TvMediaShell(
             railExpanded = true
             railFocusRequesters.getValue(activeDestination).requestFocus()
             initialFocusApplied = true
+        }
+    }
+
+    LaunchedEffect(activeDestination) {
+        if (activeDestination != TvDestination.HOME) {
+            homeContentEntryGeneration = 0
         }
     }
 
@@ -91,7 +110,11 @@ internal fun TvMediaShell(
     LaunchedEffect(pendingContentEntry, activeDestination, railVisible) {
         val destination = pendingContentEntry ?: return@LaunchedEffect
         if (railVisible && destination == activeDestination) {
-            focusManager.moveFocus(FocusDirection.Right)
+            if (destination == TvDestination.HOME) {
+                homeContentEntryGeneration += 1
+            } else {
+                focusManager.moveFocus(FocusDirection.Right)
+            }
         }
         pendingContentEntry = null
     }
@@ -104,7 +127,17 @@ internal fun TvMediaShell(
                 .fillMaxSize()
                 .padding(start = if (railVisible) CollapsedRailWidth else 0.dp),
         ) {
-            content()
+            CompositionLocalProvider(
+                LocalTvHomeShellFocusBoundary provides TvHomeShellFocusBoundary(
+                    contentEntryGeneration = homeContentEntryGeneration,
+                    requestRailFocus = {
+                        railExpanded = true
+                        pendingRailRestore = activeDestination
+                    },
+                ),
+            ) {
+                content()
+            }
         }
 
         if (railVisible) {
